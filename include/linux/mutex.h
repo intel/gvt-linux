@@ -57,6 +57,7 @@ struct mutex {
 #endif
 #ifdef CONFIG_MUTEX_SPIN_ON_OWNER
 	struct optimistic_spin_queue osq; /* Spinner MCS lock */
+	int waiter_spinning;
 #endif
 #ifdef CONFIG_DEBUG_MUTEXES
 	void			*magic;

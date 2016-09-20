@@ -521,6 +521,12 @@ static inline void pi_set_sn(struct pi_desc *pi_desc)
 			(unsigned long *)&pi_desc->control);
 }
 
+static inline void pi_clear_on(struct pi_desc *pi_desc)
+{
+	clear_bit(POSTED_INTR_ON,
+  		  (unsigned long *)&pi_desc->control);
+}
+
 static inline int pi_test_on(struct pi_desc *pi_desc)
 {
 	return test_bit(POSTED_INTR_ON,
@@ -4806,9 +4812,10 @@ static void vmx_sync_pir_to_irr(struct kvm_vcpu *vcpu)
 {
 	struct vcpu_vmx *vmx = to_vmx(vcpu);
 
-	if (!pi_test_and_clear_on(&vmx->pi_desc))
+	if (!pi_test_on(&vmx->pi_desc))
 		return;
 
+	pi_clear_on(&vmx->pi_desc);
 	kvm_apic_update_irr(vcpu, vmx->pi_desc.pir);
 }
 

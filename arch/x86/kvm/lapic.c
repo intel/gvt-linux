@@ -382,8 +382,6 @@ static inline int apic_find_highest_irr(struct kvm_lapic *apic)
 	if (!apic->irr_pending)
 		return -1;
 
-	if (apic->vcpu->arch.apicv_active)
-		kvm_x86_ops->sync_pir_to_irr(apic->vcpu);
 	result = apic_search_irr(apic);
 	ASSERT(result == -1 || result >= 16);
 
@@ -2030,6 +2028,9 @@ int kvm_apic_has_interrupt(struct kvm_vcpu *vcpu)
 		return -1;
 
 	apic_update_ppr(apic);
+
+	if (apic->vcpu->arch.apicv_active)
+		kvm_x86_ops->sync_pir_to_irr(apic->vcpu);
 	highest_irr = apic_find_highest_irr(apic);
 	if ((highest_irr == -1) ||
 	    ((highest_irr & 0xF0) <= kvm_lapic_get_reg(apic, APIC_PROCPRI)))
@@ -2266,6 +2267,11 @@ void kvm_lapic_sync_to_vapic(struct kvm_vcpu *vcpu)
 
 	if (!test_bit(KVM_APIC_CHECK_VAPIC, &vcpu->arch.apic_attention))
 		return;
+
+	/* We don't get here when APICv is active, since that blocks
+	 * TPR access vmexits.
+	 */
+	WARN_ON_ONCE(vcpu->arch.apicv_active);
 
 	tpr = kvm_lapic_get_reg(apic, APIC_TASKPRI) & 0xff;
 	max_irr = apic_find_highest_irr(apic);

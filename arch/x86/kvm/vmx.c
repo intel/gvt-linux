@@ -4808,17 +4808,6 @@ static void vmx_deliver_posted_interrupt(struct kvm_vcpu *vcpu, int vector)
 		kvm_vcpu_kick(vcpu);
 }
 
-static void vmx_sync_pir_to_irr(struct kvm_vcpu *vcpu)
-{
-	struct vcpu_vmx *vmx = to_vmx(vcpu);
-
-	if (!pi_test_on(&vmx->pi_desc))
-		return;
-
-	pi_clear_on(&vmx->pi_desc);
-	kvm_apic_update_irr(vcpu, vmx->pi_desc.pir);
-}
-
 /*
  * Set up the vmcs's constant host-state fields, i.e., host-state fields that
  * will not change in the lifetime of the guest.
@@ -8500,6 +8489,19 @@ static void vmx_hwapic_irr_update(struct kvm_vcpu *vcpu, int max_irr)
 		kvm_queue_interrupt(vcpu, max_irr, false);
 		vmx_inject_irq(vcpu);
 	}
+}
+
+static void vmx_sync_pir_to_irr(struct kvm_vcpu *vcpu)
+{
+	struct vcpu_vmx *vmx = to_vmx(vcpu);
+	int max_irr;
+
+	if (!pi_test_on(&vmx->pi_desc))
+		return;
+
+	pi_clear_on(&vmx->pi_desc);
+	max_irr = kvm_apic_update_irr(vcpu, vmx->pi_desc.pir);
+	vmx_hwapic_irr_update(vcpu, max_irr);
 }
 
 static void vmx_load_eoi_exitmap(struct kvm_vcpu *vcpu, u64 *eoi_exit_bitmap)

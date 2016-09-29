@@ -6611,8 +6611,7 @@ static int vcpu_enter_guest(struct kvm_vcpu *vcpu)
 		 * virtual interrupt delivery.
 		 */
 		if (vcpu->arch.apicv_active)
-			kvm_x86_ops->hwapic_irr_update(vcpu,
-				kvm_lapic_find_highest_irr(vcpu));
+			kvm_x86_ops->sync_pir_to_irr(vcpu);
 	}
 
 	if (kvm_check_request(KVM_REQ_EVENT, vcpu) || req_int_win) {

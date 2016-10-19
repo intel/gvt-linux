@@ -213,6 +213,8 @@ struct intel_gvt {
 	unsigned long service_request;
 };
 
+#define to_gvt(dev_priv) (struct intel_gvt *)(dev_priv->gvt)
+
 enum {
 	INTEL_GVT_REQUEST_EMULATE_VBLANK = 0,
 };

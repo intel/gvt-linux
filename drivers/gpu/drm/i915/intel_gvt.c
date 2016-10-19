@@ -103,4 +103,5 @@ void intel_gvt_cleanup(struct drm_i915_private *dev_priv)
 		return;
 
 	intel_gvt_clean_device(dev_priv);
+	kfree(dev_priv->gvt);
 }

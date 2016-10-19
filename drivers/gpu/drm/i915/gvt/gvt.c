@@ -195,6 +195,8 @@ void intel_gvt_clean_device(struct drm_i915_private *dev_priv)
 
 	kfree(dev_priv->gvt);
 	dev_priv->gvt = NULL;
+
+	intel_gvt_clean_vgpu_types(gvt);
 }
 
 /**
@@ -270,10 +272,17 @@ int intel_gvt_init_device(struct drm_i915_private *dev_priv)
 	if (ret)
 		goto out_clean_cmd_parser;
 
+	ret = intel_gvt_init_vgpu_types(gvt);
+	if (ret)
+		goto out_clean_thread;
+
+
 	gvt_dbg_core("gvt device creation is done\n");
 	dev_priv->gvt = gvt;
 	return 0;
 
+out_clean_thread:
+	clean_service_thread(gvt);
 out_clean_cmd_parser:
 	intel_gvt_clean_cmd_parser(gvt);
 out_clean_sched_policy:

@@ -89,8 +89,6 @@ static int map_vgpu_opregion(struct intel_vgpu *vgpu, bool map)
  */
 void intel_vgpu_clean_opregion(struct intel_vgpu *vgpu)
 {
-	int i;
-
 	gvt_dbg_core("vgpu%d: clean vgpu opregion\n", vgpu->id);
 
 	if (!vgpu_opregion(vgpu)->va)

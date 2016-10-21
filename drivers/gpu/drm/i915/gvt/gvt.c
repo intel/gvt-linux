@@ -44,11 +44,13 @@ static const char * const supported_hypervisors[] = {
 	[INTEL_GVT_HYPERVISOR_KVM] = "KVM",
 };
 
-struct intel_gvt_io_emulation_ops intel_gvt_io_emulation_ops = {
+static const struct intel_gvt_ops intel_gvt_ops = {
 	.emulate_cfg_read = intel_vgpu_emulate_cfg_read,
 	.emulate_cfg_write = intel_vgpu_emulate_cfg_write,
 	.emulate_mmio_read = intel_vgpu_emulate_mmio_read,
 	.emulate_mmio_write = intel_vgpu_emulate_mmio_write,
+	.vgpu_create = intel_gvt_create_vgpu,
+	.vgpu_destroy = intel_gvt_destroy_vgpu,
 };
 
 /**
@@ -193,10 +195,11 @@ void intel_gvt_clean_device(struct drm_i915_private *dev_priv)
 	intel_gvt_clean_mmio_info(gvt);
 	intel_gvt_free_firmware(gvt);
 
+	intel_gvt_hypervisor_host_exit(&dev_priv->drm.pdev->dev, gvt);
+	intel_gvt_clean_vgpu_types(gvt);
+
 	kfree(dev_priv->gvt);
 	dev_priv->gvt = NULL;
-
-	intel_gvt_clean_vgpu_types(gvt);
 }
 
 /**
@@ -276,11 +279,19 @@ int intel_gvt_init_device(struct drm_i915_private *dev_priv)
 	if (ret)
 		goto out_clean_thread;
 
+	ret = intel_gvt_hypervisor_host_init(&dev_priv->drm.pdev->dev, gvt,
+				&intel_gvt_ops);
+	if (ret) {
+		gvt_err("failed to register gvt-g host device: %d\n", ret);
+		goto out_clean_types;
+	}
 
 	gvt_dbg_core("gvt device creation is done\n");
 	dev_priv->gvt = gvt;
 	return 0;
 
+out_clean_types:
+	intel_gvt_clean_vgpu_types(gvt);
 out_clean_thread:
 	clean_service_thread(gvt);
 out_clean_cmd_parser:

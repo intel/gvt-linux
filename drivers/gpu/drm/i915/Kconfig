@@ -107,6 +107,16 @@ config DRM_I915_GVT
 
 	  If in doubt, say "N".
 
+config DRM_I915_GVT_KVMGT
+	tristate "Enable KVM/VFIO support for Intel GVT-g"
+	depends on DRM_I915_GVT
+	depends on 64BIT && KVM
+	depends on VFIO_MDEV && VFIO_MDEV_DEVICE
+	default n
+	help
+	  Choose this option if you want to enable KVMGT support for
+	  Intel GVT-g.
+
 menu "drm/i915 Debugging"
 depends on DRM_I915
 depends on EXPERT

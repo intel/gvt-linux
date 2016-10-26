@@ -75,7 +75,11 @@ struct vfio_iommu_driver_ops {
 					struct iommu_group *group);
 	void		(*detach_group)(void *iommu_data,
 					struct iommu_group *group);
-
+	long		(*pin_pages)(void *iommu_data, unsigned long *user_pfn,
+				     long npage, int prot,
+				     unsigned long *phys_pfn);
+	long		(*unpin_pages)(void *iommu_data, unsigned long *pfn,
+				       long npage);
 };
 
 extern int vfio_register_iommu_driver(const struct vfio_iommu_driver_ops *ops);
@@ -126,6 +130,12 @@ static inline long vfio_spapr_iommu_eeh_ioctl(struct iommu_group *group,
 	return -ENOTTY;
 }
 #endif /* CONFIG_EEH */
+
+extern long vfio_pin_pages(struct device *dev, unsigned long *user_pfn,
+			   long npage, int prot, unsigned long *phys_pfn);
+
+extern long vfio_unpin_pages(struct device *dev, unsigned long *pfn,
+			     long npage);
 
 /*
  * IRQfd - generic

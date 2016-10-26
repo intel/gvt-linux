@@ -150,17 +150,17 @@ static void vfio_lock_acct_bg(struct work_struct *work)
 	kfree(vwork);
 }
 
-static void vfio_lock_acct(long npage)
+static void vfio_lock_acct(struct task_struct *task, long npage)
 {
 	struct vwork *vwork;
 	struct mm_struct *mm;
 
-	if (!current->mm || !npage)
+	if (!task->mm || !npage)
 		return; /* process exited or nothing to do */
 
-	if (down_write_trylock(&current->mm->mmap_sem)) {
-		current->mm->locked_vm += npage;
-		up_write(&current->mm->mmap_sem);
+	if (down_write_trylock(&task->mm->mmap_sem)) {
+		task->mm->locked_vm += npage;
+		up_write(&task->mm->mmap_sem);
 		return;
 	}
 
@@ -172,7 +172,7 @@ static void vfio_lock_acct(long npage)
 	vwork = kmalloc(sizeof(struct vwork), GFP_KERNEL);
 	if (!vwork)
 		return;
-	mm = get_task_mm(current);
+	mm = get_task_mm(task);
 	if (!mm) {
 		kfree(vwork);
 		return;
@@ -285,7 +285,7 @@ static long vfio_pin_pages(unsigned long vaddr, long npage,
 
 	if (unlikely(disable_hugepages)) {
 		if (!rsvd)
-			vfio_lock_acct(1);
+			vfio_lock_acct(current, 1);
 		return 1;
 	}
 
@@ -313,7 +313,7 @@ static long vfio_pin_pages(unsigned long vaddr, long npage,
 	}
 
 	if (!rsvd)
-		vfio_lock_acct(i);
+		vfio_lock_acct(current, i);
 
 	return i;
 }
@@ -328,7 +328,7 @@ static long vfio_unpin_pages(unsigned long pfn, long npage,
 		unlocked += put_pfn(pfn++, prot);
 
 	if (do_accounting)
-		vfio_lock_acct(-unlocked);
+		vfio_lock_acct(current, -unlocked);
 
 	return unlocked;
 }
@@ -390,7 +390,7 @@ static void vfio_unmap_unpin(struct vfio_iommu *iommu, struct vfio_dma *dma)
 		cond_resched();
 	}
 
-	vfio_lock_acct(-unlocked);
+	vfio_lock_acct(current, -unlocked);
 }
 
 static void vfio_remove_dma(struct vfio_iommu *iommu, struct vfio_dma *dma)

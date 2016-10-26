@@ -80,6 +80,10 @@ struct vfio_iommu_driver_ops {
 				     unsigned long *phys_pfn);
 	long		(*unpin_pages)(void *iommu_data, unsigned long *pfn,
 				       long npage);
+	int		(*register_notifier)(void *iommu_data,
+					     struct notifier_block *nb);
+	int		(*unregister_notifier)(void *iommu_data,
+					       struct notifier_block *nb);
 };
 
 extern int vfio_register_iommu_driver(const struct vfio_iommu_driver_ops *ops);
@@ -137,6 +141,13 @@ extern long vfio_pin_pages(struct device *dev, unsigned long *user_pfn,
 extern long vfio_unpin_pages(struct device *dev, unsigned long *pfn,
 			     long npage);
 
+#define VFIO_IOMMU_NOTIFY_DMA_UNMAP	1
+
+extern int vfio_register_notifier(struct device *dev,
+				  struct notifier_block *nb);
+
+extern int vfio_unregister_notifier(struct device *dev,
+				    struct notifier_block *nb);
 /*
  * IRQfd - generic
  */

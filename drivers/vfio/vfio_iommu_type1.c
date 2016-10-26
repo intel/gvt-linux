@@ -37,6 +37,7 @@
 #include <linux/vfio.h>
 #include <linux/workqueue.h>
 #include <linux/mdev.h>
+#include <linux/notifier.h>
 
 #define DRIVER_VERSION  "0.2"
 #define DRIVER_AUTHOR   "Alex Williamson <alex.williamson@redhat.com>"
@@ -59,6 +60,7 @@ struct vfio_iommu {
 	struct vfio_domain	*external_domain; /* domain for external user */
 	struct mutex		lock;
 	struct rb_root		dma_list;
+	struct blocking_notifier_head notifier;
 	bool			v2;
 	bool			nesting;
 };
@@ -549,7 +551,8 @@ static long vfio_iommu_type1_pin_pages(void *iommu_data,
 
 	mutex_lock(&iommu->lock);
 
-	if (!iommu->external_domain) {
+	/* Fail if notifier list is empty */
+	if ((!iommu->external_domain) || (!iommu->notifier.head)) {
 		ret = -EINVAL;
 		goto pin_done;
 	}
@@ -768,6 +771,50 @@ static unsigned long vfio_pgsize_bitmap(struct vfio_iommu *iommu)
 	return bitmap;
 }
 
+/*
+ * This function finds pfn in domain->external_addr_space->pfn_list for given
+ * iova range. If pfn exist, notify pfn to registered notifier list. On
+ * receiving notifier callback, vendor driver should invalidate the mapping and
+ * call vfio_unpin_pages() to unpin this pfn. With that vfio_pfn for this pfn
+ * gets removed from rb tree of pfn_list. That re-arranges rb tree, so while
+ * searching for next vfio_pfn in rb tree, start search from first node again.
+ * If any vendor driver doesn't unpin that pfn, vfio_pfn would not get removed
+ * from rb tree and so in next search vfio_pfn would be same as previous
+ * vfio_pfn. In that case, exit from loop.
+ */
+static void vfio_notifier_call_chain(struct vfio_iommu *iommu,
+				     struct vfio_iommu_type1_dma_unmap *unmap)
+{
+	struct vfio_domain *domain = iommu->external_domain;
+	struct rb_node *n;
+	struct vfio_pfn *vpfn = NULL, *prev_vpfn;
+
+	do {
+		prev_vpfn = vpfn;
+		mutex_lock(&domain->external_addr_space->pfn_list_lock);
+
+		n = rb_first(&domain->external_addr_space->pfn_list);
+
+		for (; n; n = rb_next(n), vpfn = NULL) {
+			vpfn = rb_entry(n, struct vfio_pfn, node);
+
+			if ((vpfn->iova >= unmap->iova) &&
+			    (vpfn->iova < unmap->iova + unmap->size))
+				break;
+		}
+
+		mutex_unlock(&domain->external_addr_space->pfn_list_lock);
+
+		/* Notify any listeners about DMA_UNMAP */
+		if (vpfn)
+			blocking_notifier_call_chain(&iommu->notifier,
+						    VFIO_IOMMU_NOTIFY_DMA_UNMAP,
+						    &vpfn->pfn);
+	} while (vpfn && (prev_vpfn != vpfn));
+
+	WARN_ON(vpfn);
+}
+
 static int vfio_dma_do_unmap(struct vfio_iommu *iommu,
 			     struct vfio_iommu_type1_dma_unmap *unmap)
 {
@@ -843,6 +890,9 @@ unlock:
 
 	/* Report how much was unmapped */
 	unmap->size = unmapped;
+
+	if (unmapped && iommu->external_domain)
+		vfio_notifier_call_chain(iommu, unmap);
 
 	return ret;
 }
@@ -1418,6 +1468,7 @@ static void *vfio_iommu_type1_open(unsigned long arg)
 	INIT_LIST_HEAD(&iommu->domain_list);
 	iommu->dma_list = RB_ROOT;
 	mutex_init(&iommu->lock);
+	BLOCKING_INIT_NOTIFIER_HEAD(&iommu->notifier);
 
 	return iommu;
 }
@@ -1555,16 +1606,34 @@ static long vfio_iommu_type1_ioctl(void *iommu_data,
 	return -ENOTTY;
 }
 
+static int vfio_iommu_type1_register_notifier(void *iommu_data,
+					      struct notifier_block *nb)
+{
+	struct vfio_iommu *iommu = iommu_data;
+
+	return blocking_notifier_chain_register(&iommu->notifier, nb);
+}
+
+static int vfio_iommu_type1_unregister_notifier(void *iommu_data,
+						struct notifier_block *nb)
+{
+	struct vfio_iommu *iommu = iommu_data;
+
+	return blocking_notifier_chain_unregister(&iommu->notifier, nb);
+}
+
 static const struct vfio_iommu_driver_ops vfio_iommu_driver_ops_type1 = {
-	.name		= "vfio-iommu-type1",
-	.owner		= THIS_MODULE,
-	.open		= vfio_iommu_type1_open,
-	.release	= vfio_iommu_type1_release,
-	.ioctl		= vfio_iommu_type1_ioctl,
-	.attach_group	= vfio_iommu_type1_attach_group,
-	.detach_group	= vfio_iommu_type1_detach_group,
-	.pin_pages	= vfio_iommu_type1_pin_pages,
-	.unpin_pages	= vfio_iommu_type1_unpin_pages,
+	.name			= "vfio-iommu-type1",
+	.owner			= THIS_MODULE,
+	.open			= vfio_iommu_type1_open,
+	.release		= vfio_iommu_type1_release,
+	.ioctl			= vfio_iommu_type1_ioctl,
+	.attach_group		= vfio_iommu_type1_attach_group,
+	.detach_group		= vfio_iommu_type1_detach_group,
+	.pin_pages		= vfio_iommu_type1_pin_pages,
+	.unpin_pages		= vfio_iommu_type1_unpin_pages,
+	.register_notifier	= vfio_iommu_type1_register_notifier,
+	.unregister_notifier	= vfio_iommu_type1_unregister_notifier,
 };
 
 static int __init vfio_iommu_type1_init(void)

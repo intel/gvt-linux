@@ -1858,6 +1858,45 @@ int vfio_info_add_capability(struct vfio_info_cap *caps, int cap_type_id,
 }
 EXPORT_SYMBOL(vfio_info_add_capability);
 
+int vfio_set_irqs_validate_and_prepare(struct vfio_irq_set *hdr, int num_irqs,
+				       int max_irq_type, size_t *data_size)
+{
+	unsigned long minsz;
+
+	minsz = offsetofend(struct vfio_irq_set, count);
+
+	if ((hdr->argsz < minsz) || (hdr->index >= max_irq_type) ||
+	    (hdr->flags & ~(VFIO_IRQ_SET_DATA_TYPE_MASK |
+				VFIO_IRQ_SET_ACTION_TYPE_MASK)))
+		return -EINVAL;
+
+	if (data_size)
+		*data_size = 0;
+
+	if (!(hdr->flags & VFIO_IRQ_SET_DATA_NONE)) {
+		size_t size;
+
+		if (hdr->flags & VFIO_IRQ_SET_DATA_BOOL)
+			size = sizeof(uint8_t);
+		else if (hdr->flags & VFIO_IRQ_SET_DATA_EVENTFD)
+			size = sizeof(int32_t);
+		else
+			return -EINVAL;
+
+		if ((hdr->argsz - minsz < hdr->count * size) ||
+		    (hdr->start >= num_irqs) ||
+		    (hdr->start + hdr->count > num_irqs))
+			return -EINVAL;
+
+		if (!data_size)
+			return -EINVAL;
+
+		*data_size = hdr->count * size;
+	}
+
+	return 0;
+}
+EXPORT_SYMBOL(vfio_set_irqs_validate_and_prepare);
 
 /*
  * Pin a set of guest PFNs and return their associated host PFNs for local

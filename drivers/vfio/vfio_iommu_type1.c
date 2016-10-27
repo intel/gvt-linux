@@ -361,7 +361,7 @@ static int vaddr_get_pfn(struct mm_struct *remote_mm, unsigned long vaddr,
 	if (remote_mm) {
 		down_read(&mm->mmap_sem);
 		ret = get_user_pages_remote(NULL, mm, vaddr, 1,
-					!!(prot & IOMMU_WRITE), 0, page, NULL);
+					!!(prot & IOMMU_WRITE), page, NULL);
 		up_read(&mm->mmap_sem);
 	} else
 		ret = get_user_pages_fast(vaddr, 1,

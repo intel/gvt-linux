@@ -51,6 +51,7 @@ static const struct intel_gvt_ops intel_gvt_ops = {
 	.emulate_mmio_write = intel_vgpu_emulate_mmio_write,
 	.vgpu_create = intel_gvt_create_vgpu,
 	.vgpu_destroy = intel_gvt_destroy_vgpu,
+	.vgpu_reset = intel_gvt_reset_vgpu,
 };
 
 /**

@@ -809,7 +809,7 @@ static void vfio_notifier_call_chain(struct vfio_iommu *iommu,
 		if (vpfn)
 			blocking_notifier_call_chain(&iommu->notifier,
 						    VFIO_IOMMU_NOTIFY_DMA_UNMAP,
-						    &vpfn->pfn);
+						    &vpfn->iova);
 	} while (vpfn && (prev_vpfn != vpfn));
 
 	WARN_ON(vpfn);

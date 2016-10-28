@@ -1,0 +1,20 @@
+origin/drm-intel-fixes 07d9a380680d1c0eb51ef87ff2eab5c994949e69
+	Linux 4.9-rc2
+drm-upstream/drm-fixes 26beaee9bb07be20cc641c1251152e280e80f54e
+	Merge branch 'drm-etnaviv-fixes' of git://git.pengutronix.de/lst/linux into drm-fixes
+origin/drm-intel-next-fixes 105f1a65b04a8f4f7abec11b200b1fb54f3d4b46
+	drm/i915: Fix conflict resolution from backmerge of v4.8-rc8 to drm-next
+origin/drm-intel-next-queued 96583ddbec291929880edefa2141c06c63e16aa5
+	Merge remote-tracking branch 'airlied/drm-next' into drm-intel-next-queued
+drm-upstream/drm-next 5481e27f6fd06b7cb902072e81d6b083db8155eb
+	Merge tag 'drm-intel-next-2016-10-24' of git://anongit.freedesktop.org/drm-intel into drm-next
+sound-upstream/for-next bdc3478f90cd4d2928197f36629d5cf93b64dbe9
+	ALSA: usb-audio: Add quirk for Syntek STK1160
+sound-upstream/for-linus bdc3478f90cd4d2928197f36629d5cf93b64dbe9
+	ALSA: usb-audio: Add quirk for Syntek STK1160
+origin/topic/drm-fixes c6935931c1894ff857616ff8549b61236a19148f
+	Linux 4.8-rc5
+origin/topic/drm-misc fb422950c6cd726fd36eb72a7cf84583440a18a2
+	Merge branch 'linux-4.9' of git://github.com/skeggsb/linux into drm-next
+origin/topic/core-for-CI 6ce0819c3c8ffe3666ec993303dbf4c1612890df
+	kbuild: Disable PIE by default

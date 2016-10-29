@@ -34,6 +34,7 @@
 #include <linux/uaccess.h>
 #include <linux/vfio.h>
 #include <linux/wait.h>
+#include <linux/kvm_host.h>
 
 #define DRIVER_VERSION	"0.3"
 #define DRIVER_AUTHOR	"Alex Williamson <alex.williamson@redhat.com>"
@@ -86,6 +87,10 @@ struct vfio_group {
 	struct mutex			unbound_lock;
 	atomic_t			opened;
 	bool				noiommu;
+	struct {
+		struct kvm *kvm;
+		struct mutex lock;
+	} udata;
 };
 
 struct vfio_device {
@@ -333,6 +338,7 @@ static struct vfio_group *vfio_create_group(struct iommu_group *iommu_group)
 	mutex_init(&group->device_lock);
 	INIT_LIST_HEAD(&group->unbound_list);
 	mutex_init(&group->unbound_lock);
+	mutex_init(&group->udata.lock);
 	atomic_set(&group->container_users, 0);
 	atomic_set(&group->opened, 0);
 	group->iommu_group = iommu_group;
@@ -1746,6 +1752,30 @@ long vfio_external_check_extension(struct vfio_group *group, unsigned long arg)
 	return vfio_ioctl_check_extension(group->container, arg);
 }
 EXPORT_SYMBOL_GPL(vfio_external_check_extension);
+
+void vfio_group_set_kvm(struct vfio_group *group, struct kvm *kvm)
+{
+	mutex_lock(&group->udata.lock);
+	group->udata.kvm = kvm;
+	mutex_unlock(&group->udata.lock);
+}
+EXPORT_SYMBOL_GPL(vfio_group_set_kvm);
+
+struct kvm *vfio_group_get_kvm(struct vfio_group *group)
+{
+	struct kvm *kvm = NULL;
+
+	mutex_lock(&group->udata.lock);
+
+	kvm = group->udata.kvm;
+	if (kvm)
+		kvm_get_kvm(kvm);
+
+	mutex_unlock(&group->udata.lock);
+
+	return kvm;
+}
+EXPORT_SYMBOL_GPL(vfio_group_get_kvm);
 
 /**
  * Sub-module support

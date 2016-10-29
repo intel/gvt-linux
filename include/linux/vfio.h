@@ -105,6 +105,10 @@ extern long vfio_external_check_extension(struct vfio_group *group,
 extern struct vfio_group *vfio_group_get_from_dev(struct device *dev);
 extern void vfio_group_put(struct vfio_group *group);
 
+struct kvm;
+extern void vfio_group_set_kvm(struct vfio_group *group, struct kvm *kvm);
+extern struct kvm *vfio_group_get_kvm(struct vfio_group *group);
+
 /*
  * Sub-module helpers
  */

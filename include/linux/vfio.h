@@ -102,6 +102,9 @@ extern int vfio_external_user_iommu_id(struct vfio_group *group);
 extern long vfio_external_check_extension(struct vfio_group *group,
 					  unsigned long arg);
 
+extern struct vfio_group *vfio_group_get_from_dev(struct device *dev);
+extern void vfio_group_put(struct vfio_group *group);
+
 /*
  * Sub-module helpers
  */

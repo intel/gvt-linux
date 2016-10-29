@@ -414,10 +414,11 @@ static void vfio_group_release(struct kref *kref)
 	iommu_group_put(iommu_group);
 }
 
-static void vfio_group_put(struct vfio_group *group)
+void vfio_group_put(struct vfio_group *group)
 {
 	kref_put_mutex(&group->kref, vfio_group_release, &vfio.group_lock);
 }
+EXPORT_SYMBOL_GPL(vfio_group_put);
 
 /* Assume group_lock or group reference is held */
 static void vfio_group_get(struct vfio_group *group)
@@ -480,7 +481,7 @@ static struct vfio_group *vfio_group_get_from_minor(int minor)
 	return group;
 }
 
-static struct vfio_group *vfio_group_get_from_dev(struct device *dev)
+struct vfio_group *vfio_group_get_from_dev(struct device *dev)
 {
 	struct iommu_group *iommu_group;
 	struct vfio_group *group;
@@ -494,6 +495,7 @@ static struct vfio_group *vfio_group_get_from_dev(struct device *dev)
 
 	return group;
 }
+EXPORT_SYMBOL_GPL(vfio_group_get_from_dev);
 
 /**
  * Device objects - create, release, get, put, search

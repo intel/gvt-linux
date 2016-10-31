@@ -740,12 +740,6 @@ static void kvm_destroy_vm(struct kvm *kvm)
 	mmdrop(mm);
 }
 
-void kvm_get_kvm(struct kvm *kvm)
-{
-	atomic_inc(&kvm->users_count);
-}
-EXPORT_SYMBOL_GPL(kvm_get_kvm);
-
 void kvm_put_kvm(struct kvm *kvm)
 {
 	if (atomic_dec_and_test(&kvm->users_count))

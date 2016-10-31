@@ -526,7 +526,10 @@ int kvm_init(void *opaque, unsigned vcpu_size, unsigned vcpu_align,
 		  struct module *module);
 void kvm_exit(void);
 
-void kvm_get_kvm(struct kvm *kvm);
+static inline void kvm_get_kvm(struct kvm *kvm)
+{
+	atomic_inc(&kvm->users_count);
+}
 void kvm_put_kvm(struct kvm *kvm);
 
 static inline struct kvm_memslots *__kvm_memslots(struct kvm *kvm, int as_id)

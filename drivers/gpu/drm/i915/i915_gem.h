@@ -31,4 +31,6 @@
 #define GEM_BUG_ON(expr)
 #endif
 
+#define I915_NUM_ENGINES 5
+
 #endif /* __I915_GEM_H__ */

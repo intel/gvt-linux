@@ -1,0 +1,20 @@
+origin/drm-intel-fixes c89d5454d48e3b6ecae1c9f8bb14b3fac64d9fc8
+	drm/i915: Fix SKL+ 90/270 degree rotated plane coordinate computation
+drm-upstream/drm-fixes b0a6af8b34c9ad20894aa46f85f4bf59d444f286
+	drm/nouveau/acpi: fix check for power resources support
+origin/drm-intel-next-fixes 105f1a65b04a8f4f7abec11b200b1fb54f3d4b46
+	drm/i915: Fix conflict resolution from backmerge of v4.8-rc8 to drm-next
+origin/drm-intel-next-queued 3599a91cc8d07542dbeef44034a70ed2d1d1ba98
+	drm/i915: Allow shrinking of userptr objects once again
+drm-upstream/drm-next fb422950c6cd726fd36eb72a7cf84583440a18a2
+	Merge branch 'linux-4.9' of git://github.com/skeggsb/linux into drm-next
+sound-upstream/for-next bdc3478f90cd4d2928197f36629d5cf93b64dbe9
+	ALSA: usb-audio: Add quirk for Syntek STK1160
+sound-upstream/for-linus bdc3478f90cd4d2928197f36629d5cf93b64dbe9
+	ALSA: usb-audio: Add quirk for Syntek STK1160
+origin/topic/drm-fixes c6935931c1894ff857616ff8549b61236a19148f
+	Linux 4.8-rc5
+origin/topic/drm-misc fb422950c6cd726fd36eb72a7cf84583440a18a2
+	Merge branch 'linux-4.9' of git://github.com/skeggsb/linux into drm-next
+origin/topic/core-for-CI 15bdcbcc55853f70237aca4baa4152f8396799d4
+	kbuild: Disable PIE by default

@@ -1158,7 +1158,10 @@ static int fpga_dbg_mmio_write(struct intel_vgpu *vgpu,
 static int dma_ctrl_write(struct intel_vgpu *vgpu, unsigned int offset,
 		void *p_data, unsigned int bytes)
 {
-	u32 mode = *(u32 *)p_data;
+	u32 mode;
+
+	write_vreg(vgpu, offset, p_data, bytes);
+	mode = vgpu_vreg(vgpu, offset);
 
 	if (GFX_MODE_BIT_SET_IN_MASK(mode, START_DMA)) {
 		WARN_ONCE(1, "VM(%d): iGVT-g doesn't supporte GuC\n",
@@ -1275,19 +1278,20 @@ static int skl_misc_ctl_write(struct intel_vgpu *vgpu, unsigned int offset,
 	switch (offset) {
 	case 0x4ddc:
 		vgpu_vreg(vgpu, offset) = 0x8000003c;
+		/* WaCompressedResourceSamplerPbeMediaNewHashMode:skl */
+		if (IS_SKL_REVID(dev_priv, SKL_REVID_C0, REVID_FOREVER))
+			I915_WRITE(reg, vgpu_vreg(vgpu, offset));
 		break;
 	case 0x42080:
 		vgpu_vreg(vgpu, offset) = 0x8000;
+		/* WaCompressedResourceDisplayNewHashMode:skl */
+		if (IS_SKL_REVID(dev_priv, SKL_REVID_E0, REVID_FOREVER))
+			I915_WRITE(reg, vgpu_vreg(vgpu, offset));
 		break;
 	default:
 		return -EINVAL;
 	}
 
-	/**
-	 * TODO: need detect stepping info after gvt contain such information
-	 * 0x4ddc enabled after C0, 0x42080 enabled after E0.
-	 */
-	I915_WRITE(reg, vgpu_vreg(vgpu, offset));
 	return 0;
 }
 
@@ -1366,6 +1370,8 @@ static int gvt_reg_tlb_control_handler(struct intel_vgpu *vgpu,
 {
 	int rc = 0;
 	unsigned int id = 0;
+
+	write_vreg(vgpu, offset, p_data, bytes);
 
 	switch (offset) {
 	case 0x4260:

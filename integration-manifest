@@ -1,0 +1,20 @@
+origin/drm-intel-fixes c89d5454d48e3b6ecae1c9f8bb14b3fac64d9fc8
+	drm/i915: Fix SKL+ 90/270 degree rotated plane coordinate computation
+drm-upstream/drm-fixes 7ec30fca2c966293c4593e20459861b106fd62e9
+	Merge tag 'drm-intel-fixes-2016-11-01' of git://anongit.freedesktop.org/drm-intel into drm-fixes
+origin/drm-intel-next-fixes 105f1a65b04a8f4f7abec11b200b1fb54f3d4b46
+	drm/i915: Fix conflict resolution from backmerge of v4.8-rc8 to drm-next
+origin/drm-intel-next-queued e0b70061404f64f592d6d082a63c504b66d65c6e
+	drm/i915: Reinit polling before hpd when resuming
+drm-upstream/drm-next fb422950c6cd726fd36eb72a7cf84583440a18a2
+	Merge branch 'linux-4.9' of git://github.com/skeggsb/linux into drm-next
+sound-upstream/for-next bdc3478f90cd4d2928197f36629d5cf93b64dbe9
+	ALSA: usb-audio: Add quirk for Syntek STK1160
+sound-upstream/for-linus bdc3478f90cd4d2928197f36629d5cf93b64dbe9
+	ALSA: usb-audio: Add quirk for Syntek STK1160
+origin/topic/drm-fixes c6935931c1894ff857616ff8549b61236a19148f
+	Linux 4.8-rc5
+origin/topic/drm-misc 55edf41b699bcb31dcf45082d99e91b7e217206e
+	drm: define drm_compat_ioctl NULL on CONFIG_COMPAT=n and reduce #ifdefs
+origin/topic/core-for-CI 15bdcbcc55853f70237aca4baa4152f8396799d4
+	kbuild: Disable PIE by default

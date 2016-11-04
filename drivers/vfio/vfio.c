@@ -1799,6 +1799,102 @@ void vfio_info_cap_shift(struct vfio_info_cap *caps, size_t offset)
 }
 EXPORT_SYMBOL_GPL(vfio_info_cap_shift);
 
+
+/*
+ * Pin a set of guest PFNs and return their associated host PFNs for local
+ * domain only.
+ * @dev [in] : device
+ * @user_pfn [in]: array of user/guest PFNs
+ * @npage [in]: count of array elements
+ * @prot [in] : protection flags
+ * @phys_pfn[out] : array of host PFNs
+ * Return error or number of pages pinned.
+ */
+int vfio_pin_pages(struct device *dev, unsigned long *user_pfn,
+		   int npage, int prot, unsigned long *phys_pfn)
+{
+	struct vfio_container *container;
+	struct vfio_group *group;
+	struct vfio_iommu_driver *driver;
+	int ret;
+
+	if (!dev || !user_pfn || !phys_pfn)
+		return -EINVAL;
+
+	group = vfio_group_get_from_dev(dev);
+	if (IS_ERR(group))
+		return PTR_ERR(group);
+
+	ret = vfio_group_add_container_user(group);
+	if (ret)
+		goto err_pin_pages;
+
+	container = group->container;
+	down_read(&container->group_lock);
+
+	driver = container->iommu_driver;
+	if (likely(driver && driver->ops->pin_pages))
+		ret = driver->ops->pin_pages(container->iommu_data, user_pfn,
+					     npage, prot, phys_pfn);
+	else
+		ret = -EINVAL;
+
+	up_read(&container->group_lock);
+	vfio_group_try_dissolve_container(group);
+
+err_pin_pages:
+	vfio_group_put(group);
+	return ret;
+
+}
+EXPORT_SYMBOL(vfio_pin_pages);
+
+/*
+ * Unpin set of host PFNs for local domain only.
+ * @dev [in] : device
+ * @user_pfn [in]: array of user/guest PFNs to be unpinned
+ * @pfn [in] : array of host PFNs to be unpinned.
+ * @npage [in] :count of elements in array, that is number of pages.
+ * Return error or number of pages unpinned.
+ */
+int vfio_unpin_pages(struct device *dev, unsigned long *user_pfn,
+		     unsigned long *pfn, int npage)
+{
+	struct vfio_container *container;
+	struct vfio_group *group;
+	struct vfio_iommu_driver *driver;
+	int ret;
+
+	if (!dev || !pfn)
+		return -EINVAL;
+
+	group = vfio_group_get_from_dev(dev);
+	if (IS_ERR(group))
+		return PTR_ERR(group);
+
+	ret = vfio_group_add_container_user(group);
+	if (ret)
+		goto err_unpin_pages;
+
+	container = group->container;
+	down_read(&container->group_lock);
+
+	driver = container->iommu_driver;
+	if (likely(driver && driver->ops->unpin_pages))
+		ret = driver->ops->unpin_pages(container->iommu_data, user_pfn,
+					       pfn, npage);
+	else
+		ret = -EINVAL;
+
+	up_read(&container->group_lock);
+	vfio_group_try_dissolve_container(group);
+
+err_unpin_pages:
+	vfio_group_put(group);
+	return ret;
+}
+EXPORT_SYMBOL(vfio_unpin_pages);
+
 /**
  * Module/class support
  */

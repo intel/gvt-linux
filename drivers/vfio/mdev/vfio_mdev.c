@@ -24,6 +24,15 @@
 #define DRIVER_AUTHOR   "NVIDIA Corporation"
 #define DRIVER_DESC     "VFIO based driver for Mediated device"
 
+static int vfio_mdev_notifier(struct notifier_block *nb, unsigned long action,
+			      void *data)
+{
+	struct mdev_device *mdev = container_of(nb, struct mdev_device, nb);
+	struct parent_device *parent = mdev->parent;
+
+	return parent->ops->notifier(mdev, action, data);
+}
+
 static int vfio_mdev_open(void *device_data)
 {
 	struct mdev_device *mdev = device_data;
@@ -40,6 +49,11 @@ static int vfio_mdev_open(void *device_data)
 	if (ret)
 		module_put(THIS_MODULE);
 
+	if (likely(parent->ops->notifier)) {
+		mdev->nb.notifier_call = vfio_mdev_notifier;
+		if (vfio_register_notifier(&mdev->dev, &mdev->nb))
+			pr_err("Failed to register notifier for mdev\n");
+	}
 	return ret;
 }
 
@@ -47,6 +61,11 @@ static void vfio_mdev_release(void *device_data)
 {
 	struct mdev_device *mdev = device_data;
 	struct parent_device *parent = mdev->parent;
+
+	if (likely(parent->ops->notifier)) {
+		if (vfio_unregister_notifier(&mdev->dev, &mdev->nb))
+			pr_err("Failed to unregister notifier for mdev\n");
+	}
 
 	if (likely(parent->ops->release))
 		parent->ops->release(mdev);

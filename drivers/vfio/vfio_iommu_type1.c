@@ -37,6 +37,7 @@
 #include <linux/vfio.h>
 #include <linux/workqueue.h>
 #include <linux/mdev.h>
+#include <linux/notifier.h>
 
 #define DRIVER_VERSION  "0.2"
 #define DRIVER_AUTHOR   "Alex Williamson <alex.williamson@redhat.com>"
@@ -60,6 +61,7 @@ struct vfio_iommu {
 	struct vfio_domain	*external_domain; /* domain for external user */
 	struct mutex		lock;
 	struct rb_root		dma_list;
+	struct blocking_notifier_head notifier;
 	bool			v2;
 	bool			nesting;
 };
@@ -550,7 +552,8 @@ static int vfio_iommu_type1_pin_pages(void *iommu_data,
 
 	mutex_lock(&iommu->lock);
 
-	if (!iommu->external_domain) {
+	/* Fail if notifier list is empty */
+	if ((!iommu->external_domain) || (!iommu->notifier.head)) {
 		ret = -EINVAL;
 		goto pin_done;
 	}
@@ -866,6 +869,11 @@ unlock:
 
 	/* Report how much was unmapped */
 	unmap->size = unmapped;
+
+	if (unmapped && iommu->external_domain)
+		blocking_notifier_call_chain(&iommu->notifier,
+					     VFIO_IOMMU_NOTIFY_DMA_UNMAP,
+					     unmap);
 
 	return ret;
 }
@@ -1474,6 +1482,7 @@ static void *vfio_iommu_type1_open(unsigned long arg)
 	INIT_LIST_HEAD(&iommu->addr_space_list);
 	iommu->dma_list = RB_ROOT;
 	mutex_init(&iommu->lock);
+	BLOCKING_INIT_NOTIFIER_HEAD(&iommu->notifier);
 
 	return iommu;
 }
@@ -1610,16 +1619,34 @@ static long vfio_iommu_type1_ioctl(void *iommu_data,
 	return -ENOTTY;
 }
 
+static int vfio_iommu_type1_register_notifier(void *iommu_data,
+					      struct notifier_block *nb)
+{
+	struct vfio_iommu *iommu = iommu_data;
+
+	return blocking_notifier_chain_register(&iommu->notifier, nb);
+}
+
+static int vfio_iommu_type1_unregister_notifier(void *iommu_data,
+						struct notifier_block *nb)
+{
+	struct vfio_iommu *iommu = iommu_data;
+
+	return blocking_notifier_chain_unregister(&iommu->notifier, nb);
+}
+
 static const struct vfio_iommu_driver_ops vfio_iommu_driver_ops_type1 = {
-	.name		= "vfio-iommu-type1",
-	.owner		= THIS_MODULE,
-	.open		= vfio_iommu_type1_open,
-	.release	= vfio_iommu_type1_release,
-	.ioctl		= vfio_iommu_type1_ioctl,
-	.attach_group	= vfio_iommu_type1_attach_group,
-	.detach_group	= vfio_iommu_type1_detach_group,
-	.pin_pages	= vfio_iommu_type1_pin_pages,
-	.unpin_pages	= vfio_iommu_type1_unpin_pages,
+	.name			= "vfio-iommu-type1",
+	.owner			= THIS_MODULE,
+	.open			= vfio_iommu_type1_open,
+	.release		= vfio_iommu_type1_release,
+	.ioctl			= vfio_iommu_type1_ioctl,
+	.attach_group		= vfio_iommu_type1_attach_group,
+	.detach_group		= vfio_iommu_type1_detach_group,
+	.pin_pages		= vfio_iommu_type1_pin_pages,
+	.unpin_pages		= vfio_iommu_type1_unpin_pages,
+	.register_notifier	= vfio_iommu_type1_register_notifier,
+	.unregister_notifier	= vfio_iommu_type1_unregister_notifier,
 };
 
 static int __init vfio_iommu_type1_init(void)

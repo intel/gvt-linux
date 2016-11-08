@@ -1,0 +1,20 @@
+origin/drm-intel-fixes 54905ab5fe7aa453610e31cec640e528aaedb2e2
+	drm/i915: Limit Valleyview and earlier to only using mappable scanout
+drm-upstream/drm-fixes 020a0bbc0d89c15693e69ed2063584ef7ec2d811
+	Merge branch 'msm-fixes-4.9' of git://people.freedesktop.org/~robclark/linux into drm-fixes
+origin/drm-intel-next-fixes 105f1a65b04a8f4f7abec11b200b1fb54f3d4b46
+	drm/i915: Fix conflict resolution from backmerge of v4.8-rc8 to drm-next
+origin/drm-intel-next-queued 71d5895aac0cc4c6f02942efe3b3188560cb7147
+	drm/i915: avoid harmless empty-body warning
+drm-upstream/drm-next afdd548f742ca454fc343696de472f3aaa5dc488
+	Merge branch 'linux-4.10' of git://github.com/skeggsb/linux into drm-next
+sound-upstream/for-next 4ce8e6a51abfc69bf222f676cfe938f7732385d7
+	ALSA: hda - Fix typo
+sound-upstream/for-linus 6809cd682b82dfff47943850d1a8c714f971b5ca
+	ALSA: info: Return error for invalid read/write
+origin/topic/drm-fixes c6935931c1894ff857616ff8549b61236a19148f
+	Linux 4.8-rc5
+origin/topic/drm-misc 06d9f56f1d9aed065c18ffb48ea51901886afba9
+	drm/msm: module param to dump state on error irq
+origin/topic/core-for-CI 15bdcbcc55853f70237aca4baa4152f8396799d4
+	kbuild: Disable PIE by default

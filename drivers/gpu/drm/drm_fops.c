@@ -663,6 +663,10 @@ void drm_event_cancel_free(struct drm_device *dev,
 		list_del(&p->pending_link);
 	}
 	spin_unlock_irqrestore(&dev->event_lock, flags);
+
+	if (p->fence)
+		dma_fence_put(p->fence);
+
 	kfree(p);
 }
 EXPORT_SYMBOL(drm_event_cancel_free);
@@ -692,8 +696,8 @@ void drm_send_event_locked(struct drm_device *dev, struct drm_pending_event *e)
 	}
 
 	if (e->fence) {
-		fence_signal(e->fence);
-		fence_put(e->fence);
+		dma_fence_signal(e->fence);
+		dma_fence_put(e->fence);
 	}
 
 	if (!e->file_priv) {

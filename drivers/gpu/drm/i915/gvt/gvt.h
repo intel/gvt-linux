@@ -164,7 +164,7 @@ struct intel_vgpu {
 
 #if IS_ENABLED(CONFIG_DRM_I915_GVT_KVMGT)
 	struct {
-		struct device *mdev;
+		struct mdev_device *mdev;
 		struct vfio_region *region;
 		int num_regions;
 		struct eventfd_ctx *intx_trigger;

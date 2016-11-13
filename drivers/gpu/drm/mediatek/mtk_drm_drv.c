@@ -18,6 +18,7 @@
 #include <drm/drm_crtc_helper.h>
 #include <drm/drm_gem.h>
 #include <drm/drm_gem_cma_helper.h>
+#include <drm/drm_of.h>
 #include <linux/component.h>
 #include <linux/iommu.h>
 #include <linux/of_address.h>
@@ -83,7 +84,7 @@ static void mtk_atomic_complete(struct mtk_drm_private *private,
 	drm_atomic_helper_wait_for_vblanks(drm, state);
 
 	drm_atomic_helper_cleanup_planes(drm, state);
-	drm_atomic_state_free(state);
+	drm_atomic_state_put(state);
 }
 
 static void mtk_atomic_work(struct work_struct *work)
@@ -110,6 +111,7 @@ static int mtk_atomic_commit(struct drm_device *drm,
 
 	drm_atomic_helper_swap_state(state, true);
 
+	drm_atomic_state_get(state);
 	if (async)
 		mtk_atomic_schedule(private, state);
 	else
@@ -415,7 +417,8 @@ static int mtk_drm_probe(struct platform_device *pdev)
 		    comp_type == MTK_DPI) {
 			dev_info(dev, "Adding component match for %s\n",
 				 node->full_name);
-			component_match_add(dev, &match, compare_of, node);
+			drm_of_component_match_add(dev, &match, compare_of,
+						   node);
 		} else {
 			struct mtk_ddp_comp *comp;
 

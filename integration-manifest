@@ -1,0 +1,20 @@
+origin/drm-intel-fixes fc22b787890f9f9067fd130feec42297a4ee62ba
+	drm/i915: Refresh that status of MST capable connectors in ->detect()
+drm-upstream/drm-fixes e2384535a623ed51151d1bbed5263b9f8a87a74d
+	Merge branch 'topic-arcpgu-fixes' of https://github.com/foss-for-synopsys-dwc-arc-processors/linux into drm-fixes
+origin/drm-intel-next-fixes 105f1a65b04a8f4f7abec11b200b1fb54f3d4b46
+	drm/i915: Fix conflict resolution from backmerge of v4.8-rc8 to drm-next
+origin/drm-intel-next-queued 2b3c83176e908401f31e26a4c0ba71f6248b11c1
+	drm/i915: Stop skipping the final clflush back to system pages
+drm-upstream/drm-next d8c1abd968f1c880ad8ce4ecf7df55489f8c69a1
+	Merge tag 'zxdrm-4.10' of git://git.kernel.org/pub/scm/linux/kernel/git/shawnguo/linux into drm-next
+sound-upstream/for-next 658355b599c700c9826f581d087cbd9c26c2cb56
+	ALSA: oss: don't opencode IS_REACHABLE()
+sound-upstream/for-linus 2ecb704a1290edb5e3d53a75529192e7ed2a1a28
+	ALSA: hda - add a new condition to check if it is thinkpad
+origin/topic/drm-fixes c6935931c1894ff857616ff8549b61236a19148f
+	Linux 4.8-rc5
+origin/topic/drm-misc dfeb693d5a5dab938fc9d371e6870da1b4c4b4cb
+	drm/sun4i: constify component_ops structures
+origin/topic/core-for-CI 15bdcbcc55853f70237aca4baa4152f8396799d4
+	kbuild: Disable PIE by default

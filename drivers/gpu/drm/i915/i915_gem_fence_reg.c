@@ -379,12 +379,6 @@ void i915_gem_restore_fences(struct drm_device *dev)
 	struct drm_i915_private *dev_priv = to_i915(dev);
 	int i;
 
-	/* Note that this may be called outside of struct_mutex, by
-	 * runtime suspend/resume. The barrier we require is enforced by
-	 * rpm itself - all access to fences/GTT are only within an rpm
-	 * wakeref, and to acquire that wakeref you must pass through here.
-	 */
-
 	for (i = 0; i < dev_priv->num_fence_regs; i++) {
 		struct drm_i915_fence_reg *reg = &dev_priv->fence_regs[i];
 		struct i915_vma *vma = reg->vma;

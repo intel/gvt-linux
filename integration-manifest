@@ -1,0 +1,20 @@
+drm-intel drm-intel-fixes fc22b787890f9f9067fd130feec42297a4ee62ba
+	drm/i915: Refresh that status of MST capable connectors in ->detect()
+drm-upstream drm-fixes e2384535a623ed51151d1bbed5263b9f8a87a74d
+	Merge branch 'topic-arcpgu-fixes' of https://github.com/foss-for-synopsys-dwc-arc-processors/linux into drm-fixes
+drm-intel drm-intel-next-fixes 105f1a65b04a8f4f7abec11b200b1fb54f3d4b46
+	drm/i915: Fix conflict resolution from backmerge of v4.8-rc8 to drm-next
+drm-intel drm-intel-next-queued 5eff503b9d9665e957c174e40ba6b6dcd3d305b8
+	drm/i915/gen9+: Kill off hw_ddb from intel_crtc.
+drm-upstream drm-next d8c1abd968f1c880ad8ce4ecf7df55489f8c69a1
+	Merge tag 'zxdrm-4.10' of git://git.kernel.org/pub/scm/linux/kernel/git/shawnguo/linux into drm-next
+sound-upstream for-next 43e575fabbaa1cc9e25dd0bb31eb6657ac7092ec
+	ALSA: core: Fix kernel-doc warnings
+sound-upstream for-linus 6ff1a25318ebf688ef9593fe09cd449f6fb4ad31
+	ALSA: usb-audio: Fix use-after-free of usb_device at disconnect
+drm-intel topic/drm-fixes c6935931c1894ff857616ff8549b61236a19148f
+	Linux 4.8-rc5
+drm-intel topic/drm-misc edd420eaffb3a618ddc8740683abc039ad97237f
+	drm: Drop externs from drm_crtc.h
+drm-intel topic/core-for-CI 15bdcbcc55853f70237aca4baa4152f8396799d4
+	kbuild: Disable PIE by default

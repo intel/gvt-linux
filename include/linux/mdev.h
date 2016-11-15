@@ -37,6 +37,7 @@ struct mdev_device {
 	struct kref		ref;
 	struct list_head	next;
 	struct kobject		*type_kobj;
+	struct notifier_block	nb;
 };
 
 /**
@@ -85,6 +86,12 @@ struct mdev_device {
  * @mmap:		mmap callback
  *			@mdev: mediated device structure
  *			@vma: vma structure
+ * @notifer:		Notifier callback, currently only for
+ *			VFIO_IOMMU_NOTIFY_DMA_UNMAP action notified duing
+ *			DMA_UNMAP call on mapped iova range.
+ *			@mdev: mediated device structure
+ *			@action: Action for which notifier is called
+ *			@data: Data associated with the notifier
  * Parent device that support mediated device should be registered with mdev
  * module with parent_ops structure.
  **/
@@ -106,6 +113,8 @@ struct parent_ops {
 	ssize_t (*ioctl)(struct mdev_device *mdev, unsigned int cmd,
 			 unsigned long arg);
 	int	(*mmap)(struct mdev_device *mdev, struct vm_area_struct *vma);
+	int	(*notifier)(struct mdev_device *mdev, unsigned long action,
+			    void *data);
 };
 
 /* interface for exporting mdev supported type attributes */

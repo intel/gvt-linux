@@ -75,7 +75,15 @@ struct vfio_iommu_driver_ops {
 					struct iommu_group *group);
 	void		(*detach_group)(void *iommu_data,
 					struct iommu_group *group);
-
+	int		(*pin_pages)(void *iommu_data, unsigned long *user_pfn,
+				     int npage, int prot,
+				     unsigned long *phys_pfn);
+	int		(*unpin_pages)(void *iommu_data,
+				       unsigned long *user_pfn, int npage);
+	int		(*register_notifier)(void *iommu_data,
+					     struct notifier_block *nb);
+	int		(*unregister_notifier)(void *iommu_data,
+					       struct notifier_block *nb);
 };
 
 extern int vfio_register_iommu_driver(const struct vfio_iommu_driver_ops *ops);
@@ -103,6 +111,13 @@ extern struct vfio_info_cap_header *vfio_info_cap_add(
 		struct vfio_info_cap *caps, size_t size, u16 id, u16 version);
 extern void vfio_info_cap_shift(struct vfio_info_cap *caps, size_t offset);
 
+extern int vfio_info_add_capability(struct vfio_info_cap *caps,
+				    int cap_type_id, void *cap_type);
+
+extern int vfio_set_irqs_validate_and_prepare(struct vfio_irq_set *hdr,
+					      int num_irqs, int max_irq_type,
+					      size_t *data_size);
+
 struct pci_dev;
 #ifdef CONFIG_EEH
 extern void vfio_spapr_pci_eeh_open(struct pci_dev *pdev);
@@ -127,6 +142,21 @@ static inline long vfio_spapr_iommu_eeh_ioctl(struct iommu_group *group,
 }
 #endif /* CONFIG_EEH */
 
+#define VFIO_PIN_PAGES_MAX_ENTRIES	(PAGE_SIZE/sizeof(unsigned long))
+
+extern int vfio_pin_pages(struct device *dev, unsigned long *user_pfn,
+			  int npage, int prot, unsigned long *phys_pfn);
+
+extern int vfio_unpin_pages(struct device *dev, unsigned long *user_pfn,
+			    int npage);
+
+#define VFIO_IOMMU_NOTIFY_DMA_UNMAP	1
+
+extern int vfio_register_notifier(struct device *dev,
+				  struct notifier_block *nb);
+
+extern int vfio_unregister_notifier(struct device *dev,
+				    struct notifier_block *nb);
 /*
  * IRQfd - generic
  */

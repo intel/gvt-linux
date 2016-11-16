@@ -9353,7 +9353,7 @@ PCI DRIVER FOR INTEL VOLUME MANAGEMENT DEVICE (VMD)
 M:	Keith Busch <keith.busch@intel.com>
 L:	linux-pci@vger.kernel.org
 S:	Supported
-F:	arch/x86/pci/vmd.c
+F:	drivers/pci/host/vmd.c
 
 PCIE DRIVER FOR ST SPEAR13XX
 M:	Pratyush Anand <pratyush.anand@gmail.com>
@@ -12771,6 +12771,15 @@ F:	Documentation/vfio.txt
 F:	drivers/vfio/
 F:	include/linux/vfio.h
 F:	include/uapi/linux/vfio.h
+
+VFIO MEDIATED DEVICE DRIVERS
+M:	Kirti Wankhede <kwankhede@nvidia.com>
+L:	kvm@vger.kernel.org
+S:	Maintained
+F:	Documentation/vfio-mediated-device.txt
+F:	drivers/vfio/mdev/
+F:	include/linux/mdev.h
+F:	samples/vfio-mdev/
 
 VFIO PLATFORM DRIVER
 M:	Baptiste Reynal <b.reynal@virtualopensystems.com>

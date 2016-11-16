@@ -158,9 +158,11 @@
 #define Src2GS      (OpGS << Src2Shift)
 #define Src2Mask    (OpMask << Src2Shift)
 #define Mmx         ((u64)1 << 40)  /* MMX Vector instruction */
+#define AlignMask   ((u64)7 << 41)
 #define Aligned     ((u64)1 << 41)  /* Explicitly aligned (e.g. MOVDQA) */
-#define Unaligned   ((u64)1 << 42)  /* Explicitly unaligned (e.g. MOVDQU) */
-#define Avx         ((u64)1 << 43)  /* Advanced Vector Extensions */
+#define Unaligned   ((u64)2 << 41)  /* Explicitly unaligned (e.g. MOVDQU) */
+#define Avx         ((u64)3 << 41)  /* Advanced Vector Extensions */
+#define Aligned16   ((u64)4 << 41)  /* Aligned to 16 byte boundary (e.g. FXSAVE) */
 #define Fastop      ((u64)1 << 44)  /* Use opcode::u.fastop */
 #define NoWrite     ((u64)1 << 45)  /* No writeback */
 #define SrcWrite    ((u64)1 << 46)  /* Write back src operand */
@@ -446,6 +448,26 @@ FOP_END;
 FOP_START(salc) "pushf; sbb %al, %al; popf \n\t" FOP_RET
 FOP_END;
 
+/*
+ * XXX: inoutclob user must know where the argument is being expanded.
+ *      Relying on CC_HAVE_ASM_GOTO would allow us to remove _fault.
+ */
+#define asm_safe(insn, inoutclob...) \
+({ \
+	int _fault = 0; \
+ \
+	asm volatile("1:" insn "\n" \
+	             "2:\n" \
+	             ".pushsection .fixup, \"ax\"\n" \
+	             "3: movl $1, %[_fault]\n" \
+	             "   jmp  2b\n" \
+	             ".popsection\n" \
+	             _ASM_EXTABLE(1b, 3b) \
+	             : [_fault] "+qm"(_fault) inoutclob ); \
+ \
+	_fault ? X86EMUL_UNHANDLEABLE : X86EMUL_CONTINUE; \
+})
+
 static int emulator_check_intercept(struct x86_emulate_ctxt *ctxt,
 				    enum x86_intercept intercept,
 				    enum x86_intercept_stage stage)
@@ -632,21 +654,26 @@ static void set_segment_selector(struct x86_emulate_ctxt *ctxt, u16 selector,
  * depending on whether they're AVX encoded or not.
  *
  * Also included is CMPXCHG16B which is not a vector instruction, yet it is
- * subject to the same check.
+ * subject to the same check.  FXSAVE and FXRSTOR are checked here too as their
+ * 512 bytes of data must be aligned to a 16 byte boundary.
  */
-static bool insn_aligned(struct x86_emulate_ctxt *ctxt, unsigned size)
+static unsigned insn_alignment(struct x86_emulate_ctxt *ctxt, unsigned size)
 {
-	if (likely(size < 16))
-		return false;
+	u64 alignment = ctxt->d & AlignMask;
 
-	if (ctxt->d & Aligned)
-		return true;
-	else if (ctxt->d & Unaligned)
-		return false;
-	else if (ctxt->d & Avx)
-		return false;
-	else
-		return true;
+	if (likely(size < 16))
+		return 1;
+
+	switch (alignment) {
+	case Unaligned:
+	case Avx:
+		return 1;
+	case Aligned16:
+		return 16;
+	case Aligned:
+	default:
+		return size;
+	}
 }
 
 static __always_inline int __linearize(struct x86_emulate_ctxt *ctxt,
@@ -704,7 +731,7 @@ static __always_inline int __linearize(struct x86_emulate_ctxt *ctxt,
 		}
 		break;
 	}
-	if (insn_aligned(ctxt, size) && ((la & (size - 1)) != 0))
+	if (la & (insn_alignment(ctxt, size) - 1))
 		return emulate_gp(ctxt, 0);
 	return X86EMUL_CONTINUE;
 bad:
@@ -5080,21 +5107,13 @@ static bool string_insn_completed(struct x86_emulate_ctxt *ctxt)
 
 static int flush_pending_x87_faults(struct x86_emulate_ctxt *ctxt)
 {
-	bool fault = false;
+	int rc;
 
 	ctxt->ops->get_fpu(ctxt);
-	asm volatile("1: fwait \n\t"
-		     "2: \n\t"
-		     ".pushsection .fixup,\"ax\" \n\t"
-		     "3: \n\t"
-		     "movb $1, %[fault] \n\t"
-		     "jmp 2b \n\t"
-		     ".popsection \n\t"
-		     _ASM_EXTABLE(1b, 3b)
-		     : [fault]"+qm"(fault));
+	rc = asm_safe("fwait");
 	ctxt->ops->put_fpu(ctxt);
 
-	if (unlikely(fault))
+	if (unlikely(rc != X86EMUL_CONTINUE))
 		return emulate_exception(ctxt, MF_VECTOR, 0, false);
 
 	return X86EMUL_CONTINUE;

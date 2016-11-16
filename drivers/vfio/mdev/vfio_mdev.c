@@ -24,6 +24,15 @@
 #define DRIVER_AUTHOR   "NVIDIA Corporation"
 #define DRIVER_DESC     "VFIO based driver for Mediated device"
 
+static int vfio_mdev_notifier(struct notifier_block *nb, unsigned long action,
+			      void *data)
+{
+	struct mdev_device *mdev = container_of(nb, struct mdev_device, nb);
+	struct parent_device *parent = mdev->parent;
+
+	return parent->ops->notifier(mdev, action, data);
+}
+
 static int vfio_mdev_open(void *device_data)
 {
 	struct mdev_device *mdev = device_data;
@@ -36,9 +45,27 @@ static int vfio_mdev_open(void *device_data)
 	if (!try_module_get(THIS_MODULE))
 		return -ENODEV;
 
+	if (likely(parent->ops->notifier)) {
+		mdev->nb.notifier_call = vfio_mdev_notifier;
+		ret = vfio_register_notifier(&mdev->dev, &mdev->nb);
+
+		/*
+		 * This should not fail if backend iommu module doesn't support
+		 * register_notifier.
+		 */
+		if (ret && (ret != -ENOTTY)) {
+			pr_err("Failed to register notifier for mdev\n");
+			module_put(THIS_MODULE);
+			return ret;
+		}
+	}
+
 	ret = parent->ops->open(mdev);
-	if (ret)
+	if (ret) {
+		if (likely(parent->ops->notifier))
+			vfio_unregister_notifier(&mdev->dev, &mdev->nb);
 		module_put(THIS_MODULE);
+	}
 
 	return ret;
 }
@@ -50,6 +77,11 @@ static void vfio_mdev_release(void *device_data)
 
 	if (likely(parent->ops->release))
 		parent->ops->release(mdev);
+
+	if (likely(parent->ops->notifier)) {
+		if (vfio_unregister_notifier(&mdev->dev, &mdev->nb))
+			pr_err("Failed to unregister notifier for mdev\n");
+	}
 
 	module_put(THIS_MODULE);
 }

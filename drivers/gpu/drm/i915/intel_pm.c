@@ -3417,10 +3417,6 @@ skl_allocate_pipe_ddb(struct intel_crtc_state *cstate,
 	memset(ddb->plane[pipe], 0, sizeof(ddb->plane[pipe]));
 	memset(ddb->y_plane[pipe], 0, sizeof(ddb->y_plane[pipe]));
 
-	/* Clear the partitioning for disabled planes. */
-	memset(ddb->plane[pipe], 0, sizeof(ddb->plane[pipe]));
-	memset(ddb->y_plane[pipe], 0, sizeof(ddb->y_plane[pipe]));
-
 	if (WARN_ON(!state))
 		return 0;
 

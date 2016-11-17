@@ -119,11 +119,17 @@ extern int vfio_unregister_notifier(struct device *dev,
 /* each type has independent events */
 enum vfio_notify_type {
 	VFIO_IOMMU_NOTIFY = (__force vfio_notify_type_t)0,
+	VFIO_GROUP_NOTIFY = (__force vfio_notify_type_t)1,
 };
 
 /* events for VFIO_IOMMU_NOTIFY */
 #define VFIO_IOMMU_NOTIFY_DMA_UNMAP	BIT(0)
 
+/* events for VFIO_GROUP_NOTIFY */
+#define VFIO_GROUP_NOTIFY_SET_KVM	BIT(0)
+
+struct kvm;
+extern void vfio_group_set_kvm(struct vfio_group *group, struct kvm *kvm);
 
 /*
  * Sub-module helpers

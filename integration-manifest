@@ -1,0 +1,20 @@
+origin/drm-intel-fixes bc9db5ad3253c8e17969bd802c47b73e63f125ab
+	drm/i915: Assume non-DP++ port if dvo_port is HDMI and there's no AUX ch specified in the VBT
+drm-upstream/drm-fixes 51a4c38a5511c0027c54d330f7dd2239f6c95b82
+	Merge branch 'mediatek-drm-fixes-2016-11-11' of https://github.com/ckhu-mediatek/linux.git-tags into drm-fixes
+origin/drm-intel-next-fixes 105f1a65b04a8f4f7abec11b200b1fb54f3d4b46
+	drm/i915: Fix conflict resolution from backmerge of v4.8-rc8 to drm-next
+origin/drm-intel-next-queued 6288c79ea519f6ca3a54d87974b48ca6a8b986af
+	drm/i915: Add a few more sanity checks for stolen handling
+drm-upstream/drm-next b7c0e47d98249c2ddf21ea197b651093c6aaee00
+	Merge tag 'drm-vc4-next-2016-11-16' of https://github.com/anholt/linux into drm-next
+sound-upstream/for-next 43e575fabbaa1cc9e25dd0bb31eb6657ac7092ec
+	ALSA: core: Fix kernel-doc warnings
+sound-upstream/for-linus 6ff1a25318ebf688ef9593fe09cd449f6fb4ad31
+	ALSA: usb-audio: Fix use-after-free of usb_device at disconnect
+origin/topic/drm-fixes c6935931c1894ff857616ff8549b61236a19148f
+	Linux 4.8-rc5
+origin/topic/drm-misc 27bfa74b9029a4205b16ec8c3a7090287e6e9995
+	drm: also move DSI panels to the front of the connector list
+origin/topic/core-for-CI 15bdcbcc55853f70237aca4baa4152f8396799d4
+	kbuild: Disable PIE by default

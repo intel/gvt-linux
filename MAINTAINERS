@@ -3919,8 +3919,10 @@ R:	Gustavo Padovan <gustavo@padovan.org>
 S:	Maintained
 L:	linux-media@vger.kernel.org
 L:	dri-devel@lists.freedesktop.org
-F:	drivers/dma-buf/sync_file.c
+F:	drivers/dma-buf/sync_*
+F:	drivers/dma-buf/sw_sync.c
 F:	include/linux/sync_file.h
+F:	include/uapi/linux/sync_file.h
 F:	Documentation/sync_file.txt
 T:	git git://git.linaro.org/people/sumitsemwal/linux-dma-buf.git
 
@@ -4060,7 +4062,6 @@ INTEL DRM DRIVERS (excluding Poulsbo, Moorestown and derivative chipsets)
 M:	Daniel Vetter <daniel.vetter@intel.com>
 M:	Jani Nikula <jani.nikula@linux.intel.com>
 L:	intel-gfx@lists.freedesktop.org
-L:	dri-devel@lists.freedesktop.org
 W:	https://01.org/linuxgraphics/
 Q:	http://patchwork.freedesktop.org/project/intel-gfx/
 T:	git git://anongit.freedesktop.org/drm-intel
@@ -4069,6 +4070,16 @@ F:	drivers/gpu/drm/i915/
 F:	include/drm/i915*
 F:	include/uapi/drm/i915_drm.h
 F:	Documentation/gpu/i915.rst
+
+INTEL GVT-g DRIVERS (Intel GPU Virtualization)
+M:      Zhenyu Wang <zhenyuw@linux.intel.com>
+M:      Zhi Wang <zhi.a.wang@intel.com>
+L:      igvt-g-dev@lists.01.org
+L:      intel-gfx@lists.freedesktop.org
+W:      https://01.org/igvt-g
+T:      git https://github.com/01org/gvt-linux.git
+S:      Supported
+F:      drivers/gpu/drm/i915/gvt/
 
 DRM DRIVERS FOR ATMEL HLCDC
 M:	Boris Brezillon <boris.brezillon@free-electrons.com>
@@ -4286,6 +4297,13 @@ L:	dri-devel@lists.freedesktop.org
 S:	Maintained
 F:	drivers/gpu/drm/tilcdc/
 F:	Documentation/devicetree/bindings/display/tilcdc/
+
+DRM DRIVERS FOR ZTE ZX
+M:	Shawn Guo <shawnguo@kernel.org>
+L:	dri-devel@lists.freedesktop.org
+S:	Maintained
+F:	drivers/gpu/drm/zte/
+F:	Documentation/devicetree/bindings/display/zte,vou.txt
 
 DSBR100 USB FM RADIO DRIVER
 M:	Alexey Klimov <klimov.linux@gmail.com>

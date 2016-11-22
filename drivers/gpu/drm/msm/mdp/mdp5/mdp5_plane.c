@@ -16,6 +16,7 @@
  * this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <drm/drm_print.h>
 #include "mdp5_kms.h"
 
 struct mdp5_plane {
@@ -75,15 +76,12 @@ static void mdp5_plane_install_rotation_property(struct drm_device *dev,
 		!(mdp5_plane->caps & MDP_PIPE_CAP_VFLIP))
 		return;
 
-	if (!dev->mode_config.rotation_property)
-		dev->mode_config.rotation_property =
-			drm_mode_create_rotation_property(dev,
-				DRM_ROTATE_0 | DRM_REFLECT_X | DRM_REFLECT_Y);
-
-	if (dev->mode_config.rotation_property)
-		drm_object_attach_property(&plane->base,
-			dev->mode_config.rotation_property,
-			DRM_ROTATE_0);
+	drm_plane_create_rotation_property(plane,
+					   DRM_ROTATE_0,
+					   DRM_ROTATE_0 |
+					   DRM_ROTATE_180 |
+					   DRM_REFLECT_X |
+					   DRM_REFLECT_Y);
 }
 
 /* helper to install properties which are common to planes and crtcs */
@@ -184,6 +182,20 @@ done:
 #undef SET_PROPERTY
 }
 
+static void
+mdp5_plane_atomic_print_state(struct drm_printer *p,
+		const struct drm_plane_state *state)
+{
+	struct mdp5_plane_state *pstate = to_mdp5_plane_state(state);
+
+	drm_printf(p, "\tpremultiplied=%u\n", pstate->premultiplied);
+	drm_printf(p, "\tzpos=%u\n", pstate->zpos);
+	drm_printf(p, "\talpha=%u\n", pstate->alpha);
+	drm_printf(p, "\tstage=%s\n", stage2name(pstate->stage));
+	drm_printf(p, "\tmode_changed=%u\n", pstate->mode_changed);
+	drm_printf(p, "\tpending=%u\n", pstate->pending);
+}
+
 static void mdp5_plane_reset(struct drm_plane *plane)
 {
 	struct mdp5_plane_state *mdp5_state;
@@ -247,6 +259,7 @@ static const struct drm_plane_funcs mdp5_plane_funcs = {
 		.reset = mdp5_plane_reset,
 		.atomic_duplicate_state = mdp5_plane_duplicate_state,
 		.atomic_destroy_state = mdp5_plane_destroy_state,
+		.atomic_print_state = mdp5_plane_atomic_print_state,
 };
 
 static int mdp5_plane_prepare_fb(struct drm_plane *plane,
@@ -289,6 +302,8 @@ static int mdp5_plane_atomic_check(struct drm_plane *plane,
 			plane_enabled(old_state), plane_enabled(state));
 
 	if (plane_enabled(state)) {
+		unsigned int rotation;
+
 		format = to_mdp_format(msm_framebuffer_format(state->fb));
 		if (MDP_FORMAT_IS_YUV(format) &&
 			!pipe_supports_yuv(mdp5_plane->caps)) {
@@ -307,8 +322,13 @@ static int mdp5_plane_atomic_check(struct drm_plane *plane,
 			return -EINVAL;
 		}
 
-		hflip = !!(state->rotation & DRM_REFLECT_X);
-		vflip = !!(state->rotation & DRM_REFLECT_Y);
+		rotation = drm_rotation_simplify(state->rotation,
+						 DRM_ROTATE_0 |
+						 DRM_REFLECT_X |
+						 DRM_REFLECT_Y);
+		hflip = !!(rotation & DRM_REFLECT_X);
+		vflip = !!(rotation & DRM_REFLECT_Y);
+
 		if ((vflip && !(mdp5_plane->caps & MDP_PIPE_CAP_VFLIP)) ||
 			(hflip && !(mdp5_plane->caps & MDP_PIPE_CAP_HFLIP))) {
 			DBG("Pipe doesn't support flip\n");
@@ -678,6 +698,7 @@ static int mdp5_plane_mode_set(struct drm_plane *plane,
 	int pe_top[COMP_MAX], pe_bottom[COMP_MAX];
 	uint32_t hdecm = 0, vdecm = 0;
 	uint32_t pix_format;
+	unsigned int rotation;
 	bool vflip, hflip;
 	unsigned long flags;
 	int ret;
@@ -740,8 +761,12 @@ static int mdp5_plane_mode_set(struct drm_plane *plane,
 	config |= get_scale_config(format, src_h, crtc_h, false);
 	DBG("scale config = %x", config);
 
-	hflip = !!(pstate->rotation & DRM_REFLECT_X);
-	vflip = !!(pstate->rotation & DRM_REFLECT_Y);
+	rotation = drm_rotation_simplify(pstate->rotation,
+					 DRM_ROTATE_0 |
+					 DRM_REFLECT_X |
+					 DRM_REFLECT_Y);
+	hflip = !!(rotation & DRM_REFLECT_X);
+	vflip = !!(rotation & DRM_REFLECT_Y);
 
 	spin_lock_irqsave(&mdp5_plane->pipe_lock, flags);
 
@@ -901,7 +926,7 @@ struct drm_plane *mdp5_plane_init(struct drm_device *dev,
 	type = private_plane ? DRM_PLANE_TYPE_PRIMARY : DRM_PLANE_TYPE_OVERLAY;
 	ret = drm_universal_plane_init(dev, plane, 0xff, &mdp5_plane_funcs,
 				 mdp5_plane->formats, mdp5_plane->nformats,
-				 type, NULL);
+				 type, "%s", mdp5_plane->name);
 	if (ret)
 		goto fail;
 

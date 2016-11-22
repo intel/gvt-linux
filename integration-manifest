@@ -1,0 +1,20 @@
+origin/drm-intel-fixes 9c763584b7c8911106bb77af7e648bef09af9d80
+	Linux 4.9-rc6
+drm-upstream/drm-fixes c2ee69d83b2b14d68ad7ee1773fc1d40e97f201d
+	Merge tag 'drm-intel-fixes-2016-11-17' of ssh://git.freedesktop.org/git/drm-intel into drm-fixes
+origin/drm-intel-next-fixes e9cbc4bd0140e1d4e0172e2fe8fe07ba278e5980
+	drm/i915: Update DRIVER_DATE to 20161121
+origin/drm-intel-next-queued 20e4933c478a1ca694b38fa4ac44d99e659941f5
+	drm/i915: Stop the machine as we install the wedged submit_request handler
+drm-upstream/drm-next 43167f6c7d7172e0a6cb1ecaa1771a2f457fd165
+	Merge tag 'drm-hisilicon-next-2016-11-17' of http://github.com/zourongrong/linux into drm-next
+sound-upstream/for-next 2e57069c869f3009ae70a429d6719a545de43522
+	ALSA: bebob: compare whole string for model name so that readers are not confused
+sound-upstream/for-linus 6ff1a25318ebf688ef9593fe09cd449f6fb4ad31
+	ALSA: usb-audio: Fix use-after-free of usb_device at disconnect
+origin/topic/drm-fixes c6935931c1894ff857616ff8549b61236a19148f
+	Linux 4.8-rc5
+origin/topic/drm-misc ed2ab35ef1a1f7d42b5dc0d130d359cc0f5e3d9d
+	vgaarb: use valid dev pointer in vgaarb_info()
+origin/topic/core-for-CI 15bdcbcc55853f70237aca4baa4152f8396799d4
+	kbuild: Disable PIE by default

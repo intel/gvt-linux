@@ -38,6 +38,7 @@
 #include <linux/reservation.h>
 #include <linux/shmem_fs.h>
 #include <linux/slab.h>
+#include <linux/stop_machine.h>
 #include <linux/swap.h>
 #include <linux/pci.h>
 #include <linux/dma-buf.h>
@@ -2622,33 +2623,42 @@ err_unlock:
 
 static bool i915_context_is_banned(const struct i915_gem_context *ctx)
 {
-	unsigned long elapsed;
-
-	if (ctx->hang_stats.banned)
+	if (ctx->banned)
 		return true;
 
-	elapsed = get_seconds() - ctx->hang_stats.guilty_ts;
-	if (ctx->hang_stats.ban_period_seconds &&
-	    elapsed <= ctx->hang_stats.ban_period_seconds) {
-		DRM_DEBUG("context hanging too fast, banning!\n");
+	if (!ctx->bannable)
+		return false;
+
+	if (ctx->ban_score >= CONTEXT_SCORE_BAN_THRESHOLD) {
+		DRM_DEBUG("context hanging too often, banning!\n");
 		return true;
 	}
 
 	return false;
 }
 
-static void i915_set_reset_status(struct i915_gem_context *ctx,
-				  const bool guilty)
+static void i915_gem_context_mark_guilty(struct i915_gem_context *ctx)
 {
-	struct i915_ctx_hang_stats *hs = &ctx->hang_stats;
+	ctx->ban_score += CONTEXT_SCORE_GUILTY;
 
-	if (guilty) {
-		hs->banned = i915_context_is_banned(ctx);
-		hs->batch_active++;
-		hs->guilty_ts = get_seconds();
-	} else {
-		hs->batch_pending++;
-	}
+	ctx->banned = i915_context_is_banned(ctx);
+	ctx->guilty_count++;
+
+	DRM_DEBUG_DRIVER("context %s marked guilty (score %d) banned? %s\n",
+			 ctx->name, ctx->ban_score,
+			 yesno(ctx->banned));
+
+	if (!ctx->banned || IS_ERR_OR_NULL(ctx->file_priv))
+		return;
+
+	ctx->file_priv->context_bans++;
+	DRM_DEBUG_DRIVER("client %s has had %d context banned\n",
+			 ctx->name, ctx->file_priv->context_bans);
+}
+
+static void i915_gem_context_mark_innocent(struct i915_gem_context *ctx)
+{
+	ctx->active_count++;
 }
 
 struct drm_i915_gem_request *
@@ -2705,11 +2715,19 @@ static void i915_gem_reset_engine(struct intel_engine_cs *engine)
 	if (!request)
 		return;
 
-	ring_hung = engine->hangcheck.score >= HANGCHECK_SCORE_RING_HUNG;
-	if (engine->hangcheck.seqno != intel_engine_get_seqno(engine))
+	ring_hung = engine->hangcheck.stalled;
+	if (engine->hangcheck.seqno != intel_engine_get_seqno(engine)) {
+		DRM_DEBUG_DRIVER("%s pardoned, was guilty? %s\n",
+				 engine->name,
+				 yesno(ring_hung));
 		ring_hung = false;
+	}
 
-	i915_set_reset_status(request->ctx, ring_hung);
+	if (ring_hung)
+		i915_gem_context_mark_guilty(request->ctx);
+	else
+		i915_gem_context_mark_innocent(request->ctx);
+
 	if (!ring_hung)
 		return;
 
@@ -2764,10 +2782,18 @@ void i915_gem_reset(struct drm_i915_private *dev_priv)
 
 static void nop_submit_request(struct drm_i915_gem_request *request)
 {
+	i915_gem_request_submit(request);
+	intel_engine_init_global_seqno(request->engine, request->global_seqno);
 }
 
 static void i915_gem_cleanup_engine(struct intel_engine_cs *engine)
 {
+	/* We need to be sure that no thread is running the old callback as
+	 * we install the nop handler (otherwise we would submit a request
+	 * to hardware that will never complete). In order to prevent this
+	 * race, we wait until the machine is idle before making the swap
+	 * (using stop_machine()).
+	 */
 	engine->submit_request = nop_submit_request;
 
 	/* Mark all pending requests as complete so that any concurrent
@@ -2798,20 +2824,29 @@ static void i915_gem_cleanup_engine(struct intel_engine_cs *engine)
 	}
 }
 
-void i915_gem_set_wedged(struct drm_i915_private *dev_priv)
+static int __i915_gem_set_wedged_BKL(void *data)
 {
+	struct drm_i915_private *i915 = data;
 	struct intel_engine_cs *engine;
 	enum intel_engine_id id;
 
+	for_each_engine(engine, i915, id)
+		i915_gem_cleanup_engine(engine);
+
+	return 0;
+}
+
+void i915_gem_set_wedged(struct drm_i915_private *dev_priv)
+{
 	lockdep_assert_held(&dev_priv->drm.struct_mutex);
 	set_bit(I915_WEDGED, &dev_priv->gpu_error.flags);
 
-	i915_gem_context_lost(dev_priv);
-	for_each_engine(engine, dev_priv, id)
-		i915_gem_cleanup_engine(engine);
-	mod_delayed_work(dev_priv->wq, &dev_priv->gt.idle_work, 0);
+	stop_machine(__i915_gem_set_wedged_BKL, dev_priv, NULL);
 
+	i915_gem_context_lost(dev_priv);
 	i915_gem_retire_requests(dev_priv);
+
+	mod_delayed_work(dev_priv->wq, &dev_priv->gt.idle_work, 0);
 }
 
 static void

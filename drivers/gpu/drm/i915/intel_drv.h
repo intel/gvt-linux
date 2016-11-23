@@ -691,8 +691,9 @@ struct intel_crtc {
 	 * some outputs connected to this crtc.
 	 */
 	bool active;
-	unsigned long enabled_power_domains;
 	bool lowfreq_avail;
+	u8 plane_ids_mask;
+	unsigned long enabled_power_domains;
 	struct intel_overlay *overlay;
 	struct intel_flip_work *flip_work;
 
@@ -766,7 +767,8 @@ struct intel_plane_wm_parameters {
 
 struct intel_plane {
 	struct drm_plane base;
-	int plane;
+	u8 plane;
+	enum plane_id id;
 	enum pipe pipe;
 	bool can_scale;
 	int max_downscale;
@@ -1087,6 +1089,12 @@ static inline struct intel_digital_port *
 dp_to_dig_port(struct intel_dp *intel_dp)
 {
 	return container_of(intel_dp, struct intel_digital_port, dp);
+}
+
+static inline struct intel_lspcon *
+dp_to_lspcon(struct intel_dp *intel_dp)
+{
+	return &dp_to_dig_port(intel_dp)->lspcon;
 }
 
 static inline struct intel_digital_port *
@@ -1824,4 +1832,5 @@ void intel_color_load_luts(struct drm_crtc_state *crtc_state);
 /* intel_lspcon.c */
 bool lspcon_init(struct intel_digital_port *intel_dig_port);
 void lspcon_resume(struct intel_lspcon *lspcon);
+void lspcon_wait_pcon_mode(struct intel_lspcon *lspcon);
 #endif /* __INTEL_DRV_H__ */

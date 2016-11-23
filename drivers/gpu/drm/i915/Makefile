@@ -117,6 +117,10 @@ i915-$(CONFIG_DRM_I915_CAPTURE_ERROR) += i915_gpu_error.o
 # virtual gpu code
 i915-y += i915_vgpu.o
 
+# perf code
+i915-y += i915_perf.o \
+	  i915_oa_hsw.o
+
 ifeq ($(CONFIG_DRM_I915_GVT),y)
 i915-y += intel_gvt.o
 include $(src)/gvt/Makefile

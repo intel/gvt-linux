@@ -1,0 +1,20 @@
+origin/drm-intel-fixes 9c763584b7c8911106bb77af7e648bef09af9d80
+	Linux 4.9-rc6
+drm-upstream/drm-fixes c2ee69d83b2b14d68ad7ee1773fc1d40e97f201d
+	Merge tag 'drm-intel-fixes-2016-11-17' of ssh://git.freedesktop.org/git/drm-intel into drm-fixes
+origin/drm-intel-next-fixes e9cbc4bd0140e1d4e0172e2fe8fe07ba278e5980
+	drm/i915: Update DRIVER_DATE to 20161121
+origin/drm-intel-next-queued 9780aad59cf40db6a2ded69f91b11ba366dbd8cf
+	drm/i915: Simplify error handling in intel_modeset_all_pipes()
+drm-upstream/drm-next 43167f6c7d7172e0a6cb1ecaa1771a2f457fd165
+	Merge tag 'drm-hisilicon-next-2016-11-17' of http://github.com/zourongrong/linux into drm-next
+sound-upstream/for-next 2e57069c869f3009ae70a429d6719a545de43522
+	ALSA: bebob: compare whole string for model name so that readers are not confused
+sound-upstream/for-linus 6ff1a25318ebf688ef9593fe09cd449f6fb4ad31
+	ALSA: usb-audio: Fix use-after-free of usb_device at disconnect
+origin/topic/drm-fixes c6935931c1894ff857616ff8549b61236a19148f
+	Linux 4.8-rc5
+origin/topic/drm-misc b7a2a2306a019ae87e2c4d92cc6821185a4ab105
+	MAINTAINERS: Add link to drm-misc documentation
+origin/topic/core-for-CI 11390213da1d7677b2ff16361a49cfa7a440da97
+	Merge remote-tracking branch 'x86/x86-urgent-for-linus' into topic/core-for-CI

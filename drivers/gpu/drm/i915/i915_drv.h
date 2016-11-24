@@ -180,21 +180,39 @@ static inline bool transcoder_is_dsi(enum transcoder transcoder)
 }
 
 /*
- * I915_MAX_PLANES in the enum below is the maximum (across all platforms)
- * number of planes per CRTC.  Not all platforms really have this many planes,
- * which means some arrays of size I915_MAX_PLANES may have unused entries
- * between the topmost sprite plane and the cursor plane.
+ * Global legacy plane identifier. Valid only for primary/sprite
+ * planes on pre-g4x, and only for primary planes on g4x+.
  */
 enum plane {
-	PLANE_A = 0,
+	PLANE_A,
 	PLANE_B,
 	PLANE_C,
-	PLANE_CURSOR,
-	I915_MAX_PLANES,
 };
 #define plane_name(p) ((p) + 'A')
 
 #define sprite_name(p, s) ((p) * INTEL_INFO(dev_priv)->num_sprites[(p)] + (s) + 'A')
+
+/*
+ * Per-pipe plane identifier.
+ * I915_MAX_PLANES in the enum below is the maximum (across all platforms)
+ * number of planes per CRTC.  Not all platforms really have this many planes,
+ * which means some arrays of size I915_MAX_PLANES may have unused entries
+ * between the topmost sprite plane and the cursor plane.
+ *
+ * This is expected to be passed to various register macros
+ * (eg. PLANE_CTL(), PS_PLANE_SEL(), etc.) so adjust with care.
+ */
+enum plane_id {
+	PLANE_PRIMARY,
+	PLANE_SPRITE0,
+	PLANE_SPRITE1,
+	PLANE_CURSOR,
+	I915_MAX_PLANES,
+};
+
+#define for_each_plane_id_on_crtc(__crtc, __p) \
+	for ((__p) = PLANE_PRIMARY; (__p) < I915_MAX_PLANES; (__p)++) \
+		for_each_if ((__crtc)->plane_ids_mask & BIT(__p))
 
 enum port {
 	PORT_NONE = -1,
@@ -416,6 +434,15 @@ struct drm_i915_file_private {
 	} rps;
 
 	unsigned int bsd_engine;
+
+/* Client can have a maximum of 3 contexts banned before
+ * it is denied of creating new contexts. As one context
+ * ban needs 4 consecutive hangs, and more if there is
+ * progress in between, this is a last resort stop gap measure
+ * to limit the badly behaving clients access to gpu.
+ */
+#define I915_MAX_CLIENT_CONTEXT_BANS 3
+	int context_bans;
 };
 
 /* Used by dp and fdi links */
@@ -800,7 +827,8 @@ struct drm_i915_error_state {
 		/* Software tracked state */
 		bool waiting;
 		int num_waiters;
-		int hangcheck_score;
+		unsigned long hangcheck_timestamp;
+		bool hangcheck_stalled;
 		enum intel_engine_hangcheck_action hangcheck_action;
 		struct i915_address_space *vm;
 		int num_requests;
@@ -849,6 +877,7 @@ struct drm_i915_error_state {
 			long jiffies;
 			pid_t pid;
 			u32 context;
+			int ban_score;
 			u32 seqno;
 			u32 head;
 			u32 tail;
@@ -870,6 +899,7 @@ struct drm_i915_error_state {
 
 		pid_t pid;
 		char comm[TASK_COMM_LEN];
+		int context_bans;
 	} engine[I915_NUM_ENGINES];
 
 	struct drm_i915_error_buffer {
@@ -901,26 +931,6 @@ enum i915_cache_level {
 	I915_CACHE_WT, /* hsw:gt3e WriteThrough for scanouts */
 };
 
-struct i915_ctx_hang_stats {
-	/* This context had batch pending when hang was declared */
-	unsigned batch_pending;
-
-	/* This context had batch active when hang was declared */
-	unsigned batch_active;
-
-	/* Time when this context was last blamed for a GPU reset */
-	unsigned long guilty_ts;
-
-	/* If the contexts causes a second GPU hang within this time,
-	 * it is permanently banned from submitting any more work.
-	 */
-	unsigned long ban_period_seconds;
-
-	/* This context is banned to submit more work */
-	bool banned;
-};
-
-/* This must match up with the value previously used for execbuf2.rsvd1. */
 #define DEFAULT_CONTEXT_HANDLE 0
 
 /**
@@ -950,8 +960,6 @@ struct i915_gem_context {
 	struct pid *pid;
 	const char *name;
 
-	struct i915_ctx_hang_stats hang_stats;
-
 	unsigned long flags;
 #define CONTEXT_NO_ZEROMAP		BIT(0)
 #define CONTEXT_NO_ERROR_CAPTURE	BIT(1)
@@ -980,6 +988,16 @@ struct i915_gem_context {
 
 	u8 remap_slice;
 	bool closed:1;
+	bool bannable:1;
+	bool banned:1;
+
+	unsigned int guilty_count; /* guilty of a hang */
+	unsigned int active_count; /* active during hang */
+
+#define CONTEXT_SCORE_GUILTY		10
+#define CONTEXT_SCORE_BAN_THRESHOLD	40
+	/* Accumulated score of hangs caused by this context */
+	int ban_score;
 };
 
 enum fb_op_origin {
@@ -1446,12 +1464,13 @@ struct i915_error_state_file_priv {
 #define I915_RESET_TIMEOUT (10 * HZ) /* 10s */
 #define I915_FENCE_TIMEOUT (10 * HZ) /* 10s */
 
+#define I915_ENGINE_DEAD_TIMEOUT  (4 * HZ)  /* Seqno, head and subunits dead */
+#define I915_SEQNO_DEAD_TIMEOUT   (12 * HZ) /* Seqno dead with active head */
+
 struct i915_gpu_error {
 	/* For hangcheck timer */
 #define DRM_I915_HANGCHECK_PERIOD 1500 /* in ms */
 #define DRM_I915_HANGCHECK_JIFFIES msecs_to_jiffies(DRM_I915_HANGCHECK_PERIOD)
-	/* Hang gpu twice in this window and your context gets banned */
-#define DRM_I915_CTX_BAN_PERIOD DIV_ROUND_UP(8*DRM_I915_HANGCHECK_PERIOD, 1000)
 
 	struct delayed_work hangcheck_work;
 
@@ -1796,6 +1815,104 @@ struct intel_wm_config {
 	bool sprites_scaled;
 };
 
+struct i915_oa_format {
+	u32 format;
+	int size;
+};
+
+struct i915_oa_reg {
+	i915_reg_t addr;
+	u32 value;
+};
+
+struct i915_perf_stream;
+
+struct i915_perf_stream_ops {
+	/* Enables the collection of HW samples, either in response to
+	 * I915_PERF_IOCTL_ENABLE or implicitly called when stream is
+	 * opened without I915_PERF_FLAG_DISABLED.
+	 */
+	void (*enable)(struct i915_perf_stream *stream);
+
+	/* Disables the collection of HW samples, either in response to
+	 * I915_PERF_IOCTL_DISABLE or implicitly called before
+	 * destroying the stream.
+	 */
+	void (*disable)(struct i915_perf_stream *stream);
+
+	/* Call poll_wait, passing a wait queue that will be woken
+	 * once there is something ready to read() for the stream
+	 */
+	void (*poll_wait)(struct i915_perf_stream *stream,
+			  struct file *file,
+			  poll_table *wait);
+
+	/* For handling a blocking read, wait until there is something
+	 * to ready to read() for the stream. E.g. wait on the same
+	 * wait queue that would be passed to poll_wait().
+	 */
+	int (*wait_unlocked)(struct i915_perf_stream *stream);
+
+	/* read - Copy buffered metrics as records to userspace
+	 * @buf: the userspace, destination buffer
+	 * @count: the number of bytes to copy, requested by userspace
+	 * @offset: zero at the start of the read, updated as the read
+	 *          proceeds, it represents how many bytes have been
+	 *          copied so far and the buffer offset for copying the
+	 *          next record.
+	 *
+	 * Copy as many buffered i915 perf samples and records for
+	 * this stream to userspace as will fit in the given buffer.
+	 *
+	 * Only write complete records; returning -ENOSPC if there
+	 * isn't room for a complete record.
+	 *
+	 * Return any error condition that results in a short read
+	 * such as -ENOSPC or -EFAULT, even though these may be
+	 * squashed before returning to userspace.
+	 */
+	int (*read)(struct i915_perf_stream *stream,
+		    char __user *buf,
+		    size_t count,
+		    size_t *offset);
+
+	/* Cleanup any stream specific resources.
+	 *
+	 * The stream will always be disabled before this is called.
+	 */
+	void (*destroy)(struct i915_perf_stream *stream);
+};
+
+struct i915_perf_stream {
+	struct drm_i915_private *dev_priv;
+
+	struct list_head link;
+
+	u32 sample_flags;
+	int sample_size;
+
+	struct i915_gem_context *ctx;
+	bool enabled;
+
+	const struct i915_perf_stream_ops *ops;
+};
+
+struct i915_oa_ops {
+	void (*init_oa_buffer)(struct drm_i915_private *dev_priv);
+	int (*enable_metric_set)(struct drm_i915_private *dev_priv);
+	void (*disable_metric_set)(struct drm_i915_private *dev_priv);
+	void (*oa_enable)(struct drm_i915_private *dev_priv);
+	void (*oa_disable)(struct drm_i915_private *dev_priv);
+	void (*update_oacontrol)(struct drm_i915_private *dev_priv);
+	void (*update_hw_ctx_id_locked)(struct drm_i915_private *dev_priv,
+					u32 ctx_id);
+	int (*read)(struct i915_perf_stream *stream,
+		    char __user *buf,
+		    size_t count,
+		    size_t *offset);
+	bool (*oa_buffer_is_empty)(struct drm_i915_private *dev_priv);
+};
+
 struct drm_i915_private {
 	struct drm_device drm;
 
@@ -1899,7 +2016,14 @@ struct drm_i915_private {
 
 	unsigned int fsb_freq, mem_freq, is_ddr3;
 	unsigned int skl_preferred_vco_freq;
-	unsigned int cdclk_freq, max_cdclk_freq, atomic_cdclk_freq;
+	unsigned int cdclk_freq, max_cdclk_freq;
+
+	/*
+	 * For reading holding any crtc lock is sufficient,
+	 * for writing must hold all of them.
+	 */
+	unsigned int atomic_cdclk_freq;
+
 	unsigned int max_dotclk_freq;
 	unsigned int rawclk_freq;
 	unsigned int hpll_freq;
@@ -2091,6 +2215,55 @@ struct drm_i915_private {
 
 	struct i915_runtime_pm pm;
 
+	struct {
+		bool initialized;
+
+		struct kobject *metrics_kobj;
+		struct ctl_table_header *sysctl_header;
+
+		struct mutex lock;
+		struct list_head streams;
+
+		spinlock_t hook_lock;
+
+		struct {
+			struct i915_perf_stream *exclusive_stream;
+
+			u32 specific_ctx_id;
+			struct i915_vma *pinned_rcs_vma;
+
+			struct hrtimer poll_check_timer;
+			wait_queue_head_t poll_wq;
+			bool pollin;
+
+			bool periodic;
+			int period_exponent;
+			int timestamp_frequency;
+
+			int tail_margin;
+
+			int metrics_set;
+
+			const struct i915_oa_reg *mux_regs;
+			int mux_regs_len;
+			const struct i915_oa_reg *b_counter_regs;
+			int b_counter_regs_len;
+
+			struct {
+				struct i915_vma *vma;
+				u8 *vaddr;
+				int format;
+				int format_size;
+			} oa_buffer;
+
+			u32 gen7_latched_oastatus1;
+
+			struct i915_oa_ops ops;
+			const struct i915_oa_format *oa_formats;
+			int n_builtin_sets;
+		} oa;
+	} perf;
+
 	/* Abstract the submission mechanism (legacy ringbuffer or execlists) away */
 	struct {
 		void (*resume)(struct drm_i915_private *);
@@ -2280,102 +2453,6 @@ static inline struct scatterlist *__sg_next(struct scatterlist *sg)
 	      pfn_to_page((__iter).pfn + ((__iter).curr >> PAGE_SHIFT))); \
 	     (((__iter).curr += PAGE_SIZE) < (__iter).max) ||		\
 	     ((__iter) = __sgt_iter(__sg_next((__iter).sgp), false), 0))
-
-/*
- * A command that requires special handling by the command parser.
- */
-struct drm_i915_cmd_descriptor {
-	/*
-	 * Flags describing how the command parser processes the command.
-	 *
-	 * CMD_DESC_FIXED: The command has a fixed length if this is set,
-	 *                 a length mask if not set
-	 * CMD_DESC_SKIP: The command is allowed but does not follow the
-	 *                standard length encoding for the opcode range in
-	 *                which it falls
-	 * CMD_DESC_REJECT: The command is never allowed
-	 * CMD_DESC_REGISTER: The command should be checked against the
-	 *                    register whitelist for the appropriate ring
-	 * CMD_DESC_MASTER: The command is allowed if the submitting process
-	 *                  is the DRM master
-	 */
-	u32 flags;
-#define CMD_DESC_FIXED    (1<<0)
-#define CMD_DESC_SKIP     (1<<1)
-#define CMD_DESC_REJECT   (1<<2)
-#define CMD_DESC_REGISTER (1<<3)
-#define CMD_DESC_BITMASK  (1<<4)
-#define CMD_DESC_MASTER   (1<<5)
-
-	/*
-	 * The command's unique identification bits and the bitmask to get them.
-	 * This isn't strictly the opcode field as defined in the spec and may
-	 * also include type, subtype, and/or subop fields.
-	 */
-	struct {
-		u32 value;
-		u32 mask;
-	} cmd;
-
-	/*
-	 * The command's length. The command is either fixed length (i.e. does
-	 * not include a length field) or has a length field mask. The flag
-	 * CMD_DESC_FIXED indicates a fixed length. Otherwise, the command has
-	 * a length mask. All command entries in a command table must include
-	 * length information.
-	 */
-	union {
-		u32 fixed;
-		u32 mask;
-	} length;
-
-	/*
-	 * Describes where to find a register address in the command to check
-	 * against the ring's register whitelist. Only valid if flags has the
-	 * CMD_DESC_REGISTER bit set.
-	 *
-	 * A non-zero step value implies that the command may access multiple
-	 * registers in sequence (e.g. LRI), in that case step gives the
-	 * distance in dwords between individual offset fields.
-	 */
-	struct {
-		u32 offset;
-		u32 mask;
-		u32 step;
-	} reg;
-
-#define MAX_CMD_DESC_BITMASKS 3
-	/*
-	 * Describes command checks where a particular dword is masked and
-	 * compared against an expected value. If the command does not match
-	 * the expected value, the parser rejects it. Only valid if flags has
-	 * the CMD_DESC_BITMASK bit set. Only entries where mask is non-zero
-	 * are valid.
-	 *
-	 * If the check specifies a non-zero condition_mask then the parser
-	 * only performs the check when the bits specified by condition_mask
-	 * are non-zero.
-	 */
-	struct {
-		u32 offset;
-		u32 mask;
-		u32 expected;
-		u32 condition_offset;
-		u32 condition_mask;
-	} bits[MAX_CMD_DESC_BITMASKS];
-};
-
-/*
- * A table of commands requiring special handling by the command parser.
- *
- * Each engine has an array of tables. Each table consists of an array of
- * command descriptors, which must be sorted with command opcodes in
- * ascending order.
- */
-struct drm_i915_cmd_table {
-	const struct drm_i915_cmd_descriptor *table;
-	int count;
-};
 
 static inline const struct intel_device_info *
 intel_info(const struct drm_i915_private *dev_priv)
@@ -3194,8 +3271,6 @@ struct i915_vma *
 i915_gem_context_pin_legacy(struct i915_gem_context *ctx,
 			    unsigned int flags);
 void i915_gem_context_free(struct kref *ctx_ref);
-struct drm_i915_gem_object *
-i915_gem_alloc_context_obj(struct drm_device *dev, size_t size);
 struct i915_gem_context *
 i915_gem_context_create_gvt(struct drm_device *dev);
 
@@ -3251,6 +3326,9 @@ int i915_gem_context_setparam_ioctl(struct drm_device *dev, void *data,
 				    struct drm_file *file_priv);
 int i915_gem_context_reset_stats_ioctl(struct drm_device *dev, void *data,
 				       struct drm_file *file);
+
+int i915_perf_open_ioctl(struct drm_device *dev, void *data,
+			 struct drm_file *file);
 
 /* i915_gem_evict.c */
 int __must_check i915_gem_evict_something(struct i915_address_space *vm,
@@ -3374,13 +3452,18 @@ const char *i915_cache_level_str(struct drm_i915_private *i915, int type);
 int i915_cmd_parser_get_version(struct drm_i915_private *dev_priv);
 void intel_engine_init_cmd_parser(struct intel_engine_cs *engine);
 void intel_engine_cleanup_cmd_parser(struct intel_engine_cs *engine);
-bool intel_engine_needs_cmd_parser(struct intel_engine_cs *engine);
 int intel_engine_cmd_parser(struct intel_engine_cs *engine,
 			    struct drm_i915_gem_object *batch_obj,
 			    struct drm_i915_gem_object *shadow_batch_obj,
 			    u32 batch_start_offset,
 			    u32 batch_len,
 			    bool is_master);
+
+/* i915_perf.c */
+extern void i915_perf_init(struct drm_i915_private *dev_priv);
+extern void i915_perf_fini(struct drm_i915_private *dev_priv);
+extern void i915_perf_register(struct drm_i915_private *dev_priv);
+extern void i915_perf_unregister(struct drm_i915_private *dev_priv);
 
 /* i915_suspend.c */
 extern int i915_save_state(struct drm_device *dev);

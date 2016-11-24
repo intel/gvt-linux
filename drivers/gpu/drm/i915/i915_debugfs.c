@@ -935,27 +935,6 @@ static int i915_gem_fence_regs_info(struct seq_file *m, void *data)
 	return 0;
 }
 
-static int i915_hws_info(struct seq_file *m, void *data)
-{
-	struct drm_info_node *node = m->private;
-	struct drm_i915_private *dev_priv = node_to_i915(node);
-	struct intel_engine_cs *engine;
-	const u32 *hws;
-	int i;
-
-	engine = dev_priv->engine[(uintptr_t)node->info_ent->data];
-	hws = engine->status_page.page_addr;
-	if (hws == NULL)
-		return 0;
-
-	for (i = 0; i < 4096 / sizeof(u32) / 4; i += 4) {
-		seq_printf(m, "0x%08x: 0x%08x 0x%08x 0x%08x 0x%08x\n",
-			   i * 4,
-			   hws[i], hws[i + 1], hws[i + 2], hws[i + 3]);
-	}
-	return 0;
-}
-
 #if IS_ENABLED(CONFIG_DRM_I915_CAPTURE_ERROR)
 
 static ssize_t
@@ -1351,10 +1330,12 @@ static int i915_hangcheck_info(struct seq_file *m, void *unused)
 		seq_printf(m, "\tseqno = %x [current %x, last %x]\n",
 			   engine->hangcheck.seqno, seqno[id],
 			   intel_engine_last_submit(engine));
-		seq_printf(m, "\twaiters? %s, fake irq active? %s\n",
+		seq_printf(m, "\twaiters? %s, fake irq active? %s, stalled? %s\n",
 			   yesno(intel_engine_has_waiter(engine)),
 			   yesno(test_bit(engine->id,
-					  &dev_priv->gpu_error.missed_irq_rings)));
+					  &dev_priv->gpu_error.missed_irq_rings)),
+			   yesno(engine->hangcheck.stalled));
+
 		spin_lock_irq(&b->lock);
 		for (rb = rb_first(&b->waiters); rb; rb = rb_next(rb)) {
 			struct intel_wait *w = container_of(rb, typeof(*w), node);
@@ -1367,8 +1348,11 @@ static int i915_hangcheck_info(struct seq_file *m, void *unused)
 		seq_printf(m, "\tACTHD = 0x%08llx [current 0x%08llx]\n",
 			   (long long)engine->hangcheck.acthd,
 			   (long long)acthd[id]);
-		seq_printf(m, "\tscore = %d\n", engine->hangcheck.score);
-		seq_printf(m, "\taction = %d\n", engine->hangcheck.action);
+		seq_printf(m, "\taction = %s(%d) %d ms ago\n",
+			   hangcheck_action_to_str(engine->hangcheck.action),
+			   engine->hangcheck.action,
+			   jiffies_to_msecs(jiffies -
+					    engine->hangcheck.action_timestamp));
 
 		if (engine->id == RCS) {
 			seq_puts(m, "\tinstdone read =\n");
@@ -3080,7 +3064,7 @@ static void intel_scaler_info(struct seq_file *m, struct intel_crtc *intel_crtc)
 			   pipe_config->scaler_state.scaler_users,
 			   pipe_config->scaler_state.scaler_id);
 
-		for (i = 0; i < SKL_NUM_SCALERS; i++) {
+		for (i = 0; i < num_scalers; i++) {
 			struct intel_scaler *sc =
 					&pipe_config->scaler_state.scalers[i];
 
@@ -3162,11 +3146,11 @@ static int i915_engine_info(struct seq_file *m, void *unused)
 		u64 addr;
 
 		seq_printf(m, "%s\n", engine->name);
-		seq_printf(m, "\tcurrent seqno %x, last %x, hangcheck %x [score %d]\n",
+		seq_printf(m, "\tcurrent seqno %x, last %x, hangcheck %x [%d ms]\n",
 			   intel_engine_get_seqno(engine),
 			   intel_engine_last_submit(engine),
 			   engine->hangcheck.seqno,
-			   engine->hangcheck.score);
+			   jiffies_to_msecs(jiffies - engine->hangcheck.action_timestamp));
 
 		rcu_read_lock();
 
@@ -5403,10 +5387,6 @@ static const struct drm_info_list i915_debugfs_list[] = {
 	{"i915_gem_seqno", i915_gem_seqno_info, 0},
 	{"i915_gem_fence_regs", i915_gem_fence_regs_info, 0},
 	{"i915_gem_interrupt", i915_interrupt_info, 0},
-	{"i915_gem_hws", i915_hws_info, 0, (void *)RCS},
-	{"i915_gem_hws_blt", i915_hws_info, 0, (void *)BCS},
-	{"i915_gem_hws_bsd", i915_hws_info, 0, (void *)VCS},
-	{"i915_gem_hws_vebox", i915_hws_info, 0, (void *)VECS},
 	{"i915_gem_batch_pool", i915_gem_batch_pool_info, 0},
 	{"i915_guc_info", i915_guc_info, 0},
 	{"i915_guc_load_status", i915_guc_load_status_info, 0},

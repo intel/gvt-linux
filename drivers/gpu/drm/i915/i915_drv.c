@@ -848,6 +848,8 @@ static int i915_driver_init_early(struct drm_i915_private *dev_priv,
 
 	intel_detect_preproduction_hw(dev_priv);
 
+	i915_perf_init(dev_priv);
+
 	return 0;
 
 err_gvt:
@@ -863,6 +865,7 @@ err_workqueues:
  */
 static void i915_driver_cleanup_early(struct drm_i915_private *dev_priv)
 {
+	i915_perf_fini(dev_priv);
 	i915_gem_load_cleanup(&dev_priv->drm);
 	i915_workqueues_cleanup(dev_priv);
 }
@@ -1126,6 +1129,9 @@ static void i915_driver_register(struct drm_i915_private *dev_priv)
 		i915_debugfs_register(dev_priv);
 		i915_guc_register(dev_priv);
 		i915_setup_sysfs(dev_priv);
+
+		/* Depends on sysfs having been initialized */
+		i915_perf_register(dev_priv);
 	} else
 		DRM_ERROR("Failed to register driver for userspace access!\n");
 
@@ -1161,6 +1167,8 @@ static void i915_driver_unregister(struct drm_i915_private *dev_priv)
 	intel_gpu_ips_teardown();
 	acpi_video_unregister();
 	intel_opregion_unregister(dev_priv);
+
+	i915_perf_unregister(dev_priv);
 
 	i915_teardown_sysfs(dev_priv);
 	i915_guc_unregister(dev_priv);
@@ -1813,6 +1821,8 @@ void i915_reset(struct drm_i915_private *dev_priv)
 		DRM_ERROR("Failed hw init on reset %d\n", ret);
 		goto error;
 	}
+
+	i915_queue_hangcheck(dev_priv);
 
 wakeup:
 	wake_up_bit(&error->flags, I915_RESET_IN_PROGRESS);
@@ -2565,6 +2575,7 @@ static const struct drm_ioctl_desc i915_ioctls[] = {
 	DRM_IOCTL_DEF_DRV(I915_GEM_USERPTR, i915_gem_userptr_ioctl, DRM_RENDER_ALLOW),
 	DRM_IOCTL_DEF_DRV(I915_GEM_CONTEXT_GETPARAM, i915_gem_context_getparam_ioctl, DRM_RENDER_ALLOW),
 	DRM_IOCTL_DEF_DRV(I915_GEM_CONTEXT_SETPARAM, i915_gem_context_setparam_ioctl, DRM_RENDER_ALLOW),
+	DRM_IOCTL_DEF_DRV(I915_PERF_OPEN, i915_perf_open_ioctl, DRM_RENDER_ALLOW),
 };
 
 static struct drm_driver driver = {

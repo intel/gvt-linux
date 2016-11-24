@@ -47,6 +47,7 @@
 #include "nouveau_ttm.h"
 #include "nouveau_gem.h"
 #include "nouveau_vga.h"
+#include "nouveau_led.h"
 #include "nouveau_hwmon.h"
 #include "nouveau_acpi.h"
 #include "nouveau_bios.h"
@@ -475,6 +476,7 @@ nouveau_drm_load(struct drm_device *dev, unsigned long flags)
 	nouveau_hwmon_init(dev);
 	nouveau_accel_init(drm);
 	nouveau_fbcon_init(dev);
+	nouveau_led_init(dev);
 
 	if (nouveau_runtime_pm != 0) {
 		pm_runtime_use_autosuspend(dev->dev);
@@ -510,13 +512,14 @@ nouveau_drm_unload(struct drm_device *dev)
 		pm_runtime_forbid(dev->dev);
 	}
 
+	nouveau_led_fini(dev);
 	nouveau_fbcon_fini(dev);
 	nouveau_accel_fini(drm);
 	nouveau_hwmon_fini(dev);
 	nouveau_debugfs_fini(drm);
 
 	if (dev->mode_config.num_crtc)
-		nouveau_display_fini(dev);
+		nouveau_display_fini(dev, false);
 	nouveau_display_destroy(dev);
 
 	nouveau_bios_takedown(dev);
@@ -560,6 +563,8 @@ nouveau_do_suspend(struct drm_device *dev, bool runtime)
 	struct nouveau_drm *drm = nouveau_drm(dev);
 	struct nouveau_cli *cli;
 	int ret;
+
+	nouveau_led_suspend(dev);
 
 	if (dev->mode_config.num_crtc) {
 		NV_INFO(drm, "suspending console...\n");
@@ -648,6 +653,8 @@ nouveau_do_resume(struct drm_device *dev, bool runtime)
 		NV_INFO(drm, "resuming console...\n");
 		nouveau_fbcon_set_suspend(dev, 0);
 	}
+
+	nouveau_led_resume(dev);
 
 	return 0;
 }
@@ -1030,6 +1037,7 @@ static void nouveau_display_options(void)
 	DRM_DEBUG_DRIVER("... modeset      : %d\n", nouveau_modeset);
 	DRM_DEBUG_DRIVER("... runpm        : %d\n", nouveau_runtime_pm);
 	DRM_DEBUG_DRIVER("... vram_pushbuf : %d\n", nouveau_vram_pushbuf);
+	DRM_DEBUG_DRIVER("... hdmimhz      : %d\n", nouveau_hdmimhz);
 }
 
 static const struct dev_pm_ops nouveau_pm_ops = {

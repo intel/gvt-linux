@@ -343,6 +343,9 @@ i915_vma_get_fence(struct i915_vma *vma)
 	struct drm_i915_fence_reg *fence;
 	struct i915_vma *set = i915_gem_object_is_tiled(vma->obj) ? vma : NULL;
 
+	/* Note that we revoke fences on runtime suspend. Therefore the user
+	 * must keep the device awake whilst using the fence.
+	 */
 	assert_rpm_wakelock_held(to_i915(vma->vm->dev));
 
 	/* Just update our place in the LRU if our fence is getting reused. */
@@ -365,21 +368,15 @@ i915_vma_get_fence(struct i915_vma *vma)
 
 /**
  * i915_gem_restore_fences - restore fence state
- * @dev: DRM device
+ * @dev_priv: i915 device private
  *
  * Restore the hw fence state to match the software tracking again, to be called
- * after a gpu reset and on resume.
+ * after a gpu reset and on resume. Note that on runtime suspend we only cancel
+ * the fences, to be reacquired by the user later.
  */
-void i915_gem_restore_fences(struct drm_device *dev)
+void i915_gem_restore_fences(struct drm_i915_private *dev_priv)
 {
-	struct drm_i915_private *dev_priv = to_i915(dev);
 	int i;
-
-	/* Note that this may be called outside of struct_mutex, by
-	 * runtime suspend/resume. The barrier we require is enforced by
-	 * rpm itself - all access to fences/GTT are only within an rpm
-	 * wakeref, and to acquire that wakeref you must pass through here.
-	 */
 
 	for (i = 0; i < dev_priv->num_fence_regs; i++) {
 		struct drm_i915_fence_reg *reg = &dev_priv->fence_regs[i];
@@ -391,7 +388,7 @@ void i915_gem_restore_fences(struct drm_device *dev)
 		 */
 		if (vma && !i915_gem_object_is_tiled(vma->obj)) {
 			GEM_BUG_ON(!reg->dirty);
-			GEM_BUG_ON(vma->obj->fault_mappable);
+			GEM_BUG_ON(!list_empty(&vma->obj->userfault_link));
 
 			list_move(&reg->link, &dev_priv->mm.fence_list);
 			vma->fence = NULL;
@@ -453,19 +450,18 @@ void i915_gem_restore_fences(struct drm_device *dev)
 
 /**
  * i915_gem_detect_bit_6_swizzle - detect bit 6 swizzling pattern
- * @dev: DRM device
+ * @dev_priv: i915 device private
  *
  * Detects bit 6 swizzling of address lookup between IGD access and CPU
  * access through main memory.
  */
 void
-i915_gem_detect_bit_6_swizzle(struct drm_device *dev)
+i915_gem_detect_bit_6_swizzle(struct drm_i915_private *dev_priv)
 {
-	struct drm_i915_private *dev_priv = to_i915(dev);
 	uint32_t swizzle_x = I915_BIT_6_SWIZZLE_UNKNOWN;
 	uint32_t swizzle_y = I915_BIT_6_SWIZZLE_UNKNOWN;
 
-	if (INTEL_INFO(dev)->gen >= 8 || IS_VALLEYVIEW(dev)) {
+	if (INTEL_GEN(dev_priv) >= 8 || IS_VALLEYVIEW(dev_priv)) {
 		/*
 		 * On BDW+, swizzling is not used. We leave the CPU memory
 		 * controller in charge of optimizing memory accesses without
@@ -475,7 +471,7 @@ i915_gem_detect_bit_6_swizzle(struct drm_device *dev)
 		 */
 		swizzle_x = I915_BIT_6_SWIZZLE_NONE;
 		swizzle_y = I915_BIT_6_SWIZZLE_NONE;
-	} else if (INTEL_INFO(dev)->gen >= 6) {
+	} else if (INTEL_GEN(dev_priv) >= 6) {
 		if (dev_priv->preserve_bios_swizzle) {
 			if (I915_READ(DISP_ARB_CTL) &
 			    DISP_TILE_SURFACE_SWIZZLING) {
@@ -504,19 +500,20 @@ i915_gem_detect_bit_6_swizzle(struct drm_device *dev)
 				swizzle_y = I915_BIT_6_SWIZZLE_NONE;
 			}
 		}
-	} else if (IS_GEN5(dev)) {
+	} else if (IS_GEN5(dev_priv)) {
 		/* On Ironlake whatever DRAM config, GPU always do
 		 * same swizzling setup.
 		 */
 		swizzle_x = I915_BIT_6_SWIZZLE_9_10;
 		swizzle_y = I915_BIT_6_SWIZZLE_9;
-	} else if (IS_GEN2(dev)) {
+	} else if (IS_GEN2(dev_priv)) {
 		/* As far as we know, the 865 doesn't have these bit 6
 		 * swizzling issues.
 		 */
 		swizzle_x = I915_BIT_6_SWIZZLE_NONE;
 		swizzle_y = I915_BIT_6_SWIZZLE_NONE;
-	} else if (IS_MOBILE(dev) || (IS_GEN3(dev) && !IS_G33(dev))) {
+	} else if (IS_MOBILE(dev_priv) || (IS_GEN3(dev_priv) &&
+		   !IS_G33(dev_priv))) {
 		uint32_t dcc;
 
 		/* On 9xx chipsets, channel interleave by the CPU is
@@ -554,7 +551,7 @@ i915_gem_detect_bit_6_swizzle(struct drm_device *dev)
 		}
 
 		/* check for L-shaped memory aka modified enhanced addressing */
-		if (IS_GEN4(dev) &&
+		if (IS_GEN4(dev_priv) &&
 		    !(I915_READ(DCC2) & DCC2_MODIFIED_ENHANCED_DISABLE)) {
 			swizzle_x = I915_BIT_6_SWIZZLE_UNKNOWN;
 			swizzle_y = I915_BIT_6_SWIZZLE_UNKNOWN;
@@ -645,6 +642,7 @@ i915_gem_swizzle_page(struct page *page)
 /**
  * i915_gem_object_do_bit_17_swizzle - fixup bit 17 swizzling
  * @obj: i915 GEM buffer object
+ * @pages: the scattergather list of physical pages
  *
  * This function fixes up the swizzling in case any page frame number for this
  * object has changed in bit 17 since that state has been saved with
@@ -655,7 +653,8 @@ i915_gem_swizzle_page(struct page *page)
  * by swapping them out and back in again).
  */
 void
-i915_gem_object_do_bit_17_swizzle(struct drm_i915_gem_object *obj)
+i915_gem_object_do_bit_17_swizzle(struct drm_i915_gem_object *obj,
+				  struct sg_table *pages)
 {
 	struct sgt_iter sgt_iter;
 	struct page *page;
@@ -665,10 +664,9 @@ i915_gem_object_do_bit_17_swizzle(struct drm_i915_gem_object *obj)
 		return;
 
 	i = 0;
-	for_each_sgt_page(page, sgt_iter, obj->pages) {
+	for_each_sgt_page(page, sgt_iter, pages) {
 		char new_bit_17 = page_to_phys(page) >> 17;
-		if ((new_bit_17 & 0x1) !=
-		    (test_bit(i, obj->bit_17) != 0)) {
+		if ((new_bit_17 & 0x1) != (test_bit(i, obj->bit_17) != 0)) {
 			i915_gem_swizzle_page(page);
 			set_page_dirty(page);
 		}
@@ -679,17 +677,19 @@ i915_gem_object_do_bit_17_swizzle(struct drm_i915_gem_object *obj)
 /**
  * i915_gem_object_save_bit_17_swizzle - save bit 17 swizzling
  * @obj: i915 GEM buffer object
+ * @pages: the scattergather list of physical pages
  *
  * This function saves the bit 17 of each page frame number so that swizzling
  * can be fixed up later on with i915_gem_object_do_bit_17_swizzle(). This must
  * be called before the backing storage can be unpinned.
  */
 void
-i915_gem_object_save_bit_17_swizzle(struct drm_i915_gem_object *obj)
+i915_gem_object_save_bit_17_swizzle(struct drm_i915_gem_object *obj,
+				    struct sg_table *pages)
 {
+	const unsigned int page_count = obj->base.size >> PAGE_SHIFT;
 	struct sgt_iter sgt_iter;
 	struct page *page;
-	int page_count = obj->base.size >> PAGE_SHIFT;
 	int i;
 
 	if (obj->bit_17 == NULL) {
@@ -704,7 +704,7 @@ i915_gem_object_save_bit_17_swizzle(struct drm_i915_gem_object *obj)
 
 	i = 0;
 
-	for_each_sgt_page(page, sgt_iter, obj->pages) {
+	for_each_sgt_page(page, sgt_iter, pages) {
 		if (page_to_phys(page) & (1 << 17))
 			__set_bit(i, obj->bit_17);
 		else

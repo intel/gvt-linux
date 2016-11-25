@@ -2176,7 +2176,6 @@ int kvm_set_msr_common(struct kvm_vcpu *vcpu, struct msr_data *msr_info)
 		break;
 	case MSR_KVM_SYSTEM_TIME_NEW:
 	case MSR_KVM_SYSTEM_TIME: {
-		u64 gpa_offset;
 		struct kvm_arch *ka = &vcpu->kvm->arch;
 
 		kvmclock_reset(vcpu);
@@ -2197,8 +2196,6 @@ int kvm_set_msr_common(struct kvm_vcpu *vcpu, struct msr_data *msr_info)
 		/* we verify if the enable bit is set... */
 		if (!(data & 1))
 			break;
-
-		gpa_offset = data & ~(PAGE_MASK | 1);
 
 		if (kvm_gfn_to_hva_cache_init(vcpu->kvm,
 		     &vcpu->arch.pv_time, data & ~1ULL,
@@ -2294,7 +2291,7 @@ int kvm_set_msr_common(struct kvm_vcpu *vcpu, struct msr_data *msr_info)
 		if (kvm_pmu_is_valid_msr(vcpu, msr))
 			return kvm_pmu_set_msr(vcpu, msr_info);
 		if (!ignore_msrs) {
-			vcpu_unimpl(vcpu, "unhandled wrmsr: 0x%x data 0x%llx\n",
+			vcpu_debug_ratelimited(vcpu, "unhandled wrmsr: 0x%x data 0x%llx\n",
 				    msr, data);
 			return 1;
 		} else {
@@ -2506,7 +2503,8 @@ int kvm_get_msr_common(struct kvm_vcpu *vcpu, struct msr_data *msr_info)
 		if (kvm_pmu_is_valid_msr(vcpu, msr_info->index))
 			return kvm_pmu_get_msr(vcpu, msr_info->index, &msr_info->data);
 		if (!ignore_msrs) {
-			vcpu_unimpl(vcpu, "unhandled rdmsr: 0x%x\n", msr_info->index);
+			vcpu_debug_ratelimited(vcpu, "unhandled rdmsr: 0x%x\n",
+					       msr_info->index);
 			return 1;
 		} else {
 			vcpu_unimpl(vcpu, "ignored rdmsr: 0x%x\n", msr_info->index);
@@ -2810,7 +2808,7 @@ void kvm_arch_vcpu_load(struct kvm_vcpu *vcpu, int cpu)
 		}
 		if (kvm_lapic_hv_timer_in_use(vcpu) &&
 				kvm_x86_ops->set_hv_timer(vcpu,
-					kvm_get_lapic_tscdeadline_msr(vcpu)))
+					kvm_get_lapic_target_expiration_tsc(vcpu)))
 			kvm_lapic_switch_to_sw_timer(vcpu);
 		/*
 		 * On a host with synchronized TSC, there is no need to update
@@ -4816,7 +4814,7 @@ static void emulator_invlpg(struct x86_emulate_ctxt *ctxt, ulong address)
 	kvm_mmu_invlpg(emul_to_vcpu(ctxt), address);
 }
 
-int kvm_emulate_wbinvd_noskip(struct kvm_vcpu *vcpu)
+static int kvm_emulate_wbinvd_noskip(struct kvm_vcpu *vcpu)
 {
 	if (!need_emulate_wbinvd(vcpu))
 		return X86EMUL_CONTINUE;
@@ -5637,6 +5635,49 @@ int kvm_fast_pio_out(struct kvm_vcpu *vcpu, int size, unsigned short port)
 	return ret;
 }
 EXPORT_SYMBOL_GPL(kvm_fast_pio_out);
+
+static int complete_fast_pio_in(struct kvm_vcpu *vcpu)
+{
+	unsigned long val;
+
+	/* We should only ever be called with arch.pio.count equal to 1 */
+	BUG_ON(vcpu->arch.pio.count != 1);
+
+	/* For size less than 4 we merge, else we zero extend */
+	val = (vcpu->arch.pio.size < 4) ? kvm_register_read(vcpu, VCPU_REGS_RAX)
+					: 0;
+
+	/*
+	 * Since vcpu->arch.pio.count == 1 let emulator_pio_in_emulated perform
+	 * the copy and tracing
+	 */
+	emulator_pio_in_emulated(&vcpu->arch.emulate_ctxt, vcpu->arch.pio.size,
+				 vcpu->arch.pio.port, &val, 1);
+	kvm_register_write(vcpu, VCPU_REGS_RAX, val);
+
+	return 1;
+}
+
+int kvm_fast_pio_in(struct kvm_vcpu *vcpu, int size, unsigned short port)
+{
+	unsigned long val;
+	int ret;
+
+	/* For size less than 4 we merge, else we zero extend */
+	val = (size < 4) ? kvm_register_read(vcpu, VCPU_REGS_RAX) : 0;
+
+	ret = emulator_pio_in_emulated(&vcpu->arch.emulate_ctxt, size, port,
+				       &val, 1);
+	if (ret) {
+		kvm_register_write(vcpu, VCPU_REGS_RAX, val);
+		return ret;
+	}
+
+	vcpu->arch.complete_userspace_io = complete_fast_pio_in;
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(kvm_fast_pio_in);
 
 static int kvmclock_cpu_down_prep(unsigned int cpu)
 {
@@ -6864,7 +6905,8 @@ static int vcpu_run(struct kvm_vcpu *vcpu)
 			break;
 		}
 
-		kvm_check_async_pf_completion(vcpu);
+		if (!is_guest_mode(vcpu))
+			kvm_check_async_pf_completion(vcpu);
 
 		if (signal_pending(current)) {
 			r = -EINTR;

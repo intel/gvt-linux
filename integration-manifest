@@ -1,20 +1,8 @@
-origin/drm-intel-fixes 9c763584b7c8911106bb77af7e648bef09af9d80
-	Linux 4.9-rc6
-drm-upstream/drm-fixes 855f6529c7c974a566eb56d5e3351a628305e16e
-	Merge branch 'for-upstream/hdlcd' of git://linux-arm.org/linux-ld into drm-fixes
-origin/drm-intel-next-fixes e9cbc4bd0140e1d4e0172e2fe8fe07ba278e5980
-	drm/i915: Update DRIVER_DATE to 20161121
-origin/drm-intel-next-queued 007873b30b9001348c0dfc96deb9db220a3be116
-	drm/i915: kick out cmd_parser specific structs from i915_drv.h
-drm-upstream/drm-next 43167f6c7d7172e0a6cb1ecaa1771a2f457fd165
-	Merge tag 'drm-hisilicon-next-2016-11-17' of http://github.com/zourongrong/linux into drm-next
-sound-upstream/for-next 2e57069c869f3009ae70a429d6719a545de43522
-	ALSA: bebob: compare whole string for model name so that readers are not confused
-sound-upstream/for-linus 6ff1a25318ebf688ef9593fe09cd449f6fb4ad31
-	ALSA: usb-audio: Fix use-after-free of usb_device at disconnect
-origin/topic/drm-fixes c6935931c1894ff857616ff8549b61236a19148f
-	Linux 4.8-rc5
-origin/topic/drm-misc 2761ba6c0925ca9c5b917a95f68135d9dce443fb
-	drm: bridge: add DesignWare HDMI I2S audio support
-origin/topic/core-for-CI 11390213da1d7677b2ff16361a49cfa7a440da97
-	Merge remote-tracking branch 'x86/x86-urgent-for-linus' into topic/core-for-CI
+drm-intel/drm-intel-nightly 16f5276e6bd32037059f4caea0336ca9c2d108d9
+	drm-intel-nightly: 2016y-11m-24d-11h-29m-24s UTC integration manifest
+kvm-upstream/queue e7370b64ffaa7e344da2bc972584e6fafbaf2808
+	kvm/x86: skip async_pf when in guest mode
+vfio-upstream/next 5ba6de98c78ac45166036516e34bec487887ba5d
+	vfio: fix vfio_info_cap_add/shift
+origin/gvt-next 53d6f812c0dbf1c9cad89b1c2118e61c13ca9677
+	drm/i915/gvt: fix lock not released bug for dispatch_workload() err path

@@ -480,6 +480,21 @@ static struct vfio_group *vfio_group_get_from_minor(int minor)
 	return group;
 }
 
+static struct vfio_group *vfio_group_get_from_dev(struct device *dev)
+{
+	struct iommu_group *iommu_group;
+	struct vfio_group *group;
+
+	iommu_group = iommu_group_get(dev);
+	if (!iommu_group)
+		return NULL;
+
+	group = vfio_group_get_from_iommu(iommu_group);
+	iommu_group_put(iommu_group);
+
+	return group;
+}
+
 /**
  * Device objects - create, release, get, put, search
  */
@@ -811,16 +826,10 @@ EXPORT_SYMBOL_GPL(vfio_add_group_dev);
  */
 struct vfio_device *vfio_device_get_from_dev(struct device *dev)
 {
-	struct iommu_group *iommu_group;
 	struct vfio_group *group;
 	struct vfio_device *device;
 
-	iommu_group = iommu_group_get(dev);
-	if (!iommu_group)
-		return NULL;
-
-	group = vfio_group_get_from_iommu(iommu_group);
-	iommu_group_put(iommu_group);
+	group = vfio_group_get_from_dev(dev);
 	if (!group)
 		return NULL;
 
@@ -1376,6 +1385,23 @@ static bool vfio_group_viable(struct vfio_group *group)
 					 group, vfio_dev_viable) == 0);
 }
 
+static int vfio_group_add_container_user(struct vfio_group *group)
+{
+	if (!atomic_inc_not_zero(&group->container_users))
+		return -EINVAL;
+
+	if (group->noiommu) {
+		atomic_dec(&group->container_users);
+		return -EPERM;
+	}
+	if (!group->container->iommu_driver || !vfio_group_viable(group)) {
+		atomic_dec(&group->container_users);
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
 static const struct file_operations vfio_device_fops;
 
 static int vfio_group_get_device_fd(struct vfio_group *group, char *buf)
@@ -1685,23 +1711,14 @@ static const struct file_operations vfio_device_fops = {
 struct vfio_group *vfio_group_get_external_user(struct file *filep)
 {
 	struct vfio_group *group = filep->private_data;
+	int ret;
 
 	if (filep->f_op != &vfio_group_fops)
 		return ERR_PTR(-EINVAL);
 
-	if (!atomic_inc_not_zero(&group->container_users))
-		return ERR_PTR(-EINVAL);
-
-	if (group->noiommu) {
-		atomic_dec(&group->container_users);
-		return ERR_PTR(-EPERM);
-	}
-
-	if (!group->container->iommu_driver ||
-			!vfio_group_viable(group)) {
-		atomic_dec(&group->container_users);
-		return ERR_PTR(-EINVAL);
-	}
+	ret = vfio_group_add_container_user(group);
+	if (ret)
+		return ERR_PTR(ret);
 
 	vfio_group_get(group);
 
@@ -1763,7 +1780,7 @@ struct vfio_info_cap_header *vfio_info_cap_add(struct vfio_info_cap *caps,
 	header->version = version;
 
 	/* Add to the end of the capability chain */
-	for (tmp = caps->buf; tmp->next; tmp = (void *)tmp + tmp->next)
+	for (tmp = buf; tmp->next; tmp = buf + tmp->next)
 		; /* nothing */
 
 	tmp->next = caps->size;
@@ -1776,11 +1793,293 @@ EXPORT_SYMBOL_GPL(vfio_info_cap_add);
 void vfio_info_cap_shift(struct vfio_info_cap *caps, size_t offset)
 {
 	struct vfio_info_cap_header *tmp;
+	void *buf = (void *)caps->buf;
 
-	for (tmp = caps->buf; tmp->next; tmp = (void *)tmp + tmp->next - offset)
+	for (tmp = buf; tmp->next; tmp = buf + tmp->next - offset)
 		tmp->next += offset;
 }
-EXPORT_SYMBOL_GPL(vfio_info_cap_shift);
+EXPORT_SYMBOL(vfio_info_cap_shift);
+
+static int sparse_mmap_cap(struct vfio_info_cap *caps, void *cap_type)
+{
+	struct vfio_info_cap_header *header;
+	struct vfio_region_info_cap_sparse_mmap *sparse_cap, *sparse = cap_type;
+	size_t size;
+
+	size = sizeof(*sparse) + sparse->nr_areas *  sizeof(*sparse->areas);
+	header = vfio_info_cap_add(caps, size,
+				   VFIO_REGION_INFO_CAP_SPARSE_MMAP, 1);
+	if (IS_ERR(header))
+		return PTR_ERR(header);
+
+	sparse_cap = container_of(header,
+			struct vfio_region_info_cap_sparse_mmap, header);
+	sparse_cap->nr_areas = sparse->nr_areas;
+	memcpy(sparse_cap->areas, sparse->areas,
+	       sparse->nr_areas * sizeof(*sparse->areas));
+	return 0;
+}
+
+static int region_type_cap(struct vfio_info_cap *caps, void *cap_type)
+{
+	struct vfio_info_cap_header *header;
+	struct vfio_region_info_cap_type *type_cap, *cap = cap_type;
+
+	header = vfio_info_cap_add(caps, sizeof(*cap),
+				   VFIO_REGION_INFO_CAP_TYPE, 1);
+	if (IS_ERR(header))
+		return PTR_ERR(header);
+
+	type_cap = container_of(header, struct vfio_region_info_cap_type,
+				header);
+	type_cap->type = cap->type;
+	type_cap->subtype = cap->subtype;
+	return 0;
+}
+
+int vfio_info_add_capability(struct vfio_info_cap *caps, int cap_type_id,
+			     void *cap_type)
+{
+	int ret = -EINVAL;
+
+	if (!cap_type)
+		return 0;
+
+	switch (cap_type_id) {
+	case VFIO_REGION_INFO_CAP_SPARSE_MMAP:
+		ret = sparse_mmap_cap(caps, cap_type);
+		break;
+
+	case VFIO_REGION_INFO_CAP_TYPE:
+		ret = region_type_cap(caps, cap_type);
+		break;
+	}
+
+	return ret;
+}
+EXPORT_SYMBOL(vfio_info_add_capability);
+
+int vfio_set_irqs_validate_and_prepare(struct vfio_irq_set *hdr, int num_irqs,
+				       int max_irq_type, size_t *data_size)
+{
+	unsigned long minsz;
+	size_t size;
+
+	minsz = offsetofend(struct vfio_irq_set, count);
+
+	if ((hdr->argsz < minsz) || (hdr->index >= max_irq_type) ||
+	    (hdr->count >= (U32_MAX - hdr->start)) ||
+	    (hdr->flags & ~(VFIO_IRQ_SET_DATA_TYPE_MASK |
+				VFIO_IRQ_SET_ACTION_TYPE_MASK)))
+		return -EINVAL;
+
+	if (data_size)
+		*data_size = 0;
+
+	if (hdr->start >= num_irqs || hdr->start + hdr->count > num_irqs)
+		return -EINVAL;
+
+	switch (hdr->flags & VFIO_IRQ_SET_DATA_TYPE_MASK) {
+	case VFIO_IRQ_SET_DATA_NONE:
+		size = 0;
+		break;
+	case VFIO_IRQ_SET_DATA_BOOL:
+		size = sizeof(uint8_t);
+		break;
+	case VFIO_IRQ_SET_DATA_EVENTFD:
+		size = sizeof(int32_t);
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	if (size) {
+		if (hdr->argsz - minsz < hdr->count * size)
+			return -EINVAL;
+
+		if (!data_size)
+			return -EINVAL;
+
+		*data_size = hdr->count * size;
+	}
+
+	return 0;
+}
+EXPORT_SYMBOL(vfio_set_irqs_validate_and_prepare);
+
+/*
+ * Pin a set of guest PFNs and return their associated host PFNs for local
+ * domain only.
+ * @dev [in]     : device
+ * @user_pfn [in]: array of user/guest PFNs to be unpinned.
+ * @npage [in]   : count of elements in user_pfn array.  This count should not
+ *		   be greater VFIO_PIN_PAGES_MAX_ENTRIES.
+ * @prot [in]    : protection flags
+ * @phys_pfn[out]: array of host PFNs
+ * Return error or number of pages pinned.
+ */
+int vfio_pin_pages(struct device *dev, unsigned long *user_pfn, int npage,
+		   int prot, unsigned long *phys_pfn)
+{
+	struct vfio_container *container;
+	struct vfio_group *group;
+	struct vfio_iommu_driver *driver;
+	int ret;
+
+	if (!dev || !user_pfn || !phys_pfn || !npage)
+		return -EINVAL;
+
+	if (npage > VFIO_PIN_PAGES_MAX_ENTRIES)
+		return -E2BIG;
+
+	group = vfio_group_get_from_dev(dev);
+	if (IS_ERR(group))
+		return PTR_ERR(group);
+
+	ret = vfio_group_add_container_user(group);
+	if (ret)
+		goto err_pin_pages;
+
+	container = group->container;
+	down_read(&container->group_lock);
+
+	driver = container->iommu_driver;
+	if (likely(driver && driver->ops->pin_pages))
+		ret = driver->ops->pin_pages(container->iommu_data, user_pfn,
+					     npage, prot, phys_pfn);
+	else
+		ret = -ENOTTY;
+
+	up_read(&container->group_lock);
+	vfio_group_try_dissolve_container(group);
+
+err_pin_pages:
+	vfio_group_put(group);
+	return ret;
+}
+EXPORT_SYMBOL(vfio_pin_pages);
+
+/*
+ * Unpin set of host PFNs for local domain only.
+ * @dev [in]     : device
+ * @user_pfn [in]: array of user/guest PFNs to be unpinned. Number of user/guest
+ *		   PFNs should not be greater than VFIO_PIN_PAGES_MAX_ENTRIES.
+ * @npage [in]   : count of elements in user_pfn array.  This count should not
+ *                 be greater than VFIO_PIN_PAGES_MAX_ENTRIES.
+ * Return error or number of pages unpinned.
+ */
+int vfio_unpin_pages(struct device *dev, unsigned long *user_pfn, int npage)
+{
+	struct vfio_container *container;
+	struct vfio_group *group;
+	struct vfio_iommu_driver *driver;
+	int ret;
+
+	if (!dev || !user_pfn || !npage)
+		return -EINVAL;
+
+	if (npage > VFIO_PIN_PAGES_MAX_ENTRIES)
+		return -E2BIG;
+
+	group = vfio_group_get_from_dev(dev);
+	if (IS_ERR(group))
+		return PTR_ERR(group);
+
+	ret = vfio_group_add_container_user(group);
+	if (ret)
+		goto err_unpin_pages;
+
+	container = group->container;
+	down_read(&container->group_lock);
+
+	driver = container->iommu_driver;
+	if (likely(driver && driver->ops->unpin_pages))
+		ret = driver->ops->unpin_pages(container->iommu_data, user_pfn,
+					       npage);
+	else
+		ret = -ENOTTY;
+
+	up_read(&container->group_lock);
+	vfio_group_try_dissolve_container(group);
+
+err_unpin_pages:
+	vfio_group_put(group);
+	return ret;
+}
+EXPORT_SYMBOL(vfio_unpin_pages);
+
+int vfio_register_notifier(struct device *dev, struct notifier_block *nb)
+{
+	struct vfio_container *container;
+	struct vfio_group *group;
+	struct vfio_iommu_driver *driver;
+	int ret;
+
+	if (!dev || !nb)
+		return -EINVAL;
+
+	group = vfio_group_get_from_dev(dev);
+	if (IS_ERR(group))
+		return PTR_ERR(group);
+
+	ret = vfio_group_add_container_user(group);
+	if (ret)
+		goto err_register_nb;
+
+	container = group->container;
+	down_read(&container->group_lock);
+
+	driver = container->iommu_driver;
+	if (likely(driver && driver->ops->register_notifier))
+		ret = driver->ops->register_notifier(container->iommu_data, nb);
+	else
+		ret = -ENOTTY;
+
+	up_read(&container->group_lock);
+	vfio_group_try_dissolve_container(group);
+
+err_register_nb:
+	vfio_group_put(group);
+	return ret;
+}
+EXPORT_SYMBOL(vfio_register_notifier);
+
+int vfio_unregister_notifier(struct device *dev, struct notifier_block *nb)
+{
+	struct vfio_container *container;
+	struct vfio_group *group;
+	struct vfio_iommu_driver *driver;
+	int ret;
+
+	if (!dev || !nb)
+		return -EINVAL;
+
+	group = vfio_group_get_from_dev(dev);
+	if (IS_ERR(group))
+		return PTR_ERR(group);
+
+	ret = vfio_group_add_container_user(group);
+	if (ret)
+		goto err_unregister_nb;
+
+	container = group->container;
+	down_read(&container->group_lock);
+
+	driver = container->iommu_driver;
+	if (likely(driver && driver->ops->unregister_notifier))
+		ret = driver->ops->unregister_notifier(container->iommu_data,
+						       nb);
+	else
+		ret = -ENOTTY;
+
+	up_read(&container->group_lock);
+	vfio_group_try_dissolve_container(group);
+
+err_unregister_nb:
+	vfio_group_put(group);
+	return ret;
+}
+EXPORT_SYMBOL(vfio_unregister_notifier);
 
 /**
  * Module/class support

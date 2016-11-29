@@ -1,0 +1,22 @@
+drm-intel drm-intel-fixes e5517c2a5a49ed5e99047008629f1cd60246ea0e
+	Linux 4.9-rc7
+drm-upstream drm-fixes 9704668e4b7105ede483f38da7f29d71b5bc0165
+	Merge branch 'mediatek-drm-fixes-2016-11-24' of https://github.com/ckhu-mediatek/linux.git-tags into drm-fixes
+drm-intel drm-intel-next-fixes e9cbc4bd0140e1d4e0172e2fe8fe07ba278e5980
+	drm/i915: Update DRIVER_DATE to 20161121
+drm-intel drm-intel-next-queued 6a259b1f8a9e99b1ed114f8bf8b0cfccee130e54
+	drm/i915: Initialize dev_priv->atomic_cdclk_freq at init time
+drm-upstream drm-next 7625e05286cf3f37c8a5e633379a4d014ddbe555
+	Merge branch 'drm-tda998x-devel' of git://git.armlinux.org.uk/~rmk/linux-arm into drm-next
+sound-upstream for-next c6790c8e770c6a7a5414e42438705ec92b03a790
+	ALSA: hda/realtek - Add support for headset MIC for ALC622
+sound-upstream for-linus b5337cfe067e96b8a98699da90c7dcd2bec21133
+	ALSA: hda/ca0132 - Add quirk for Alienware 15 R2 2016
+drm-intel topic/core-for-CI 11390213da1d7677b2ff16361a49cfa7a440da97
+	Merge remote-tracking branch 'x86/x86-urgent-for-linus' into topic/core-for-CI
+drm-misc drm-misc-next a53ca63502e62ca459de32821753c8227dc94197
+	drm: Protect fb_helper list manipulation with a mutex
+drm-misc drm-misc-next-fixes 1001354ca34179f3db924eb66672442a173147dc
+	Linux 4.9-rc1
+drm-misc drm-misc-fixes 4da5caa6a6f82cda3193bca855235b87debf78bd
+	drm/dp/mst: Check peer device type before attempting EDID read

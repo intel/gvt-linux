@@ -1701,7 +1701,8 @@ static void intel_ddi_pre_enable_dp(struct intel_encoder *encoder,
 
 static void intel_ddi_pre_enable_hdmi(struct intel_encoder *encoder,
 				      bool has_hdmi_sink,
-				      struct drm_display_mode *adjusted_mode,
+				      const struct intel_crtc_state *crtc_state,
+				      const struct drm_connector_state *conn_state,
 				      struct intel_shared_dpll *pll)
 {
 	struct intel_hdmi *intel_hdmi = enc_to_intel_hdmi(&encoder->base);
@@ -1721,7 +1722,7 @@ static void intel_ddi_pre_enable_hdmi(struct intel_encoder *encoder,
 
 	intel_hdmi->set_infoframes(drm_encoder,
 				   has_hdmi_sink,
-				   adjusted_mode);
+				   crtc_state, conn_state);
 }
 
 static void intel_ddi_pre_enable(struct intel_encoder *intel_encoder,
@@ -1742,8 +1743,8 @@ static void intel_ddi_pre_enable(struct intel_encoder *intel_encoder,
 	}
 	if (type == INTEL_OUTPUT_HDMI) {
 		intel_ddi_pre_enable_hdmi(intel_encoder,
-					  crtc->config->has_hdmi_sink,
-					  &crtc->config->base.adjusted_mode,
+					  pipe_config->has_hdmi_sink,
+					  pipe_config, conn_state,
 					  crtc->config->shared_dpll);
 	}
 }
@@ -1949,6 +1950,19 @@ void intel_ddi_prepare_link_retrain(struct intel_dp *intel_dp)
 	udelay(600);
 }
 
+bool intel_ddi_is_audio_enabled(struct drm_i915_private *dev_priv,
+				 struct intel_crtc *intel_crtc)
+{
+	u32 temp;
+
+	if (intel_display_power_is_enabled(dev_priv, POWER_DOMAIN_AUDIO)) {
+		temp = I915_READ(HSW_AUD_PIN_ELD_CP_VLD);
+		if (temp & AUDIO_OUTPUT_ENABLE(intel_crtc->pipe))
+			return true;
+	}
+	return false;
+}
+
 void intel_ddi_get_config(struct intel_encoder *encoder,
 			  struct intel_crtc_state *pipe_config)
 {
@@ -2014,11 +2028,8 @@ void intel_ddi_get_config(struct intel_encoder *encoder,
 		break;
 	}
 
-	if (intel_display_power_is_enabled(dev_priv, POWER_DOMAIN_AUDIO)) {
-		temp = I915_READ(HSW_AUD_PIN_ELD_CP_VLD);
-		if (temp & AUDIO_OUTPUT_ENABLE(intel_crtc->pipe))
-			pipe_config->has_audio = true;
-	}
+	pipe_config->has_audio =
+		intel_ddi_is_audio_enabled(dev_priv, intel_crtc);
 
 	if (encoder->type == INTEL_OUTPUT_EDP && dev_priv->vbt.edp.bpp &&
 	    pipe_config->pipe_bpp > dev_priv->vbt.edp.bpp) {
@@ -2154,9 +2165,8 @@ intel_ddi_get_link_dpll(struct intel_dp *intel_dp, int clock)
 	return pll;
 }
 
-void intel_ddi_init(struct drm_device *dev, enum port port)
+void intel_ddi_init(struct drm_i915_private *dev_priv, enum port port)
 {
-	struct drm_i915_private *dev_priv = to_i915(dev);
 	struct intel_digital_port *intel_dig_port;
 	struct intel_encoder *intel_encoder;
 	struct drm_encoder *encoder;
@@ -2218,7 +2228,7 @@ void intel_ddi_init(struct drm_device *dev, enum port port)
 	intel_encoder = &intel_dig_port->base;
 	encoder = &intel_encoder->base;
 
-	drm_encoder_init(dev, encoder, &intel_ddi_funcs,
+	drm_encoder_init(&dev_priv->drm, encoder, &intel_ddi_funcs,
 			 DRM_MODE_ENCODER_TMDS, "DDI %c", port_name(port));
 
 	intel_encoder->compute_config = intel_ddi_compute_config;

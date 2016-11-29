@@ -28,7 +28,7 @@
  */
 #include <linux/firmware.h>
 #include "i915_drv.h"
-#include "intel_guc.h"
+#include "intel_uc.h"
 
 /**
  * DOC: GuC-specific firmware loader
@@ -592,7 +592,7 @@ static void guc_fw_fetch(struct drm_device *dev, struct intel_guc_fw *guc_fw)
 {
 	struct pci_dev *pdev = dev->pdev;
 	struct drm_i915_gem_object *obj;
-	const struct firmware *fw;
+	const struct firmware *fw = NULL;
 	struct guc_css_header *css;
 	size_t size;
 	int err;
@@ -754,7 +754,6 @@ void intel_guc_init(struct drm_device *dev)
 		fw_path = "";	/* unknown device */
 	}
 
-	guc_fw->guc_dev = dev;
 	guc_fw->guc_fw_path = fw_path;
 	guc_fw->guc_fw_fetch_status = GUC_FIRMWARE_NONE;
 	guc_fw->guc_fw_load_status = GUC_FIRMWARE_NONE;

@@ -1,26 +1,8 @@
-drm-intel drm-intel-fixes 9c763584b7c8911106bb77af7e648bef09af9d80
-	Linux 4.9-rc6
-drm-upstream drm-fixes 855f6529c7c974a566eb56d5e3351a628305e16e
-	Merge branch 'for-upstream/hdlcd' of git://linux-arm.org/linux-ld into drm-fixes
-drm-intel drm-intel-next-fixes e9cbc4bd0140e1d4e0172e2fe8fe07ba278e5980
-	drm/i915: Update DRIVER_DATE to 20161121
-drm-intel drm-intel-next-queued 60abfbb86a8d51576f90c5adcbb4f547a2952782
-	drm/i915/audio: fix hdmi audio noise issue
-drm-upstream drm-next 43167f6c7d7172e0a6cb1ecaa1771a2f457fd165
-	Merge tag 'drm-hisilicon-next-2016-11-17' of http://github.com/zourongrong/linux into drm-next
-sound-upstream for-next 2e57069c869f3009ae70a429d6719a545de43522
-	ALSA: bebob: compare whole string for model name so that readers are not confused
-sound-upstream for-linus 6ff1a25318ebf688ef9593fe09cd449f6fb4ad31
-	ALSA: usb-audio: Fix use-after-free of usb_device at disconnect
-drm-intel topic/drm-fixes c6935931c1894ff857616ff8549b61236a19148f
-	Linux 4.8-rc5
-drm-intel topic/drm-misc 2761ba6c0925ca9c5b917a95f68135d9dce443fb
-	drm: bridge: add DesignWare HDMI I2S audio support
-drm-intel topic/core-for-CI 11390213da1d7677b2ff16361a49cfa7a440da97
-	Merge remote-tracking branch 'x86/x86-urgent-for-linus' into topic/core-for-CI
-drm-misc drm-misc-next 2761ba6c0925ca9c5b917a95f68135d9dce443fb
-	drm: bridge: add DesignWare HDMI I2S audio support
-drm-misc drm-misc-next-fixes 1001354ca34179f3db924eb66672442a173147dc
-	Linux 4.9-rc1
-drm-misc drm-misc-fixes 4da5caa6a6f82cda3193bca855235b87debf78bd
-	drm/dp/mst: Check peer device type before attempting EDID read
+drm-intel/drm-intel-nightly aa2e2d237bb07297890e7b85395e7e8b64009c84
+	drm-tip: 2016y-11m-24d-17h-51m-47s UTC integration manifest
+kvm-upstream/queue e7370b64ffaa7e344da2bc972584e6fafbaf2808
+	kvm/x86: skip async_pf when in guest mode
+vfio-upstream/next 5ba6de98c78ac45166036516e34bec487887ba5d
+	vfio: fix vfio_info_cap_add/shift
+origin/gvt-next 53d6f812c0dbf1c9cad89b1c2118e61c13ca9677
+	drm/i915/gvt: fix lock not released bug for dispatch_workload() err path

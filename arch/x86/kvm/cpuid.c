@@ -16,6 +16,7 @@
 #include <linux/export.h>
 #include <linux/vmalloc.h>
 #include <linux/uaccess.h>
+#include <asm/processor.h>
 #include <asm/fpu/internal.h> /* For use_eager_fpu.  Ugh! */
 #include <asm/user.h>
 #include <asm/fpu/xstate.h>
@@ -65,6 +66,11 @@ u64 kvm_supported_xcr0(void)
 
 #define F(x) bit(X86_FEATURE_##x)
 
+/* These are scattered features in cpufeatures.h. */
+#define KVM_CPUID_BIT_AVX512_4VNNIW     2
+#define KVM_CPUID_BIT_AVX512_4FMAPS     3
+#define KF(x) bit(KVM_CPUID_BIT_##x)
+
 int kvm_update_cpuid(struct kvm_vcpu *vcpu)
 {
 	struct kvm_cpuid_entry2 *best;
@@ -80,6 +86,10 @@ int kvm_update_cpuid(struct kvm_vcpu *vcpu)
 		if (kvm_read_cr4_bits(vcpu, X86_CR4_OSXSAVE))
 			best->ecx |= F(OSXSAVE);
 	}
+
+	best->edx &= ~F(APIC);
+	if (vcpu->arch.apic_base & MSR_IA32_APICBASE_ENABLE)
+		best->edx |= F(APIC);
 
 	if (apic) {
 		if (best->ecx & F(TSC_DEADLINE_TIMER))
@@ -376,6 +386,10 @@ static inline int __do_cpuid_ent(struct kvm_cpuid_entry2 *entry, u32 function,
 	/* cpuid 7.0.ecx*/
 	const u32 kvm_cpuid_7_0_ecx_x86_features = F(PKU) | 0 /*OSPKE*/;
 
+	/* cpuid 7.0.edx*/
+	const u32 kvm_cpuid_7_0_edx_x86_features =
+		KF(AVX512_4VNNIW) | KF(AVX512_4FMAPS);
+
 	/* all calls to cpuid_count() should be made on the same cpu */
 	get_cpu();
 
@@ -458,12 +472,14 @@ static inline int __do_cpuid_ent(struct kvm_cpuid_entry2 *entry, u32 function,
 			/* PKU is not yet implemented for shadow paging. */
 			if (!tdp_enabled)
 				entry->ecx &= ~F(PKU);
+			entry->edx &= kvm_cpuid_7_0_edx_x86_features;
+			entry->edx &= get_scattered_cpuid_leaf(7, 0, CPUID_EDX);
 		} else {
 			entry->ebx = 0;
 			entry->ecx = 0;
+			entry->edx = 0;
 		}
 		entry->eax = 0;
-		entry->edx = 0;
 		break;
 	}
 	case 9:
@@ -865,9 +881,9 @@ EXPORT_SYMBOL_GPL(kvm_cpuid);
 
 void kvm_emulate_cpuid(struct kvm_vcpu *vcpu)
 {
-	u32 function, eax, ebx, ecx, edx;
+	u32 eax, ebx, ecx, edx;
 
-	function = eax = kvm_register_read(vcpu, VCPU_REGS_RAX);
+	eax = kvm_register_read(vcpu, VCPU_REGS_RAX);
 	ecx = kvm_register_read(vcpu, VCPU_REGS_RCX);
 	kvm_cpuid(vcpu, &eax, &ebx, &ecx, &edx);
 	kvm_register_write(vcpu, VCPU_REGS_RAX, eax);

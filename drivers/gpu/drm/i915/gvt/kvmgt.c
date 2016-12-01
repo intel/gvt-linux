@@ -442,7 +442,7 @@ static int intel_vgpu_iommu_notifier(struct notifier_block *nb,
 	/* the only action we care about */
 	if (action == VFIO_IOMMU_NOTIFY_DMA_UNMAP) {
 		unmap = data;
-		gfn = unmap->iova << PAGE_SHIFT;
+		gfn = unmap->iova >> PAGE_SHIFT;
 		gvt_cache_remove(vgpu, gfn);
 	}
 

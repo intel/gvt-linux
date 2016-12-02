@@ -316,24 +316,6 @@ static void print_error_buffers(struct drm_i915_error_state_buf *m,
 	}
 }
 
-static const char *hangcheck_action_to_str(enum intel_engine_hangcheck_action a)
-{
-	switch (a) {
-	case HANGCHECK_IDLE:
-		return "idle";
-	case HANGCHECK_WAIT:
-		return "wait";
-	case HANGCHECK_ACTIVE:
-		return "active";
-	case HANGCHECK_KICK:
-		return "kick";
-	case HANGCHECK_HUNG:
-		return "hung";
-	}
-
-	return "unknown";
-}
-
 static void error_print_instdone(struct drm_i915_error_state_buf *m,
 				 struct drm_i915_error_engine *ee)
 {
@@ -370,8 +352,8 @@ static void error_print_request(struct drm_i915_error_state_buf *m,
 	if (!erq->seqno)
 		return;
 
-	err_printf(m, "%s pid %d, seqno %8x:%08x, emitted %dms ago, head %08x, tail %08x\n",
-		   prefix, erq->pid,
+	err_printf(m, "%s pid %d, ban score %d, seqno %8x:%08x, emitted %dms ago, head %08x, tail %08x\n",
+		   prefix, erq->pid, erq->ban_score,
 		   erq->context, erq->seqno,
 		   jiffies_to_msecs(jiffies - erq->jiffies),
 		   erq->head, erq->tail);
@@ -441,9 +423,13 @@ static void error_print_engine(struct drm_i915_error_state_buf *m,
 	err_printf(m, "  waiting: %s\n", yesno(ee->waiting));
 	err_printf(m, "  ring->head: 0x%08x\n", ee->cpu_ring_head);
 	err_printf(m, "  ring->tail: 0x%08x\n", ee->cpu_ring_tail);
-	err_printf(m, "  hangcheck: %s [%d]\n",
-		   hangcheck_action_to_str(ee->hangcheck_action),
-		   ee->hangcheck_score);
+	err_printf(m, "  hangcheck stall: %s\n", yesno(ee->hangcheck_stalled));
+	err_printf(m, "  hangcheck action: %s\n",
+		   hangcheck_action_to_str(ee->hangcheck_action));
+	err_printf(m, "  hangcheck action timestamp: %lu, %u ms ago\n",
+		   ee->hangcheck_timestamp,
+		   jiffies_to_msecs(jiffies - ee->hangcheck_timestamp));
+
 	error_print_request(m, "  ELSP[0]: ", &ee->execlist[0]);
 	error_print_request(m, "  ELSP[1]: ", &ee->execlist[1]);
 }
@@ -528,11 +514,10 @@ static void err_print_capabilities(struct drm_i915_error_state_buf *m,
 int i915_error_state_to_str(struct drm_i915_error_state_buf *m,
 			    const struct i915_error_state_file_priv *error_priv)
 {
-	struct drm_i915_private *dev_priv = to_i915(error_priv->dev);
+	struct drm_i915_private *dev_priv = error_priv->i915;
 	struct pci_dev *pdev = dev_priv->drm.pdev;
 	struct drm_i915_error_state *error = error_priv->error;
 	struct drm_i915_error_object *obj;
-	int max_hangcheck_score;
 	int i, j;
 
 	if (!error) {
@@ -549,18 +534,15 @@ int i915_error_state_to_str(struct drm_i915_error_state_buf *m,
 	err_printf(m, "Uptime: %ld s %ld us\n",
 		   error->uptime.tv_sec, error->uptime.tv_usec);
 	err_print_capabilities(m, &error->device_info);
-	max_hangcheck_score = 0;
+
 	for (i = 0; i < ARRAY_SIZE(error->engine); i++) {
-		if (error->engine[i].hangcheck_score > max_hangcheck_score)
-			max_hangcheck_score = error->engine[i].hangcheck_score;
-	}
-	for (i = 0; i < ARRAY_SIZE(error->engine); i++) {
-		if (error->engine[i].hangcheck_score == max_hangcheck_score &&
+		if (error->engine[i].hangcheck_stalled &&
 		    error->engine[i].pid != -1) {
-			err_printf(m, "Active process (on ring %s): %s [%d]\n",
+			err_printf(m, "Active process (on ring %s): %s [%d], context bans %d\n",
 				   engine_str(i),
 				   error->engine[i].comm,
-				   error->engine[i].pid);
+				   error->engine[i].pid,
+				   error->engine[i].context_bans);
 		}
 	}
 	err_printf(m, "Reset count: %u\n", error->reset_count);
@@ -651,9 +633,10 @@ int i915_error_state_to_str(struct drm_i915_error_state_buf *m,
 		if (obj) {
 			err_puts(m, dev_priv->engine[i]->name);
 			if (ee->pid != -1)
-				err_printf(m, " (submitted by %s [%d])",
+				err_printf(m, " (submitted by %s [%d], bans %d)",
 					   ee->comm,
-					   ee->pid);
+					   ee->pid,
+					   ee->context_bans);
 			err_printf(m, " --- gtt_offset = 0x%08x %08x\n",
 				   upper_32_bits(obj->gtt_offset),
 				   lower_32_bits(obj->gtt_offset));
@@ -941,7 +924,7 @@ static uint32_t i915_error_generate_code(struct drm_i915_private *dev_priv,
 	 * strictly a client bug. Use instdone to differentiate those some.
 	 */
 	for (i = 0; i < I915_NUM_ENGINES; i++) {
-		if (error->engine[i].hangcheck_action == HANGCHECK_HUNG) {
+		if (error->engine[i].hangcheck_stalled) {
 			if (engine_id)
 				*engine_id = i;
 
@@ -1159,8 +1142,9 @@ static void error_record_engine_registers(struct drm_i915_error_state *error,
 		ee->hws = I915_READ(mmio);
 	}
 
-	ee->hangcheck_score = engine->hangcheck.score;
+	ee->hangcheck_timestamp = engine->hangcheck.action_timestamp;
 	ee->hangcheck_action = engine->hangcheck.action;
+	ee->hangcheck_stalled = engine->hangcheck.stalled;
 
 	if (USES_PPGTT(dev_priv)) {
 		int i;
@@ -1188,6 +1172,7 @@ static void record_request(struct drm_i915_gem_request *request,
 			   struct drm_i915_error_request *erq)
 {
 	erq->context = request->ctx->hw_id;
+	erq->ban_score = request->ctx->ban_score;
 	erq->seqno = request->global_seqno;
 	erq->jiffies = request->emitted_jiffies;
 	erq->head = request->head;
@@ -1659,9 +1644,8 @@ void i915_error_state_put(struct i915_error_state_file_priv *error_priv)
 		kref_put(&error_priv->error->ref, i915_error_state_free);
 }
 
-void i915_destroy_error_state(struct drm_device *dev)
+void i915_destroy_error_state(struct drm_i915_private *dev_priv)
 {
-	struct drm_i915_private *dev_priv = to_i915(dev);
 	struct drm_i915_error_state *error;
 
 	spin_lock_irq(&dev_priv->gpu_error.lock);

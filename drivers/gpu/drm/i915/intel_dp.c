@@ -233,7 +233,7 @@ intel_dp_source_rates(struct intel_dp *intel_dp, const int **source_rates)
 	struct drm_i915_private *dev_priv = to_i915(dig_port->base.base.dev);
 	int size;
 
-	if (IS_BROXTON(dev_priv)) {
+	if (IS_GEN9_LP(dev_priv)) {
 		*source_rates = bxt_rates;
 		size = ARRAY_SIZE(bxt_rates);
 	} else if (IS_SKYLAKE(dev_priv) || IS_KABYLAKE(dev_priv)) {
@@ -645,7 +645,7 @@ void intel_power_sequencer_reset(struct drm_i915_private *dev_priv)
 	struct intel_encoder *encoder;
 
 	if (WARN_ON(!IS_VALLEYVIEW(dev_priv) && !IS_CHERRYVIEW(dev_priv) &&
-		    !IS_BROXTON(dev_priv)))
+		    !IS_GEN9_LP(dev_priv)))
 		return;
 
 	/*
@@ -665,7 +665,7 @@ void intel_power_sequencer_reset(struct drm_i915_private *dev_priv)
 			continue;
 
 		intel_dp = enc_to_intel_dp(&encoder->base);
-		if (IS_BROXTON(dev_priv))
+		if (IS_GEN9_LP(dev_priv))
 			intel_dp->pps_reset = true;
 		else
 			intel_dp->pps_pipe = INVALID_PIPE;
@@ -688,7 +688,7 @@ static void intel_pps_get_registers(struct drm_i915_private *dev_priv,
 
 	memset(regs, 0, sizeof(*regs));
 
-	if (IS_BROXTON(dev_priv))
+	if (IS_GEN9_LP(dev_priv))
 		pps_idx = bxt_power_sequencer_idx(intel_dp);
 	else if (IS_VALLEYVIEW(dev_priv) || IS_CHERRYVIEW(dev_priv))
 		pps_idx = vlv_power_sequencer_pipe(intel_dp);
@@ -697,7 +697,7 @@ static void intel_pps_get_registers(struct drm_i915_private *dev_priv,
 	regs->pp_stat = PP_STATUS(pps_idx);
 	regs->pp_on = PP_ON_DELAYS(pps_idx);
 	regs->pp_off = PP_OFF_DELAYS(pps_idx);
-	if (!IS_BROXTON(dev_priv))
+	if (!IS_GEN9_LP(dev_priv))
 		regs->pp_div = PP_DIVISOR(pps_idx);
 }
 
@@ -2401,6 +2401,8 @@ void intel_dp_sink_dpms(struct intel_dp *intel_dp, int mode)
 		ret = drm_dp_dpcd_writeb(&intel_dp->aux, DP_SET_POWER,
 					 DP_SET_POWER_D3);
 	} else {
+		struct intel_lspcon *lspcon = dp_to_lspcon(intel_dp);
+
 		/*
 		 * When turning on, we need to retry for 1ms to give the sink
 		 * time to wake up.
@@ -2412,6 +2414,9 @@ void intel_dp_sink_dpms(struct intel_dp *intel_dp, int mode)
 				break;
 			msleep(1);
 		}
+
+		if (ret == 1 && lspcon->active)
+			lspcon_wait_pcon_mode(lspcon);
 	}
 
 	if (ret != 1)
@@ -2979,7 +2984,7 @@ intel_dp_voltage_max(struct intel_dp *intel_dp)
 	struct drm_i915_private *dev_priv = to_i915(intel_dp_to_dev(intel_dp));
 	enum port port = dp_to_dig_port(intel_dp)->port;
 
-	if (IS_BROXTON(dev_priv))
+	if (IS_GEN9_LP(dev_priv))
 		return DP_TRAIN_VOLTAGE_SWING_LEVEL_3;
 	else if (INTEL_GEN(dev_priv) >= 9) {
 		if (dev_priv->vbt.edp.low_vswing && port == PORT_A)
@@ -4295,7 +4300,7 @@ static bool intel_digital_port_connected(struct drm_i915_private *dev_priv,
 		return ibx_digital_port_connected(dev_priv, port);
 	else if (HAS_PCH_SPLIT(dev_priv))
 		return cpt_digital_port_connected(dev_priv, port);
-	else if (IS_BROXTON(dev_priv))
+	else if (IS_GEN9_LP(dev_priv))
 		return bxt_digital_port_connected(dev_priv, port);
 	else if (IS_GM45(dev_priv))
 		return gm45_digital_port_connected(dev_priv, port);
@@ -4753,14 +4758,13 @@ static void intel_edp_panel_vdd_sanitize(struct intel_dp *intel_dp)
 void intel_dp_encoder_reset(struct drm_encoder *encoder)
 {
 	struct drm_i915_private *dev_priv = to_i915(encoder->dev);
-	struct intel_digital_port *intel_dig_port = enc_to_dig_port(encoder);
-	struct intel_lspcon *lspcon = &intel_dig_port->lspcon;
-	struct intel_dp *intel_dp = &intel_dig_port->dp;
+	struct intel_dp *intel_dp = enc_to_intel_dp(encoder);
+	struct intel_lspcon *lspcon = dp_to_lspcon(intel_dp);
 
 	if (!HAS_DDI(dev_priv))
 		intel_dp->DP = I915_READ(intel_dp->output_reg);
 
-	if (IS_GEN9(dev_priv) && lspcon->active)
+	if (lspcon->active)
 		lspcon_resume(lspcon);
 
 	if (to_intel_encoder(encoder)->type != INTEL_OUTPUT_EDP)
@@ -4925,7 +4929,7 @@ intel_pps_readout_hw_state(struct drm_i915_private *dev_priv,
 
 	pp_on = I915_READ(regs.pp_on);
 	pp_off = I915_READ(regs.pp_off);
-	if (!IS_BROXTON(dev_priv)) {
+	if (!IS_GEN9_LP(dev_priv)) {
 		I915_WRITE(regs.pp_ctrl, pp_ctl);
 		pp_div = I915_READ(regs.pp_div);
 	}
@@ -4943,7 +4947,7 @@ intel_pps_readout_hw_state(struct drm_i915_private *dev_priv,
 	seq->t10 = (pp_off & PANEL_POWER_DOWN_DELAY_MASK) >>
 		   PANEL_POWER_DOWN_DELAY_SHIFT;
 
-	if (IS_BROXTON(dev_priv)) {
+	if (IS_GEN9_LP(dev_priv)) {
 		u16 tmp = (pp_ctl & BXT_POWER_CYCLE_DELAY_MASK) >>
 			BXT_POWER_CYCLE_DELAY_SHIFT;
 		if (tmp > 0)
@@ -5074,7 +5078,7 @@ intel_dp_init_panel_power_sequencer_registers(struct drm_device *dev,
 		 (seq->t10 << PANEL_POWER_DOWN_DELAY_SHIFT);
 	/* Compute the divisor for the pp clock, simply match the Bspec
 	 * formula. */
-	if (IS_BROXTON(dev_priv)) {
+	if (IS_GEN9_LP(dev_priv)) {
 		pp_div = I915_READ(regs.pp_ctrl);
 		pp_div &= ~BXT_POWER_CYCLE_DELAY_MASK;
 		pp_div |= (DIV_ROUND_UP((seq->t11_t12 + 1), 1000)
@@ -5100,7 +5104,7 @@ intel_dp_init_panel_power_sequencer_registers(struct drm_device *dev,
 
 	I915_WRITE(regs.pp_on, pp_on);
 	I915_WRITE(regs.pp_off, pp_off);
-	if (IS_BROXTON(dev_priv))
+	if (IS_GEN9_LP(dev_priv))
 		I915_WRITE(regs.pp_ctrl, pp_div);
 	else
 		I915_WRITE(regs.pp_div, pp_div);
@@ -5108,7 +5112,7 @@ intel_dp_init_panel_power_sequencer_registers(struct drm_device *dev,
 	DRM_DEBUG_KMS("panel power sequencer register settings: PP_ON %#x, PP_OFF %#x, PP_DIV %#x\n",
 		      I915_READ(regs.pp_on),
 		      I915_READ(regs.pp_off),
-		      IS_BROXTON(dev_priv) ?
+		      IS_GEN9_LP(dev_priv) ?
 		      (I915_READ(regs.pp_ctrl) & BXT_POWER_CYCLE_DELAY_MASK) :
 		      I915_READ(regs.pp_div));
 }
@@ -5766,11 +5770,10 @@ fail:
 	return false;
 }
 
-bool intel_dp_init(struct drm_device *dev,
+bool intel_dp_init(struct drm_i915_private *dev_priv,
 		   i915_reg_t output_reg,
 		   enum port port)
 {
-	struct drm_i915_private *dev_priv = to_i915(dev);
 	struct intel_digital_port *intel_dig_port;
 	struct intel_encoder *intel_encoder;
 	struct drm_encoder *encoder;
@@ -5787,8 +5790,9 @@ bool intel_dp_init(struct drm_device *dev,
 	intel_encoder = &intel_dig_port->base;
 	encoder = &intel_encoder->base;
 
-	if (drm_encoder_init(dev, &intel_encoder->base, &intel_dp_enc_funcs,
-			     DRM_MODE_ENCODER_TMDS, "DP %c", port_name(port)))
+	if (drm_encoder_init(&dev_priv->drm, &intel_encoder->base,
+			     &intel_dp_enc_funcs, DRM_MODE_ENCODER_TMDS,
+			     "DP %c", port_name(port)))
 		goto err_encoder_init;
 
 	intel_encoder->compute_config = intel_dp_compute_config;

@@ -1,22 +1,6 @@
-drm-intel drm-intel-fixes e411072d5740a49cdc9d0713798c30440757e451
-	drm/i915: drop the struct_mutex when wedged or trying to reset
-drm-upstream drm-fixes 83fb8b055544a25ceeac34a666a2149331ea94bf
-	Merge tag 'drm-misc-fixes-2016-11-30' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
-drm-intel drm-intel-next-fixes cf30f5094adc028d5512f4fbb585f3592768f41d
-	Merge tag 'gvt-next-2016-11-30' of https://github.com/01org/gvt-linux into drm-intel-next-fixes
-drm-intel drm-intel-next-queued 01a551971c0fb1739dbe61f60105323a1f8827ad
-	drm/i915: Only poll DW3_A when init DDI PHY for ports B and C.
-drm-upstream drm-next 0d5320fc194128a1a584a7e91a606cb3af2ded80
-	Merge tag 'tilcdc-4.10' of https://github.com/jsarha/linux into drm-next
-sound-upstream for-next 4763601a56f155ddf94ef35fc2c41504a2de15f5
-	ALSA: usb-audio: Fix bogus error return in snd_usb_create_stream()
-sound-upstream for-linus b5337cfe067e96b8a98699da90c7dcd2bec21133
-	ALSA: hda/ca0132 - Add quirk for Alienware 15 R2 2016
-drm-intel topic/core-for-CI 11390213da1d7677b2ff16361a49cfa7a440da97
-	Merge remote-tracking branch 'x86/x86-urgent-for-linus' into topic/core-for-CI
-drm-misc drm-misc-next dabdcdc9822ae4e23cd7ff07090098d34f287b28
-	drm/vmwgfx: Switch to mode_cmd2
-drm-misc drm-misc-next-fixes 1001354ca34179f3db924eb66672442a173147dc
-	Linux 4.9-rc1
-drm-misc drm-misc-fixes e94bd1736f1f60e916a85a80c0b0ebeaae36cce5
-	drm: Don't call drm_for_each_crtc with a non-KMS driver
+drm-tip/drm-tip 78c588b7383745c70d2a6b144c4c2032b120b949
+	drm-tip: 2016y-12m-02d-20h-20m-21s UTC integration manifest
+vfio-upstream/next 2fc1bec15883537cf8b35fd628cca33ca25736a5
+	kvm: set/clear kvm to/from vfio_group when group add/delete
+origin/gvt-next 53d6f812c0dbf1c9cad89b1c2118e61c13ca9677
+	drm/i915/gvt: fix lock not released bug for dispatch_workload() err path

@@ -1,0 +1,22 @@
+drm-intel drm-intel-fixes 3e5de27e940d00d8d504dfb96625fb654f641509
+	Linux 4.9-rc8
+drm-upstream drm-fixes ab7cd8d83e5dba13027de66f1b008b08b30b71a4
+	Merge tag 'drm-intel-fixes-2016-12-01' of git://anongit.freedesktop.org/git/drm-intel into drm-fixes
+drm-intel drm-intel-next-fixes 7a9e10253e9e52451bbe80ddb2874368dbd240a3
+	drm/i915: Move priority bumping for flips earlier
+drm-intel drm-intel-next-queued d637c17832bd020c27b3c29c0bd27275d1af9132
+	drm/i915: Use memcpy_from_wc for GPU error capture
+drm-upstream drm-next 197aa6ed522cc44710687d3b02dd4e4573991416
+	Merge branch 'exynos-drm-next' of git://git.kernel.org/pub/scm/linux/kernel/git/daeinki/drm-exynos into drm-next
+sound-upstream for-next fd1a5059610cd3887f1050171a840ca864108730
+	ALSA: usb-audio: more tolerant packetsize
+sound-upstream for-linus f73cd43ac3b41c0f09a126387f302bbc0d9c726d
+	ALSA: hda - Gate the mic jack on HP Z1 Gen3 AiO
+drm-intel topic/core-for-CI 166d729b45d95570a75bc01a22c6b4c478ad79aa
+	mm/vmalloc: Replace opencoded 4-level page walkers
+drm-misc drm-misc-next db444e1344ddad60bc125717bb0bf3ebbb4c79c7
+	drm/atomic: doc: remove old comment about nonblocking commits
+drm-misc drm-misc-next-fixes 1001354ca34179f3db924eb66672442a173147dc
+	Linux 4.9-rc1
+drm-misc drm-misc-fixes e94bd1736f1f60e916a85a80c0b0ebeaae36cce5
+	drm: Don't call drm_for_each_crtc with a non-KMS driver

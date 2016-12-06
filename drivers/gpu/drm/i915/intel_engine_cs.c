@@ -111,13 +111,12 @@ intel_engine_setup(struct drm_i915_private *dev_priv,
 
 /**
  * intel_engines_init() - allocate, populate and init the Engine Command Streamers
- * @dev: DRM device.
+ * @dev_priv: i915 device private
  *
  * Return: non-zero if the initialization failed.
  */
-int intel_engines_init(struct drm_device *dev)
+int intel_engines_init(struct drm_i915_private *dev_priv)
 {
-	struct drm_i915_private *dev_priv = to_i915(dev);
 	struct intel_device_info *device_info = mkwrite_device_info(dev_priv);
 	unsigned int ring_mask = INTEL_INFO(dev_priv)->ring_mask;
 	unsigned int mask = 0;
@@ -257,7 +256,7 @@ int intel_engine_create_scratch(struct intel_engine_cs *engine, int size)
 
 	WARN_ON(engine->scratch);
 
-	obj = i915_gem_object_create_stolen(&engine->i915->drm, size);
+	obj = i915_gem_object_create_stolen(engine->i915, size);
 	if (!obj)
 		obj = i915_gem_object_create_internal(engine->i915, size);
 	if (IS_ERR(obj)) {

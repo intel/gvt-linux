@@ -549,10 +549,10 @@ static int i915_gem_pageflip_info(struct seq_file *m, void *data)
 			if (work->flip_queued_req) {
 				struct intel_engine_cs *engine = work->flip_queued_req->engine;
 
-				seq_printf(m, "Flip queued on %s at seqno %x, next seqno %x [current breadcrumb %x], completed? %d\n",
+				seq_printf(m, "Flip queued on %s at seqno %x, last submitted seqno %x [current breadcrumb %x], completed? %d\n",
 					   engine->name,
 					   work->flip_queued_req->global_seqno,
-					   atomic_read(&dev_priv->gt.global_timeline.next_seqno),
+					   intel_engine_last_submit(engine),
 					   intel_engine_get_seqno(engine),
 					   i915_gem_request_completed(work->flip_queued_req));
 			} else
@@ -946,7 +946,7 @@ i915_error_state_write(struct file *filp,
 	struct i915_error_state_file_priv *error_priv = filp->private_data;
 
 	DRM_DEBUG_DRIVER("Resetting error state\n");
-	i915_destroy_error_state(error_priv->dev);
+	i915_destroy_error_state(error_priv->i915);
 
 	return cnt;
 }
@@ -960,7 +960,7 @@ static int i915_error_state_open(struct inode *inode, struct file *file)
 	if (!error_priv)
 		return -ENOMEM;
 
-	error_priv->dev = &dev_priv->drm;
+	error_priv->i915 = dev_priv;
 
 	i915_error_state_get(&dev_priv->drm, error_priv);
 
@@ -988,8 +988,8 @@ static ssize_t i915_error_state_read(struct file *file, char __user *userbuf,
 	ssize_t ret_count = 0;
 	int ret;
 
-	ret = i915_error_state_buf_init(&error_str,
-					to_i915(error_priv->dev), count, *pos);
+	ret = i915_error_state_buf_init(&error_str, error_priv->i915,
+					count, *pos);
 	if (ret)
 		return ret;
 
@@ -1026,7 +1026,7 @@ i915_next_seqno_get(void *data, u64 *val)
 {
 	struct drm_i915_private *dev_priv = data;
 
-	*val = 1 + atomic_read(&dev_priv->gt.global_timeline.next_seqno);
+	*val = 1 + atomic_read(&dev_priv->gt.global_timeline.seqno);
 	return 0;
 }
 
@@ -1108,7 +1108,7 @@ static int i915_frequency_info(struct seq_file *m, void *unused)
 		int max_freq;
 
 		rp_state_limits = I915_READ(GEN6_RP_STATE_LIMITS);
-		if (IS_BROXTON(dev_priv)) {
+		if (IS_GEN9_LP(dev_priv)) {
 			rp_state_cap = I915_READ(BXT_RP_STATE_CAP);
 			gt_perf_status = I915_READ(BXT_GT_PERF_STATUS);
 		} else {
@@ -1204,7 +1204,7 @@ static int i915_frequency_info(struct seq_file *m, void *unused)
 		seq_printf(m, "Down threshold: %d%%\n",
 			   dev_priv->rps.down_threshold);
 
-		max_freq = (IS_BROXTON(dev_priv) ? rp_state_cap >> 0 :
+		max_freq = (IS_GEN9_LP(dev_priv) ? rp_state_cap >> 0 :
 			    rp_state_cap >> 16) & 0xff;
 		max_freq *= (IS_SKYLAKE(dev_priv) || IS_KABYLAKE(dev_priv) ?
 			     GEN9_FREQ_SCALER : 1);
@@ -1217,7 +1217,7 @@ static int i915_frequency_info(struct seq_file *m, void *unused)
 		seq_printf(m, "Nominal (RP1) frequency: %dMHz\n",
 			   intel_gpu_freq(dev_priv, max_freq));
 
-		max_freq = (IS_BROXTON(dev_priv) ? rp_state_cap >> 16 :
+		max_freq = (IS_GEN9_LP(dev_priv) ? rp_state_cap >> 16 :
 			    rp_state_cap >> 0) & 0xff;
 		max_freq *= (IS_SKYLAKE(dev_priv) || IS_KABYLAKE(dev_priv) ?
 			     GEN9_FREQ_SCALER : 1);
@@ -1330,10 +1330,12 @@ static int i915_hangcheck_info(struct seq_file *m, void *unused)
 		seq_printf(m, "\tseqno = %x [current %x, last %x]\n",
 			   engine->hangcheck.seqno, seqno[id],
 			   intel_engine_last_submit(engine));
-		seq_printf(m, "\twaiters? %s, fake irq active? %s\n",
+		seq_printf(m, "\twaiters? %s, fake irq active? %s, stalled? %s\n",
 			   yesno(intel_engine_has_waiter(engine)),
 			   yesno(test_bit(engine->id,
-					  &dev_priv->gpu_error.missed_irq_rings)));
+					  &dev_priv->gpu_error.missed_irq_rings)),
+			   yesno(engine->hangcheck.stalled));
+
 		spin_lock_irq(&b->lock);
 		for (rb = rb_first(&b->waiters); rb; rb = rb_next(rb)) {
 			struct intel_wait *w = container_of(rb, typeof(*w), node);
@@ -1346,8 +1348,11 @@ static int i915_hangcheck_info(struct seq_file *m, void *unused)
 		seq_printf(m, "\tACTHD = 0x%08llx [current 0x%08llx]\n",
 			   (long long)engine->hangcheck.acthd,
 			   (long long)acthd[id]);
-		seq_printf(m, "\tscore = %d\n", engine->hangcheck.score);
-		seq_printf(m, "\taction = %d\n", engine->hangcheck.action);
+		seq_printf(m, "\taction = %s(%d) %d ms ago\n",
+			   hangcheck_action_to_str(engine->hangcheck.action),
+			   engine->hangcheck.action,
+			   jiffies_to_msecs(jiffies -
+					    engine->hangcheck.action_timestamp));
 
 		if (engine->id == RCS) {
 			seq_puts(m, "\tinstdone read =\n");
@@ -1875,7 +1880,7 @@ static int i915_gem_framebuffer_info(struct seq_file *m, void *data)
 			   fbdev_fb->base.height,
 			   fbdev_fb->base.depth,
 			   fbdev_fb->base.bits_per_pixel,
-			   fbdev_fb->base.modifier[0],
+			   fbdev_fb->base.modifier,
 			   drm_framebuffer_read_refcount(&fbdev_fb->base));
 		describe_obj(m, fbdev_fb->obj);
 		seq_putc(m, '\n');
@@ -1893,7 +1898,7 @@ static int i915_gem_framebuffer_info(struct seq_file *m, void *data)
 			   fb->base.height,
 			   fb->base.depth,
 			   fb->base.bits_per_pixel,
-			   fb->base.modifier[0],
+			   fb->base.modifier,
 			   drm_framebuffer_read_refcount(&fb->base));
 		describe_obj(m, fb->obj);
 		seq_putc(m, '\n');
@@ -2409,7 +2414,7 @@ static void i915_guc_client_info(struct seq_file *m,
 	seq_printf(m, "\tPriority %d, GuC ctx index: %u, PD offset 0x%x\n",
 		client->priority, client->ctx_index, client->proc_desc_offset);
 	seq_printf(m, "\tDoorbell id %d, offset: 0x%x, cookie 0x%x\n",
-		client->doorbell_id, client->doorbell_offset, client->cookie);
+		client->doorbell_id, client->doorbell_offset, client->doorbell_cookie);
 	seq_printf(m, "\tWQ size %d, offset: 0x%x, tail %d\n",
 		client->wq_size, client->wq_offset, client->wq_tail);
 
@@ -2429,47 +2434,41 @@ static void i915_guc_client_info(struct seq_file *m,
 static int i915_guc_info(struct seq_file *m, void *data)
 {
 	struct drm_i915_private *dev_priv = node_to_i915(m->private);
-	struct drm_device *dev = &dev_priv->drm;
-	struct intel_guc guc;
-	struct i915_guc_client client = {};
+	const struct intel_guc *guc = &dev_priv->guc;
 	struct intel_engine_cs *engine;
 	enum intel_engine_id id;
-	u64 total = 0;
+	u64 total;
 
-	if (!HAS_GUC_SCHED(dev_priv))
+	if (!guc->execbuf_client) {
+		seq_printf(m, "GuC submission %s\n",
+			   HAS_GUC_SCHED(dev_priv) ?
+			   "disabled" :
+			   "not supported");
 		return 0;
-
-	if (mutex_lock_interruptible(&dev->struct_mutex))
-		return 0;
-
-	/* Take a local copy of the GuC data, so we can dump it at leisure */
-	guc = dev_priv->guc;
-	if (guc.execbuf_client)
-		client = *guc.execbuf_client;
-
-	mutex_unlock(&dev->struct_mutex);
+	}
 
 	seq_printf(m, "Doorbell map:\n");
-	seq_printf(m, "\t%*pb\n", GUC_MAX_DOORBELLS, guc.doorbell_bitmap);
-	seq_printf(m, "Doorbell next cacheline: 0x%x\n\n", guc.db_cacheline);
+	seq_printf(m, "\t%*pb\n", GUC_MAX_DOORBELLS, guc->doorbell_bitmap);
+	seq_printf(m, "Doorbell next cacheline: 0x%x\n\n", guc->db_cacheline);
 
-	seq_printf(m, "GuC total action count: %llu\n", guc.action_count);
-	seq_printf(m, "GuC action failure count: %u\n", guc.action_fail);
-	seq_printf(m, "GuC last action command: 0x%x\n", guc.action_cmd);
-	seq_printf(m, "GuC last action status: 0x%x\n", guc.action_status);
-	seq_printf(m, "GuC last action error code: %d\n", guc.action_err);
+	seq_printf(m, "GuC total action count: %llu\n", guc->action_count);
+	seq_printf(m, "GuC action failure count: %u\n", guc->action_fail);
+	seq_printf(m, "GuC last action command: 0x%x\n", guc->action_cmd);
+	seq_printf(m, "GuC last action status: 0x%x\n", guc->action_status);
+	seq_printf(m, "GuC last action error code: %d\n", guc->action_err);
 
+	total = 0;
 	seq_printf(m, "\nGuC submissions:\n");
 	for_each_engine(engine, dev_priv, id) {
-		u64 submissions = guc.submissions[id];
+		u64 submissions = guc->submissions[id];
 		total += submissions;
 		seq_printf(m, "\t%-24s: %10llu, last seqno 0x%08x\n",
-			engine->name, submissions, guc.last_seqno[id]);
+			engine->name, submissions, guc->last_seqno[id]);
 	}
 	seq_printf(m, "\t%s: %llu\n", "Total", total);
 
-	seq_printf(m, "\nGuC execbuf client @ %p:\n", guc.execbuf_client);
-	i915_guc_client_info(m, dev_priv, &client);
+	seq_printf(m, "\nGuC execbuf client @ %p:\n", guc->execbuf_client);
+	i915_guc_client_info(m, dev_priv, guc->execbuf_client);
 
 	i915_guc_log_info(m, dev_priv);
 
@@ -2872,6 +2871,20 @@ static void intel_dp_info(struct seq_file *m,
 				&intel_dp->aux);
 }
 
+static void intel_dp_mst_info(struct seq_file *m,
+			  struct intel_connector *intel_connector)
+{
+	struct intel_encoder *intel_encoder = intel_connector->encoder;
+	struct intel_dp_mst_encoder *intel_mst =
+		enc_to_mst(&intel_encoder->base);
+	struct intel_digital_port *intel_dig_port = intel_mst->primary;
+	struct intel_dp *intel_dp = &intel_dig_port->dp;
+	bool has_audio = drm_dp_mst_port_has_audio(&intel_dp->mst_mgr,
+					intel_connector->port);
+
+	seq_printf(m, "\taudio support: %s\n", yesno(has_audio));
+}
+
 static void intel_hdmi_info(struct seq_file *m,
 			    struct intel_connector *intel_connector)
 {
@@ -2914,7 +2927,10 @@ static void intel_connector_info(struct seq_file *m,
 	switch (connector->connector_type) {
 	case DRM_MODE_CONNECTOR_DisplayPort:
 	case DRM_MODE_CONNECTOR_eDP:
-		intel_dp_info(m, intel_connector);
+		if (intel_encoder->type == INTEL_OUTPUT_DP_MST)
+			intel_dp_mst_info(m, intel_connector);
+		else
+			intel_dp_info(m, intel_connector);
 		break;
 	case DRM_MODE_CONNECTOR_LVDS:
 		if (intel_encoder->type == INTEL_OUTPUT_LVDS)
@@ -3059,7 +3075,7 @@ static void intel_scaler_info(struct seq_file *m, struct intel_crtc *intel_crtc)
 			   pipe_config->scaler_state.scaler_users,
 			   pipe_config->scaler_state.scaler_id);
 
-		for (i = 0; i < SKL_NUM_SCALERS; i++) {
+		for (i = 0; i < num_scalers; i++) {
 			struct intel_scaler *sc =
 					&pipe_config->scaler_state.scalers[i];
 
@@ -3141,11 +3157,11 @@ static int i915_engine_info(struct seq_file *m, void *unused)
 		u64 addr;
 
 		seq_printf(m, "%s\n", engine->name);
-		seq_printf(m, "\tcurrent seqno %x, last %x, hangcheck %x [score %d]\n",
+		seq_printf(m, "\tcurrent seqno %x, last %x, hangcheck %x [%d ms]\n",
 			   intel_engine_get_seqno(engine),
 			   intel_engine_last_submit(engine),
 			   engine->hangcheck.seqno,
-			   engine->hangcheck.score);
+			   jiffies_to_msecs(jiffies - engine->hangcheck.action_timestamp));
 
 		rcu_read_lock();
 
@@ -5164,7 +5180,7 @@ static void gen9_sseu_device_status(struct drm_i915_private *dev_priv,
 	u32 s_reg[s_max], eu_reg[2*s_max], eu_mask[2];
 
 	/* BXT has a single slice and at most 3 subslices. */
-	if (IS_BROXTON(dev_priv)) {
+	if (IS_GEN9_LP(dev_priv)) {
 		s_max = 1;
 		ss_max = 3;
 	}
@@ -5198,7 +5214,7 @@ static void gen9_sseu_device_status(struct drm_i915_private *dev_priv,
 		for (ss = 0; ss < ss_max; ss++) {
 			unsigned int eu_cnt;
 
-			if (IS_BROXTON(dev_priv)) {
+			if (IS_GEN9_LP(dev_priv)) {
 				if (!(s_reg[s] & (GEN9_PGCTL_SS_ACK(ss))))
 					/* skip disabled subslice */
 					continue;

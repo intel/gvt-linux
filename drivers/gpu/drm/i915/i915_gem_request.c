@@ -62,6 +62,15 @@ static void i915_fence_release(struct dma_fence *fence)
 {
 	struct drm_i915_gem_request *req = to_request(fence);
 
+	/* The request is put onto a RCU freelist (i.e. the address
+	 * is immediately reused), mark the fences as being freed now.
+	 * Otherwise the debugobjects for the fences are only marked as
+	 * freed when the slab cache itself is freed, and so we would get
+	 * caught trying to reuse dead objects.
+	 */
+	i915_sw_fence_fini(&req->submit);
+	i915_sw_fence_fini(&req->execute);
+
 	kmem_cache_free(req->i915->requests, req);
 }
 
@@ -263,6 +272,10 @@ static void i915_gem_request_retire(struct drm_i915_gem_request *request)
 					       request->engine);
 	}
 
+	/* Retirement decays the ban score as it is a sign of ctx progress */
+	if (request->ctx->ban_score > 0)
+		request->ctx->ban_score--;
+
 	i915_gem_context_put(request->ctx);
 
 	dma_fence_signal(&request->fence);
@@ -277,6 +290,8 @@ void i915_gem_request_retire_upto(struct drm_i915_gem_request *req)
 	struct drm_i915_gem_request *tmp;
 
 	lockdep_assert_held(&req->i915->drm.struct_mutex);
+	GEM_BUG_ON(!i915_gem_request_completed(req));
+
 	if (list_empty(&req->link))
 		return;
 
@@ -326,11 +341,11 @@ static int i915_gem_init_global_seqno(struct drm_i915_private *i915, u32 seqno)
 	GEM_BUG_ON(i915->gt.active_requests > 1);
 
 	/* If the seqno wraps around, we need to clear the breadcrumb rbtree */
-	if (!i915_seqno_passed(seqno, atomic_read(&timeline->next_seqno))) {
+	if (!i915_seqno_passed(seqno, atomic_read(&timeline->seqno))) {
 		while (intel_breadcrumbs_busy(i915))
 			cond_resched(); /* spin until threads are complete */
 	}
-	atomic_set(&timeline->next_seqno, seqno);
+	atomic_set(&timeline->seqno, seqno);
 
 	/* Finally reset hw state */
 	for_each_engine(engine, i915, id)
@@ -365,11 +380,11 @@ int i915_gem_set_global_seqno(struct drm_device *dev, u32 seqno)
 static int reserve_global_seqno(struct drm_i915_private *i915)
 {
 	u32 active_requests = ++i915->gt.active_requests;
-	u32 next_seqno = atomic_read(&i915->gt.global_timeline.next_seqno);
+	u32 seqno = atomic_read(&i915->gt.global_timeline.seqno);
 	int ret;
 
 	/* Reservation is fine until we need to wrap around */
-	if (likely(next_seqno + active_requests > next_seqno))
+	if (likely(seqno + active_requests > seqno))
 		return 0;
 
 	ret = i915_gem_init_global_seqno(i915, 0);
@@ -383,13 +398,13 @@ static int reserve_global_seqno(struct drm_i915_private *i915)
 
 static u32 __timeline_get_seqno(struct i915_gem_timeline *tl)
 {
-	/* next_seqno only incremented under a mutex */
-	return ++tl->next_seqno.counter;
+	/* seqno only incremented under a mutex */
+	return ++tl->seqno.counter;
 }
 
 static u32 timeline_get_seqno(struct i915_gem_timeline *tl)
 {
-	return atomic_inc_return(&tl->next_seqno);
+	return atomic_inc_return(&tl->seqno);
 }
 
 void __i915_gem_request_submit(struct drm_i915_gem_request *request)
@@ -613,6 +628,11 @@ i915_gem_request_alloc(struct intel_engine_cs *engine,
 	return req;
 
 err_ctx:
+	/* Make sure we didn't add ourselves to external state before freeing */
+	GEM_BUG_ON(!list_empty(&req->active_list));
+	GEM_BUG_ON(!list_empty(&req->priotree.signalers_list));
+	GEM_BUG_ON(!list_empty(&req->priotree.waiters_list));
+
 	i915_gem_context_put(ctx);
 	kmem_cache_free(dev_priv->requests, req);
 err_unreserve:

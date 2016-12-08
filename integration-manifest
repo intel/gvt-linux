@@ -1,0 +1,22 @@
+drm-intel drm-intel-fixes 3e5de27e940d00d8d504dfb96625fb654f641509
+	Linux 4.9-rc8
+drm-upstream drm-fixes 4e4f3e984954143fb0b8e5035df7ff22dd07bb6a
+	Merge branch 'drm-fixes-4.9' of git://people.freedesktop.org/~agd5f/linux into drm-fixes
+drm-intel drm-intel-next-fixes 7a9e10253e9e52451bbe80ddb2874368dbd240a3
+	drm/i915: Move priority bumping for flips earlier
+drm-intel drm-intel-next-queued b3b8e99984a4eace91bc097e8f8cec71441cae16
+	drm/i915/gen9: Fix PCODE polling during SAGV disabling
+drm-upstream drm-next 8166255704edea288bb116375b3c2a47af2fe28c
+	drm: mxsfb: Select DRM_PANEL
+sound-upstream for-next 048ea6dfbe94f00afe52a2403324449efb356cd6
+	ALSA: cs46xx: add a new line
+sound-upstream for-linus f73cd43ac3b41c0f09a126387f302bbc0d9c726d
+	ALSA: hda - Gate the mic jack on HP Z1 Gen3 AiO
+drm-intel topic/core-for-CI 166d729b45d95570a75bc01a22c6b4c478ad79aa
+	mm/vmalloc: Replace opencoded 4-level page walkers
+drm-misc drm-misc-next 7da0e124af76c79927f0d7abcc58d58d0fd7072f
+	drm/atomic: Use active instead of enable in wait_for_vblanks.
+drm-misc drm-misc-next-fixes 72a93e8dd52c9feea42f1258d555e6070680a347
+	drm: Take ownership of the dmabuf->obj when exporting
+drm-misc drm-misc-fixes e94bd1736f1f60e916a85a80c0b0ebeaae36cce5
+	drm: Don't call drm_for_each_crtc with a non-KMS driver

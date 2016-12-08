@@ -145,9 +145,9 @@ static int intelfb_alloc(struct drm_fb_helper *helper,
 	 * important and we should probably use that space with FBC or other
 	 * features. */
 	if (size * 2 < ggtt->stolen_usable_size)
-		obj = i915_gem_object_create_stolen(dev, size);
+		obj = i915_gem_object_create_stolen(dev_priv, size);
 	if (obj == NULL)
-		obj = i915_gem_object_create(dev, size);
+		obj = i915_gem_object_create(dev_priv, size);
 	if (IS_ERR(obj)) {
 		DRM_ERROR("failed to allocate framebuffer\n");
 		ret = PTR_ERR(obj);
@@ -633,7 +633,7 @@ static bool intel_fbdev_init_bios(struct drm_device *dev,
 		cur_size = intel_crtc->config->base.adjusted_mode.crtc_vdisplay;
 		cur_size = intel_fb_align_height(dev, cur_size,
 						 fb->base.pixel_format,
-						 fb->base.modifier[0]);
+						 fb->base.modifier);
 		cur_size *= fb->base.pitches[0];
 		DRM_DEBUG_KMS("pipe %c area: %dx%d, bpp: %d, size: %d\n",
 			      pipe_name(intel_crtc->pipe),

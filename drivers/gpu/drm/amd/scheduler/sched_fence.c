@@ -27,6 +27,25 @@
 #include <drm/drmP.h>
 #include "gpu_scheduler.h"
 
+static struct kmem_cache *sched_fence_slab;
+
+int amd_sched_fence_slab_init(void)
+{
+	sched_fence_slab = kmem_cache_create(
+		"amd_sched_fence", sizeof(struct amd_sched_fence), 0,
+		SLAB_HWCACHE_ALIGN, NULL);
+	if (!sched_fence_slab)
+		return -ENOMEM;
+
+	return 0;
+}
+
+void amd_sched_fence_slab_fini(void)
+{
+	rcu_barrier();
+	kmem_cache_destroy(sched_fence_slab);
+}
+
 struct amd_sched_fence *amd_sched_fence_create(struct amd_sched_entity *entity,
 					       void *owner)
 {
@@ -107,7 +126,7 @@ static void amd_sched_fence_free(struct rcu_head *rcu)
 }
 
 /**
- * amd_sched_fence_release - callback that fence can be freed
+ * amd_sched_fence_release_scheduled - callback that fence can be freed
  *
  * @fence: fence
  *
@@ -122,7 +141,7 @@ static void amd_sched_fence_release_scheduled(struct dma_fence *f)
 }
 
 /**
- * amd_sched_fence_release_scheduled - drop extra reference
+ * amd_sched_fence_release_finished - drop extra reference
  *
  * @f: fence
  *

@@ -1869,9 +1869,9 @@ intel_ring_create_vma(struct drm_i915_private *dev_priv, int size)
 	struct drm_i915_gem_object *obj;
 	struct i915_vma *vma;
 
-	obj = i915_gem_object_create_stolen(&dev_priv->drm, size);
+	obj = i915_gem_object_create_stolen(dev_priv, size);
 	if (!obj)
-		obj = i915_gem_object_create(&dev_priv->drm, size);
+		obj = i915_gem_object_create(dev_priv, size);
 	if (IS_ERR(obj))
 		return ERR_CAST(obj);
 
@@ -1912,7 +1912,7 @@ intel_engine_create_ring(struct intel_engine_cs *engine, int size)
 	 * of the buffer.
 	 */
 	ring->effective_size = size;
-	if (IS_I830(engine->i915) || IS_845G(engine->i915))
+	if (IS_I830(engine->i915) || IS_I845G(engine->i915))
 		ring->effective_size -= 2 * CACHELINE_BYTES;
 
 	ring->last_retired_head = -1;
@@ -2452,7 +2452,7 @@ static void intel_ring_init_semaphores(struct drm_i915_private *dev_priv,
 	if (INTEL_GEN(dev_priv) >= 8 && !dev_priv->semaphore) {
 		struct i915_vma *vma;
 
-		obj = i915_gem_object_create(&dev_priv->drm, 4096);
+		obj = i915_gem_object_create(dev_priv, 4096);
 		if (IS_ERR(obj))
 			goto err;
 
@@ -2608,7 +2608,7 @@ static void intel_ring_default_vfuncs(struct drm_i915_private *dev_priv,
 		engine->emit_bb_start = gen6_emit_bb_start;
 	else if (INTEL_GEN(dev_priv) >= 4)
 		engine->emit_bb_start = i965_emit_bb_start;
-	else if (IS_I830(dev_priv) || IS_845G(dev_priv))
+	else if (IS_I830(dev_priv) || IS_I845G(dev_priv))
 		engine->emit_bb_start = i830_emit_bb_start;
 	else
 		engine->emit_bb_start = i915_emit_bb_start;

@@ -695,7 +695,6 @@ pt_lock_engine(struct i915_priotree *pt, struct intel_engine_cs *locked)
 
 static void execlists_schedule(struct drm_i915_gem_request *request, int prio)
 {
-	static DEFINE_MUTEX(lock);
 	struct intel_engine_cs *engine = NULL;
 	struct i915_dependency *dep, *p;
 	struct i915_dependency stack;
@@ -704,8 +703,8 @@ static void execlists_schedule(struct drm_i915_gem_request *request, int prio)
 	if (prio <= READ_ONCE(request->priotree.priority))
 		return;
 
-	/* Need global lock to use the temporary link inside i915_dependency */
-	mutex_lock(&lock);
+	/* Need BKL in order to use the temporary link inside i915_dependency */
+	lockdep_assert_held(&request->i915->drm.struct_mutex);
 
 	stack.signaler = &request->priotree;
 	list_add(&stack.dfs_link, &dfs);
@@ -734,7 +733,7 @@ static void execlists_schedule(struct drm_i915_gem_request *request, int prio)
 			if (prio > READ_ONCE(p->signaler->priority))
 				list_move_tail(&p->dfs_link, &dfs);
 
-		p = list_next_entry(dep, dfs_link);
+		list_safe_reset_next(dep, p, dfs_link);
 		if (!RB_EMPTY_NODE(&pt->node))
 			continue;
 
@@ -771,8 +770,6 @@ static void execlists_schedule(struct drm_i915_gem_request *request, int prio)
 
 	if (engine)
 		spin_unlock_irq(&engine->timeline->lock);
-
-	mutex_unlock(&lock);
 
 	/* XXX Do we need to preempt to make room for us and our deps? */
 }
@@ -1246,7 +1243,7 @@ static int lrc_setup_wa_ctx_obj(struct intel_engine_cs *engine, u32 size)
 	struct i915_vma *vma;
 	int err;
 
-	obj = i915_gem_object_create(&engine->i915->drm, PAGE_ALIGN(size));
+	obj = i915_gem_object_create(engine->i915, PAGE_ALIGN(size));
 	if (IS_ERR(obj))
 		return PTR_ERR(obj);
 
@@ -2245,7 +2242,7 @@ static int execlists_context_deferred_alloc(struct i915_gem_context *ctx,
 	/* One extra page as the sharing data between driver and GuC */
 	context_size += PAGE_SIZE * LRC_PPHWSP_PN;
 
-	ctx_obj = i915_gem_object_create(&ctx->i915->drm, context_size);
+	ctx_obj = i915_gem_object_create(ctx->i915, context_size);
 	if (IS_ERR(ctx_obj)) {
 		DRM_DEBUG_DRIVER("Alloc LRC backing obj failed.\n");
 		return PTR_ERR(ctx_obj);

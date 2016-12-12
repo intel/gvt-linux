@@ -384,6 +384,9 @@ static void snd_complete_urb(struct urb *urb)
 	if (unlikely(atomic_read(&ep->chip->shutdown)))
 		goto exit_clear;
 
+	if (unlikely(!test_bit(EP_FLAG_RUNNING, &ep->flags)))
+		goto exit_clear;
+
 	if (usb_pipeout(ep->pipe)) {
 		retire_outbound_urb(ep, ctx);
 		/* can be stopped during retire callback */
@@ -534,6 +537,11 @@ static int wait_clear_urbs(struct snd_usb_endpoint *ep)
 			alive, ep->ep_num);
 	clear_bit(EP_FLAG_STOPPING, &ep->flags);
 
+	ep->data_subs = NULL;
+	ep->sync_slave = NULL;
+	ep->retire_data_urb = NULL;
+	ep->prepare_data_urb = NULL;
+
 	return 0;
 }
 
@@ -632,8 +640,8 @@ static int data_ep_set_params(struct snd_usb_endpoint *ep,
 	ep->stride = frame_bits >> 3;
 	ep->silence_value = pcm_format == SNDRV_PCM_FORMAT_U8 ? 0x80 : 0;
 
-	/* assume max. frequency is 25% higher than nominal */
-	ep->freqmax = ep->freqn + (ep->freqn >> 2);
+	/* assume max. frequency is 50% higher than nominal */
+	ep->freqmax = ep->freqn + (ep->freqn >> 1);
 	/* Round up freqmax to nearest integer in order to calculate maximum
 	 * packet size, which must represent a whole number of frames.
 	 * This is accomplished by adding 0x0.ffff before converting the
@@ -1006,10 +1014,6 @@ void snd_usb_endpoint_stop(struct snd_usb_endpoint *ep)
 
 	if (--ep->use_count == 0) {
 		deactivate_urbs(ep, false);
-		ep->data_subs = NULL;
-		ep->sync_slave = NULL;
-		ep->retire_data_urb = NULL;
-		ep->prepare_data_urb = NULL;
 		set_bit(EP_FLAG_STOPPING, &ep->flags);
 	}
 }

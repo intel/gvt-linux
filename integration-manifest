@@ -1,22 +1,8 @@
-drm-intel drm-intel-fixes 69973b830859bc6529a7a0468ba0d80ee5117826
-	Linux 4.9
-drm-upstream drm-fixes 4e4f3e984954143fb0b8e5035df7ff22dd07bb6a
-	Merge branch 'drm-fixes-4.9' of git://people.freedesktop.org/~agd5f/linux into drm-fixes
-drm-intel drm-intel-next-fixes 7a9e10253e9e52451bbe80ddb2874368dbd240a3
-	drm/i915: Move priority bumping for flips earlier
-drm-intel drm-intel-next-queued add033793c9efa7b0a8ecd2fa192fe85aa8b0854
-	drm/i915: Parse panel backlight controller from VBT
-drm-upstream drm-next acc5ddd972793d6ec7e51a9543f24b7e932134dc
-	Merge tag 'drm-misc-next-2016-12-08' of git://anongit.freedesktop.org/git/drm-misc into drm-next
-sound-upstream for-next d71bb23a81f80eeb5291e5c782377024e7265a23
-	Merge branch 'for-linus' into for-next
-sound-upstream for-linus 82ffb6fc637150b279f49e174166d2aa3853eaf4
-	ALSA: usb-audio: Add QuickCam Communicate Deluxe/S7500 to volume_control_quirks
-drm-intel topic/core-for-CI 166d729b45d95570a75bc01a22c6b4c478ad79aa
-	mm/vmalloc: Replace opencoded 4-level page walkers
-drm-misc drm-misc-next 697cc9c8a2c39a42188840e35e212230a240f9e4
-	drm: Simplify GETRESOURCES ioctl
-drm-misc drm-misc-next-fixes 6449b088dd51dd5aa6b38455888bbf538d21f2fc
-	drm: Add fake controlD* symlinks for backwards compat
-drm-misc drm-misc-fixes e94bd1736f1f60e916a85a80c0b0ebeaae36cce5
-	drm: Don't call drm_for_each_crtc with a non-KMS driver
+drm-tip/drm-tip ac15a853c56c1a95a992f39ca2c1579e68b73a71
+	drm-tip: 2016y-12m-12d-15h-25m-32s UTC integration manifest
+kvm-upstream/linux-next 36da91bdf568e804aac3ef02a5e3d867585f08fb
+	KVM: x86: Handle the kthread worker using the new API
+vfio-upstream/next 2b8bb1d771f736b8b34bf160115aee1b12d29f83
+	vfio iommu type1: Fix size argument to vfio_find_dma() in pin_pages/unpin_pages
+origin/gvt-next 7b1bb844c35e637d3eabae57f1bd77bcf7091c98
+	drm/i915/gvt: reset the GGTT entry when vGPU created

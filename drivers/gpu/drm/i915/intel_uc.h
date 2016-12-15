@@ -21,8 +21,8 @@
  * IN THE SOFTWARE.
  *
  */
-#ifndef _INTEL_GUC_H_
-#define _INTEL_GUC_H_
+#ifndef _INTEL_UC_H_
+#define _INTEL_UC_H_
 
 #include "intel_guc_fwif.h"
 #include "i915_guc_reg.h"
@@ -74,7 +74,7 @@ struct i915_guc_client {
 	uint32_t proc_desc_offset;
 
 	uint32_t doorbell_offset;
-	uint32_t cookie;
+	uint32_t doorbell_cookie;
 	uint16_t doorbell_id;
 	uint16_t padding[3];		/* Maintain alignment		*/
 
@@ -103,7 +103,6 @@ enum intel_guc_fw_status {
  * of fetching, caching, and loading the firmware image into the GuC.
  */
 struct intel_guc_fw {
-	struct drm_device *		guc_dev;
 	const char *			guc_fw_path;
 	size_t				guc_fw_size;
 	struct drm_i915_gem_object *	guc_fw_obj;
@@ -143,7 +142,7 @@ struct intel_guc {
 	struct intel_guc_fw guc_fw;
 	struct intel_guc_log log;
 
-	/* GuC2Host interrupt related state */
+	/* intel_guc_recv interrupt related state */
 	bool interrupts_enabled;
 
 	struct i915_vma *ads_vma;
@@ -165,17 +164,26 @@ struct intel_guc {
 	uint64_t submissions[I915_NUM_ENGINES];
 	uint32_t last_seqno[I915_NUM_ENGINES];
 
-	/* To serialize the Host2GuC actions */
-	struct mutex action_lock;
+	/* To serialize the intel_guc_send actions */
+	struct mutex send_mutex;
 };
 
+/* intel_uc.c */
+void intel_uc_init_early(struct drm_i915_private *dev_priv);
+bool intel_guc_recv(struct drm_i915_private *dev_priv, u32 *status);
+int intel_guc_send(struct intel_guc *guc, const u32 *action, u32 len);
+int intel_guc_sample_forcewake(struct intel_guc *guc);
+int intel_guc_log_flush_complete(struct intel_guc *guc);
+int intel_guc_log_flush(struct intel_guc *guc);
+int intel_guc_log_control(struct intel_guc *guc, u32 control_val);
+
 /* intel_guc_loader.c */
-extern void intel_guc_init(struct drm_device *dev);
-extern int intel_guc_setup(struct drm_device *dev);
-extern void intel_guc_fini(struct drm_device *dev);
+extern void intel_guc_init(struct drm_i915_private *dev_priv);
+extern int intel_guc_setup(struct drm_i915_private *dev_priv);
+extern void intel_guc_fini(struct drm_i915_private *dev_priv);
 extern const char *intel_guc_fw_status_repr(enum intel_guc_fw_status status);
-extern int intel_guc_suspend(struct drm_device *dev);
-extern int intel_guc_resume(struct drm_device *dev);
+extern int intel_guc_suspend(struct drm_i915_private *dev_priv);
+extern int intel_guc_resume(struct drm_i915_private *dev_priv);
 
 /* i915_guc_submission.c */
 int i915_guc_submission_init(struct drm_i915_private *dev_priv);

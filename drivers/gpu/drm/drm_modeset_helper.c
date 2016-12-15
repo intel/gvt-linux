@@ -62,33 +62,21 @@ EXPORT_SYMBOL(drm_helper_move_panel_connectors_to_head);
 
 /**
  * drm_helper_mode_fill_fb_struct - fill out framebuffer metadata
+ * @dev: DRM device
  * @fb: drm_framebuffer object to fill out
  * @mode_cmd: metadata from the userspace fb creation request
  *
  * This helper can be used in a drivers fb_create callback to pre-fill the fb's
  * metadata fields.
  */
-void drm_helper_mode_fill_fb_struct(struct drm_framebuffer *fb,
+void drm_helper_mode_fill_fb_struct(struct drm_device *dev,
+				    struct drm_framebuffer *fb,
 				    const struct drm_mode_fb_cmd2 *mode_cmd)
 {
-	const struct drm_format_info *info;
 	int i;
 
-	info = drm_format_info(mode_cmd->pixel_format);
-	if (!info || !info->depth) {
-		struct drm_format_name_buf format_name;
-
-		DRM_DEBUG_KMS("non-RGB pixel format %s\n",
-		              drm_get_format_name(mode_cmd->pixel_format,
-		                                  &format_name));
-
-		fb->depth = 0;
-		fb->bits_per_pixel = 0;
-	} else {
-		fb->depth = info->depth;
-		fb->bits_per_pixel = info->cpp[0] * 8;
-	}
-
+	fb->dev = dev;
+	fb->format = drm_format_info(mode_cmd->pixel_format);
 	fb->width = mode_cmd->width;
 	fb->height = mode_cmd->height;
 	for (i = 0; i < 4; i++) {
@@ -96,7 +84,6 @@ void drm_helper_mode_fill_fb_struct(struct drm_framebuffer *fb,
 		fb->offsets[i] = mode_cmd->offsets[i];
 	}
 	fb->modifier = mode_cmd->modifier[0];
-	fb->pixel_format = mode_cmd->pixel_format;
 	fb->flags = mode_cmd->flags;
 }
 EXPORT_SYMBOL(drm_helper_mode_fill_fb_struct);

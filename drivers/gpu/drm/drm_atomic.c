@@ -902,11 +902,11 @@ static int drm_atomic_plane_check(struct drm_plane *plane,
 	}
 
 	/* Check whether this plane supports the fb pixel format. */
-	ret = drm_plane_check_pixel_format(plane, state->fb->pixel_format);
+	ret = drm_plane_check_pixel_format(plane, state->fb->format->format);
 	if (ret) {
 		struct drm_format_name_buf format_name;
 		DRM_DEBUG_ATOMIC("Invalid pixel format %s\n",
-		                 drm_get_format_name(state->fb->pixel_format,
+		                 drm_get_format_name(state->fb->format->format,
 		                                     &format_name));
 		return ret;
 	}
@@ -960,11 +960,11 @@ static void drm_atomic_plane_print_state(struct drm_printer *p,
 	drm_printf(p, "\tfb=%u\n", state->fb ? state->fb->base.id : 0);
 	if (state->fb) {
 		struct drm_framebuffer *fb = state->fb;
-		int i, n = drm_format_num_planes(fb->pixel_format);
+		int i, n = fb->format->num_planes;
 		struct drm_format_name_buf format_name;
 
 		drm_printf(p, "\t\tformat=%s\n",
-		              drm_get_format_name(fb->pixel_format, &format_name));
+		              drm_get_format_name(fb->format->format, &format_name));
 		drm_printf(p, "\t\t\tmodifier=0x%llx\n", fb->modifier);
 		drm_printf(p, "\t\tsize=%dx%d\n", fb->width, fb->height);
 		drm_printf(p, "\t\tlayers:\n");
@@ -2195,10 +2195,6 @@ retry:
 		goto out;
 
 	if (arg->flags & DRM_MODE_ATOMIC_TEST_ONLY) {
-		/*
-		 * Unlike commit, check_only does not clean up state.
-		 * Below we call drm_atomic_state_put for it.
-		 */
 		ret = drm_atomic_check_only(state);
 	} else if (arg->flags & DRM_MODE_ATOMIC_NONBLOCK) {
 		ret = drm_atomic_nonblocking_commit(state);

@@ -1,22 +1,8 @@
-drm-intel drm-intel-fixes 69973b830859bc6529a7a0468ba0d80ee5117826
-	Linux 4.9
-drm-upstream drm-fixes 4e4f3e984954143fb0b8e5035df7ff22dd07bb6a
-	Merge branch 'drm-fixes-4.9' of git://people.freedesktop.org/~agd5f/linux into drm-fixes
-drm-intel drm-intel-next-fixes 7a9e10253e9e52451bbe80ddb2874368dbd240a3
-	drm/i915: Move priority bumping for flips earlier
-drm-intel drm-intel-next-queued 2bf0d26706f899e124a2b340dc0529386bb2b235
-	drm/i915: Optimise VMA lookup slightly
-drm-upstream drm-next 2cf026ae85c42f253feb9f420d1b4bc99bd5503d
-	Merge branch 'linux-4.10' of git://github.com/skeggsb/linux into drm-next
-sound-upstream for-next 995c6a7fd9b9212abdf01160f6ce3193176be503
-	ALSA: hiface: Fix M2Tech hiFace driver sampling rate change
-sound-upstream for-linus 995c6a7fd9b9212abdf01160f6ce3193176be503
-	ALSA: hiface: Fix M2Tech hiFace driver sampling rate change
-drm-intel topic/core-for-CI 4e4bc4951e563618e62a0e8a7a2e794679e30908
-	mm/vmalloc: Replace opencoded 4-level page walkers
-drm-misc drm-misc-next c02f39ac00a66a75e55f84acdd7939cb37709085
-	drm: Fix kernel docs for drm_helper_mode_fill_fb_struct()
-drm-misc drm-misc-next-fixes 6449b088dd51dd5aa6b38455888bbf538d21f2fc
-	drm: Add fake controlD* symlinks for backwards compat
-drm-misc drm-misc-fixes e94bd1736f1f60e916a85a80c0b0ebeaae36cce5
-	drm: Don't call drm_for_each_crtc with a non-KMS driver
+drm-tip/drm-tip 639f10d1159e87cac2f85769dcd081520b904f56
+	drm-tip: 2016y-12m-15d-17h-57m-41s UTC integration manifest
+kvm-upstream/linux-next 36da91bdf568e804aac3ef02a5e3d867585f08fb
+	KVM: x86: Handle the kthread worker using the new API
+vfio-upstream/next 2b8bb1d771f736b8b34bf160115aee1b12d29f83
+	vfio iommu type1: Fix size argument to vfio_find_dma() in pin_pages/unpin_pages
+origin/gvt-next 7b1bb844c35e637d3eabae57f1bd77bcf7091c98
+	drm/i915/gvt: reset the GGTT entry when vGPU created

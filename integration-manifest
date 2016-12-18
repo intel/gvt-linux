@@ -1,0 +1,22 @@
+drm-intel drm-intel-fixes 69973b830859bc6529a7a0468ba0d80ee5117826
+	Linux 4.9
+drm-upstream drm-fixes 4e4f3e984954143fb0b8e5035df7ff22dd07bb6a
+	Merge branch 'drm-fixes-4.9' of git://people.freedesktop.org/~agd5f/linux into drm-fixes
+drm-intel drm-intel-next-fixes 7a9e10253e9e52451bbe80ddb2874368dbd240a3
+	drm/i915: Move priority bumping for flips earlier
+drm-intel drm-intel-next-queued f73e73999d39a274adb8b342d7d8e722ffcf92d5
+	drm/i915: Swap if(enable_execlists) in i915_gem_request_alloc for a vfunc
+drm-upstream drm-next 2cf026ae85c42f253feb9f420d1b4bc99bd5503d
+	Merge branch 'linux-4.10' of git://github.com/skeggsb/linux into drm-next
+sound-upstream for-next 995c6a7fd9b9212abdf01160f6ce3193176be503
+	ALSA: hiface: Fix M2Tech hiFace driver sampling rate change
+sound-upstream for-linus 995c6a7fd9b9212abdf01160f6ce3193176be503
+	ALSA: hiface: Fix M2Tech hiFace driver sampling rate change
+drm-intel topic/core-for-CI 4e4bc4951e563618e62a0e8a7a2e794679e30908
+	mm/vmalloc: Replace opencoded 4-level page walkers
+drm-misc drm-misc-next 2fa70bb9b5642211c521910d23e8b6c8d425fb89
+	drm/nouveau: use designated initializers
+drm-misc drm-misc-next-fixes 6449b088dd51dd5aa6b38455888bbf538d21f2fc
+	drm: Add fake controlD* symlinks for backwards compat
+drm-misc drm-misc-fixes 298360af3dab45659810fdc51aba0c9f4097e4f6
+	drivers/gpu/drm/ast: Fix infinite loop if read fails

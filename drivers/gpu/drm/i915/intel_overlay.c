@@ -957,7 +957,7 @@ static int check_overlay_src(struct drm_i915_private *dev_priv,
 	u32 tmp;
 
 	/* check src dimensions */
-	if (IS_845G(dev_priv) || IS_I830(dev_priv)) {
+	if (IS_I845G(dev_priv) || IS_I830(dev_priv)) {
 		if (rec->src_height > IMAGE_MAX_HEIGHT_LEGACY ||
 		    rec->src_width  > IMAGE_MAX_WIDTH_LEGACY)
 			return -EINVAL;
@@ -1009,7 +1009,7 @@ static int check_overlay_src(struct drm_i915_private *dev_priv,
 		return -EINVAL;
 
 	/* stride checking */
-	if (IS_I830(dev_priv) || IS_845G(dev_priv))
+	if (IS_I830(dev_priv) || IS_I845G(dev_priv))
 		stride_mask = 255;
 	else
 		stride_mask = 63;
@@ -1391,10 +1391,9 @@ void intel_setup_overlay(struct drm_i915_private *dev_priv)
 
 	reg_bo = NULL;
 	if (!OVERLAY_NEEDS_PHYSICAL(dev_priv))
-		reg_bo = i915_gem_object_create_stolen(&dev_priv->drm,
-						       PAGE_SIZE);
+		reg_bo = i915_gem_object_create_stolen(dev_priv, PAGE_SIZE);
 	if (reg_bo == NULL)
-		reg_bo = i915_gem_object_create(&dev_priv->drm, PAGE_SIZE);
+		reg_bo = i915_gem_object_create(dev_priv, PAGE_SIZE);
 	if (IS_ERR(reg_bo))
 		goto out_free;
 	overlay->reg_bo = reg_bo;

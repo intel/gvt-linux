@@ -1,22 +1,10 @@
-drm-intel drm-intel-fixes 69973b830859bc6529a7a0468ba0d80ee5117826
-	Linux 4.9
-drm-upstream drm-fixes 4e4f3e984954143fb0b8e5035df7ff22dd07bb6a
-	Merge branch 'drm-fixes-4.9' of git://people.freedesktop.org/~agd5f/linux into drm-fixes
-drm-intel drm-intel-next-fixes 7a9e10253e9e52451bbe80ddb2874368dbd240a3
-	drm/i915: Move priority bumping for flips earlier
-drm-intel drm-intel-next-queued 5af7edc5859abf7b38e3158bf078db831ec28853
-	drm/i915: Simplify gem stolen initialization.
-drm-upstream drm-next 2cf026ae85c42f253feb9f420d1b4bc99bd5503d
-	Merge branch 'linux-4.10' of git://github.com/skeggsb/linux into drm-next
-sound-upstream for-next 995c6a7fd9b9212abdf01160f6ce3193176be503
-	ALSA: hiface: Fix M2Tech hiFace driver sampling rate change
-sound-upstream for-linus 995c6a7fd9b9212abdf01160f6ce3193176be503
-	ALSA: hiface: Fix M2Tech hiFace driver sampling rate change
-drm-intel topic/core-for-CI 4e4bc4951e563618e62a0e8a7a2e794679e30908
-	mm/vmalloc: Replace opencoded 4-level page walkers
-drm-misc drm-misc-next f79f26921ee12c6fc14d0df61b1eb27a5070b959
-	drm/i915: Add a cursor hack to allow converting legacy page flip to atomic, v3.
-drm-misc drm-misc-next-fixes 6449b088dd51dd5aa6b38455888bbf538d21f2fc
-	drm: Add fake controlD* symlinks for backwards compat
-drm-misc drm-misc-fixes 298360af3dab45659810fdc51aba0c9f4097e4f6
-	drivers/gpu/drm/ast: Fix infinite loop if read fails
+drm-tip/drm-tip 86a26727690faef9018c6585e0094e701e0e9b0c
+	drm-tip: 2016y-12m-19d-19h-15m-10s UTC integration manifest
+kvm-upstream/linux-next ef85b67385436ddc1998f45f1d6a210f935b3388
+	kvm: nVMX: Allow L1 to intercept software exceptions (#BP and #OF)
+vfio-upstream/next 2b8bb1d771f736b8b34bf160115aee1b12d29f83
+	vfio iommu type1: Fix size argument to vfio_find_dma() in pin_pages/unpin_pages
+origin/gvt-next 7b1bb844c35e637d3eabae57f1bd77bcf7091c98
+	drm/i915/gvt: reset the GGTT entry when vGPU created
+origin/topic/kvmgt-vfio-mdev 4f0085892ef37ac28a421cb5ff1534560cee914f
+	drm/i915/gvt/kvmgt: trival: code cleanup

@@ -1373,12 +1373,22 @@ static void bxt_ddi_pll_enable(struct drm_i915_private *dev_priv,
 	enum dpio_phy phy;
 	enum dpio_channel ch;
 
-	bxt_port_to_phy_channel(port, &phy, &ch);
+	bxt_port_to_phy_channel(dev_priv, port, &phy, &ch);
 
 	/* Non-SSC reference */
 	temp = I915_READ(BXT_PORT_PLL_ENABLE(port));
 	temp |= PORT_PLL_REF_SEL;
 	I915_WRITE(BXT_PORT_PLL_ENABLE(port), temp);
+
+	if (IS_GEMINILAKE(dev_priv)) {
+		temp = I915_READ(BXT_PORT_PLL_ENABLE(port));
+		temp |= PORT_PLL_POWER_ENABLE;
+		I915_WRITE(BXT_PORT_PLL_ENABLE(port), temp);
+
+		if (wait_for_us((I915_READ(BXT_PORT_PLL_ENABLE(port)) &
+				 PORT_PLL_POWER_STATE), 200))
+			DRM_ERROR("Power state not set for PLL:%d\n", port);
+	}
 
 	/* Disable 10 bit clock */
 	temp = I915_READ(BXT_PORT_PLL_EBB_4(phy, ch));
@@ -1458,6 +1468,12 @@ static void bxt_ddi_pll_enable(struct drm_i915_private *dev_priv,
 			200))
 		DRM_ERROR("PLL %d not locked\n", port);
 
+	if (IS_GEMINILAKE(dev_priv)) {
+		temp = I915_READ(BXT_PORT_TX_DW5_LN0(phy, ch));
+		temp |= DCC_DELAY_RANGE_2;
+		I915_WRITE(BXT_PORT_TX_DW5_GRP(phy, ch), temp);
+	}
+
 	/*
 	 * While we write to the group register to program all lanes at once we
 	 * can read only lane registers and we pick lanes 0/1 for that.
@@ -1479,6 +1495,16 @@ static void bxt_ddi_pll_disable(struct drm_i915_private *dev_priv,
 	temp &= ~PORT_PLL_ENABLE;
 	I915_WRITE(BXT_PORT_PLL_ENABLE(port), temp);
 	POSTING_READ(BXT_PORT_PLL_ENABLE(port));
+
+	if (IS_GEMINILAKE(dev_priv)) {
+		temp = I915_READ(BXT_PORT_PLL_ENABLE(port));
+		temp &= ~PORT_PLL_POWER_ENABLE;
+		I915_WRITE(BXT_PORT_PLL_ENABLE(port), temp);
+
+		if (wait_for_us(!(I915_READ(BXT_PORT_PLL_ENABLE(port)) &
+				PORT_PLL_POWER_STATE), 200))
+			DRM_ERROR("Power state not reset for PLL:%d\n", port);
+	}
 }
 
 static bool bxt_ddi_pll_get_hw_state(struct drm_i915_private *dev_priv,
@@ -1491,7 +1517,7 @@ static bool bxt_ddi_pll_get_hw_state(struct drm_i915_private *dev_priv,
 	enum dpio_phy phy;
 	enum dpio_channel ch;
 
-	bxt_port_to_phy_channel(port, &phy, &ch);
+	bxt_port_to_phy_channel(dev_priv, port, &phy, &ch);
 
 	if (!intel_display_power_get_if_enabled(dev_priv, POWER_DOMAIN_PLLS))
 		return false;
@@ -1860,7 +1886,7 @@ void intel_shared_dpll_init(struct drm_device *dev)
 
 	if (IS_SKYLAKE(dev_priv) || IS_KABYLAKE(dev_priv))
 		dpll_mgr = &skl_pll_mgr;
-	else if (IS_BROXTON(dev_priv))
+	else if (IS_GEN9_LP(dev_priv))
 		dpll_mgr = &bxt_pll_mgr;
 	else if (HAS_DDI(dev_priv))
 		dpll_mgr = &hsw_pll_mgr;

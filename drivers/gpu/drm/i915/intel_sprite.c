@@ -203,13 +203,8 @@ skl_update_plane(struct drm_plane *drm_plane,
 	struct drm_i915_private *dev_priv = to_i915(dev);
 	struct intel_plane *intel_plane = to_intel_plane(drm_plane);
 	struct drm_framebuffer *fb = plane_state->base.fb;
-	const struct skl_wm_values *wm = &dev_priv->wm.skl_results;
-	struct drm_crtc *crtc = crtc_state->base.crtc;
-	struct intel_crtc *intel_crtc = to_intel_crtc(crtc);
 	const int pipe = intel_plane->pipe;
 	const int plane = intel_plane->plane + 1;
-	const struct skl_plane_wm *p_wm =
-		&crtc_state->wm.skl.optimal.planes[plane];
 	u32 plane_ctl;
 	const struct drm_intel_sprite_colorkey *key = &plane_state->ckey;
 	u32 surf_addr = plane_state->main.offset;
@@ -229,12 +224,9 @@ skl_update_plane(struct drm_plane *drm_plane,
 		PLANE_CTL_PIPE_CSC_ENABLE;
 
 	plane_ctl |= skl_plane_ctl_format(fb->pixel_format);
-	plane_ctl |= skl_plane_ctl_tiling(fb->modifier[0]);
+	plane_ctl |= skl_plane_ctl_tiling(fb->modifier);
 
 	plane_ctl |= skl_plane_ctl_rotation(rotation);
-
-	if (wm->dirty_pipes & drm_crtc_mask(crtc))
-		skl_write_plane_wm(intel_crtc, p_wm, &wm->ddb, plane);
 
 	if (key->flags) {
 		I915_WRITE(PLANE_KEYVAL(pipe, plane), key->min_value);
@@ -291,18 +283,8 @@ skl_disable_plane(struct drm_plane *dplane, struct drm_crtc *crtc)
 	struct drm_device *dev = dplane->dev;
 	struct drm_i915_private *dev_priv = to_i915(dev);
 	struct intel_plane *intel_plane = to_intel_plane(dplane);
-	struct intel_crtc_state *cstate = to_intel_crtc_state(crtc->state);
 	const int pipe = intel_plane->pipe;
 	const int plane = intel_plane->plane + 1;
-
-	/*
-	 * We only populate skl_results on watermark updates, and if the
-	 * plane's visiblity isn't actually changing neither is its watermarks.
-	 */
-	if (!dplane->state->visible)
-		skl_write_plane_wm(to_intel_crtc(crtc),
-				   &cstate->wm.skl.optimal.planes[plane],
-				   &dev_priv->wm.skl_results.ddb, plane);
 
 	I915_WRITE(PLANE_CTL(pipe, plane), 0);
 
@@ -424,8 +406,14 @@ vlv_update_plane(struct drm_plane *dplane,
 	 */
 	sprctl |= SP_GAMMA_ENABLE;
 
-	if (fb->modifier[0] == I915_FORMAT_MOD_X_TILED)
+	if (fb->modifier == I915_FORMAT_MOD_X_TILED)
 		sprctl |= SP_TILED;
+
+	if (rotation & DRM_ROTATE_180)
+		sprctl |= SP_ROTATE_180;
+
+	if (rotation & DRM_REFLECT_X)
+		sprctl |= SP_MIRROR;
 
 	/* Sizes are 0 based */
 	src_w--;
@@ -436,11 +424,11 @@ vlv_update_plane(struct drm_plane *dplane,
 	intel_add_fb_offsets(&x, &y, plane_state, 0);
 	sprsurf_offset = intel_compute_tile_offset(&x, &y, plane_state, 0);
 
-	if (rotation == DRM_ROTATE_180) {
-		sprctl |= SP_ROTATE_180;
-
+	if (rotation & DRM_ROTATE_180) {
 		x += src_w;
 		y += src_h;
+	} else if (rotation & DRM_REFLECT_X) {
+		x += src_w;
 	}
 
 	linear_offset = intel_fb_xy_to_linear(x, y, plane_state, 0);
@@ -460,7 +448,7 @@ vlv_update_plane(struct drm_plane *dplane,
 	I915_WRITE(SPSTRIDE(pipe, plane), fb->pitches[0]);
 	I915_WRITE(SPPOS(pipe, plane), (crtc_y << 16) | crtc_x);
 
-	if (fb->modifier[0] == I915_FORMAT_MOD_X_TILED)
+	if (fb->modifier == I915_FORMAT_MOD_X_TILED)
 		I915_WRITE(SPTILEOFF(pipe, plane), (y << 16) | x);
 	else
 		I915_WRITE(SPLINOFF(pipe, plane), linear_offset);
@@ -543,8 +531,11 @@ ivb_update_plane(struct drm_plane *plane,
 	 */
 	sprctl |= SPRITE_GAMMA_ENABLE;
 
-	if (fb->modifier[0] == I915_FORMAT_MOD_X_TILED)
+	if (fb->modifier == I915_FORMAT_MOD_X_TILED)
 		sprctl |= SPRITE_TILED;
+
+	if (rotation & DRM_ROTATE_180)
+		sprctl |= SPRITE_ROTATE_180;
 
 	if (IS_HASWELL(dev_priv) || IS_BROADWELL(dev_priv))
 		sprctl &= ~SPRITE_TRICKLE_FEED_DISABLE;
@@ -566,14 +557,11 @@ ivb_update_plane(struct drm_plane *plane,
 	intel_add_fb_offsets(&x, &y, plane_state, 0);
 	sprsurf_offset = intel_compute_tile_offset(&x, &y, plane_state, 0);
 
-	if (rotation == DRM_ROTATE_180) {
-		sprctl |= SPRITE_ROTATE_180;
-
-		/* HSW and BDW does this automagically in hardware */
-		if (!IS_HASWELL(dev_priv) && !IS_BROADWELL(dev_priv)) {
-			x += src_w;
-			y += src_h;
-		}
+	/* HSW+ does this automagically in hardware */
+	if (!IS_HASWELL(dev_priv) && !IS_BROADWELL(dev_priv) &&
+	    rotation & DRM_ROTATE_180) {
+		x += src_w;
+		y += src_h;
 	}
 
 	linear_offset = intel_fb_xy_to_linear(x, y, plane_state, 0);
@@ -596,7 +584,7 @@ ivb_update_plane(struct drm_plane *plane,
 	 * register */
 	if (IS_HASWELL(dev_priv) || IS_BROADWELL(dev_priv))
 		I915_WRITE(SPROFFSET(pipe), (y << 16) | x);
-	else if (fb->modifier[0] == I915_FORMAT_MOD_X_TILED)
+	else if (fb->modifier == I915_FORMAT_MOD_X_TILED)
 		I915_WRITE(SPRTILEOFF(pipe), (y << 16) | x);
 	else
 		I915_WRITE(SPRLINOFF(pipe), linear_offset);
@@ -681,8 +669,11 @@ ilk_update_plane(struct drm_plane *plane,
 	 */
 	dvscntr |= DVS_GAMMA_ENABLE;
 
-	if (fb->modifier[0] == I915_FORMAT_MOD_X_TILED)
+	if (fb->modifier == I915_FORMAT_MOD_X_TILED)
 		dvscntr |= DVS_TILED;
+
+	if (rotation & DRM_ROTATE_180)
+		dvscntr |= DVS_ROTATE_180;
 
 	if (IS_GEN6(dev_priv))
 		dvscntr |= DVS_TRICKLE_FEED_DISABLE; /* must disable */
@@ -700,9 +691,7 @@ ilk_update_plane(struct drm_plane *plane,
 	intel_add_fb_offsets(&x, &y, plane_state, 0);
 	dvssurf_offset = intel_compute_tile_offset(&x, &y, plane_state, 0);
 
-	if (rotation == DRM_ROTATE_180) {
-		dvscntr |= DVS_ROTATE_180;
-
+	if (rotation & DRM_ROTATE_180) {
 		x += src_w;
 		y += src_h;
 	}
@@ -723,7 +712,7 @@ ilk_update_plane(struct drm_plane *plane,
 	I915_WRITE(DVSSTRIDE(pipe), fb->pitches[0]);
 	I915_WRITE(DVSPOS(pipe), (crtc_y << 16) | crtc_x);
 
-	if (fb->modifier[0] == I915_FORMAT_MOD_X_TILED)
+	if (fb->modifier == I915_FORMAT_MOD_X_TILED)
 		I915_WRITE(DVSTILEOFF(pipe), (y << 16) | x);
 	else
 		I915_WRITE(DVSLINOFF(pipe), linear_offset);
@@ -773,15 +762,8 @@ intel_check_sprite_plane(struct drm_plane *plane,
 	bool can_scale;
 	int ret;
 
-	src->x1 = state->base.src_x;
-	src->y1 = state->base.src_y;
-	src->x2 = state->base.src_x + state->base.src_w;
-	src->y2 = state->base.src_y + state->base.src_h;
-
-	dst->x1 = state->base.crtc_x;
-	dst->y1 = state->base.crtc_y;
-	dst->x2 = state->base.crtc_x + state->base.crtc_w;
-	dst->y2 = state->base.crtc_y + state->base.crtc_h;
+	*src = drm_plane_state_src(&state->base);
+	*dst = drm_plane_state_dest(&state->base);
 
 	if (!fb) {
 		state->base.visible = false;
@@ -1119,6 +1101,10 @@ intel_sprite_plane_create(struct drm_i915_private *dev_priv,
 		supported_rotations =
 			DRM_ROTATE_0 | DRM_ROTATE_90 |
 			DRM_ROTATE_180 | DRM_ROTATE_270;
+	} else if (IS_CHERRYVIEW(dev_priv) && pipe == PIPE_B) {
+		supported_rotations =
+			DRM_ROTATE_0 | DRM_ROTATE_180 |
+			DRM_REFLECT_X;
 	} else {
 		supported_rotations =
 			DRM_ROTATE_0 | DRM_ROTATE_180;

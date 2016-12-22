@@ -242,10 +242,9 @@ static void audit_watch_log_rule_change(struct audit_krule *r, struct audit_watc
 		ab = audit_log_start(NULL, GFP_NOFS, AUDIT_CONFIG_CHANGE);
 		if (unlikely(!ab))
 			return;
-		audit_log_format(ab, "auid=%u ses=%u op=",
+		audit_log_format(ab, "auid=%u ses=%u op=%s",
 				 from_kuid(&init_user_ns, audit_get_loginuid(current)),
-				 audit_get_sessionid(current));
-		audit_log_string(ab, op);
+				 audit_get_sessionid(current), op);
 		audit_log_format(ab, " path=");
 		audit_log_untrustedstring(ab, w->path);
 		audit_log_key(ab, r->filterkey);
@@ -548,8 +547,8 @@ int audit_exe_compare(struct task_struct *tsk, struct audit_fsnotify_mark *mark)
 	exe_file = get_task_exe_file(tsk);
 	if (!exe_file)
 		return 0;
-	ino = exe_file->f_inode->i_ino;
-	dev = exe_file->f_inode->i_sb->s_dev;
+	ino = file_inode(exe_file)->i_ino;
+	dev = file_inode(exe_file)->i_sb->s_dev;
 	fput(exe_file);
 	return audit_mark_compare(mark, ino, dev);
 }

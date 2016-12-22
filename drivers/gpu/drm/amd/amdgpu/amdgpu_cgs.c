@@ -723,7 +723,7 @@ static uint16_t amdgpu_get_firmware_version(struct cgs_device *cgs_device,
 					enum cgs_ucode_id type)
 {
 	CGS_FUNC_ADEV;
-	uint16_t fw_version;
+	uint16_t fw_version = 0;
 
 	switch (type) {
 		case CGS_UCODE_ID_SDMA0:
@@ -753,9 +753,11 @@ static uint16_t amdgpu_get_firmware_version(struct cgs_device *cgs_device,
 		case CGS_UCODE_ID_RLC_G:
 			fw_version = adev->gfx.rlc_fw_version;
 			break;
+		case CGS_UCODE_ID_STORAGE:
+			break;
 		default:
 			DRM_ERROR("firmware type %d do not have version\n", type);
-			fw_version = 0;
+			break;
 	}
 	return fw_version;
 }
@@ -809,10 +811,19 @@ static int amdgpu_cgs_get_firmware_info(struct cgs_device *cgs_device,
 		if (!adev->pm.fw) {
 			switch (adev->asic_type) {
 			case CHIP_TOPAZ:
-				strcpy(fw_name, "amdgpu/topaz_smc.bin");
+				if (((adev->pdev->device == 0x6900) && (adev->pdev->revision == 0x81)) ||
+				    ((adev->pdev->device == 0x6900) && (adev->pdev->revision == 0x83)) ||
+				    ((adev->pdev->device == 0x6907) && (adev->pdev->revision == 0x87)))
+					strcpy(fw_name, "amdgpu/topaz_k_smc.bin");
+				else
+					strcpy(fw_name, "amdgpu/topaz_smc.bin");
 				break;
 			case CHIP_TONGA:
-				strcpy(fw_name, "amdgpu/tonga_smc.bin");
+				if (((adev->pdev->device == 0x6939) && (adev->pdev->revision == 0xf1)) ||
+				    ((adev->pdev->device == 0x6938) && (adev->pdev->revision == 0xf1)))
+					strcpy(fw_name, "amdgpu/tonga_k_smc.bin");
+				else
+					strcpy(fw_name, "amdgpu/tonga_smc.bin");
 				break;
 			case CHIP_FIJI:
 				strcpy(fw_name, "amdgpu/fiji_smc.bin");

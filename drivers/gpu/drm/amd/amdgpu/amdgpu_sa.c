@@ -327,9 +327,8 @@ int amdgpu_sa_bo_new(struct amdgpu_sa_manager *sa_manager,
 		return -EINVAL;
 
 	*sa_bo = kmalloc(sizeof(struct amdgpu_sa_bo), GFP_KERNEL);
-	if ((*sa_bo) == NULL) {
+	if (!(*sa_bo))
 		return -ENOMEM;
-	}
 	(*sa_bo)->manager = sa_manager;
 	(*sa_bo)->fence = NULL;
 	INIT_LIST_HEAD(&(*sa_bo)->olist);
@@ -361,7 +360,8 @@ int amdgpu_sa_bo_new(struct amdgpu_sa_manager *sa_manager,
 		if (count) {
 			spin_unlock(&sa_manager->wq.lock);
 			t = dma_fence_wait_any_timeout(fences, count, false,
-						       MAX_SCHEDULE_TIMEOUT);
+						       MAX_SCHEDULE_TIMEOUT,
+						       NULL);
 			for (i = 0; i < count; ++i)
 				dma_fence_put(fences[i]);
 

@@ -2032,7 +2032,7 @@ static int dce_v10_0_crtc_do_set_base(struct drm_crtc *crtc,
 	u32 tmp, viewport_w, viewport_h;
 	int r;
 	bool bypass_lut = false;
-	char *format_name;
+	struct drm_format_name_buf format_name;
 
 	/* no fb bound */
 	if (!atomic && !crtc->primary->fb) {
@@ -2144,9 +2144,8 @@ static int dce_v10_0_crtc_do_set_base(struct drm_crtc *crtc,
 		bypass_lut = true;
 		break;
 	default:
-		format_name = drm_get_format_name(target_fb->pixel_format);
-		DRM_ERROR("Unsupported screen format %s\n", format_name);
-		kfree(format_name);
+		DRM_ERROR("Unsupported screen format %s\n",
+		          drm_get_format_name(target_fb->pixel_format, &format_name));
 		return -EINVAL;
 	}
 
@@ -2494,6 +2493,9 @@ static int dce_v10_0_cursor_move_locked(struct drm_crtc *crtc,
 	struct amdgpu_device *adev = crtc->dev->dev_private;
 	int xorigin = 0, yorigin = 0;
 
+	amdgpu_crtc->cursor_x = x;
+	amdgpu_crtc->cursor_y = y;
+
 	/* avivo cursor are offset into the total surface */
 	x += crtc->x;
 	y += crtc->y;
@@ -2510,11 +2512,6 @@ static int dce_v10_0_cursor_move_locked(struct drm_crtc *crtc,
 
 	WREG32(mmCUR_POSITION + amdgpu_crtc->crtc_offset, (x << 16) | y);
 	WREG32(mmCUR_HOT_SPOT + amdgpu_crtc->crtc_offset, (xorigin << 16) | yorigin);
-	WREG32(mmCUR_SIZE + amdgpu_crtc->crtc_offset,
-	       ((amdgpu_crtc->cursor_width - 1) << 16) | (amdgpu_crtc->cursor_height - 1));
-
-	amdgpu_crtc->cursor_x = x;
-	amdgpu_crtc->cursor_y = y;
 
 	return 0;
 }
@@ -2540,6 +2537,7 @@ static int dce_v10_0_crtc_cursor_set2(struct drm_crtc *crtc,
 				      int32_t hot_y)
 {
 	struct amdgpu_crtc *amdgpu_crtc = to_amdgpu_crtc(crtc);
+	struct amdgpu_device *adev = crtc->dev->dev_private;
 	struct drm_gem_object *obj;
 	struct amdgpu_bo *aobj;
 	int ret;
@@ -2578,9 +2576,6 @@ static int dce_v10_0_crtc_cursor_set2(struct drm_crtc *crtc,
 		return ret;
 	}
 
-	amdgpu_crtc->cursor_width = width;
-	amdgpu_crtc->cursor_height = height;
-
 	dce_v10_0_lock_cursor(crtc, true);
 
 	if (hot_x != amdgpu_crtc->cursor_hot_x ||
@@ -2594,6 +2589,14 @@ static int dce_v10_0_crtc_cursor_set2(struct drm_crtc *crtc,
 
 		amdgpu_crtc->cursor_hot_x = hot_x;
 		amdgpu_crtc->cursor_hot_y = hot_y;
+	}
+
+	if (width != amdgpu_crtc->cursor_width ||
+	    height != amdgpu_crtc->cursor_height) {
+		WREG32(mmCUR_SIZE + amdgpu_crtc->crtc_offset,
+		       (width - 1) << 16 | (height - 1));
+		amdgpu_crtc->cursor_width = width;
+		amdgpu_crtc->cursor_height = height;
 	}
 
 	dce_v10_0_show_cursor(crtc);
@@ -2617,12 +2620,17 @@ unpin:
 static void dce_v10_0_cursor_reset(struct drm_crtc *crtc)
 {
 	struct amdgpu_crtc *amdgpu_crtc = to_amdgpu_crtc(crtc);
+	struct amdgpu_device *adev = crtc->dev->dev_private;
 
 	if (amdgpu_crtc->cursor_bo) {
 		dce_v10_0_lock_cursor(crtc, true);
 
 		dce_v10_0_cursor_move_locked(crtc, amdgpu_crtc->cursor_x,
 					     amdgpu_crtc->cursor_y);
+
+		WREG32(mmCUR_SIZE + amdgpu_crtc->crtc_offset,
+		       (amdgpu_crtc->cursor_width - 1) << 16 |
+		       (amdgpu_crtc->cursor_height - 1));
 
 		dce_v10_0_show_cursor(crtc);
 
@@ -3068,10 +3076,6 @@ static int dce_v10_0_hw_fini(void *handle)
 
 static int dce_v10_0_suspend(void *handle)
 {
-	struct amdgpu_device *adev = (struct amdgpu_device *)handle;
-
-	amdgpu_atombios_scratch_regs_save(adev);
-
 	return dce_v10_0_hw_fini(handle);
 }
 
@@ -3081,8 +3085,6 @@ static int dce_v10_0_resume(void *handle)
 	int ret;
 
 	ret = dce_v10_0_hw_init(handle);
-
-	amdgpu_atombios_scratch_regs_restore(adev);
 
 	/* turn on the BL */
 	if (adev->mode_info.bl_encoder) {
@@ -3756,7 +3758,6 @@ static const struct amdgpu_display_funcs dce_v10_0_display_funcs = {
 	.bandwidth_update = &dce_v10_0_bandwidth_update,
 	.vblank_get_counter = &dce_v10_0_vblank_get_counter,
 	.vblank_wait = &dce_v10_0_vblank_wait,
-	.is_display_hung = &dce_v10_0_is_display_hung,
 	.backlight_set_level = &amdgpu_atombios_encoder_set_backlight_level,
 	.backlight_get_level = &amdgpu_atombios_encoder_get_backlight_level,
 	.hpd_sense = &dce_v10_0_hpd_sense,

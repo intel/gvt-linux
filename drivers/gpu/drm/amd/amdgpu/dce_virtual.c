@@ -95,11 +95,6 @@ static u32 dce_virtual_hpd_get_gpio_reg(struct amdgpu_device *adev)
 	return 0;
 }
 
-static bool dce_virtual_is_display_hung(struct amdgpu_device *adev)
-{
-	return false;
-}
-
 static void dce_virtual_stop_mc_access(struct amdgpu_device *adev,
 			      struct amdgpu_mode_mc_save *save)
 {
@@ -214,12 +209,12 @@ static void dce_virtual_crtc_dpms(struct drm_crtc *crtc, int mode)
 		/* Make sure VBLANK interrupts are still enabled */
 		type = amdgpu_crtc_idx_to_irq_type(adev, amdgpu_crtc->crtc_id);
 		amdgpu_irq_update(adev, &adev->crtc_irq, type);
-		drm_vblank_on(dev, amdgpu_crtc->crtc_id);
+		drm_crtc_vblank_on(crtc);
 		break;
 	case DRM_MODE_DPMS_STANDBY:
 	case DRM_MODE_DPMS_SUSPEND:
 	case DRM_MODE_DPMS_OFF:
-		drm_vblank_off(dev, amdgpu_crtc->crtc_id);
+		drm_crtc_vblank_off(crtc);
 		amdgpu_crtc->enabled = false;
 		break;
 	}
@@ -429,12 +424,6 @@ dce_virtual_dpms(struct drm_connector *connector, int mode)
 	return 0;
 }
 
-static enum drm_connector_status
-dce_virtual_detect(struct drm_connector *connector, bool force)
-{
-	return connector_status_connected;
-}
-
 static int
 dce_virtual_set_property(struct drm_connector *connector,
 			 struct drm_property *property,
@@ -463,7 +452,6 @@ static const struct drm_connector_helper_funcs dce_virtual_connector_helper_func
 
 static const struct drm_connector_funcs dce_virtual_connector_funcs = {
 	.dpms = dce_virtual_dpms,
-	.detect = dce_virtual_detect,
 	.fill_modes = drm_helper_probe_single_connector_modes,
 	.set_property = dce_virtual_set_property,
 	.destroy = dce_virtual_destroy,
@@ -691,7 +679,6 @@ static const struct amdgpu_display_funcs dce_virtual_display_funcs = {
 	.bandwidth_update = &dce_virtual_bandwidth_update,
 	.vblank_get_counter = &dce_virtual_vblank_get_counter,
 	.vblank_wait = &dce_virtual_vblank_wait,
-	.is_display_hung = &dce_virtual_is_display_hung,
 	.backlight_set_level = NULL,
 	.backlight_get_level = NULL,
 	.hpd_sense = &dce_virtual_hpd_sense,

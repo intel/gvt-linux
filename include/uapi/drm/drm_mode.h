@@ -47,7 +47,15 @@ extern "C" {
 #define DRM_MODE_TYPE_DRIVER	(1<<6)
 
 /* Video mode flags */
-/* bit compatible with the xorg definitions. */
+/* bit compatible with the xrandr RR_ definitions (bits 0-13)
+ *
+ * ABI warning: Existing userspace really expects
+ * the mode flags to match the xrandr definitions. Any
+ * changes that don't match the xrandr definitions will
+ * likely need a new client cap or some other mechanism
+ * to avoid breaking existing userspace. This includes
+ * allocating new flags in the previously unused bits!
+ */
 #define DRM_MODE_FLAG_PHSYNC			(1<<0)
 #define DRM_MODE_FLAG_NHSYNC			(1<<1)
 #define DRM_MODE_FLAG_PVSYNC			(1<<2)
@@ -81,8 +89,6 @@ extern "C" {
 #define DRM_MODE_PICTURE_ASPECT_NONE		0
 #define DRM_MODE_PICTURE_ASPECT_4_3		1
 #define DRM_MODE_PICTURE_ASPECT_16_9		2
-#define DRM_MODE_PICTURE_ASPECT_64_27		3
-#define DRM_MODE_PICTURE_ASPECT_256_135		4
 
 /* Aspect ratio flag bitmask (4 bits 22:19) */
 #define DRM_MODE_FLAG_PIC_AR_MASK		(0x0F<<19)
@@ -92,10 +98,6 @@ extern "C" {
 			(DRM_MODE_PICTURE_ASPECT_4_3<<19)
 #define  DRM_MODE_FLAG_PIC_AR_16_9 \
 			(DRM_MODE_PICTURE_ASPECT_16_9<<19)
-#define  DRM_MODE_FLAG_PIC_AR_64_27 \
-			(DRM_MODE_PICTURE_ASPECT_64_27<<19)
-#define  DRM_MODE_FLAG_PIC_AR_256_135 \
-			(DRM_MODE_PICTURE_ASPECT_256_135<<19)
 
 /* DPMS flags */
 /* bit compatible with the xorg definitions. */
@@ -234,14 +236,16 @@ struct drm_mode_get_encoder {
 
 /* This is for connectors with multiple signal types. */
 /* Try to match DRM_MODE_CONNECTOR_X as closely as possible. */
-#define DRM_MODE_SUBCONNECTOR_Automatic	0
-#define DRM_MODE_SUBCONNECTOR_Unknown	0
-#define DRM_MODE_SUBCONNECTOR_DVID	3
-#define DRM_MODE_SUBCONNECTOR_DVIA	4
-#define DRM_MODE_SUBCONNECTOR_Composite	5
-#define DRM_MODE_SUBCONNECTOR_SVIDEO	6
-#define DRM_MODE_SUBCONNECTOR_Component	8
-#define DRM_MODE_SUBCONNECTOR_SCART	9
+enum drm_mode_subconnector {
+	DRM_MODE_SUBCONNECTOR_Automatic = 0,
+	DRM_MODE_SUBCONNECTOR_Unknown = 0,
+	DRM_MODE_SUBCONNECTOR_DVID = 3,
+	DRM_MODE_SUBCONNECTOR_DVIA = 4,
+	DRM_MODE_SUBCONNECTOR_Composite = 5,
+	DRM_MODE_SUBCONNECTOR_SVIDEO = 6,
+	DRM_MODE_SUBCONNECTOR_Component = 8,
+	DRM_MODE_SUBCONNECTOR_SCART = 9,
+};
 
 #define DRM_MODE_CONNECTOR_Unknown	0
 #define DRM_MODE_CONNECTOR_VGA		1
@@ -406,17 +410,20 @@ struct drm_mode_fb_cmd2 {
 	 * offsets[1].  Note that offsets[0] will generally
 	 * be 0 (but this is not required).
 	 *
-	 * To accommodate tiled, compressed, etc formats, a per-plane
+	 * To accommodate tiled, compressed, etc formats, a
 	 * modifier can be specified.  The default value of zero
 	 * indicates "native" format as specified by the fourcc.
-	 * Vendor specific modifier token.  This allows, for example,
-	 * different tiling/swizzling pattern on different planes.
-	 * See discussion above of DRM_FORMAT_MOD_xxx.
+	 * Vendor specific modifier token.  Note that even though
+	 * it looks like we have a modifier per-plane, we in fact
+	 * do not. The modifier for each plane must be identical.
+	 * Thus all combinations of different data layouts for
+	 * multi plane formats must be enumerated as separate
+	 * modifiers.
 	 */
 	__u32 handles[4];
 	__u32 pitches[4]; /* pitch for each plane */
 	__u32 offsets[4]; /* offset of each plane */
-	__u64 modifier[4]; /* ie, tiling, compressed (per plane) */
+	__u64 modifier[4]; /* ie, tiling, compress */
 };
 
 #define DRM_MODE_FB_DIRTY_ANNOTATE_COPY 0x01

@@ -3607,10 +3607,14 @@ __init int intel_pmu_init(void)
 
 	/*
 	 * Quirk: v2 perfmon does not report fixed-purpose events, so
-	 * assume at least 3 events:
+	 * assume at least 3 events, when not running in a hypervisor:
 	 */
-	if (version > 1)
-		x86_pmu.num_counters_fixed = max((int)edx.split.num_counters_fixed, 3);
+	if (version > 1) {
+		int assume = 3 * !boot_cpu_has(X86_FEATURE_HYPERVISOR);
+
+		x86_pmu.num_counters_fixed =
+			max((int)edx.split.num_counters_fixed, assume);
+	}
 
 	if (boot_cpu_has(X86_FEATURE_PDCM)) {
 		u64 capabilities;
@@ -4030,7 +4034,7 @@ __init int intel_pmu_init(void)
 
 	/* Support full width counters using alternative MSR range */
 	if (x86_pmu.intel_cap.full_width_write) {
-		x86_pmu.max_period = x86_pmu.cntval_mask;
+		x86_pmu.max_period = x86_pmu.cntval_mask >> 1;
 		x86_pmu.perfctr = MSR_IA32_PMC0;
 		pr_cont("full-width counters, ");
 	}

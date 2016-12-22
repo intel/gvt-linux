@@ -631,8 +631,9 @@ static void print_request(struct seq_file *m,
 			  struct drm_i915_gem_request *rq,
 			  const char *prefix)
 {
-	seq_printf(m, "%s%x [%x:%x] @ %d: %s\n", prefix,
+	seq_printf(m, "%s%x [%x:%x] prio=%d @ %dms: %s\n", prefix,
 		   rq->global_seqno, rq->ctx->hw_id, rq->fence.seqno,
+		   rq->priotree.priority,
 		   jiffies_to_msecs(jiffies - rq->emitted_jiffies),
 		   rq->timeline->common->name);
 }
@@ -934,27 +935,6 @@ static int i915_gem_fence_regs_info(struct seq_file *m, void *data)
 	return 0;
 }
 
-static int i915_hws_info(struct seq_file *m, void *data)
-{
-	struct drm_info_node *node = m->private;
-	struct drm_i915_private *dev_priv = node_to_i915(node);
-	struct intel_engine_cs *engine;
-	const u32 *hws;
-	int i;
-
-	engine = dev_priv->engine[(uintptr_t)node->info_ent->data];
-	hws = engine->status_page.page_addr;
-	if (hws == NULL)
-		return 0;
-
-	for (i = 0; i < 4096 / sizeof(u32) / 4; i += 4) {
-		seq_printf(m, "0x%08x: 0x%08x 0x%08x 0x%08x 0x%08x\n",
-			   i * 4,
-			   hws[i], hws[i + 1], hws[i + 2], hws[i + 3]);
-	}
-	return 0;
-}
-
 #if IS_ENABLED(CONFIG_DRM_I915_CAPTURE_ERROR)
 
 static ssize_t
@@ -1046,7 +1026,7 @@ i915_next_seqno_get(void *data, u64 *val)
 {
 	struct drm_i915_private *dev_priv = data;
 
-	*val = atomic_read(&dev_priv->gt.global_timeline.next_seqno);
+	*val = 1 + atomic_read(&dev_priv->gt.global_timeline.next_seqno);
 	return 0;
 }
 
@@ -1761,8 +1741,7 @@ static int i915_sr_status(struct seq_file *m, void *unused)
 	intel_display_power_put(dev_priv, POWER_DOMAIN_INIT);
 	intel_runtime_pm_put(dev_priv);
 
-	seq_printf(m, "self-refresh: %s\n",
-		   sr_enabled ? "enabled" : "disabled");
+	seq_printf(m, "self-refresh: %s\n", enableddisabled(sr_enabled));
 
 	return 0;
 }
@@ -1896,7 +1875,7 @@ static int i915_gem_framebuffer_info(struct seq_file *m, void *data)
 			   fbdev_fb->base.height,
 			   fbdev_fb->base.depth,
 			   fbdev_fb->base.bits_per_pixel,
-			   fbdev_fb->base.modifier[0],
+			   fbdev_fb->base.modifier,
 			   drm_framebuffer_read_refcount(&fbdev_fb->base));
 		describe_obj(m, fbdev_fb->obj);
 		seq_putc(m, '\n');
@@ -1914,7 +1893,7 @@ static int i915_gem_framebuffer_info(struct seq_file *m, void *data)
 			   fb->base.height,
 			   fb->base.depth,
 			   fb->base.bits_per_pixel,
-			   fb->base.modifier[0],
+			   fb->base.modifier,
 			   drm_framebuffer_read_refcount(&fb->base));
 		describe_obj(m, fb->obj);
 		seq_putc(m, '\n');
@@ -3032,7 +3011,7 @@ static void intel_plane_info(struct seq_file *m, struct intel_crtc *intel_crtc)
 	for_each_intel_plane_on_crtc(dev, intel_crtc, intel_plane) {
 		struct drm_plane_state *state;
 		struct drm_plane *plane = &intel_plane->base;
-		char *format_name;
+		struct drm_format_name_buf format_name;
 
 		if (!plane->state) {
 			seq_puts(m, "plane->state is NULL!\n");
@@ -3042,9 +3021,9 @@ static void intel_plane_info(struct seq_file *m, struct intel_crtc *intel_crtc)
 		state = plane->state;
 
 		if (state->fb) {
-			format_name = drm_get_format_name(state->fb->pixel_format);
+			drm_get_format_name(state->fb->pixel_format, &format_name);
 		} else {
-			format_name = kstrdup("N/A", GFP_KERNEL);
+			sprintf(format_name.str, "N/A");
 		}
 
 		seq_printf(m, "\t--Plane id %d: type=%s, crtc_pos=%4dx%4d, crtc_size=%4dx%4d, src_pos=%d.%04ux%d.%04u, src_size=%d.%04ux%d.%04u, format=%s, rotation=%s\n",
@@ -3060,10 +3039,8 @@ static void intel_plane_info(struct seq_file *m, struct intel_crtc *intel_crtc)
 			   ((state->src_w & 0xffff) * 15625) >> 10,
 			   (state->src_h >> 16),
 			   ((state->src_h & 0xffff) * 15625) >> 10,
-			   format_name,
+			   format_name.str,
 			   plane_rotation(state->rotation));
-
-		kfree(format_name);
 	}
 }
 
@@ -3218,6 +3195,7 @@ static int i915_engine_info(struct seq_file *m, void *unused)
 
 		if (i915.enable_execlists) {
 			u32 ptr, read, write;
+			struct rb_node *rb;
 
 			seq_printf(m, "\tExeclist status: 0x%08x %08x\n",
 				   I915_READ(RING_EXECLIST_STATUS_LO(engine)),
@@ -3256,11 +3234,12 @@ static int i915_engine_info(struct seq_file *m, void *unused)
 				seq_printf(m, "\t\tELSP[1] idle\n");
 			rcu_read_unlock();
 
-			spin_lock_irq(&engine->execlist_lock);
-			list_for_each_entry(rq, &engine->execlist_queue, execlist_link) {
+			spin_lock_irq(&engine->timeline->lock);
+			for (rb = engine->execlist_first; rb; rb = rb_next(rb)) {
+				rq = rb_entry(rb, typeof(*rq), priotree.node);
 				print_request(m, rq, "\t\tQ ");
 			}
-			spin_unlock_irq(&engine->execlist_lock);
+			spin_unlock_irq(&engine->timeline->lock);
 		} else if (INTEL_GEN(dev_priv) > 6) {
 			seq_printf(m, "\tPP_DIR_BASE: 0x%08x\n",
 				   I915_READ(RING_PP_DIR_BASE(engine)));
@@ -5403,10 +5382,6 @@ static const struct drm_info_list i915_debugfs_list[] = {
 	{"i915_gem_seqno", i915_gem_seqno_info, 0},
 	{"i915_gem_fence_regs", i915_gem_fence_regs_info, 0},
 	{"i915_gem_interrupt", i915_interrupt_info, 0},
-	{"i915_gem_hws", i915_hws_info, 0, (void *)RCS},
-	{"i915_gem_hws_blt", i915_hws_info, 0, (void *)BCS},
-	{"i915_gem_hws_bsd", i915_hws_info, 0, (void *)VCS},
-	{"i915_gem_hws_vebox", i915_hws_info, 0, (void *)VECS},
 	{"i915_gem_batch_pool", i915_gem_batch_pool_info, 0},
 	{"i915_guc_info", i915_guc_info, 0},
 	{"i915_guc_load_status", i915_guc_load_status_info, 0},

@@ -220,7 +220,7 @@ struct i915_pml4 {
 struct i915_address_space {
 	struct drm_mm mm;
 	struct i915_gem_timeline timeline;
-	struct drm_device *dev;
+	struct drm_i915_private *i915;
 	/* Every address space belongs to a struct file - except for the global
 	 * GTT that is owned by the driver (and so @file is set to NULL). In
 	 * principle, no information should leak from one context to another
@@ -315,8 +315,16 @@ struct i915_ggtt {
 	struct i915_address_space base;
 	struct io_mapping mappable;	/* Mapping to our CPU mappable region */
 
+	/* Stolen memory is segmented in hardware with different portions
+	 * offlimits to certain functions.
+	 *
+	 * The drm_mm is initialised to the total accessible range, as found
+	 * from the PCI config. On Broadwell+, this is further restricted to
+	 * avoid the first page! The upper end of stolen memory is reserved for
+	 * hardware functions and similarly removed from the accessible range.
+	 */
 	size_t stolen_size;		/* Total size of stolen memory */
-	size_t stolen_usable_size;	/* Total size minus BIOS reserved */
+	size_t stolen_usable_size;	/* Total size minus reserved ranges */
 	size_t stolen_reserved_base;
 	size_t stolen_reserved_size;
 	u64 mappable_end;		/* End offset that we can CPU map */

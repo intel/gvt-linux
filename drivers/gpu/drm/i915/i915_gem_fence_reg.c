@@ -290,7 +290,7 @@ i915_vma_put_fence(struct i915_vma *vma)
 {
 	struct drm_i915_fence_reg *fence = vma->fence;
 
-	assert_rpm_wakelock_held(to_i915(vma->vm->dev));
+	assert_rpm_wakelock_held(vma->vm->i915);
 
 	if (!fence)
 		return 0;
@@ -313,7 +313,7 @@ static struct drm_i915_fence_reg *fence_find(struct drm_i915_private *dev_priv)
 	}
 
 	/* Wait for completion of pending flips which consume fences */
-	if (intel_has_pending_fb_unpin(&dev_priv->drm))
+	if (intel_has_pending_fb_unpin(dev_priv))
 		return ERR_PTR(-EAGAIN);
 
 	return ERR_PTR(-EDEADLK);
@@ -346,7 +346,7 @@ i915_vma_get_fence(struct i915_vma *vma)
 	/* Note that we revoke fences on runtime suspend. Therefore the user
 	 * must keep the device awake whilst using the fence.
 	 */
-	assert_rpm_wakelock_held(to_i915(vma->vm->dev));
+	assert_rpm_wakelock_held(vma->vm->i915);
 
 	/* Just update our place in the LRU if our fence is getting reused. */
 	if (vma->fence) {
@@ -357,7 +357,7 @@ i915_vma_get_fence(struct i915_vma *vma)
 			return 0;
 		}
 	} else if (set) {
-		fence = fence_find(to_i915(vma->vm->dev));
+		fence = fence_find(vma->vm->i915);
 		if (IS_ERR(fence))
 			return PTR_ERR(fence);
 	} else
@@ -512,8 +512,8 @@ i915_gem_detect_bit_6_swizzle(struct drm_i915_private *dev_priv)
 		 */
 		swizzle_x = I915_BIT_6_SWIZZLE_NONE;
 		swizzle_y = I915_BIT_6_SWIZZLE_NONE;
-	} else if (IS_MOBILE(dev_priv) || (IS_GEN3(dev_priv) &&
-		   !IS_G33(dev_priv))) {
+	} else if (IS_MOBILE(dev_priv) ||
+		   IS_I915G(dev_priv) || IS_I945G(dev_priv)) {
 		uint32_t dcc;
 
 		/* On 9xx chipsets, channel interleave by the CPU is

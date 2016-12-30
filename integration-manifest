@@ -1,22 +1,10 @@
-drm-intel drm-intel-fixes ade4d4410f8b8816a8e9d85bfdb4bdcc9464065a
-	Merge tag 'gvt-fixes-2016-12-26' of https://github.com/01org/gvt-linux into drm-intel-fixes
-drm-upstream drm-fixes 4a401ceeef7bf3bc55f5e913cbf19d6038cf83c6
-	Merge tag 'drm-intel-next-fixes-2016-12-22' of git://anongit.freedesktop.org/git/drm-intel into drm-fixes
-drm-intel drm-intel-next-fixes 6ba0566cf2afcdb17bff882e3a95cbbcb22c4a83
-	drm/i915: skip the first 4k of stolen memory on everything >= gen8
-drm-intel drm-intel-next-queued 4741da925fa3e5acdd4da154f4803dad383e882f
-	drm/i915/guc: Assert that all GGTT offsets used by the GuC are mappable
-drm-upstream drm-next 2cf026ae85c42f253feb9f420d1b4bc99bd5503d
-	Merge branch 'linux-4.10' of git://github.com/skeggsb/linux into drm-next
-sound-upstream for-next 995c6a7fd9b9212abdf01160f6ce3193176be503
-	ALSA: hiface: Fix M2Tech hiFace driver sampling rate change
-sound-upstream for-linus 995c6a7fd9b9212abdf01160f6ce3193176be503
-	ALSA: hiface: Fix M2Tech hiFace driver sampling rate change
-drm-intel topic/core-for-CI e558f178f5390185b7324ff4b816b52c6ae3a928
-	Revert "cpu/hotplug: Prevent overwriting of callbacks"
-drm-misc drm-misc-next 9b8b75de4cb379187c481a5332a12429f31c0887
-	drm: Add kerneldoc markup for new @scan parameters in drm_mm
-drm-misc drm-misc-next-fixes 6449b088dd51dd5aa6b38455888bbf538d21f2fc
-	drm: Add fake controlD* symlinks for backwards compat
-drm-misc drm-misc-fixes 7ce7d89f48834cefece7804d38fc5d85382edf77
-	Linux 4.10-rc1
+drm-tip/drm-tip 584adc8f6687d7f6832ce060c3f6022282119f18
+	drm-tip: 2016y-12m-28d-13h-55m-14s UTC integration manifest
+kvm-upstream/linux-next ef85b67385436ddc1998f45f1d6a210f935b3388
+	kvm: nVMX: Allow L1 to intercept software exceptions (#BP and #OF)
+vfio-upstream/next 2b8bb1d771f736b8b34bf160115aee1b12d29f83
+	vfio iommu type1: Fix size argument to vfio_find_dma() in pin_pages/unpin_pages
+origin/gvt-next b30ad6a4425dbc6b95be6bde570778f48e24c48c
+	drm/i915/gvt: fix return value in mul_force_wake_write
+origin/gvt-fixes 5f6e2bbb0d24aac406d299b8213febe4dea2b8d1
+	drm/i915/gvt: fix return value in mul_force_wake_write

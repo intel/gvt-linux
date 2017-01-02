@@ -47,6 +47,26 @@
 #include "drm_internal.h"
 
 /**
+ * drm_crtc_from_index - find the registered CRTC at an index
+ * @dev: DRM device
+ * @idx: index of registered CRTC to find for
+ *
+ * Given a CRTC index, return the registered CRTC from DRM device's
+ * list of CRTCs with matching index.
+ */
+struct drm_crtc *drm_crtc_from_index(struct drm_device *dev, int idx)
+{
+	struct drm_crtc *crtc;
+
+	drm_for_each_crtc(crtc, dev)
+		if (idx == crtc->index)
+			return crtc;
+
+	return NULL;
+}
+EXPORT_SYMBOL(drm_crtc_from_index);
+
+/**
  * drm_crtc_force_disable - Forcibly turn off a CRTC
  * @crtc: CRTC to turn off
  *
@@ -357,7 +377,10 @@ int drm_mode_getcrtc(struct drm_device *dev,
 
 	drm_modeset_lock_crtc(crtc, crtc->primary);
 	crtc_resp->gamma_size = crtc->gamma_size;
-	if (crtc->primary->fb)
+
+	if (crtc->primary->state && crtc->primary->state->fb)
+		crtc_resp->fb_id = crtc->primary->state->fb->base.id;
+	else if (!crtc->primary->state && crtc->primary->fb)
 		crtc_resp->fb_id = crtc->primary->fb->base.id;
 	else
 		crtc_resp->fb_id = 0;
@@ -572,11 +595,11 @@ int drm_mode_setcrtc(struct drm_device *dev, void *data,
 		 */
 		if (!crtc->primary->format_default) {
 			ret = drm_plane_check_pixel_format(crtc->primary,
-							   fb->pixel_format);
+							   fb->format->format);
 			if (ret) {
 				struct drm_format_name_buf format_name;
 				DRM_DEBUG_KMS("Invalid pixel format %s\n",
-				              drm_get_format_name(fb->pixel_format,
+				              drm_get_format_name(fb->format->format,
 				                                  &format_name));
 				goto out;
 			}

@@ -1,0 +1,22 @@
+drm-intel drm-intel-fixes ade4d4410f8b8816a8e9d85bfdb4bdcc9464065a
+	Merge tag 'gvt-fixes-2016-12-26' of https://github.com/01org/gvt-linux into drm-intel-fixes
+drm-upstream drm-fixes 4a401ceeef7bf3bc55f5e913cbf19d6038cf83c6
+	Merge tag 'drm-intel-next-fixes-2016-12-22' of git://anongit.freedesktop.org/git/drm-intel into drm-fixes
+drm-intel drm-intel-next-fixes 6ba0566cf2afcdb17bff882e3a95cbbcb22c4a83
+	drm/i915: skip the first 4k of stolen memory on everything >= gen8
+drm-intel drm-intel-next-queued 1c74eeaf16b8901b9bdb1901e1a8533a2281845a
+	drm/i915: Move number of scalers initialization to runtime init
+drm-upstream drm-next 2cf026ae85c42f253feb9f420d1b4bc99bd5503d
+	Merge branch 'linux-4.10' of git://github.com/skeggsb/linux into drm-next
+sound-upstream for-next 823ff161fe51179cc9ad1a3f6c7e4532901e0444
+	ALSA: hda - Fix click noises on Samsung Ativ Book 8
+sound-upstream for-linus 2d706e790f0508dff4fb72eca9b4892b79757feb
+	Merge branch 'linus' of git://git.kernel.org/pub/scm/linux/kernel/git/herbert/crypto-2.6
+drm-intel topic/core-for-CI 862847fa9da07e06eeee1b6075c9767f84b98309
+	mm/vmalloc: Replace opencoded 4-level page walkers
+drm-misc drm-misc-next 23c4cfbdab494568600ae6073a2bf02be4b10f4e
+	drm/edid: constify edid quirk list
+drm-misc drm-misc-next-fixes 6449b088dd51dd5aa6b38455888bbf538d21f2fc
+	drm: Add fake controlD* symlinks for backwards compat
+drm-misc drm-misc-fixes 7ce7d89f48834cefece7804d38fc5d85382edf77
+	Linux 4.10-rc1

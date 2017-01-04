@@ -1,0 +1,22 @@
+drm-intel drm-intel-fixes 2471eb5fb6e1433e28426ece235e3730348019ec
+	drm/i915: Prevent timeline updates whilst performing reset
+drm-upstream drm-fixes 4a401ceeef7bf3bc55f5e913cbf19d6038cf83c6
+	Merge tag 'drm-intel-next-fixes-2016-12-22' of git://anongit.freedesktop.org/git/drm-intel into drm-fixes
+drm-intel drm-intel-next-fixes 6ba0566cf2afcdb17bff882e3a95cbbcb22c4a83
+	drm/i915: skip the first 4k of stolen memory on everything >= gen8
+drm-intel drm-intel-next-queued b1ed35d9179bc42c5ac7b86548cfae589be17b3e
+	drm/i915: Revoke fenced GTT mmapings across GPU reset
+drm-upstream drm-next 2cf026ae85c42f253feb9f420d1b4bc99bd5503d
+	Merge branch 'linux-4.10' of git://github.com/skeggsb/linux into drm-next
+sound-upstream for-next ed3c177d960bb5881b945ca6f784868126bb90db
+	ALSA: vx: Don't try to update capture stream before running
+sound-upstream for-linus 85bcf96caba8b4a7c0805555638629ba3c67ea0c
+	ALSA: hda - Fix up GPIO for ASUS ROG Ranger
+drm-intel topic/core-for-CI 1622f0ec99d9b0d1c43f86bd6e218b3c11c6408a
+	firmware: Prevent oops on delayed abort
+drm-misc drm-misc-next 76fede2fa79d0d02f6874f023a39b8bd5f52e297
+	drm/atomic: Fix outdated comment.
+drm-misc drm-misc-next-fixes 6449b088dd51dd5aa6b38455888bbf538d21f2fc
+	drm: Add fake controlD* symlinks for backwards compat
+drm-misc drm-misc-fixes aebe55c2d4b998741c0847ace1b4af47d73c763b
+	drm: Clean up planes in atomic commit helper failure path

@@ -891,8 +891,11 @@ static int tegra_debugfs_iova(struct seq_file *s, void *data)
 	struct drm_info_node *node = (struct drm_info_node *)s->private;
 	struct drm_device *drm = node->minor->dev;
 	struct tegra_drm *tegra = drm->dev_private;
+	struct drm_printer p = drm_seq_file_printer(s);
 
-	return drm_mm_dump_table(s, &tegra->mm);
+	drm_mm_print(&tegra->mm, &p);
+
+	return 0;
 }
 
 static struct drm_info_list tegra_debugfs_list[] = {
@@ -991,10 +994,6 @@ static int host1x_drm_probe(struct host1x_device *dev)
 	err = drm_dev_register(drm, 0);
 	if (err < 0)
 		goto unref;
-
-	DRM_INFO("Initialized %s %d.%d.%d %s on minor %d\n", driver->name,
-		 driver->major, driver->minor, driver->patchlevel,
-		 driver->date, drm->primary->index);
 
 	return 0;
 

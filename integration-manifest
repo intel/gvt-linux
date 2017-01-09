@@ -1,22 +1,10 @@
-drm-intel drm-intel-fixes 2471eb5fb6e1433e28426ece235e3730348019ec
-	drm/i915: Prevent timeline updates whilst performing reset
-drm-upstream drm-fixes 4a401ceeef7bf3bc55f5e913cbf19d6038cf83c6
-	Merge tag 'drm-intel-next-fixes-2016-12-22' of git://anongit.freedesktop.org/git/drm-intel into drm-fixes
-drm-intel drm-intel-next-fixes 6ba0566cf2afcdb17bff882e3a95cbbcb22c4a83
-	drm/i915: skip the first 4k of stolen memory on everything >= gen8
-drm-intel drm-intel-next-queued b42a13d9181e1dee58dcbf2f7c8d5625a49cb6f5
-	drm/i915: Drain freed objects for mmap space exhaustion
-drm-upstream drm-next 2cf026ae85c42f253feb9f420d1b4bc99bd5503d
-	Merge branch 'linux-4.10' of git://github.com/skeggsb/linux into drm-next
-sound-upstream for-next 921282360b9c9bf34c75cd18bb90f298c4f4ebc8
-	ALSA: firewire-tascam: enclose identifiers referred by single function
-sound-upstream for-linus e4f34cf6d59160818dcdcf41f4116cc88093ece3
-	Revert "ALSA: firewire-lib: change structure member with proper type"
-drm-intel topic/core-for-CI 1622f0ec99d9b0d1c43f86bd6e218b3c11c6408a
-	firmware: Prevent oops on delayed abort
-drm-misc drm-misc-next 9f547425fd9fbcb42b177ec7eec46bd4d7d4ae45
-	drm: crc: Call wake_up_interruptible() each time there is a new CRC entry
-drm-misc drm-misc-next-fixes 6449b088dd51dd5aa6b38455888bbf538d21f2fc
-	drm: Add fake controlD* symlinks for backwards compat
-drm-misc drm-misc-fixes aebe55c2d4b998741c0847ace1b4af47d73c763b
-	drm: Clean up planes in atomic commit helper failure path
+drm-tip/drm-tip eb5c556a1e5eff388e48e4b7cf61e95783019e83
+	drm-tip: 2017y-01m-06d-16h-59m-26s UTC integration manifest
+kvm-upstream/linux-next 0c744ea4f77d72b3dcebb7a8f2684633ec79be88
+	Linux 4.10-rc2
+vfio-upstream/next 2b8bb1d771f736b8b34bf160115aee1b12d29f83
+	vfio iommu type1: Fix size argument to vfio_find_dma() in pin_pages/unpin_pages
+origin/gvt-next ca7adf8397865e8dd199e12c863c920399cfa709
+	drm/i915/gvt: cleanup GFP flags
+origin/gvt-fixes ca7adf8397865e8dd199e12c863c920399cfa709
+	drm/i915/gvt: cleanup GFP flags

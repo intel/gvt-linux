@@ -1,22 +1,10 @@
-drm-intel drm-intel-fixes 2471eb5fb6e1433e28426ece235e3730348019ec
-	drm/i915: Prevent timeline updates whilst performing reset
-drm-upstream drm-fixes 6edd870bca30b3aa69370a99bcefc1e5f2b8b190
-	Merge branch 'drm-fixes-4.10' of git://people.freedesktop.org/~agd5f/linux into drm-fixes
-drm-intel drm-intel-next-fixes 6ba0566cf2afcdb17bff882e3a95cbbcb22c4a83
-	drm/i915: skip the first 4k of stolen memory on everything >= gen8
-drm-intel drm-intel-next-queued 5d799acdd057e4f10fdd09ade22028c83f829f3e
-	drm/i915: Update DRIVER_DATE to 20170109
-drm-upstream drm-next 3806a271bf4be375f304e492148edb2507181158
-	Merge tag 'drm-misc-next-2016-12-30' of git://anongit.freedesktop.org/git/drm-misc into drm-next
-sound-upstream for-next 921282360b9c9bf34c75cd18bb90f298c4f4ebc8
-	ALSA: firewire-tascam: enclose identifiers referred by single function
-sound-upstream for-linus e4f34cf6d59160818dcdcf41f4116cc88093ece3
-	Revert "ALSA: firewire-lib: change structure member with proper type"
-drm-intel topic/core-for-CI 1622f0ec99d9b0d1c43f86bd6e218b3c11c6408a
-	firmware: Prevent oops on delayed abort
-drm-misc drm-misc-next 9f547425fd9fbcb42b177ec7eec46bd4d7d4ae45
-	drm: crc: Call wake_up_interruptible() each time there is a new CRC entry
-drm-misc drm-misc-next-fixes 6449b088dd51dd5aa6b38455888bbf538d21f2fc
-	drm: Add fake controlD* symlinks for backwards compat
-drm-misc drm-misc-fixes f0a8b49c03d22a511a601dc54b2a3425a41e35fa
-	drm/bridge: analogix dp: Fix runtime PM state on driver bind
+drm-tip/drm-tip a443d7dc0457303f35464babf0b7f2db8177fbb5
+	drm-tip: 2017y-01m-09d-09h-24m-19s UTC integration manifest
+kvm-upstream/linux-next 0c744ea4f77d72b3dcebb7a8f2684633ec79be88
+	Linux 4.10-rc2
+vfio-upstream/next 2b8bb1d771f736b8b34bf160115aee1b12d29f83
+	vfio iommu type1: Fix size argument to vfio_find_dma() in pin_pages/unpin_pages
+origin/gvt-next 74c0f55e01d4d73a5510cebe0e35e034b349eba6
+	drm/i915/gvt: cleanup GFP flags
+origin/gvt-fixes 9631739f8196ec80b5d9bf955f79b711490c0205
+	drm/i915/gvt: cleanup GFP flags

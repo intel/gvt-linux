@@ -314,7 +314,7 @@ int ast_framebuffer_init(struct drm_device *dev,
 {
 	int ret;
 
-	drm_helper_mode_fill_fb_struct(&ast_fb->base, mode_cmd);
+	drm_helper_mode_fill_fb_struct(dev, &ast_fb->base, mode_cmd);
 	ast_fb->obj = obj;
 	ret = drm_framebuffer_init(dev, &ast_fb->base, &ast_fb_funcs);
 	if (ret) {
@@ -479,7 +479,7 @@ out_free:
 	return ret;
 }
 
-int ast_driver_unload(struct drm_device *dev)
+void ast_driver_unload(struct drm_device *dev)
 {
 	struct ast_private *ast = dev->dev_private;
 
@@ -492,7 +492,6 @@ int ast_driver_unload(struct drm_device *dev)
 	pci_iounmap(dev->pdev, ast->ioregs);
 	pci_iounmap(dev->pdev, ast->regs);
 	kfree(ast);
-	return 0;
 }
 
 int ast_gem_create(struct drm_device *dev,

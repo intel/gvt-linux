@@ -738,6 +738,8 @@ skip_wait:
 err:
 	__set_task_state(task, TASK_RUNNING);
 	mutex_remove_waiter(lock, &waiter, task);
+	if (first)
+		__mutex_clear_flag(lock, MUTEX_FLAG_HANDOFF);
 	spin_unlock_mutex(&lock->wait_lock, flags);
 	debug_mutex_free_waiter(&waiter);
 	mutex_release(&lock->dep_map, 1, ip);

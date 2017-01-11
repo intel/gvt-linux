@@ -190,6 +190,8 @@ struct kvm_stats_debugfs_item debugfs_entries[] = {
 	{ "mmu_unsync", VM_STAT(mmu_unsync) },
 	{ "remote_tlb_flush", VM_STAT(remote_tlb_flush) },
 	{ "largepages", VM_STAT(lpages) },
+	{ "max_mmu_page_hash_collisions",
+		VM_STAT(max_mmu_page_hash_collisions) },
 	{ NULL }
 };
 
@@ -3894,7 +3896,7 @@ static int kvm_vm_ioctl_enable_cap(struct kvm *kvm,
 			goto split_irqchip_unlock;
 		/* Pairs with irqchip_in_kernel. */
 		smp_wmb();
-		kvm->arch.irqchip_split = true;
+		kvm->arch.irqchip_mode = KVM_IRQCHIP_SPLIT;
 		kvm->arch.nr_reserved_ioapic_pins = cap->args[0];
 		r = 0;
 split_irqchip_unlock:
@@ -3957,40 +3959,41 @@ long kvm_arch_vm_ioctl(struct file *filp,
 		r = kvm_vm_ioctl_get_nr_mmu_pages(kvm);
 		break;
 	case KVM_CREATE_IRQCHIP: {
-		struct kvm_pic *vpic;
-
 		mutex_lock(&kvm->lock);
+
 		r = -EEXIST;
-		if (kvm->arch.vpic)
+		if (irqchip_in_kernel(kvm))
 			goto create_irqchip_unlock;
+
 		r = -EINVAL;
 		if (kvm->created_vcpus)
 			goto create_irqchip_unlock;
-		r = -ENOMEM;
-		vpic = kvm_create_pic(kvm);
-		if (vpic) {
-			r = kvm_ioapic_init(kvm);
-			if (r) {
-				mutex_lock(&kvm->slots_lock);
-				kvm_destroy_pic(vpic);
-				mutex_unlock(&kvm->slots_lock);
-				goto create_irqchip_unlock;
-			}
-		} else
+
+		r = kvm_pic_init(kvm);
+		if (r)
 			goto create_irqchip_unlock;
+
+		r = kvm_ioapic_init(kvm);
+		if (r) {
+			mutex_lock(&kvm->slots_lock);
+			kvm_pic_destroy(kvm);
+			mutex_unlock(&kvm->slots_lock);
+			goto create_irqchip_unlock;
+		}
+
 		r = kvm_setup_default_irq_routing(kvm);
 		if (r) {
 			mutex_lock(&kvm->slots_lock);
 			mutex_lock(&kvm->irq_lock);
 			kvm_ioapic_destroy(kvm);
-			kvm_destroy_pic(vpic);
+			kvm_pic_destroy(kvm);
 			mutex_unlock(&kvm->irq_lock);
 			mutex_unlock(&kvm->slots_lock);
 			goto create_irqchip_unlock;
 		}
-		/* Write kvm->irq_routing before kvm->arch.vpic.  */
+		/* Write kvm->irq_routing before enabling irqchip_in_kernel. */
 		smp_wmb();
-		kvm->arch.vpic = vpic;
+		kvm->arch.irqchip_mode = KVM_IRQCHIP_KERNEL;
 	create_irqchip_unlock:
 		mutex_unlock(&kvm->lock);
 		break;
@@ -4026,7 +4029,7 @@ long kvm_arch_vm_ioctl(struct file *filp,
 		}
 
 		r = -ENXIO;
-		if (!irqchip_in_kernel(kvm) || irqchip_split(kvm))
+		if (!irqchip_kernel(kvm))
 			goto get_irqchip_out;
 		r = kvm_vm_ioctl_get_irqchip(kvm, chip);
 		if (r)
@@ -4050,7 +4053,7 @@ long kvm_arch_vm_ioctl(struct file *filp,
 		}
 
 		r = -ENXIO;
-		if (!irqchip_in_kernel(kvm) || irqchip_split(kvm))
+		if (!irqchip_kernel(kvm))
 			goto set_irqchip_out;
 		r = kvm_vm_ioctl_set_irqchip(kvm, chip);
 		if (r)
@@ -4459,6 +4462,21 @@ out:
 }
 EXPORT_SYMBOL_GPL(kvm_write_guest_virt_system);
 
+static int vcpu_is_mmio_gpa(struct kvm_vcpu *vcpu, unsigned long gva,
+			    gpa_t gpa, bool write)
+{
+	/* For APIC access vmexit */
+	if ((gpa & PAGE_MASK) == APIC_DEFAULT_PHYS_BASE)
+		return 1;
+
+	if (vcpu_match_mmio_gpa(vcpu, gpa)) {
+		trace_vcpu_match_mmio(gva, gpa, write, true);
+		return 1;
+	}
+
+	return 0;
+}
+
 static int vcpu_mmio_gva_to_gpa(struct kvm_vcpu *vcpu, unsigned long gva,
 				gpa_t *gpa, struct x86_exception *exception,
 				bool write)
@@ -4485,16 +4503,7 @@ static int vcpu_mmio_gva_to_gpa(struct kvm_vcpu *vcpu, unsigned long gva,
 	if (*gpa == UNMAPPED_GVA)
 		return -1;
 
-	/* For APIC access vmexit */
-	if ((*gpa & PAGE_MASK) == APIC_DEFAULT_PHYS_BASE)
-		return 1;
-
-	if (vcpu_match_mmio_gpa(vcpu, *gpa)) {
-		trace_vcpu_match_mmio(gva, *gpa, write, true);
-		return 1;
-	}
-
-	return 0;
+	return vcpu_is_mmio_gpa(vcpu, gva, *gpa, write);
 }
 
 int emulator_write_phys(struct kvm_vcpu *vcpu, gpa_t gpa,
@@ -4591,6 +4600,22 @@ static int emulator_read_write_onepage(unsigned long addr, void *val,
 	int handled, ret;
 	bool write = ops->write;
 	struct kvm_mmio_fragment *frag;
+	struct x86_emulate_ctxt *ctxt = &vcpu->arch.emulate_ctxt;
+
+	/*
+	 * If the exit was due to a NPF we may already have a GPA.
+	 * If the GPA is present, use it to avoid the GVA to GPA table walk.
+	 * Note, this cannot be used on string operations since string
+	 * operation using rep will only have the initial GPA from the NPF
+	 * occurred.
+	 */
+	if (vcpu->arch.gpa_available &&
+	    emulator_can_use_gpa(ctxt) &&
+	    vcpu_is_mmio_gpa(vcpu, addr, exception->address, write) &&
+	    (addr & ~PAGE_MASK) == (exception->address & ~PAGE_MASK)) {
+		gpa = exception->address;
+		goto mmio;
+	}
 
 	ret = vcpu_mmio_gva_to_gpa(vcpu, addr, &gpa, exception, write);
 
@@ -5607,6 +5632,9 @@ int x86_emulate_instruction(struct kvm_vcpu *vcpu,
 	}
 
 restart:
+	/* Save the faulting GPA (cr2) in the address field */
+	ctxt->exception.address = cr2;
+
 	r = x86_emulate_insn(ctxt);
 
 	if (r == EMULATION_INTERCEPTED)
@@ -6022,7 +6050,7 @@ int kvm_arch_init(void *opaque)
 
 	kvm_mmu_set_mask_ptes(PT_USER_MASK, PT_ACCESSED_MASK,
 			PT_DIRTY_MASK, PT64_NX_MASK, 0,
-			PT_PRESENT_MASK);
+			PT_PRESENT_MASK, 0);
 	kvm_timer_init();
 
 	perf_register_guest_info_callbacks(&kvm_guest_cbs);

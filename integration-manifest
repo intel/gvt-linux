@@ -1,22 +1,12 @@
-drm-intel drm-intel-fixes e4621b73b6b472fe2b434b4f0f76b8f33ee26a73
-	drm/i915: Fix phys pwrite for struct_mutex-less operation
-drm-upstream drm-fixes 9afe69d5a9495f8b023017e4c328fa717e00f092
-	Merge tag 'drm-misc-fixes-2017-01-09' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
-drm-intel drm-intel-next-fixes 6ba0566cf2afcdb17bff882e3a95cbbcb22c4a83
-	drm/i915: skip the first 4k of stolen memory on everything >= gen8
-drm-intel drm-intel-next-queued 340c93c0a32acc916bb7655926398b8591e0a30b
-	drm/i915/psr: enable ALPM for psr2
-drm-upstream drm-next 282d0a35c8c42c3ac4dd86a7e408ed1b30db4897
-	Merge tag 'drm-misc-next-2017-01-09' of git://anongit.freedesktop.org/git/drm-misc into drm-next
-sound-upstream for-next f43e5407e4184ef0e5a31272f80ca893cb5ee24c
-	ALSA: usb: Constify snd_rawmidi_ops
-sound-upstream for-linus 6cf4569ce3561dec560147e6051959d6896b23d1
-	Merge tag 'asoc-fix-v4.10-rc3' of git://git.kernel.org/pub/scm/linux/kernel/git/broonie/sound into for-linus
-drm-intel topic/core-for-CI 8cc54ca0eff39bcfb3395327db2ef67521937f00
-	locking/mutex: Clear mutex-handoff flag on interrupt
-drm-misc drm-misc-next 3e7d2fddba5a3e9243fc461027511a350f88c23b
-	drm/tegra: Stop using drm_framebuffer_unregister_private
-drm-misc drm-misc-next-fixes 6449b088dd51dd5aa6b38455888bbf538d21f2fc
-	drm: Add fake controlD* symlinks for backwards compat
-drm-misc drm-misc-fixes 3846fd9b86001bea171943cc3bb9222cb6da6b42
-	drm/probe-helpers: Drop locking from poll_enable
+drm-tip/drm-tip ae1fc35150f6aaadf190a8a881adc9aeb78fd7c9
+	drm-tip: 2017y-01m-13d-00h-42m-24s UTC integration manifest
+kvm-upstream/linux-next 0f89b207b04a1a399e19d35293658e3a571da3d7
+	kvm: svm: Use the hardware provided GPA instead of page walk
+vfio-upstream/for-linus 8f00a5d42992238ba990353e9d009225b9557dd5
+	vfio/type1: Remove pid_namespace.h include
+vfio-upstream/next 2b8bb1d771f736b8b34bf160115aee1b12d29f83
+	vfio iommu type1: Fix size argument to vfio_find_dma() in pin_pages/unpin_pages
+origin/gvt-next b89366d1ce3bd9a7553894a6e2c37dfe6e4757c9
+	drm/i915/gvt: fix vgpu type size init
+origin/gvt-fixes c34eaa8d0f9d9ae26a4a6af7bc3aca57310cf483
+	drm/i915/gvt: rewrite gt reset handler using new function intel_gvt_reset_vgpu_locked

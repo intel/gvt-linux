@@ -145,6 +145,7 @@ struct __drm_crtcs_state {
 	struct drm_crtc_state *state;
 	struct drm_crtc_commit *commit;
 	s64 __user *out_fence_ptr;
+	unsigned last_vblank_count;
 };
 
 struct __drm_connnectors_state {
@@ -188,10 +189,29 @@ struct drm_atomic_state {
 	struct work_struct commit_work;
 };
 
-void drm_crtc_commit_put(struct drm_crtc_commit *commit);
+void __drm_crtc_commit_free(struct kref *kref);
+
+/**
+ * drm_crtc_commit_get - acquire a reference to the CRTC commit
+ * @commit: CRTC commit
+ *
+ * Increases the reference of @commit.
+ */
 static inline void drm_crtc_commit_get(struct drm_crtc_commit *commit)
 {
 	kref_get(&commit->ref);
+}
+
+/**
+ * drm_crtc_commit_put - release a reference to the CRTC commmit
+ * @commit: CRTC commit
+ *
+ * This releases a reference to @commit which is freed after removing the
+ * final reference. No locking required and callable from any context.
+ */
+static inline void drm_crtc_commit_put(struct drm_crtc_commit *commit)
+{
+	kref_put(&commit->ref, __drm_crtc_commit_free);
 }
 
 struct drm_atomic_state * __must_check
@@ -369,12 +389,6 @@ int __must_check drm_atomic_nonblocking_commit(struct drm_atomic_state *state);
 
 void drm_state_dump(struct drm_device *dev, struct drm_printer *p);
 
-#ifdef CONFIG_DEBUG_FS
-struct drm_minor;
-int drm_atomic_debugfs_init(struct drm_minor *minor);
-int drm_atomic_debugfs_cleanup(struct drm_minor *minor);
-#endif
-
 #define for_each_connector_in_state(__state, connector, connector_state, __i) \
 	for ((__i) = 0;							\
 	     (__i) < (__state)->num_connector &&				\
@@ -403,7 +417,7 @@ int drm_atomic_debugfs_cleanup(struct drm_minor *minor);
  * drm_atomic_crtc_needs_modeset - compute combined modeset need
  * @state: &drm_crtc_state for the CRTC
  *
- * To give drivers flexibility struct &drm_crtc_state has 3 booleans to track
+ * To give drivers flexibility &struct drm_crtc_state has 3 booleans to track
  * whether the state CRTC changed enough to need a full modeset cycle:
  * connectors_changed, mode_changed and active_changed. This helper simply
  * combines these three to compute the overall need for a modeset for @state.
@@ -423,6 +437,5 @@ drm_atomic_crtc_needs_modeset(const struct drm_crtc_state *state)
 	return state->mode_changed || state->active_changed ||
 	       state->connectors_changed;
 }
-
 
 #endif /* DRM_ATOMIC_H_ */

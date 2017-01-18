@@ -169,7 +169,7 @@ static void __gvt_cache_remove_entry(struct intel_vgpu *vgpu,
 
 static void gvt_cache_remove(struct intel_vgpu *vgpu, gfn_t gfn)
 {
-	struct device *dev = &vgpu->vdev.mdev->dev;
+	struct device *dev = mdev_dev(vgpu->vdev.mdev);
 	struct gvt_dma *this;
 	unsigned long g1;
 	int rc;
@@ -198,7 +198,7 @@ static void gvt_cache_destroy(struct intel_vgpu *vgpu)
 {
 	struct gvt_dma *dma;
 	struct rb_node *node = NULL;
-	struct device *dev = &vgpu->vdev.mdev->dev;
+	struct device *dev = mdev_dev(vgpu->vdev.mdev);
 	unsigned long gfn;
 
 	mutex_lock(&vgpu->vdev.cache_lock);
@@ -398,21 +398,24 @@ static int intel_vgpu_create(struct kobject *kobj, struct mdev_device *mdev)
 	struct intel_vgpu_type *type;
 	struct device *pdev;
 	void *gvt;
+	int ret;
 
-	pdev = mdev->parent->dev;
+	pdev = mdev_parent_dev(mdev);
 	gvt = kdev_to_i915(pdev)->gvt;
 
 	type = intel_gvt_find_vgpu_type(gvt, kobject_name(kobj));
 	if (!type) {
 		gvt_err("failed to find type %s to create\n",
 						kobject_name(kobj));
-		return -EINVAL;
+		ret = -EINVAL;
+		goto out;
 	}
 
 	vgpu = intel_gvt_ops->vgpu_create(gvt, type);
 	if (IS_ERR_OR_NULL(vgpu)) {
-		gvt_err("create intel vgpu failed\n");
-		return -EINVAL;
+		ret = vgpu == NULL ? -EFAULT : PTR_ERR(vgpu);
+		gvt_err("failed to create intel vgpu: %d\n", ret);
+		goto out;
 	}
 
 	INIT_WORK(&vgpu->vdev.release_work, intel_vgpu_release_work);
@@ -421,8 +424,11 @@ static int intel_vgpu_create(struct kobject *kobj, struct mdev_device *mdev)
 	mdev_set_drvdata(mdev, vgpu);
 
 	gvt_dbg_core("intel_vgpu_create succeeded for mdev: %s\n",
-		     dev_name(&mdev->dev));
-	return 0;
+		     dev_name(mdev_dev(mdev)));
+	ret = 0;
+
+out:
+	return ret;
 }
 
 static int intel_vgpu_remove(struct mdev_device *mdev)
@@ -485,7 +491,7 @@ static int intel_vgpu_open(struct mdev_device *mdev)
 	vgpu->vdev.group_notifier.notifier_call = intel_vgpu_group_notifier;
 
 	events = VFIO_IOMMU_NOTIFY_DMA_UNMAP;
-	ret = vfio_register_notifier(&mdev->dev, VFIO_IOMMU_NOTIFY, &events,
+	ret = vfio_register_notifier(mdev_dev(mdev), VFIO_IOMMU_NOTIFY, &events,
 				&vgpu->vdev.iommu_notifier);
 	if (ret != 0) {
 		gvt_err("vfio_register_notifier for iommu failed: %d\n", ret);
@@ -493,7 +499,7 @@ static int intel_vgpu_open(struct mdev_device *mdev)
 	}
 
 	events = VFIO_GROUP_NOTIFY_SET_KVM;
-	ret = vfio_register_notifier(&mdev->dev, VFIO_GROUP_NOTIFY, &events,
+	ret = vfio_register_notifier(mdev_dev(mdev), VFIO_GROUP_NOTIFY, &events,
 				&vgpu->vdev.group_notifier);
 	if (ret != 0) {
 		gvt_err("vfio_register_notifier for group failed: %d\n", ret);
@@ -508,11 +514,11 @@ static int intel_vgpu_open(struct mdev_device *mdev)
 	return ret;
 
 undo_group:
-	vfio_unregister_notifier(&mdev->dev, VFIO_GROUP_NOTIFY,
+	vfio_unregister_notifier(mdev_dev(mdev), VFIO_GROUP_NOTIFY,
 					&vgpu->vdev.group_notifier);
 
 undo_iommu:
-	vfio_unregister_notifier(&mdev->dev, VFIO_IOMMU_NOTIFY,
+	vfio_unregister_notifier(mdev_dev(mdev), VFIO_IOMMU_NOTIFY,
 					&vgpu->vdev.iommu_notifier);
 out:
 	return ret;
@@ -529,11 +535,11 @@ static void __intel_vgpu_release(struct intel_vgpu *vgpu)
 	if (atomic_cmpxchg(&vgpu->vdev.released, 0, 1))
 		return;
 
-	ret = vfio_unregister_notifier(&vgpu->vdev.mdev->dev, VFIO_IOMMU_NOTIFY,
+	ret = vfio_unregister_notifier(mdev_dev(vgpu->vdev.mdev), VFIO_IOMMU_NOTIFY,
 					&vgpu->vdev.iommu_notifier);
 	WARN(ret, "vfio_unregister_notifier for iommu failed: %d\n", ret);
 
-	ret = vfio_unregister_notifier(&vgpu->vdev.mdev->dev, VFIO_GROUP_NOTIFY,
+	ret = vfio_unregister_notifier(mdev_dev(vgpu->vdev.mdev), VFIO_GROUP_NOTIFY,
 					&vgpu->vdev.group_notifier);
 	WARN(ret, "vfio_unregister_notifier for group failed: %d\n", ret);
 
@@ -1111,7 +1117,7 @@ static long intel_vgpu_ioctl(struct mdev_device *mdev, unsigned int cmd,
 	return 0;
 }
 
-static const struct parent_ops intel_vgpu_ops = {
+static const struct mdev_parent_ops intel_vgpu_ops = {
 	.supported_type_groups	= intel_vgpu_type_groups,
 	.create			= intel_vgpu_create,
 	.remove			= intel_vgpu_remove,
@@ -1398,7 +1404,7 @@ static unsigned long kvmgt_gfn_to_pfn(unsigned long handle, unsigned long gfn)
 		return pfn;
 
 	pfn = INTEL_GVT_INVALID_ADDR;
-	dev = &info->vgpu->vdev.mdev->dev;
+	dev = mdev_dev(info->vgpu->vdev.mdev);
 	rc = vfio_pin_pages(dev, &gfn, 1, IOMMU_READ | IOMMU_WRITE, &pfn);
 	if (rc != 1) {
 		gvt_err("vfio_pin_pages failed for gfn 0x%lx: %d\n", gfn, rc);

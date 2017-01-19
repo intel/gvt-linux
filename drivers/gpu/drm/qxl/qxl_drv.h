@@ -43,6 +43,7 @@
 #include <ttm/ttm_placement.h>
 #include <ttm/ttm_module.h>
 
+#include <drm/drm_encoder.h>
 #include <drm/drm_gem.h>
 
 /* just for ttm_validate_buffer */
@@ -336,7 +337,7 @@ extern const struct drm_ioctl_desc qxl_ioctls[];
 extern int qxl_max_ioctl;
 
 int qxl_driver_load(struct drm_device *dev, unsigned long flags);
-int qxl_driver_unload(struct drm_device *dev);
+void qxl_driver_unload(struct drm_device *dev);
 
 int qxl_modeset_init(struct qxl_device *qdev);
 void qxl_modeset_fini(struct qxl_device *qdev);

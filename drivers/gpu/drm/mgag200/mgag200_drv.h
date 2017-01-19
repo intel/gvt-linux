@@ -15,6 +15,7 @@
 
 #include <video/vga.h>
 
+#include <drm/drm_encoder.h>
 #include <drm/drm_fb_helper.h>
 #include <drm/ttm/ttm_bo_api.h>
 #include <drm/ttm/ttm_bo_driver.h>
@@ -257,7 +258,7 @@ int mgag200_framebuffer_init(struct drm_device *dev,
 
 
 int mgag200_driver_load(struct drm_device *dev, unsigned long flags);
-int mgag200_driver_unload(struct drm_device *dev);
+void mgag200_driver_unload(struct drm_device *dev);
 int mgag200_gem_create(struct drm_device *dev,
 		   u32 size, bool iskernel,
 		       struct drm_gem_object **obj);

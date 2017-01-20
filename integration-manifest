@@ -1,22 +1,12 @@
-drm-intel drm-intel-fixes 3bfdfdcbce2796ce75bf2d85fd8471858d702e5d
-	drm/i915: Ignore bogus plane coordinates on SKL when the plane is not visible
-drm-upstream drm-fixes 9afe69d5a9495f8b023017e4c328fa717e00f092
-	Merge tag 'drm-misc-fixes-2017-01-09' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
-drm-intel drm-intel-next-fixes 6ba0566cf2afcdb17bff882e3a95cbbcb22c4a83
-	drm/i915: skip the first 4k of stolen memory on everything >= gen8
-drm-intel drm-intel-next-queued e96128235b0fbddff1228b37033077397dbd21d9
-	drm/i915: Remove the double handling of 'flags from intel_mode_from_pipe_config()
-drm-upstream drm-next 282d0a35c8c42c3ac4dd86a7e408ed1b30db4897
-	Merge tag 'drm-misc-next-2017-01-09' of git://anongit.freedesktop.org/git/drm-misc into drm-next
-sound-upstream for-next 9eb5d0e635ebe2f227d591e531d48c6f01c0dd78
-	ALSA: hda/realtek - Add support headphone Mic for ALC221 of HP platform
-sound-upstream for-linus 6cf4569ce3561dec560147e6051959d6896b23d1
-	Merge tag 'asoc-fix-v4.10-rc3' of git://git.kernel.org/pub/scm/linux/kernel/git/broonie/sound into for-linus
-drm-intel topic/core-for-CI 404d55afb92c959a117a138484d8507829be3818
-	ACPICA: Tables: Remove a hidden logic related to acpi_tb_install_standard_table()
-drm-misc drm-misc-next 6f897f51c4181397bf811d260eb7fef8d7ccd14f
-	drm: qxl: Open code teardown function for qxl
-drm-misc drm-misc-next-fixes 6449b088dd51dd5aa6b38455888bbf538d21f2fc
-	drm: Add fake controlD* symlinks for backwards compat
-drm-misc drm-misc-fixes 7e9081c5aac73b8a0bc22e0b3e7a12c3e9cf5256
-	drm/fence: fix memory overwrite when setting out_fence fd
+drm-tip/drm-tip 6155f94d32e438a9656de680897060bd2245629a
+	drm-tip: 2017y-01m-19d-18h-24m-49s UTC integration manifest
+kvm-upstream/linux-next 0f89b207b04a1a399e19d35293658e3a571da3d7
+	kvm: svm: Use the hardware provided GPA instead of page walk
+vfio-upstream/for-linus 94a6fa899d2cb5ee76933406df32996576a562e4
+	vfio/type1: Remove pid_namespace.h include
+vfio-upstream/next 2b8bb1d771f736b8b34bf160115aee1b12d29f83
+	vfio iommu type1: Fix size argument to vfio_find_dma() in pin_pages/unpin_pages
+origin/gvt-next b89366d1ce3bd9a7553894a6e2c37dfe6e4757c9
+	drm/i915/gvt: fix vgpu type size init
+origin/gvt-fixes 62f0a11e2339e1ba154600d1f49ef5d5d84eaae4
+	drm/i915/gvt: Fix relocation of shadow bb

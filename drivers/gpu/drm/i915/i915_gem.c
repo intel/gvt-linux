@@ -4442,7 +4442,7 @@ int i915_gem_init(struct drm_device *dev)
 	if (ret)
 		goto out_unlock;
 
-	ret = intel_engines_init(dev);
+	ret = intel_engines_init(dev_priv);
 	if (ret)
 		goto out_unlock;
 

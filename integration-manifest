@@ -1,0 +1,22 @@
+drm-intel drm-intel-fixes 3bfdfdcbce2796ce75bf2d85fd8471858d702e5d
+	drm/i915: Ignore bogus plane coordinates on SKL when the plane is not visible
+drm-upstream drm-fixes 932790109f62aa52bdb4bb62aa66653c0b51bc75
+	Merge tag 'drm-qemu-20170110' of git://git.kraxel.org/linux into drm-fixes
+drm-intel drm-intel-next-fixes 6ba0566cf2afcdb17bff882e3a95cbbcb22c4a83
+	drm/i915: skip the first 4k of stolen memory on everything >= gen8
+drm-intel drm-intel-next-queued b976dc53ec43da887fb5731f2f7e1f770cec6074
+	drm/i915: Introduce IS_GEN9_BC for Skylake and Kabylake.
+drm-upstream drm-next f0493e653f9679114d1dfd54ab88b54ce95576e1
+	drm/mgag200: Added support for the new device G200eH3
+sound-upstream for-next 9eb5d0e635ebe2f227d591e531d48c6f01c0dd78
+	ALSA: hda/realtek - Add support headphone Mic for ALC221 of HP platform
+sound-upstream for-linus 6cf4569ce3561dec560147e6051959d6896b23d1
+	Merge tag 'asoc-fix-v4.10-rc3' of git://git.kernel.org/pub/scm/linux/kernel/git/broonie/sound into for-linus
+drm-intel topic/core-for-CI 404d55afb92c959a117a138484d8507829be3818
+	ACPICA: Tables: Remove a hidden logic related to acpi_tb_install_standard_table()
+drm-misc drm-misc-next 7b0a89a6db9a5912065e174162ec4a653c9b25d6
+	drm/dp: Store drm_device in MST topology manager
+drm-misc drm-misc-next-fixes 6449b088dd51dd5aa6b38455888bbf538d21f2fc
+	drm: Add fake controlD* symlinks for backwards compat
+drm-misc drm-misc-fixes 7e9081c5aac73b8a0bc22e0b3e7a12c3e9cf5256
+	drm/fence: fix memory overwrite when setting out_fence fd

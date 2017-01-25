@@ -557,6 +557,9 @@ static void fw_load_abort(struct firmware_priv *fw_priv)
 {
 	struct firmware_buf *buf = fw_priv->buf;
 
+	if (!buf)
+		return;
+
 	__fw_load_abort(buf);
 
 	/* avoid user action after loading abort */

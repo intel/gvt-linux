@@ -73,9 +73,9 @@ struct drm_simple_display_pipe_funcs {
 	/**
 	 * @prepare_fb:
 	 *
-	 * Optional, called by struct &drm_plane_helper_funcs ->prepare_fb .
+	 * Optional, called by &struct drm_plane_helper_funcs ->prepare_fb .
 	 * Please read the documentation for the ->prepare_fb hook in
-	 * struct &drm_plane_helper_funcs for more details.
+	 * &struct drm_plane_helper_funcs for more details.
 	 */
 	int (*prepare_fb)(struct drm_simple_display_pipe *pipe,
 			  struct drm_plane_state *plane_state);
@@ -83,9 +83,9 @@ struct drm_simple_display_pipe_funcs {
 	/**
 	 * @cleanup_fb:
 	 *
-	 * Optional, called by struct &drm_plane_helper_funcs ->cleanup_fb .
+	 * Optional, called by &struct drm_plane_helper_funcs ->cleanup_fb .
 	 * Please read the documentation for the ->cleanup_fb hook in
-	 * struct &drm_plane_helper_funcs for more details.
+	 * &struct drm_plane_helper_funcs for more details.
 	 */
 	void (*cleanup_fb)(struct drm_simple_display_pipe *pipe,
 			   struct drm_plane_state *plane_state);
@@ -113,8 +113,6 @@ struct drm_simple_display_pipe {
 
 int drm_simple_display_pipe_attach_bridge(struct drm_simple_display_pipe *pipe,
 					  struct drm_bridge *bridge);
-
-void drm_simple_display_pipe_detach_bridge(struct drm_simple_display_pipe *pipe);
 
 int drm_simple_display_pipe_init(struct drm_device *dev,
 			struct drm_simple_display_pipe *pipe,

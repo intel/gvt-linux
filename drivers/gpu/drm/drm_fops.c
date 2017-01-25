@@ -622,7 +622,7 @@ EXPORT_SYMBOL(drm_event_reserve_init_locked);
  * kmalloc and @p must be the first member element.
  *
  * Callers which already hold dev->event_lock should use
- * drm_event_reserve_init() instead.
+ * drm_event_reserve_init_locked() instead.
  *
  * RETURNS:
  *
@@ -689,8 +689,8 @@ void drm_send_event_locked(struct drm_device *dev, struct drm_pending_event *e)
 	assert_spin_locked(&dev->event_lock);
 
 	if (e->completion) {
-		/* ->completion might disappear as soon as it signalled. */
 		complete_all(e->completion);
+		e->completion_release(e->completion);
 		e->completion = NULL;
 	}
 

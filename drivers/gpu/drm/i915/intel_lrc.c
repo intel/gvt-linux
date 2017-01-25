@@ -230,8 +230,6 @@ enum {
 
 static int execlists_context_deferred_alloc(struct i915_gem_context *ctx,
 					    struct intel_engine_cs *engine);
-static int intel_lr_context_pin(struct i915_gem_context *ctx,
-				struct intel_engine_cs *engine);
 static void execlists_init_reg_state(u32 *reg_state,
 				     struct i915_gem_context *ctx,
 				     struct intel_engine_cs *engine,
@@ -274,10 +272,6 @@ logical_ring_init_platform_invariants(struct intel_engine_cs *engine)
 {
 	struct drm_i915_private *dev_priv = engine->i915;
 
-	engine->disable_lite_restore_wa =
-		IS_BXT_REVID(dev_priv, 0, BXT_REVID_A1) &&
-		(engine->id == VCS || engine->id == VCS2);
-
 	engine->ctx_desc_template = GEN8_CTX_VALID;
 	if (IS_GEN8(dev_priv))
 		engine->ctx_desc_template |= GEN8_CTX_L3LLC_COHERENT;
@@ -286,11 +280,6 @@ logical_ring_init_platform_invariants(struct intel_engine_cs *engine)
 	/* TODO: WaDisableLiteRestore when we start using semaphore
 	 * signalling between Command Streamers */
 	/* ring->ctx_desc_template |= GEN8_CTX_FORCE_RESTORE; */
-
-	/* WaEnableForceRestoreInCtxtDescForVCS:skl */
-	/* WaEnableForceRestoreInCtxtDescForVCS:bxt */
-	if (engine->disable_lite_restore_wa)
-		engine->ctx_desc_template |= GEN8_CTX_FORCE_RESTORE;
 }
 
 /**
@@ -386,11 +375,12 @@ static void execlists_submit_ports(struct intel_engine_cs *engine)
 		dev_priv->regs + i915_mmio_reg_offset(RING_ELSP(engine));
 	u64 desc[2];
 
+	GEM_BUG_ON(port[0].count > 1);
 	if (!port[0].count)
 		execlists_context_status_change(port[0].request,
 						INTEL_CONTEXT_SCHEDULE_IN);
 	desc[0] = execlists_update_context(port[0].request);
-	engine->preempt_wa = port[0].count++; /* bdw only? fixed on skl? */
+	port[0].count++;
 
 	if (port[1].request) {
 		GEM_BUG_ON(port[1].count);
@@ -415,7 +405,7 @@ static void execlists_submit_ports(struct intel_engine_cs *engine)
 static bool ctx_single_port_submission(const struct i915_gem_context *ctx)
 {
 	return (IS_ENABLED(CONFIG_DRM_I915_GVT) &&
-		ctx->execlists_force_single_submission);
+		i915_gem_context_force_single_submission(ctx));
 }
 
 static bool can_merge_ctx(const struct i915_gem_context *prev,
@@ -514,15 +504,6 @@ static void execlists_dequeue(struct intel_engine_cs *engine)
 		RB_CLEAR_NODE(&cursor->priotree.node);
 		cursor->priotree.priority = INT_MAX;
 
-		/* We keep the previous context alive until we retire the
-		 * following request. This ensures that any the context object
-		 * is still pinned for any residual writes the HW makes into it
-		 * on the context switch into the next object following the
-		 * breadcrumb. Otherwise, we may retire the context too early.
-		 */
-		cursor->previous_context = engine->last_context;
-		engine->last_context = cursor->ctx;
-
 		__i915_gem_request_submit(cursor);
 		last = cursor;
 		submit = true;
@@ -564,15 +545,11 @@ bool intel_execlists_idle(struct drm_i915_private *dev_priv)
 	return true;
 }
 
-static bool execlists_elsp_ready(struct intel_engine_cs *engine)
+static bool execlists_elsp_ready(const struct intel_engine_cs *engine)
 {
-	int port;
+	const struct execlist_port *port = engine->execlist_port;
 
-	port = 1; /* wait for a free slot */
-	if (engine->disable_lite_restore_wa || engine->preempt_wa)
-		port = 0; /* wait for GPU to be idle before continuing */
-
-	return !engine->execlist_port[port].request;
+	return port[0].count + port[1].count < 2;
 }
 
 /*
@@ -587,7 +564,7 @@ static void intel_lrc_irq_handler(unsigned long data)
 
 	intel_uncore_forcewake_get(dev_priv, engine->fw_domains);
 
-	if (!execlists_elsp_idle(engine)) {
+	while (test_and_clear_bit(ENGINE_IRQ_EXECLIST, &engine->irq_posted)) {
 		u32 __iomem *csb_mmio =
 			dev_priv->regs + i915_mmio_reg_offset(RING_CONTEXT_STATUS_PTR(engine));
 		u32 __iomem *buf =
@@ -597,14 +574,22 @@ static void intel_lrc_irq_handler(unsigned long data)
 		csb = readl(csb_mmio);
 		head = GEN8_CSB_READ_PTR(csb);
 		tail = GEN8_CSB_WRITE_PTR(csb);
+		if (head == tail)
+			break;
+
 		if (tail < head)
 			tail += GEN8_CSB_ENTRIES;
-		while (head < tail) {
+		do {
 			unsigned int idx = ++head % GEN8_CSB_ENTRIES;
 			unsigned int status = readl(buf + 2 * idx);
 
 			if (!(status & GEN8_CTX_STATUS_COMPLETED_MASK))
 				continue;
+
+			/* Check the context/desc id for this event matches */
+			GEM_BUG_ON(readl(buf + 2 * idx + 1) !=
+				   upper_32_bits(intel_lr_context_descriptor(port[0].request->ctx,
+									     engine)));
 
 			GEM_BUG_ON(port[0].count == 0);
 			if (--port[0].count == 0) {
@@ -615,13 +600,11 @@ static void intel_lrc_irq_handler(unsigned long data)
 				i915_gem_request_put(port[0].request);
 				port[0] = port[1];
 				memset(&port[1], 0, sizeof(port[1]));
-
-				engine->preempt_wa = false;
 			}
 
 			GEM_BUG_ON(port[0].count == 0 &&
 				   !(status & GEN8_CTX_STATUS_ACTIVE_IDLE));
-		}
+		} while (head < tail);
 
 		writel(_MASKED_FIELD(GEN8_CSB_READ_PTR_MASK,
 				     GEN8_CSB_WRITE_PTR(csb) << 8),
@@ -668,10 +651,11 @@ static void execlists_submit_request(struct drm_i915_gem_request *request)
 	/* Will be called from irq-context when using foreign fences. */
 	spin_lock_irqsave(&engine->timeline->lock, flags);
 
-	if (insert_request(&request->priotree, &engine->execlist_queue))
+	if (insert_request(&request->priotree, &engine->execlist_queue)) {
 		engine->execlist_first = &request->priotree.node;
-	if (execlists_elsp_idle(engine))
-		tasklet_hi_schedule(&engine->irq_tasklet);
+		if (execlists_elsp_ready(engine))
+			tasklet_hi_schedule(&engine->irq_tasklet);
+	}
 
 	spin_unlock_irqrestore(&engine->timeline->lock, flags);
 }
@@ -695,7 +679,6 @@ pt_lock_engine(struct i915_priotree *pt, struct intel_engine_cs *locked)
 
 static void execlists_schedule(struct drm_i915_gem_request *request, int prio)
 {
-	static DEFINE_MUTEX(lock);
 	struct intel_engine_cs *engine = NULL;
 	struct i915_dependency *dep, *p;
 	struct i915_dependency stack;
@@ -704,8 +687,8 @@ static void execlists_schedule(struct drm_i915_gem_request *request, int prio)
 	if (prio <= READ_ONCE(request->priotree.priority))
 		return;
 
-	/* Need global lock to use the temporary link inside i915_dependency */
-	mutex_lock(&lock);
+	/* Need BKL in order to use the temporary link inside i915_dependency */
+	lockdep_assert_held(&request->i915->drm.struct_mutex);
 
 	stack.signaler = &request->priotree;
 	list_add(&stack.dfs_link, &dfs);
@@ -734,7 +717,7 @@ static void execlists_schedule(struct drm_i915_gem_request *request, int prio)
 			if (prio > READ_ONCE(p->signaler->priority))
 				list_move_tail(&p->dfs_link, &dfs);
 
-		p = list_next_entry(dep, dfs_link);
+		list_safe_reset_next(dep, p, dfs_link);
 		if (!RB_EMPTY_NODE(&pt->node))
 			continue;
 
@@ -772,16 +755,95 @@ static void execlists_schedule(struct drm_i915_gem_request *request, int prio)
 	if (engine)
 		spin_unlock_irq(&engine->timeline->lock);
 
-	mutex_unlock(&lock);
-
 	/* XXX Do we need to preempt to make room for us and our deps? */
 }
 
-int intel_logical_ring_alloc_request_extras(struct drm_i915_gem_request *request)
+static int execlists_context_pin(struct intel_engine_cs *engine,
+				 struct i915_gem_context *ctx)
+{
+	struct intel_context *ce = &ctx->engine[engine->id];
+	unsigned int flags;
+	void *vaddr;
+	int ret;
+
+	lockdep_assert_held(&ctx->i915->drm.struct_mutex);
+
+	if (ce->pin_count++)
+		return 0;
+
+	if (!ce->state) {
+		ret = execlists_context_deferred_alloc(ctx, engine);
+		if (ret)
+			goto err;
+	}
+	GEM_BUG_ON(!ce->state);
+
+	flags = PIN_GLOBAL;
+	if (ctx->ggtt_offset_bias)
+		flags |= PIN_OFFSET_BIAS | ctx->ggtt_offset_bias;
+	if (i915_gem_context_is_kernel(ctx))
+		flags |= PIN_HIGH;
+
+	ret = i915_vma_pin(ce->state, 0, GEN8_LR_CONTEXT_ALIGN, flags);
+	if (ret)
+		goto err;
+
+	vaddr = i915_gem_object_pin_map(ce->state->obj, I915_MAP_WB);
+	if (IS_ERR(vaddr)) {
+		ret = PTR_ERR(vaddr);
+		goto unpin_vma;
+	}
+
+	ret = intel_ring_pin(ce->ring, ctx->ggtt_offset_bias);
+	if (ret)
+		goto unpin_map;
+
+	intel_lr_context_descriptor_update(ctx, engine);
+
+	ce->lrc_reg_state = vaddr + LRC_STATE_PN * PAGE_SIZE;
+	ce->lrc_reg_state[CTX_RING_BUFFER_START+1] =
+		i915_ggtt_offset(ce->ring->vma);
+
+	ce->state->obj->mm.dirty = true;
+
+	i915_gem_context_get(ctx);
+	return 0;
+
+unpin_map:
+	i915_gem_object_unpin_map(ce->state->obj);
+unpin_vma:
+	__i915_vma_unpin(ce->state);
+err:
+	ce->pin_count = 0;
+	return ret;
+}
+
+static void execlists_context_unpin(struct intel_engine_cs *engine,
+				    struct i915_gem_context *ctx)
+{
+	struct intel_context *ce = &ctx->engine[engine->id];
+
+	lockdep_assert_held(&ctx->i915->drm.struct_mutex);
+	GEM_BUG_ON(ce->pin_count == 0);
+
+	if (--ce->pin_count)
+		return;
+
+	intel_ring_unpin(ce->ring);
+
+	i915_gem_object_unpin_map(ce->state->obj);
+	i915_vma_unpin(ce->state);
+
+	i915_gem_context_put(ctx);
+}
+
+static int execlists_request_alloc(struct drm_i915_gem_request *request)
 {
 	struct intel_engine_cs *engine = request->engine;
 	struct intel_context *ce = &request->ctx->engine[engine->id];
 	int ret;
+
+	GEM_BUG_ON(!ce->pin_count);
 
 	/* Flush enough space to reduce the likelihood of waiting after
 	 * we start building the request - in which case we will just
@@ -789,17 +851,8 @@ int intel_logical_ring_alloc_request_extras(struct drm_i915_gem_request *request
 	 */
 	request->reserved_space += EXECLISTS_REQUEST_SIZE;
 
-	if (!ce->state) {
-		ret = execlists_context_deferred_alloc(request->ctx, engine);
-		if (ret)
-			return ret;
-	}
-
+	GEM_BUG_ON(!ce->ring);
 	request->ring = ce->ring;
-
-	ret = intel_lr_context_pin(request->ctx, engine);
-	if (ret)
-		return ret;
 
 	if (i915.enable_guc_submission) {
 		/*
@@ -809,7 +862,7 @@ int intel_logical_ring_alloc_request_extras(struct drm_i915_gem_request *request
 		 */
 		ret = i915_guc_wq_reserve(request);
 		if (ret)
-			goto err_unpin;
+			goto err;
 	}
 
 	ret = intel_ring_begin(request, 0);
@@ -837,81 +890,8 @@ int intel_logical_ring_alloc_request_extras(struct drm_i915_gem_request *request
 err_unreserve:
 	if (i915.enable_guc_submission)
 		i915_guc_wq_unreserve(request);
-err_unpin:
-	intel_lr_context_unpin(request->ctx, engine);
-	return ret;
-}
-
-static int intel_lr_context_pin(struct i915_gem_context *ctx,
-				struct intel_engine_cs *engine)
-{
-	struct intel_context *ce = &ctx->engine[engine->id];
-	void *vaddr;
-	int ret;
-
-	lockdep_assert_held(&ctx->i915->drm.struct_mutex);
-
-	if (ce->pin_count++)
-		return 0;
-
-	ret = i915_vma_pin(ce->state, 0, GEN8_LR_CONTEXT_ALIGN,
-			   PIN_OFFSET_BIAS | GUC_WOPCM_TOP | PIN_GLOBAL);
-	if (ret)
-		goto err;
-
-	vaddr = i915_gem_object_pin_map(ce->state->obj, I915_MAP_WB);
-	if (IS_ERR(vaddr)) {
-		ret = PTR_ERR(vaddr);
-		goto unpin_vma;
-	}
-
-	ret = intel_ring_pin(ce->ring);
-	if (ret)
-		goto unpin_map;
-
-	intel_lr_context_descriptor_update(ctx, engine);
-
-	ce->lrc_reg_state = vaddr + LRC_STATE_PN * PAGE_SIZE;
-	ce->lrc_reg_state[CTX_RING_BUFFER_START+1] =
-		i915_ggtt_offset(ce->ring->vma);
-
-	ce->state->obj->mm.dirty = true;
-
-	/* Invalidate GuC TLB. */
-	if (i915.enable_guc_submission) {
-		struct drm_i915_private *dev_priv = ctx->i915;
-		I915_WRITE(GEN8_GTCR, GEN8_GTCR_INVALIDATE);
-	}
-
-	i915_gem_context_get(ctx);
-	return 0;
-
-unpin_map:
-	i915_gem_object_unpin_map(ce->state->obj);
-unpin_vma:
-	__i915_vma_unpin(ce->state);
 err:
-	ce->pin_count = 0;
 	return ret;
-}
-
-void intel_lr_context_unpin(struct i915_gem_context *ctx,
-			    struct intel_engine_cs *engine)
-{
-	struct intel_context *ce = &ctx->engine[engine->id];
-
-	lockdep_assert_held(&ctx->i915->drm.struct_mutex);
-	GEM_BUG_ON(ce->pin_count == 0);
-
-	if (--ce->pin_count)
-		return;
-
-	intel_ring_unpin(ce->ring);
-
-	i915_gem_object_unpin_map(ce->state->obj);
-	i915_vma_unpin(ce->state);
-
-	i915_gem_context_put(ctx);
 }
 
 static int intel_logical_ring_workarounds_emit(struct drm_i915_gem_request *req)
@@ -1121,10 +1101,6 @@ static int gen9_init_indirectctx_bb(struct intel_engine_cs *engine,
 	struct drm_i915_private *dev_priv = engine->i915;
 	uint32_t index = wa_ctx_start(wa_ctx, *offset, CACHELINE_DWORDS);
 
-	/* WaDisableCtxRestoreArbitration:bxt */
-	if (IS_BXT_REVID(dev_priv, 0, BXT_REVID_A1))
-		wa_ctx_emit(batch, index, MI_ARB_ON_OFF | MI_ARB_DISABLE);
-
 	/* WaFlushCoherentL3CacheLinesAtContextSwitch:skl,bxt */
 	ret = gen8_emit_flush_coherentl3_wa(engine, batch, index);
 	if (ret < 0)
@@ -1193,38 +1169,6 @@ static int gen9_init_perctx_bb(struct intel_engine_cs *engine,
 {
 	uint32_t index = wa_ctx_start(wa_ctx, *offset, CACHELINE_DWORDS);
 
-	/* WaSetDisablePixMaskCammingAndRhwoInCommonSliceChicken:bxt */
-	if (IS_BXT_REVID(engine->i915, 0, BXT_REVID_A1)) {
-		wa_ctx_emit(batch, index, MI_LOAD_REGISTER_IMM(1));
-		wa_ctx_emit_reg(batch, index, GEN9_SLICE_COMMON_ECO_CHICKEN0);
-		wa_ctx_emit(batch, index,
-			    _MASKED_BIT_ENABLE(DISABLE_PIXEL_MASK_CAMMING));
-		wa_ctx_emit(batch, index, MI_NOOP);
-	}
-
-	/* WaClearTdlStateAckDirtyBits:bxt */
-	if (IS_BXT_REVID(engine->i915, 0, BXT_REVID_B0)) {
-		wa_ctx_emit(batch, index, MI_LOAD_REGISTER_IMM(4));
-
-		wa_ctx_emit_reg(batch, index, GEN8_STATE_ACK);
-		wa_ctx_emit(batch, index, _MASKED_BIT_DISABLE(GEN9_SUBSLICE_TDL_ACK_BITS));
-
-		wa_ctx_emit_reg(batch, index, GEN9_STATE_ACK_SLICE1);
-		wa_ctx_emit(batch, index, _MASKED_BIT_DISABLE(GEN9_SUBSLICE_TDL_ACK_BITS));
-
-		wa_ctx_emit_reg(batch, index, GEN9_STATE_ACK_SLICE2);
-		wa_ctx_emit(batch, index, _MASKED_BIT_DISABLE(GEN9_SUBSLICE_TDL_ACK_BITS));
-
-		wa_ctx_emit_reg(batch, index, GEN7_ROW_CHICKEN2);
-		/* dummy write to CS, mask bits are 0 to ensure the register is not modified */
-		wa_ctx_emit(batch, index, 0x0);
-		wa_ctx_emit(batch, index, MI_NOOP);
-	}
-
-	/* WaDisableCtxRestoreArbitration:bxt */
-	if (IS_BXT_REVID(engine->i915, 0, BXT_REVID_A1))
-		wa_ctx_emit(batch, index, MI_ARB_ON_OFF | MI_ARB_ENABLE);
-
 	wa_ctx_emit(batch, index, MI_BATCH_BUFFER_END);
 
 	return wa_ctx_end(wa_ctx, *offset = index, 1);
@@ -1236,11 +1180,11 @@ static int lrc_setup_wa_ctx_obj(struct intel_engine_cs *engine, u32 size)
 	struct i915_vma *vma;
 	int err;
 
-	obj = i915_gem_object_create(&engine->i915->drm, PAGE_ALIGN(size));
+	obj = i915_gem_object_create(engine->i915, PAGE_ALIGN(size));
 	if (IS_ERR(obj))
 		return PTR_ERR(obj);
 
-	vma = i915_vma_create(obj, &engine->i915->ggtt.base, NULL);
+	vma = i915_vma_instance(obj, &engine->i915->ggtt.base, NULL);
 	if (IS_ERR(vma)) {
 		err = PTR_ERR(vma);
 		goto err;
@@ -1334,15 +1278,6 @@ out:
 	return ret;
 }
 
-static void lrc_init_hws(struct intel_engine_cs *engine)
-{
-	struct drm_i915_private *dev_priv = engine->i915;
-
-	I915_WRITE(RING_HWS_PGA(engine->mmio_base),
-		   engine->status_page.ggtt_offset);
-	POSTING_READ(RING_HWS_PGA(engine->mmio_base));
-}
-
 static int gen8_init_common_ring(struct intel_engine_cs *engine)
 {
 	struct drm_i915_private *dev_priv = engine->i915;
@@ -1352,21 +1287,21 @@ static int gen8_init_common_ring(struct intel_engine_cs *engine)
 	if (ret)
 		return ret;
 
-	lrc_init_hws(engine);
-
 	intel_engine_reset_breadcrumbs(engine);
+	intel_engine_init_hangcheck(engine);
 
 	I915_WRITE(RING_HWSTAM(engine->mmio_base), 0xffffffff);
-
 	I915_WRITE(RING_MODE_GEN7(engine),
 		   _MASKED_BIT_DISABLE(GFX_REPLAY_MODE) |
 		   _MASKED_BIT_ENABLE(GFX_RUN_LIST_ENABLE));
+	I915_WRITE(RING_HWS_PGA(engine->mmio_base),
+		   engine->status_page.ggtt_offset);
+	POSTING_READ(RING_HWS_PGA(engine->mmio_base));
 
 	DRM_DEBUG_DRIVER("Execlists enabled for %s\n", engine->name);
 
-	intel_engine_init_hangcheck(engine);
-
 	/* After a GPU reset, we may have requests to replay */
+	clear_bit(ENGINE_IRQ_EXECLIST, &engine->irq_posted);
 	if (!execlists_elsp_idle(engine)) {
 		engine->execlist_port[0].count = 0;
 		engine->execlist_port[1].count = 0;
@@ -1667,21 +1602,6 @@ static int gen8_emit_flush_render(struct drm_i915_gem_request *request,
 	return 0;
 }
 
-static void bxt_a_seqno_barrier(struct intel_engine_cs *engine)
-{
-	/*
-	 * On BXT A steppings there is a HW coherency issue whereby the
-	 * MI_STORE_DATA_IMM storing the completed request's seqno
-	 * occasionally doesn't invalidate the CPU cache. Work around this by
-	 * clflushing the corresponding cacheline whenever the caller wants
-	 * the coherency to be guaranteed. Note that this cacheline is known
-	 * to be clean at this point, since we only write it in
-	 * bxt_a_set_seqno(), where we also do a clflush after the write. So
-	 * this clflush in practice becomes an invalidate operation.
-	 */
-	intel_flush_status_page(engine, I915_GEM_HWS_INDEX);
-}
-
 /*
  * Reserve space for 2 NOOPs at the end of each request to be
  * used as a workaround for not being allowed to do lite
@@ -1784,13 +1704,12 @@ void intel_logical_ring_cleanup(struct intel_engine_cs *engine)
 	if (engine->cleanup)
 		engine->cleanup(engine);
 
-	intel_engine_cleanup_common(engine);
-
 	if (engine->status_page.vma) {
 		i915_gem_object_unpin_map(engine->status_page.vma->obj);
 		engine->status_page.vma = NULL;
 	}
-	intel_lr_context_unpin(dev_priv->kernel_context, engine);
+
+	intel_engine_cleanup_common(engine);
 
 	lrc_destroy_wa_ctx_obj(engine);
 	engine->i915 = NULL;
@@ -1815,6 +1734,12 @@ logical_ring_default_vfuncs(struct intel_engine_cs *engine)
 	/* Default vfuncs which can be overriden by each engine. */
 	engine->init_hw = gen8_init_common_ring;
 	engine->reset_hw = reset_common_ring;
+
+	engine->context_pin = execlists_context_pin;
+	engine->context_unpin = execlists_context_unpin;
+
+	engine->request_alloc = execlists_request_alloc;
+
 	engine->emit_flush = gen8_emit_flush;
 	engine->emit_breadcrumb = gen8_emit_breadcrumb;
 	engine->emit_breadcrumb_sz = gen8_emit_breadcrumb_sz;
@@ -1824,8 +1749,6 @@ logical_ring_default_vfuncs(struct intel_engine_cs *engine)
 	engine->irq_enable = gen8_logical_ring_enable_irq;
 	engine->irq_disable = gen8_logical_ring_disable_irq;
 	engine->emit_bb_start = gen8_emit_bb_start;
-	if (IS_BXT_REVID(engine->i915, 0, BXT_REVID_A1))
-		engine->irq_seqno_barrier = bxt_a_seqno_barrier;
 }
 
 static inline void
@@ -1897,18 +1820,6 @@ logical_ring_init(struct intel_engine_cs *engine)
 	if (ret)
 		goto error;
 
-	ret = execlists_context_deferred_alloc(dctx, engine);
-	if (ret)
-		goto error;
-
-	/* As this is the default context, always pin it */
-	ret = intel_lr_context_pin(dctx, engine);
-	if (ret) {
-		DRM_ERROR("Failed to pin context for %s: %d\n",
-			  engine->name, ret);
-		goto error;
-	}
-
 	/* And setup the hardware status page. */
 	ret = lrc_setup_hws(engine, dctx->engine[engine->id].state);
 	if (ret) {
@@ -1943,7 +1854,7 @@ int logical_render_ring_init(struct intel_engine_cs *engine)
 	engine->emit_breadcrumb = gen8_emit_breadcrumb_render;
 	engine->emit_breadcrumb_sz = gen8_emit_breadcrumb_render_sz;
 
-	ret = intel_engine_create_scratch(engine, 4096);
+	ret = intel_engine_create_scratch(engine, PAGE_SIZE);
 	if (ret)
 		return ret;
 
@@ -2119,19 +2030,12 @@ static void execlists_init_reg_state(u32 *reg_state,
 	ASSIGN_CTX_REG(reg_state, CTX_PDP0_LDW, GEN8_RING_PDP_LDW(engine, 0),
 		       0);
 
-	if (USES_FULL_48BIT_PPGTT(ppgtt->base.dev)) {
+	if (ppgtt && USES_FULL_48BIT_PPGTT(ppgtt->base.dev)) {
 		/* 64b PPGTT (48bit canonical)
 		 * PDP0_DESCRIPTOR contains the base address to PML4 and
 		 * other PDP Descriptors are ignored.
 		 */
 		ASSIGN_CTX_PML4(ppgtt, reg_state);
-	} else {
-		/* 32b PPGTT
-		 * PDP*_DESCRIPTOR contains the base address of space supported.
-		 * With dynamic page allocation, PDPs may not be allocated at
-		 * this point. Point the unallocated PDPs to the scratch page
-		 */
-		execlists_update_context_pdps(ppgtt, reg_state);
 	}
 
 	if (engine->id == RCS) {
@@ -2225,18 +2129,19 @@ static int execlists_context_deferred_alloc(struct i915_gem_context *ctx,
 
 	WARN_ON(ce->state);
 
-	context_size = round_up(intel_lr_context_size(engine), 4096);
+	context_size = round_up(intel_lr_context_size(engine),
+				I915_GTT_PAGE_SIZE);
 
 	/* One extra page as the sharing data between driver and GuC */
 	context_size += PAGE_SIZE * LRC_PPHWSP_PN;
 
-	ctx_obj = i915_gem_object_create(&ctx->i915->drm, context_size);
+	ctx_obj = i915_gem_object_create(ctx->i915, context_size);
 	if (IS_ERR(ctx_obj)) {
 		DRM_DEBUG_DRIVER("Alloc LRC backing obj failed.\n");
 		return PTR_ERR(ctx_obj);
 	}
 
-	vma = i915_vma_create(ctx_obj, &ctx->i915->ggtt.base, NULL);
+	vma = i915_vma_instance(ctx_obj, &ctx->i915->ggtt.base, NULL);
 	if (IS_ERR(vma)) {
 		ret = PTR_ERR(vma);
 		goto error_deref_obj;

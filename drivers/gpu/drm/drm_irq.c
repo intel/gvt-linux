@@ -579,19 +579,8 @@ int drm_irq_uninstall(struct drm_device *dev)
 }
 EXPORT_SYMBOL(drm_irq_uninstall);
 
-/*
- * IRQ control ioctl.
- *
- * \param inode device inode.
- * \param file_priv DRM file private.
- * \param cmd command.
- * \param arg user argument, pointing to a drm_control structure.
- * \return zero on success or a negative number on failure.
- *
- * Calls irq_install() or irq_uninstall() according to \p arg.
- */
-int drm_control(struct drm_device *dev, void *data,
-		struct drm_file *file_priv)
+int drm_legacy_irq_control(struct drm_device *dev, void *data,
+			   struct drm_file *file_priv)
 {
 	struct drm_control *ctl = data;
 	int ret = 0, irq;
@@ -993,7 +982,7 @@ static void send_vblank_event(struct drm_device *dev,
  * period. This helper function implements exactly the required vblank arming
  * behaviour.
  *
- * NOTE: Drivers using this to send out the event in struct &drm_crtc_state
+ * NOTE: Drivers using this to send out the event in &struct drm_crtc_state
  * as part of an atomic commit must ensure that the next vblank happens at
  * exactly the same time as the atomic commit is committed to the hardware. This
  * function itself does **not** protect again the next vblank interrupt racing
@@ -1442,19 +1431,8 @@ static void drm_legacy_vblank_post_modeset(struct drm_device *dev,
 	}
 }
 
-/*
- * drm_modeset_ctl - handle vblank event counter changes across mode switch
- * @DRM_IOCTL_ARGS: standard ioctl arguments
- *
- * Applications should call the %_DRM_PRE_MODESET and %_DRM_POST_MODESET
- * ioctls around modesetting so that any lost vblank events are accounted for.
- *
- * Generally the counter will reset across mode sets.  If interrupts are
- * enabled around this call, we don't have to do anything since the counter
- * will have already been incremented.
- */
-int drm_modeset_ctl(struct drm_device *dev, void *data,
-		    struct drm_file *file_priv)
+int drm_legacy_modeset_ctl(struct drm_device *dev, void *data,
+			   struct drm_file *file_priv)
 {
 	struct drm_modeset_ctl *modeset = data;
 	unsigned int pipe;

@@ -110,22 +110,20 @@ intel_engine_setup(struct drm_i915_private *dev_priv,
 }
 
 /**
- * intel_engines_init() - allocate, populate and init the Engine Command Streamers
- * @dev: DRM device.
+ * intel_engines_init_early() - allocate the Engine Command Streamers
+ * @dev_priv: i915 device private
  *
  * Return: non-zero if the initialization failed.
  */
-int intel_engines_init(struct drm_device *dev)
+int intel_engines_init_early(struct drm_i915_private *dev_priv)
 {
-	struct drm_i915_private *dev_priv = to_i915(dev);
 	struct intel_device_info *device_info = mkwrite_device_info(dev_priv);
 	unsigned int ring_mask = INTEL_INFO(dev_priv)->ring_mask;
 	unsigned int mask = 0;
-	int (*init)(struct intel_engine_cs *engine);
 	struct intel_engine_cs *engine;
 	enum intel_engine_id id;
 	unsigned int i;
-	int ret;
+	int err;
 
 	WARN_ON(ring_mask == 0);
 	WARN_ON(ring_mask &
@@ -135,20 +133,8 @@ int intel_engines_init(struct drm_device *dev)
 		if (!HAS_ENGINE(dev_priv, i))
 			continue;
 
-		if (i915.enable_execlists)
-			init = intel_engines[i].init_execlists;
-		else
-			init = intel_engines[i].init_legacy;
-
-		if (!init)
-			continue;
-
-		ret = intel_engine_setup(dev_priv, i);
-		if (ret)
-			goto cleanup;
-
-		ret = init(dev_priv->engine[i]);
-		if (ret)
+		err = intel_engine_setup(dev_priv, i);
+		if (err)
 			goto cleanup;
 
 		mask |= ENGINE_MASK(i);
@@ -167,14 +153,69 @@ int intel_engines_init(struct drm_device *dev)
 	return 0;
 
 cleanup:
+	for_each_engine(engine, dev_priv, id)
+		kfree(engine);
+	return err;
+}
+
+/**
+ * intel_engines_init() - allocate, populate and init the Engine Command Streamers
+ * @dev_priv: i915 device private
+ *
+ * Return: non-zero if the initialization failed.
+ */
+int intel_engines_init(struct drm_i915_private *dev_priv)
+{
+	struct intel_device_info *device_info = mkwrite_device_info(dev_priv);
+	struct intel_engine_cs *engine;
+	enum intel_engine_id id, err_id;
+	unsigned int mask = 0;
+	int err = 0;
+
 	for_each_engine(engine, dev_priv, id) {
+		int (*init)(struct intel_engine_cs *engine);
+
 		if (i915.enable_execlists)
+			init = intel_engines[id].init_execlists;
+		else
+			init = intel_engines[id].init_legacy;
+		if (!init) {
+			kfree(engine);
+			dev_priv->engine[id] = NULL;
+			continue;
+		}
+
+		err = init(engine);
+		if (err) {
+			err_id = id;
+			goto cleanup;
+		}
+
+		mask |= ENGINE_MASK(id);
+	}
+
+	/*
+	 * Catch failures to update intel_engines table when the new engines
+	 * are added to the driver by a warning and disabling the forgotten
+	 * engines.
+	 */
+	if (WARN_ON(mask != INTEL_INFO(dev_priv)->ring_mask))
+		device_info->ring_mask = mask;
+
+	device_info->num_rings = hweight32(mask);
+
+	return 0;
+
+cleanup:
+	for_each_engine(engine, dev_priv, id) {
+		if (id >= err_id)
+			kfree(engine);
+		else if (i915.enable_execlists)
 			intel_logical_ring_cleanup(engine);
 		else
 			intel_engine_cleanup(engine);
 	}
-
-	return ret;
+	return err;
 }
 
 void intel_engine_init_global_seqno(struct intel_engine_cs *engine, u32 seqno)
@@ -257,7 +298,7 @@ int intel_engine_create_scratch(struct intel_engine_cs *engine, int size)
 
 	WARN_ON(engine->scratch);
 
-	obj = i915_gem_object_create_stolen(&engine->i915->drm, size);
+	obj = i915_gem_object_create_stolen(engine->i915, size);
 	if (!obj)
 		obj = i915_gem_object_create_internal(engine->i915, size);
 	if (IS_ERR(obj)) {
@@ -265,7 +306,7 @@ int intel_engine_create_scratch(struct intel_engine_cs *engine, int size)
 		return PTR_ERR(obj);
 	}
 
-	vma = i915_vma_create(obj, &engine->i915->ggtt.base, NULL);
+	vma = i915_vma_instance(obj, &engine->i915->ggtt.base, NULL);
 	if (IS_ERR(vma)) {
 		ret = PTR_ERR(vma);
 		goto err_unref;
@@ -305,15 +346,30 @@ int intel_engine_init_common(struct intel_engine_cs *engine)
 {
 	int ret;
 
-	ret = intel_engine_init_breadcrumbs(engine);
+	/* We may need to do things with the shrinker which
+	 * require us to immediately switch back to the default
+	 * context. This can cause a problem as pinning the
+	 * default context also requires GTT space which may not
+	 * be available. To avoid this we always pin the default
+	 * context.
+	 */
+	ret = engine->context_pin(engine, engine->i915->kernel_context);
 	if (ret)
 		return ret;
+
+	ret = intel_engine_init_breadcrumbs(engine);
+	if (ret)
+		goto err_unpin;
 
 	ret = i915_gem_render_state_init(engine);
 	if (ret)
-		return ret;
+		goto err_unpin;
 
 	return 0;
+
+err_unpin:
+	engine->context_unpin(engine, engine->i915->kernel_context);
+	return ret;
 }
 
 /**
@@ -331,6 +387,8 @@ void intel_engine_cleanup_common(struct intel_engine_cs *engine)
 	intel_engine_fini_breadcrumbs(engine);
 	intel_engine_cleanup_cmd_parser(engine);
 	i915_gem_batch_pool_fini(&engine->batch_pool);
+
+	engine->context_unpin(engine, engine->i915->kernel_context);
 }
 
 u64 intel_engine_get_active_head(struct intel_engine_cs *engine)

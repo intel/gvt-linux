@@ -1,0 +1,22 @@
+drm-intel drm-intel-fixes d5adbfcd5f7bcc6fa58a41c5c5ada0e5c826ce2c
+	Linux 4.10-rc7
+drm-upstream drm-fixes f63cf464fc379382a271f94ddef36e8c5a0628eb
+	Merge branch 'drm-fixes-4.10' of git://people.freedesktop.org/~agd5f/linux into drm-fixes
+drm-intel drm-intel-next-fixes 18566acac18f5784347bc5fe636a26897d1c963b
+	Merge branch 'exynos-drm-next' of git://git.kernel.org/pub/scm/linux/kernel/git/daeinki/drm-exynos into drm-next
+drm-intel drm-intel-next-queued 418e3cd8005121601facd46dfc452ef9e40894f6
+	drm/i915: Show the current i915_params in debugfs/i915_capabilites
+drm-upstream drm-next 99743ae4c5f52f8f8ceb17783056fcc9b4f8b64c
+	Merge branch 'drm-etnaviv-next' of https://git.pengutronix.de/git/lst/linux into drm-next
+sound-upstream for-next e1b239f371c0c745542cb8108d085ec728e8a69c
+	ALSA: x86: Refactor PCM process engine
+sound-upstream for-linus 37a7ea4a9b81f6a864c10a7cb0b96458df5310a3
+	ALSA: seq: Don't handle loop timeout at snd_seq_pool_done()
+drm-intel topic/core-for-CI 3f7a5fb77af4f5b38e514b85d491da0046d6bfb8
+	locking/mutex: Clear mutex-handoff flag on interrupt
+drm-misc drm-misc-next bbba96931762bcad8a691dfbf8d1520b71831c3a
+	drm: Micro-optimise drm_mm_for_each_node_in_range()
+drm-misc drm-misc-next-fixes bb18dfcc640d0551073e756e0af2ff60bea89e6d
+	drm: kselftest for drm_mm and bottom-up allocation
+drm-misc drm-misc-fixes d5adbfcd5f7bcc6fa58a41c5c5ada0e5c826ce2c
+	Linux 4.10-rc7

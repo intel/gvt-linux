@@ -580,6 +580,14 @@ struct intel_crtc_state {
 	 */
 	bool dither;
 
+	/*
+	 * Dither gets enabled for 18bpp which causes CRC mismatch errors for
+	 * compliance video pattern tests.
+	 * Disable dither only if it is a compliance test request for
+	 * 18bpp.
+	 */
+	bool dither_force_disable;
+
 	/* Controls for the clock computation, to override various stages. */
 	bool clock_set;
 
@@ -890,12 +898,17 @@ struct intel_dp_desc {
 
 struct intel_dp_compliance_data {
 	unsigned long edid;
+	uint8_t video_pattern;
+	uint16_t hdisplay, vdisplay;
+	uint8_t bpc;
 };
 
 struct intel_dp_compliance {
 	unsigned long test_type;
 	struct intel_dp_compliance_data test_data;
 	bool test_active;
+	int test_link_rate;
+	u8 test_lane_count;
 };
 
 struct intel_dp {
@@ -989,7 +1002,6 @@ struct intel_dp {
 struct intel_lspcon {
 	bool active;
 	enum drm_lspcon_mode mode;
-	bool desc_valid;
 };
 
 struct intel_digital_port {
@@ -1487,6 +1499,8 @@ bool __intel_dp_read_desc(struct intel_dp *intel_dp,
 bool intel_dp_read_desc(struct intel_dp *intel_dp);
 int intel_dp_link_required(int pixel_clock, int bpp);
 int intel_dp_max_data_rate(int max_link_clock, int max_lanes);
+bool intel_digital_port_connected(struct drm_i915_private *dev_priv,
+				  struct intel_digital_port *port);
 
 /* intel_dp_aux_backlight.c */
 int intel_dp_aux_init_backlight_funcs(struct intel_connector *intel_connector);

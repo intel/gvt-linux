@@ -79,8 +79,8 @@
 
 #define DRIVER_NAME		"i915"
 #define DRIVER_DESC		"Intel Graphics"
-#define DRIVER_DATE		"20170123"
-#define DRIVER_TIMESTAMP	1485156432
+#define DRIVER_DATE		"20170206"
+#define DRIVER_TIMESTAMP	1486372993
 
 #undef WARN_ON
 /* Many gcc seem to no see through this and fall over :( */
@@ -904,6 +904,7 @@ struct drm_i915_error_state {
 	u32 reset_count;
 	u32 suspend_count;
 	struct intel_device_info device_info;
+	struct i915_params params;
 
 	/* Generic register state */
 	u32 eir;
@@ -970,6 +971,16 @@ struct drm_i915_error_state {
 		u32 semaphore_mboxes[I915_NUM_ENGINES - 1];
 		struct intel_instdone instdone;
 
+		struct drm_i915_error_context {
+			char comm[TASK_COMM_LEN];
+			pid_t pid;
+			u32 handle;
+			u32 hw_id;
+			int ban_score;
+			int active;
+			int guilty;
+		} context;
+
 		struct drm_i915_error_object {
 			u64 gtt_offset;
 			u64 gtt_size;
@@ -1003,10 +1014,6 @@ struct drm_i915_error_state {
 				u32 pp_dir_base;
 			};
 		} vm_info;
-
-		pid_t pid;
-		char comm[TASK_COMM_LEN];
-		int context_bans;
 	} engine[I915_NUM_ENGINES];
 
 	struct drm_i915_error_buffer {
@@ -1456,7 +1463,7 @@ struct i915_gem_mm {
 	struct work_struct free_work;
 
 	/** Usable portion of the GTT for GEM */
-	phys_addr_t stolen_base; /* limited to low memory (32-bit) */
+	dma_addr_t stolen_base; /* limited to low memory (32-bit) */
 
 	/** PPGTT used for aliasing the PPGTT with the GTT */
 	struct i915_hw_ppgtt *aliasing_ppgtt;
@@ -2761,8 +2768,9 @@ intel_info(const struct drm_i915_private *dev_priv)
 #define IS_GEN8(dev_priv)	(!!((dev_priv)->info.gen_mask & BIT(7)))
 #define IS_GEN9(dev_priv)	(!!((dev_priv)->info.gen_mask & BIT(8)))
 
-#define IS_GEN9_LP(dev_priv)	(IS_GEN9(dev_priv) && INTEL_INFO(dev_priv)->is_lp)
 #define IS_LP(dev_priv)	(INTEL_INFO(dev_priv)->is_lp)
+#define IS_GEN9_LP(dev_priv)	(IS_GEN9(dev_priv) && IS_LP(dev_priv))
+#define IS_GEN9_BC(dev_priv)	(IS_GEN9(dev_priv) && !IS_LP(dev_priv))
 
 #define ENGINE_MASK(id)	BIT(id)
 #define RENDER_RING	ENGINE_MASK(RCS)
@@ -2946,6 +2954,9 @@ extern unsigned long i915_gfx_val(struct drm_i915_private *dev_priv);
 extern void i915_update_gfx_val(struct drm_i915_private *dev_priv);
 int vlv_force_gfx_clock(struct drm_i915_private *dev_priv, bool on);
 
+int intel_engines_init_early(struct drm_i915_private *dev_priv);
+int intel_engines_init(struct drm_i915_private *dev_priv);
+
 /* intel_hotplug.c */
 void intel_hpd_irq_handler(struct drm_i915_private *dev_priv,
 			   u32 pin_mask, u32 long_mask);
@@ -3123,6 +3134,7 @@ int i915_gem_get_aperture_ioctl(struct drm_device *dev, void *data,
 				struct drm_file *file_priv);
 int i915_gem_wait_ioctl(struct drm_device *dev, void *data,
 			struct drm_file *file_priv);
+void i915_gem_sanitize(struct drm_i915_private *i915);
 int i915_gem_load_init(struct drm_i915_private *dev_priv);
 void i915_gem_load_cleanup(struct drm_i915_private *dev_priv);
 void i915_gem_load_init_fences(struct drm_i915_private *dev_priv);
@@ -3338,6 +3350,7 @@ int i915_gem_reset_prepare(struct drm_i915_private *dev_priv);
 void i915_gem_reset_finish(struct drm_i915_private *dev_priv);
 void i915_gem_set_wedged(struct drm_i915_private *dev_priv);
 void i915_gem_clflush_object(struct drm_i915_gem_object *obj, bool force);
+void i915_gem_init_mmio(struct drm_i915_private *i915);
 int __must_check i915_gem_init(struct drm_i915_private *dev_priv);
 int __must_check i915_gem_init_hw(struct drm_i915_private *dev_priv);
 void i915_gem_init_swizzling(struct drm_i915_private *dev_priv);
@@ -3696,7 +3709,7 @@ extern void i915_redisable_vga(struct drm_i915_private *dev_priv);
 extern void i915_redisable_vga_power_on(struct drm_i915_private *dev_priv);
 extern bool ironlake_set_drps(struct drm_i915_private *dev_priv, u8 val);
 extern void intel_init_pch_refclk(struct drm_i915_private *dev_priv);
-extern void intel_set_rps(struct drm_i915_private *dev_priv, u8 val);
+extern int intel_set_rps(struct drm_i915_private *dev_priv, u8 val);
 extern bool intel_set_memory_cxsr(struct drm_i915_private *dev_priv,
 				  bool enable);
 
@@ -3722,7 +3735,7 @@ int skl_pcode_request(struct drm_i915_private *dev_priv, u32 mbox, u32 request,
 
 /* intel_sideband.c */
 u32 vlv_punit_read(struct drm_i915_private *dev_priv, u32 addr);
-void vlv_punit_write(struct drm_i915_private *dev_priv, u32 addr, u32 val);
+int vlv_punit_write(struct drm_i915_private *dev_priv, u32 addr, u32 val);
 u32 vlv_nc_read(struct drm_i915_private *dev_priv, u8 addr);
 u32 vlv_iosf_sb_read(struct drm_i915_private *dev_priv, u8 port, u32 reg);
 void vlv_iosf_sb_write(struct drm_i915_private *dev_priv, u8 port, u32 reg, u32 val);
@@ -3964,7 +3977,7 @@ __i915_request_irq_complete(struct drm_i915_gem_request *req)
 	 */
 	if (engine->irq_seqno_barrier &&
 	    rcu_access_pointer(engine->breadcrumbs.irq_seqno_bh) == current &&
-	    cmpxchg_relaxed(&engine->breadcrumbs.irq_posted, 1, 0)) {
+	    test_and_clear_bit(ENGINE_IRQ_BREADCRUMB, &engine->irq_posted)) {
 		struct task_struct *tsk;
 
 		/* The ordering of irq_posted versus applying the barrier

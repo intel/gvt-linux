@@ -3519,7 +3519,7 @@ i915_gem_object_pin_to_display_plane(struct drm_i915_gem_object *obj,
 	vma->display_alignment = max_t(u64, vma->display_alignment, alignment);
 
 	/* Treat this as an end-of-frame, like intel_user_framebuffer_dirty() */
-	if (obj->cache_dirty) {
+	if (obj->cache_dirty || obj->base.write_domain == I915_GEM_DOMAIN_CPU) {
 		i915_gem_clflush_object(obj, true);
 		intel_fb_obj_flush(obj, false, ORIGIN_DIRTYFB);
 	}
@@ -4201,6 +4201,23 @@ static void assert_kernel_context_is_current(struct drm_i915_private *dev_priv)
 			   !i915_gem_context_is_kernel(engine->last_retired_context));
 }
 
+void i915_gem_sanitize(struct drm_i915_private *i915)
+{
+	/*
+	 * If we inherit context state from the BIOS or earlier occupants
+	 * of the GPU, the GPU may be in an inconsistent state when we
+	 * try to take over. The only way to remove the earlier state
+	 * is by resetting. However, resetting on earlier gen is tricky as
+	 * it may impact the display and we are uncertain about the stability
+	 * of the reset, so we only reset recent machines with logical
+	 * context support (that must be reset to remove any stray contexts).
+	 */
+	if (HAS_HW_CONTEXTS(i915)) {
+		int reset = intel_gpu_reset(i915, ALL_ENGINES);
+		WARN_ON(reset && reset != -ENODEV);
+	}
+}
+
 int i915_gem_suspend(struct drm_i915_private *dev_priv)
 {
 	struct drm_device *dev = &dev_priv->drm;
@@ -4271,10 +4288,7 @@ int i915_gem_suspend(struct drm_i915_private *dev_priv)
 	 * machines is a good idea, we don't - just in case it leaves the
 	 * machine in an unusable condition.
 	 */
-	if (HAS_HW_CONTEXTS(dev_priv)) {
-		int reset = intel_gpu_reset(dev_priv, ALL_ENGINES);
-		WARN_ON(reset && reset != -ENODEV);
-	}
+	i915_gem_sanitize(dev_priv);
 
 	return 0;
 
@@ -4490,6 +4504,11 @@ out_unlock:
 	mutex_unlock(&dev_priv->drm.struct_mutex);
 
 	return ret;
+}
+
+void i915_gem_init_mmio(struct drm_i915_private *i915)
+{
+	i915_gem_sanitize(i915);
 }
 
 void

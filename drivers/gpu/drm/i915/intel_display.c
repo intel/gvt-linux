@@ -3386,13 +3386,21 @@ static void skylake_update_primary_plane(struct drm_plane *plane,
 	int dst_w = drm_rect_width(&plane_state->base.dst);
 	int dst_h = drm_rect_height(&plane_state->base.dst);
 
-	plane_ctl = PLANE_CTL_ENABLE |
-		    PLANE_CTL_PIPE_GAMMA_ENABLE |
-		    PLANE_CTL_PIPE_CSC_ENABLE;
+	plane_ctl = PLANE_CTL_ENABLE;
+
+	if (IS_GEMINILAKE(dev_priv)) {
+		I915_WRITE(PLANE_COLOR_CTL(pipe, plane_id),
+			   PLANE_COLOR_PIPE_GAMMA_ENABLE |
+			   PLANE_COLOR_PLANE_GAMMA_DISABLE);
+	} else {
+		plane_ctl |=
+			PLANE_CTL_PIPE_GAMMA_ENABLE |
+			PLANE_CTL_PIPE_CSC_ENABLE |
+			PLANE_CTL_PLANE_GAMMA_DISABLE;
+	}
 
 	plane_ctl |= skl_plane_ctl_format(fb->format->format);
 	plane_ctl |= skl_plane_ctl_tiling(fb->modifier);
-	plane_ctl |= PLANE_CTL_PLANE_GAMMA_DISABLE;
 	plane_ctl |= skl_plane_ctl_rotation(rotation);
 
 	/* Sizes are 0 based */
@@ -4253,10 +4261,10 @@ static void page_flip_completed(struct intel_crtc *intel_crtc)
 	drm_crtc_vblank_put(&intel_crtc->base);
 
 	wake_up_all(&dev_priv->pending_flip_queue);
-	queue_work(dev_priv->wq, &work->unpin_work);
-
 	trace_i915_flip_complete(intel_crtc->plane,
 				 work->pending_flip_obj);
+
+	queue_work(dev_priv->wq, &work->unpin_work);
 }
 
 static int intel_crtc_wait_for_pending_flips(struct drm_crtc *crtc)
@@ -5722,6 +5730,7 @@ static unsigned long get_crtc_power_domains(struct drm_crtc *crtc,
 					    struct intel_crtc_state *crtc_state)
 {
 	struct drm_device *dev = crtc->dev;
+	struct drm_i915_private *dev_priv = to_i915(dev);
 	struct drm_encoder *encoder;
 	struct intel_crtc *intel_crtc = to_intel_crtc(crtc);
 	enum pipe pipe = intel_crtc->pipe;
@@ -5742,6 +5751,9 @@ static unsigned long get_crtc_power_domains(struct drm_crtc *crtc,
 
 		mask |= BIT(intel_display_port_power_domain(intel_encoder));
 	}
+
+	if (HAS_DDI(dev_priv) && crtc_state->has_audio)
+		mask |= BIT(POWER_DOMAIN_AUDIO);
 
 	if (crtc_state->shared_dpll)
 		mask |= BIT(POWER_DOMAIN_PLLS);
@@ -5800,7 +5812,7 @@ static int skl_calc_cdclk(int max_pixclk, int vco);
 
 static void intel_update_max_cdclk(struct drm_i915_private *dev_priv)
 {
-	if (IS_SKYLAKE(dev_priv) || IS_KABYLAKE(dev_priv)) {
+	if (IS_GEN9_BC(dev_priv)) {
 		u32 limit = I915_READ(SKL_DFSM) & SKL_DFSM_CDCLK_LIMIT_MASK;
 		int max_cdclk, vco;
 
@@ -10673,7 +10685,7 @@ static void haswell_get_ddi_port_state(struct intel_crtc *crtc,
 
 	port = (tmp & TRANS_DDI_PORT_MASK) >> TRANS_DDI_PORT_SHIFT;
 
-	if (IS_SKYLAKE(dev_priv) || IS_KABYLAKE(dev_priv))
+	if (IS_GEN9_BC(dev_priv))
 		skylake_get_ddi_pll(dev_priv, port, pipe_config);
 	else if (IS_GEN9_LP(dev_priv))
 		bxt_get_ddi_pll(dev_priv, port, pipe_config);
@@ -12146,6 +12158,7 @@ void intel_check_page_flip(struct drm_i915_private *dev_priv, int pipe)
 	spin_unlock(&dev->event_lock);
 }
 
+__maybe_unused
 static int intel_crtc_page_flip(struct drm_crtc *crtc,
 				struct drm_framebuffer *fb,
 				struct drm_pending_vblank_event *event,
@@ -13059,8 +13072,11 @@ encoder_retry:
 	}
 
 	/* Dithering seems to not pass-through bits correctly when it should, so
-	 * only enable it on 6bpc panels. */
-	pipe_config->dither = pipe_config->pipe_bpp == 6*3;
+	 * only enable it on 6bpc panels and when its not a compliance
+	 * test requesting 6bpc video pattern.
+	 */
+	pipe_config->dither = (pipe_config->pipe_bpp == 6*3) &&
+		!pipe_config->dither_force_disable;
 	DRM_DEBUG_KMS("hw max bpp: %i, pipe bpp: %i, dithering: %i\n",
 		      base_bpp, pipe_config->pipe_bpp, pipe_config->dither);
 
@@ -14379,6 +14395,24 @@ static void skl_update_crtcs(struct drm_atomic_state *state,
 	} while (progress);
 }
 
+static void intel_atomic_helper_free_state(struct drm_i915_private *dev_priv)
+{
+	struct intel_atomic_state *state, *next;
+	struct llist_node *freed;
+
+	freed = llist_del_all(&dev_priv->atomic_helper.free_list);
+	llist_for_each_entry_safe(state, next, freed, freed)
+		drm_atomic_state_put(&state->base);
+}
+
+static void intel_atomic_helper_free_state_worker(struct work_struct *work)
+{
+	struct drm_i915_private *dev_priv =
+		container_of(work, typeof(*dev_priv), atomic_helper.free_work);
+
+	intel_atomic_helper_free_state(dev_priv);
+}
+
 static void intel_atomic_commit_tail(struct drm_atomic_state *state)
 {
 	struct drm_device *dev = state->dev;
@@ -14545,6 +14579,8 @@ static void intel_atomic_commit_tail(struct drm_atomic_state *state)
 	 * can happen also when the device is completely off.
 	 */
 	intel_uncore_arm_unclaimed_mmio_detection(dev_priv);
+
+	intel_atomic_helper_free_state(dev_priv);
 }
 
 static void intel_atomic_commit_work(struct work_struct *work)
@@ -14738,7 +14774,7 @@ static const struct drm_crtc_funcs intel_crtc_funcs = {
 	.set_config = drm_atomic_helper_set_config,
 	.set_property = drm_atomic_helper_crtc_set_property,
 	.destroy = intel_crtc_destroy,
-	.page_flip = intel_crtc_page_flip,
+	.page_flip = drm_atomic_helper_page_flip,
 	.atomic_duplicate_state = intel_crtc_duplicate_state,
 	.atomic_destroy_state = intel_crtc_destroy_state,
 	.set_crc_source = intel_crtc_set_crc_source,
@@ -15680,7 +15716,7 @@ static void intel_setup_outputs(struct drm_i915_private *dev_priv)
 		 */
 		found = I915_READ(DDI_BUF_CTL(PORT_A)) & DDI_INIT_DISPLAY_DETECTED;
 		/* WaIgnoreDDIAStrap: skl */
-		if (found || IS_SKYLAKE(dev_priv) || IS_KABYLAKE(dev_priv))
+		if (found || IS_GEN9_BC(dev_priv))
 			intel_ddi_init(dev_priv, PORT_A);
 
 		/* DDI B, C and D detection is indicated by the SFUSE_STRAP
@@ -15696,7 +15732,7 @@ static void intel_setup_outputs(struct drm_i915_private *dev_priv)
 		/*
 		 * On SKL we don't have a way to detect DDI-E so we rely on VBT.
 		 */
-		if ((IS_SKYLAKE(dev_priv) || IS_KABYLAKE(dev_priv)) &&
+		if (IS_GEN9_BC(dev_priv) &&
 		    (dev_priv->vbt.ddi_port_info[PORT_E].supports_dp ||
 		     dev_priv->vbt.ddi_port_info[PORT_E].supports_dvi ||
 		     dev_priv->vbt.ddi_port_info[PORT_E].supports_hdmi))
@@ -16195,7 +16231,7 @@ void intel_init_display_hooks(struct drm_i915_private *dev_priv)
 	}
 
 	/* Returns the core display clock speed */
-	if (IS_SKYLAKE(dev_priv) || IS_KABYLAKE(dev_priv))
+	if (IS_GEN9_BC(dev_priv))
 		dev_priv->display.get_display_clock_speed =
 			skylake_get_display_clock_speed;
 	else if (IS_GEN9_LP(dev_priv))
@@ -16276,7 +16312,7 @@ void intel_init_display_hooks(struct drm_i915_private *dev_priv)
 			bxt_modeset_commit_cdclk;
 		dev_priv->display.modeset_calc_cdclk =
 			bxt_modeset_calc_cdclk;
-	} else if (IS_SKYLAKE(dev_priv) || IS_KABYLAKE(dev_priv)) {
+	} else if (IS_GEN9_BC(dev_priv)) {
 		dev_priv->display.modeset_commit_cdclk =
 			skl_modeset_commit_cdclk;
 		dev_priv->display.modeset_calc_cdclk =
@@ -16599,18 +16635,6 @@ fail:
 	drm_modeset_acquire_fini(&ctx);
 }
 
-static void intel_atomic_helper_free_state(struct work_struct *work)
-{
-	struct drm_i915_private *dev_priv =
-		container_of(work, typeof(*dev_priv), atomic_helper.free_work);
-	struct intel_atomic_state *state, *next;
-	struct llist_node *freed;
-
-	freed = llist_del_all(&dev_priv->atomic_helper.free_list);
-	llist_for_each_entry_safe(state, next, freed, freed)
-		drm_atomic_state_put(&state->base);
-}
-
 int intel_modeset_init(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv = to_i915(dev);
@@ -16631,7 +16655,7 @@ int intel_modeset_init(struct drm_device *dev)
 	dev->mode_config.funcs = &intel_mode_funcs;
 
 	INIT_WORK(&dev_priv->atomic_helper.free_work,
-		  intel_atomic_helper_free_state);
+		  intel_atomic_helper_free_state_worker);
 
 	intel_init_quirks(dev);
 

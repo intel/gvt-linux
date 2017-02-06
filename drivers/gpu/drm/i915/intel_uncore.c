@@ -133,6 +133,13 @@ fw_domains_put(struct drm_i915_private *dev_priv, enum forcewake_domains fw_doma
 }
 
 static void
+vgpu_fw_domains_nop(struct drm_i915_private *dev_priv,
+		    enum forcewake_domains fw_domains)
+{
+	/* Guest driver doesn't need to takes care forcewake. */
+}
+
+static void
 fw_domains_posting_read(struct drm_i915_private *dev_priv)
 {
 	struct intel_uncore_forcewake_domain *d;
@@ -985,29 +992,19 @@ static inline void __force_wake_auto(struct drm_i915_private *dev_priv,
 		___force_wake_auto(dev_priv, fw_domains);
 }
 
-#define __gen6_read(x) \
+#define __gen_read(func, x) \
 static u##x \
-gen6_read##x(struct drm_i915_private *dev_priv, i915_reg_t reg, bool trace) { \
+func##_read##x(struct drm_i915_private *dev_priv, i915_reg_t reg, bool trace) { \
 	enum forcewake_domains fw_engine; \
 	GEN6_READ_HEADER(x); \
-	fw_engine = __gen6_reg_read_fw_domains(offset); \
+	fw_engine = __##func##_reg_read_fw_domains(offset); \
 	if (fw_engine) \
 		__force_wake_auto(dev_priv, fw_engine); \
 	val = __raw_i915_read##x(dev_priv, reg); \
 	GEN6_READ_FOOTER; \
 }
-
-#define __fwtable_read(x) \
-static u##x \
-fwtable_read##x(struct drm_i915_private *dev_priv, i915_reg_t reg, bool trace) { \
-	enum forcewake_domains fw_engine; \
-	GEN6_READ_HEADER(x); \
-	fw_engine = __fwtable_reg_read_fw_domains(offset); \
-	if (fw_engine) \
-		__force_wake_auto(dev_priv, fw_engine); \
-	val = __raw_i915_read##x(dev_priv, reg); \
-	GEN6_READ_FOOTER; \
-}
+#define __gen6_read(x) __gen_read(gen6, x)
+#define __fwtable_read(x) __gen_read(fwtable, x)
 
 #define __gen9_decoupled_read(x) \
 static u##x \
@@ -1044,34 +1041,6 @@ __gen6_read(64)
 #undef __gen6_read
 #undef GEN6_READ_FOOTER
 #undef GEN6_READ_HEADER
-
-#define VGPU_READ_HEADER(x) \
-	unsigned long irqflags; \
-	u##x val = 0; \
-	assert_rpm_device_not_suspended(dev_priv); \
-	spin_lock_irqsave(&dev_priv->uncore.lock, irqflags)
-
-#define VGPU_READ_FOOTER \
-	spin_unlock_irqrestore(&dev_priv->uncore.lock, irqflags); \
-	trace_i915_reg_rw(false, reg, val, sizeof(val), trace); \
-	return val
-
-#define __vgpu_read(x) \
-static u##x \
-vgpu_read##x(struct drm_i915_private *dev_priv, i915_reg_t reg, bool trace) { \
-	VGPU_READ_HEADER(x); \
-	val = __raw_i915_read##x(dev_priv, reg); \
-	VGPU_READ_FOOTER; \
-}
-
-__vgpu_read(8)
-__vgpu_read(16)
-__vgpu_read(32)
-__vgpu_read(64)
-
-#undef __vgpu_read
-#undef VGPU_READ_FOOTER
-#undef VGPU_READ_HEADER
 
 #define GEN2_WRITE_HEADER \
 	trace_i915_reg_rw(true, reg, val, sizeof(val), trace); \
@@ -1136,29 +1105,19 @@ gen6_write##x(struct drm_i915_private *dev_priv, i915_reg_t reg, u##x val, bool 
 	GEN6_WRITE_FOOTER; \
 }
 
-#define __gen8_write(x) \
+#define __gen_write(func, x) \
 static void \
-gen8_write##x(struct drm_i915_private *dev_priv, i915_reg_t reg, u##x val, bool trace) { \
+func##_write##x(struct drm_i915_private *dev_priv, i915_reg_t reg, u##x val, bool trace) { \
 	enum forcewake_domains fw_engine; \
 	GEN6_WRITE_HEADER; \
-	fw_engine = __gen8_reg_write_fw_domains(offset); \
+	fw_engine = __##func##_reg_write_fw_domains(offset); \
 	if (fw_engine) \
 		__force_wake_auto(dev_priv, fw_engine); \
 	__raw_i915_write##x(dev_priv, reg, val); \
 	GEN6_WRITE_FOOTER; \
 }
-
-#define __fwtable_write(x) \
-static void \
-fwtable_write##x(struct drm_i915_private *dev_priv, i915_reg_t reg, u##x val, bool trace) { \
-	enum forcewake_domains fw_engine; \
-	GEN6_WRITE_HEADER; \
-	fw_engine = __fwtable_reg_write_fw_domains(offset); \
-	if (fw_engine) \
-		__force_wake_auto(dev_priv, fw_engine); \
-	__raw_i915_write##x(dev_priv, reg, val); \
-	GEN6_WRITE_FOOTER; \
-}
+#define __gen8_write(x) __gen_write(gen8, x)
+#define __fwtable_write(x) __gen_write(fwtable, x)
 
 #define __gen9_decoupled_write(x) \
 static void \
@@ -1194,31 +1153,6 @@ __gen6_write(32)
 #undef __gen6_write
 #undef GEN6_WRITE_FOOTER
 #undef GEN6_WRITE_HEADER
-
-#define VGPU_WRITE_HEADER \
-	unsigned long irqflags; \
-	trace_i915_reg_rw(true, reg, val, sizeof(val), trace); \
-	assert_rpm_device_not_suspended(dev_priv); \
-	spin_lock_irqsave(&dev_priv->uncore.lock, irqflags)
-
-#define VGPU_WRITE_FOOTER \
-	spin_unlock_irqrestore(&dev_priv->uncore.lock, irqflags)
-
-#define __vgpu_write(x) \
-static void vgpu_write##x(struct drm_i915_private *dev_priv, \
-			  i915_reg_t reg, u##x val, bool trace) { \
-	VGPU_WRITE_HEADER; \
-	__raw_i915_write##x(dev_priv, reg, val); \
-	VGPU_WRITE_FOOTER; \
-}
-
-__vgpu_write(8)
-__vgpu_write(16)
-__vgpu_write(32)
-
-#undef __vgpu_write
-#undef VGPU_WRITE_FOOTER
-#undef VGPU_WRITE_HEADER
 
 #define ASSIGN_WRITE_MMIO_VFUNCS(x) \
 do { \
@@ -1375,6 +1309,11 @@ static void intel_uncore_fw_domains_init(struct drm_i915_private *dev_priv)
 			       FORCEWAKE, FORCEWAKE_ACK);
 	}
 
+	if (intel_vgpu_active(dev_priv)) {
+		dev_priv->uncore.funcs.force_wake_get = vgpu_fw_domains_nop;
+		dev_priv->uncore.funcs.force_wake_put = vgpu_fw_domains_nop;
+	}
+
 	/* All future platforms are expected to require complex power gating */
 	WARN_ON(dev_priv->uncore.fw_domains == 0);
 }
@@ -1448,11 +1387,6 @@ void intel_uncore_init(struct drm_i915_private *dev_priv)
 	intel_fw_table_check(dev_priv);
 	if (INTEL_GEN(dev_priv) >= 8)
 		intel_shadow_table_check();
-
-	if (intel_vgpu_active(dev_priv)) {
-		ASSIGN_WRITE_MMIO_VFUNCS(vgpu);
-		ASSIGN_READ_MMIO_VFUNCS(vgpu);
-	}
 
 	i915_check_and_clear_faults(dev_priv);
 }

@@ -1855,7 +1855,8 @@ bxt_get_dpll(struct intel_crtc *crtc,
 		return NULL;
 
 	if ((encoder->type == INTEL_OUTPUT_DP ||
-	     encoder->type == INTEL_OUTPUT_EDP) &&
+	     encoder->type == INTEL_OUTPUT_EDP ||
+	     encoder->type == INTEL_OUTPUT_DP_MST) &&
 	    !bxt_ddi_dp_set_dpll_hw_state(clock, &dpll_hw_state))
 		return NULL;
 
@@ -2015,7 +2016,7 @@ void intel_shared_dpll_init(struct drm_device *dev)
 	const struct dpll_info *dpll_info;
 	int i;
 
-	if (IS_SKYLAKE(dev_priv) || IS_KABYLAKE(dev_priv))
+	if (IS_GEN9_BC(dev_priv))
 		dpll_mgr = &skl_pll_mgr;
 	else if (IS_GEN9_LP(dev_priv))
 		dpll_mgr = &bxt_pll_mgr;

@@ -65,12 +65,12 @@ static void gen9_init_clock_gating(struct drm_i915_private *dev_priv)
 	I915_WRITE(GEN8_CONFIG0,
 		   I915_READ(GEN8_CONFIG0) | GEN9_DEFAULT_FIXES);
 
-	/* WaEnableChickenDCPR:skl,bxt,kbl */
+	/* WaEnableChickenDCPR:skl,bxt,kbl,glk */
 	I915_WRITE(GEN8_CHICKEN_DCPR_1,
 		   I915_READ(GEN8_CHICKEN_DCPR_1) | MASK_WAKEMEM);
 
 	/* WaFbcTurnOffFbcWatermark:skl,bxt,kbl */
-	/* WaFbcWakeMemOn:skl,bxt,kbl */
+	/* WaFbcWakeMemOn:skl,bxt,kbl,glk */
 	I915_WRITE(DISP_ARB_CTL, I915_READ(DISP_ARB_CTL) |
 		   DISP_FBC_WM_DIS |
 		   DISP_FBC_MEMORY_WAKE);
@@ -102,6 +102,19 @@ static void bxt_init_clock_gating(struct drm_i915_private *dev_priv)
 	if (IS_BXT_REVID(dev_priv, BXT_REVID_B0, REVID_FOREVER))
 		I915_WRITE(GEN9_CLKGATE_DIS_0, I915_READ(GEN9_CLKGATE_DIS_0) |
 			   PWM1_GATING_DIS | PWM2_GATING_DIS);
+}
+
+static void glk_init_clock_gating(struct drm_i915_private *dev_priv)
+{
+	gen9_init_clock_gating(dev_priv);
+
+	/*
+	 * WaDisablePWMClockGating:glk
+	 * Backlight PWM may stop in the asserted state, causing backlight
+	 * to stay fully on.
+	 */
+	I915_WRITE(GEN9_CLKGATE_DIS_0, I915_READ(GEN9_CLKGATE_DIS_0) |
+		   PWM1_GATING_DIS | PWM2_GATING_DIS);
 }
 
 static void i915_pineview_get_mem_freq(struct drm_i915_private *dev_priv)
@@ -2173,7 +2186,7 @@ static void intel_read_wm_latency(struct drm_i915_private *dev_priv,
 		}
 
 		/*
-		 * WaWmMemoryReadLatency:skl
+		 * WaWmMemoryReadLatency:skl,glk
 		 *
 		 * punit doesn't take into account the read latency so we need
 		 * to add 2us to the various latency levels we retrieve from the
@@ -2895,8 +2908,7 @@ static bool skl_needs_memory_bw_wa(struct intel_atomic_state *state)
 {
 	struct drm_i915_private *dev_priv = to_i915(state->base.dev);
 
-	if (IS_SKYLAKE(dev_priv) || IS_BROXTON(dev_priv) ||
-	    IS_KABYLAKE(dev_priv))
+	if (IS_GEN9_BC(dev_priv) || IS_BROXTON(dev_priv))
 		return true;
 
 	return false;
@@ -4934,12 +4946,8 @@ static u32 gen6_rps_pm_mask(struct drm_i915_private *dev_priv, u8 val)
 /* gen6_set_rps is called to update the frequency request, but should also be
  * called when the range (min_delay and max_delay) is modified so that we can
  * update the GEN6_RP_INTERRUPT_LIMITS register accordingly. */
-static void gen6_set_rps(struct drm_i915_private *dev_priv, u8 val)
+static int gen6_set_rps(struct drm_i915_private *dev_priv, u8 val)
 {
-	/* WaGsvDisableTurbo: Workaround to disable turbo on BXT A* */
-	if (IS_BXT_REVID(dev_priv, 0, BXT_REVID_A1))
-		return;
-
 	WARN_ON(!mutex_is_locked(&dev_priv->rps.hw_lock));
 	WARN_ON(val > dev_priv->rps.max_freq);
 	WARN_ON(val < dev_priv->rps.min_freq);
@@ -4973,10 +4981,14 @@ static void gen6_set_rps(struct drm_i915_private *dev_priv, u8 val)
 
 	dev_priv->rps.cur_freq = val;
 	trace_intel_gpu_freq_change(intel_gpu_freq(dev_priv, val));
+
+	return 0;
 }
 
-static void valleyview_set_rps(struct drm_i915_private *dev_priv, u8 val)
+static int valleyview_set_rps(struct drm_i915_private *dev_priv, u8 val)
 {
+	int err;
+
 	WARN_ON(!mutex_is_locked(&dev_priv->rps.hw_lock));
 	WARN_ON(val > dev_priv->rps.max_freq);
 	WARN_ON(val < dev_priv->rps.min_freq);
@@ -4988,13 +5000,18 @@ static void valleyview_set_rps(struct drm_i915_private *dev_priv, u8 val)
 	I915_WRITE(GEN6_PMINTRMSK, gen6_rps_pm_mask(dev_priv, val));
 
 	if (val != dev_priv->rps.cur_freq) {
-		vlv_punit_write(dev_priv, PUNIT_REG_GPU_FREQ_REQ, val);
+		err = vlv_punit_write(dev_priv, PUNIT_REG_GPU_FREQ_REQ, val);
+		if (err)
+			return err;
+
 		if (!IS_CHERRYVIEW(dev_priv))
 			gen6_set_rps_thresholds(dev_priv, val);
 	}
 
 	dev_priv->rps.cur_freq = val;
 	trace_intel_gpu_freq_change(intel_gpu_freq(dev_priv, val));
+
+	return 0;
 }
 
 /* vlv_set_rps_idle: Set the frequency to idle, if Gfx clocks are down
@@ -5007,6 +5024,7 @@ static void valleyview_set_rps(struct drm_i915_private *dev_priv, u8 val)
 static void vlv_set_rps_idle(struct drm_i915_private *dev_priv)
 {
 	u32 val = dev_priv->rps.idle_freq;
+	int err;
 
 	if (dev_priv->rps.cur_freq <= val)
 		return;
@@ -5024,8 +5042,11 @@ static void vlv_set_rps_idle(struct drm_i915_private *dev_priv)
 	 * power than the render powerwell.
 	 */
 	intel_uncore_forcewake_get(dev_priv, FORCEWAKE_MEDIA);
-	valleyview_set_rps(dev_priv, val);
+	err = valleyview_set_rps(dev_priv, val);
 	intel_uncore_forcewake_put(dev_priv, FORCEWAKE_MEDIA);
+
+	if (err)
+		DRM_ERROR("Failed to set RPS for idle\n");
 }
 
 void gen6_rps_busy(struct drm_i915_private *dev_priv)
@@ -5040,10 +5061,11 @@ void gen6_rps_busy(struct drm_i915_private *dev_priv)
 		gen6_enable_rps_interrupts(dev_priv);
 
 		/* Ensure we start at the user's desired frequency */
-		intel_set_rps(dev_priv,
-			      clamp(dev_priv->rps.cur_freq,
-				    dev_priv->rps.min_freq_softlimit,
-				    dev_priv->rps.max_freq_softlimit));
+		if (intel_set_rps(dev_priv,
+				  clamp(dev_priv->rps.cur_freq,
+					dev_priv->rps.min_freq_softlimit,
+					dev_priv->rps.max_freq_softlimit)))
+			DRM_DEBUG_DRIVER("Failed to set idle frequency\n");
 	}
 	mutex_unlock(&dev_priv->rps.hw_lock);
 }
@@ -5111,12 +5133,16 @@ void gen6_rps_boost(struct drm_i915_private *dev_priv,
 	spin_unlock(&dev_priv->rps.client_lock);
 }
 
-void intel_set_rps(struct drm_i915_private *dev_priv, u8 val)
+int intel_set_rps(struct drm_i915_private *dev_priv, u8 val)
 {
+	int err;
+
 	if (IS_VALLEYVIEW(dev_priv) || IS_CHERRYVIEW(dev_priv))
-		valleyview_set_rps(dev_priv, val);
+		err = valleyview_set_rps(dev_priv, val);
 	else
-		gen6_set_rps(dev_priv, val);
+		err = gen6_set_rps(dev_priv, val);
+
+	return err;
 }
 
 static void gen9_disable_rc6(struct drm_i915_private *dev_priv)
@@ -5294,7 +5320,7 @@ static void gen6_init_rps_frequencies(struct drm_i915_private *dev_priv)
 
 	dev_priv->rps.efficient_freq = dev_priv->rps.rp1_freq;
 	if (IS_HASWELL(dev_priv) || IS_BROADWELL(dev_priv) ||
-	    IS_SKYLAKE(dev_priv) || IS_KABYLAKE(dev_priv)) {
+	    IS_GEN9_BC(dev_priv)) {
 		u32 ddcc_status = 0;
 
 		if (sandybridge_pcode_read(dev_priv,
@@ -5307,7 +5333,7 @@ static void gen6_init_rps_frequencies(struct drm_i915_private *dev_priv)
 					dev_priv->rps.max_freq);
 	}
 
-	if (IS_SKYLAKE(dev_priv) || IS_KABYLAKE(dev_priv)) {
+	if (IS_GEN9_BC(dev_priv)) {
 		/* Store the frequency values in 16.66 MHZ units, which is
 		 * the natural hardware unit for SKL
 		 */
@@ -5320,7 +5346,7 @@ static void gen6_init_rps_frequencies(struct drm_i915_private *dev_priv)
 }
 
 static void reset_rps(struct drm_i915_private *dev_priv,
-		      void (*set)(struct drm_i915_private *, u8))
+		      int (*set)(struct drm_i915_private *, u8))
 {
 	u8 freq = dev_priv->rps.cur_freq;
 
@@ -5328,29 +5354,14 @@ static void reset_rps(struct drm_i915_private *dev_priv,
 	dev_priv->rps.power = -1;
 	dev_priv->rps.cur_freq = -1;
 
-	set(dev_priv, freq);
+	if (set(dev_priv, freq))
+		DRM_ERROR("Failed to reset RPS to initial values\n");
 }
 
 /* See the Gen9_GT_PM_Programming_Guide doc for the below */
 static void gen9_enable_rps(struct drm_i915_private *dev_priv)
 {
 	intel_uncore_forcewake_get(dev_priv, FORCEWAKE_ALL);
-
-	/* WaGsvDisableTurbo: Workaround to disable turbo on BXT A* */
-	if (IS_BXT_REVID(dev_priv, 0, BXT_REVID_A1)) {
-		/*
-		 * BIOS could leave the Hw Turbo enabled, so need to explicitly
-		 * clear out the Control register just to avoid inconsitency
-		 * with debugfs interface, which will show  Turbo as enabled
-		 * only and that is not expected by the User after adding the
-		 * WaGsvDisableTurbo. Apart from this there is no problem even
-		 * if the Turbo is left enabled in the Control register, as the
-		 * Up/Down interrupts would remain masked.
-		 */
-		gen9_disable_rps(dev_priv);
-		intel_uncore_forcewake_put(dev_priv, FORCEWAKE_ALL);
-		return;
-	}
 
 	/* Program defaults and thresholds for RPS*/
 	I915_WRITE(GEN6_RC_VIDEO_FREQ,
@@ -5411,18 +5422,9 @@ static void gen9_enable_rc6(struct drm_i915_private *dev_priv)
 	if (intel_enable_rc6() & INTEL_RC6_ENABLE)
 		rc6_mask = GEN6_RC_CTL_RC6_ENABLE;
 	DRM_INFO("RC6 %s\n", onoff(rc6_mask & GEN6_RC_CTL_RC6_ENABLE));
-	/* WaRsUseTimeoutMode:bxt */
-	if (IS_BXT_REVID(dev_priv, 0, BXT_REVID_A1)) {
-		I915_WRITE(GEN6_RC6_THRESHOLD, 625); /* 800us */
-		I915_WRITE(GEN6_RC_CONTROL, GEN6_RC_CTL_HW_ENABLE |
-			   GEN7_RC_CTL_TO_MODE |
-			   rc6_mask);
-	} else {
-		I915_WRITE(GEN6_RC6_THRESHOLD, 37500); /* 37.5/125ms per EI */
-		I915_WRITE(GEN6_RC_CONTROL, GEN6_RC_CTL_HW_ENABLE |
-			   GEN6_RC_CTL_EI_MODE(1) |
-			   rc6_mask);
-	}
+	I915_WRITE(GEN6_RC6_THRESHOLD, 37500); /* 37.5/125ms per EI */
+	I915_WRITE(GEN6_RC_CONTROL,
+		   GEN6_RC_CTL_HW_ENABLE | GEN6_RC_CTL_EI_MODE(1) | rc6_mask);
 
 	/*
 	 * 3b: Enable Coarse Power Gating only when RC6 is enabled.
@@ -5637,7 +5639,7 @@ static void gen6_update_ring_freq(struct drm_i915_private *dev_priv)
 	/* convert DDR frequency from units of 266.6MHz to bandwidth */
 	min_ring_freq = mult_frac(min_ring_freq, 8, 3);
 
-	if (IS_SKYLAKE(dev_priv) || IS_KABYLAKE(dev_priv)) {
+	if (IS_GEN9_BC(dev_priv)) {
 		/* Convert GT frequency to 50 HZ units */
 		min_gpu_freq = dev_priv->rps.min_freq / GEN9_FREQ_SCALER;
 		max_gpu_freq = dev_priv->rps.max_freq / GEN9_FREQ_SCALER;
@@ -5655,7 +5657,7 @@ static void gen6_update_ring_freq(struct drm_i915_private *dev_priv)
 		int diff = max_gpu_freq - gpu_freq;
 		unsigned int ia_freq = 0, ring_freq = 0;
 
-		if (IS_SKYLAKE(dev_priv) || IS_KABYLAKE(dev_priv)) {
+		if (IS_GEN9_BC(dev_priv)) {
 			/*
 			 * ring_freq = 2 * GT. ring_freq is in 100MHz units
 			 * No floor required for ring frequency on SKL.
@@ -6775,7 +6777,7 @@ void intel_enable_gt_powersave(struct drm_i915_private *dev_priv)
 	} else if (INTEL_GEN(dev_priv) >= 9) {
 		gen9_enable_rc6(dev_priv);
 		gen9_enable_rps(dev_priv);
-		if (IS_SKYLAKE(dev_priv) || IS_KABYLAKE(dev_priv))
+		if (IS_GEN9_BC(dev_priv))
 			gen6_update_ring_freq(dev_priv);
 	} else if (IS_BROADWELL(dev_priv)) {
 		gen8_enable_rps(dev_priv);
@@ -7656,8 +7658,10 @@ void intel_init_clock_gating_hooks(struct drm_i915_private *dev_priv)
 		dev_priv->display.init_clock_gating = skylake_init_clock_gating;
 	else if (IS_KABYLAKE(dev_priv))
 		dev_priv->display.init_clock_gating = kabylake_init_clock_gating;
-	else if (IS_GEN9_LP(dev_priv))
+	else if (IS_BROXTON(dev_priv))
 		dev_priv->display.init_clock_gating = bxt_init_clock_gating;
+	else if (IS_GEMINILAKE(dev_priv))
+		dev_priv->display.init_clock_gating = glk_init_clock_gating;
 	else if (IS_BROADWELL(dev_priv))
 		dev_priv->display.init_clock_gating = broadwell_init_clock_gating;
 	else if (IS_CHERRYVIEW(dev_priv))

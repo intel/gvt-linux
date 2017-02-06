@@ -61,6 +61,21 @@ drm_add_fake_info_node(struct drm_minor *minor,
 	return 0;
 }
 
+static __always_inline void seq_print_param(struct seq_file *m,
+					    const char *name,
+					    const char *type,
+					    const void *x)
+{
+	if (!__builtin_strcmp(type, "bool"))
+		seq_printf(m, "i915.%s=%s\n", name, yesno(*(const bool *)x));
+	else if (!__builtin_strcmp(type, "int"))
+		seq_printf(m, "i915.%s=%d\n", name, *(const int *)x);
+	else if (!__builtin_strcmp(type, "unsigned int"))
+		seq_printf(m, "i915.%s=%u\n", name, *(const unsigned int *)x);
+	else
+		BUILD_BUG();
+}
+
 static int i915_capabilities(struct seq_file *m, void *data)
 {
 	struct drm_i915_private *dev_priv = node_to_i915(m->private);
@@ -69,9 +84,16 @@ static int i915_capabilities(struct seq_file *m, void *data)
 	seq_printf(m, "gen: %d\n", INTEL_GEN(dev_priv));
 	seq_printf(m, "platform: %s\n", intel_platform_name(info->platform));
 	seq_printf(m, "pch: %d\n", INTEL_PCH_TYPE(dev_priv));
+
 #define PRINT_FLAG(x)  seq_printf(m, #x ": %s\n", yesno(info->x))
 	DEV_INFO_FOR_EACH_FLAG(PRINT_FLAG);
 #undef PRINT_FLAG
+
+	kernel_param_lock(THIS_MODULE);
+#define PRINT_PARAM(T, x) seq_print_param(m, #x, #T, &i915.x);
+	I915_PARAMS_FOR_EACH(PRINT_PARAM);
+#undef PRINT_PARAM
+	kernel_param_unlock(THIS_MODULE);
 
 	return 0;
 }
@@ -1224,21 +1246,18 @@ static int i915_frequency_info(struct seq_file *m, void *unused)
 
 		max_freq = (IS_GEN9_LP(dev_priv) ? rp_state_cap >> 0 :
 			    rp_state_cap >> 16) & 0xff;
-		max_freq *= (IS_SKYLAKE(dev_priv) || IS_KABYLAKE(dev_priv) ?
-			     GEN9_FREQ_SCALER : 1);
+		max_freq *= (IS_GEN9_BC(dev_priv) ? GEN9_FREQ_SCALER : 1);
 		seq_printf(m, "Lowest (RPN) frequency: %dMHz\n",
 			   intel_gpu_freq(dev_priv, max_freq));
 
 		max_freq = (rp_state_cap & 0xff00) >> 8;
-		max_freq *= (IS_SKYLAKE(dev_priv) || IS_KABYLAKE(dev_priv) ?
-			     GEN9_FREQ_SCALER : 1);
+		max_freq *= (IS_GEN9_BC(dev_priv) ? GEN9_FREQ_SCALER : 1);
 		seq_printf(m, "Nominal (RP1) frequency: %dMHz\n",
 			   intel_gpu_freq(dev_priv, max_freq));
 
 		max_freq = (IS_GEN9_LP(dev_priv) ? rp_state_cap >> 16 :
 			    rp_state_cap >> 0) & 0xff;
-		max_freq *= (IS_SKYLAKE(dev_priv) || IS_KABYLAKE(dev_priv) ?
-			     GEN9_FREQ_SCALER : 1);
+		max_freq *= (IS_GEN9_BC(dev_priv) ? GEN9_FREQ_SCALER : 1);
 		seq_printf(m, "Max non-overclocked (RP0) frequency: %dMHz\n",
 			   intel_gpu_freq(dev_priv, max_freq));
 		seq_printf(m, "Max overclocked frequency: %dMHz\n",
@@ -1814,7 +1833,7 @@ static int i915_ring_freq_table(struct seq_file *m, void *unused)
 	if (ret)
 		goto out;
 
-	if (IS_SKYLAKE(dev_priv) || IS_KABYLAKE(dev_priv)) {
+	if (IS_GEN9_BC(dev_priv)) {
 		/* Convert GT frequency to 50 HZ units */
 		min_gpu_freq =
 			dev_priv->rps.min_freq_softlimit / GEN9_FREQ_SCALER;
@@ -1834,8 +1853,8 @@ static int i915_ring_freq_table(struct seq_file *m, void *unused)
 				       &ia_freq);
 		seq_printf(m, "%d\t\t%d\t\t\t\t%d\n",
 			   intel_gpu_freq(dev_priv, (gpu_freq *
-				(IS_SKYLAKE(dev_priv) || IS_KABYLAKE(dev_priv) ?
-				 GEN9_FREQ_SCALER : 1))),
+						     (IS_GEN9_BC(dev_priv) ?
+						      GEN9_FREQ_SCALER : 1))),
 			   ((ia_freq >> 0) & 0xff) * 100,
 			   ((ia_freq >> 8) & 0xff) * 100);
 	}
@@ -3320,15 +3339,21 @@ static int i915_engine_info(struct seq_file *m, void *unused)
 
 			rcu_read_lock();
 			rq = READ_ONCE(engine->execlist_port[0].request);
-			if (rq)
-				print_request(m, rq, "\t\tELSP[0] ");
-			else
+			if (rq) {
+				seq_printf(m, "\t\tELSP[0] count=%d, ",
+					   engine->execlist_port[0].count);
+				print_request(m, rq, "rq: ");
+			} else {
 				seq_printf(m, "\t\tELSP[0] idle\n");
+			}
 			rq = READ_ONCE(engine->execlist_port[1].request);
-			if (rq)
-				print_request(m, rq, "\t\tELSP[1] ");
-			else
+			if (rq) {
+				seq_printf(m, "\t\tELSP[1] count=%d, ",
+					   engine->execlist_port[1].count);
+				print_request(m, rq, "rq: ");
+			} else {
 				seq_printf(m, "\t\tELSP[1] idle\n");
+			}
 			rcu_read_unlock();
 
 			spin_lock_irq(&engine->timeline->lock);
@@ -3772,7 +3797,19 @@ static int i915_displayport_test_data_show(struct seq_file *m, void *data)
 		if (connector->status == connector_status_connected &&
 		    connector->encoder != NULL) {
 			intel_dp = enc_to_intel_dp(connector->encoder);
-			seq_printf(m, "%lx", intel_dp->compliance.test_data.edid);
+			if (intel_dp->compliance.test_type ==
+			    DP_TEST_LINK_EDID_READ)
+				seq_printf(m, "%lx",
+					   intel_dp->compliance.test_data.edid);
+			else if (intel_dp->compliance.test_type ==
+				 DP_TEST_LINK_VIDEO_PATTERN) {
+				seq_printf(m, "hdisplay: %d\n",
+					   intel_dp->compliance.test_data.hdisplay);
+				seq_printf(m, "vdisplay: %d\n",
+					   intel_dp->compliance.test_data.vdisplay);
+				seq_printf(m, "bpc: %u\n",
+					   intel_dp->compliance.test_data.bpc);
+			}
 		} else
 			seq_puts(m, "0");
 	}
@@ -4263,7 +4300,8 @@ i915_max_freq_set(void *data, u64 val)
 
 	dev_priv->rps.max_freq_softlimit = val;
 
-	intel_set_rps(dev_priv, val);
+	if (intel_set_rps(dev_priv, val))
+		DRM_DEBUG_DRIVER("failed to update RPS to new softlimit\n");
 
 	mutex_unlock(&dev_priv->rps.hw_lock);
 
@@ -4318,7 +4356,8 @@ i915_min_freq_set(void *data, u64 val)
 
 	dev_priv->rps.min_freq_softlimit = val;
 
-	intel_set_rps(dev_priv, val);
+	if (intel_set_rps(dev_priv, val))
+		DRM_DEBUG_DRIVER("failed to update RPS to new softlimit\n");
 
 	mutex_unlock(&dev_priv->rps.hw_lock);
 
@@ -4444,7 +4483,7 @@ static void gen9_sseu_device_status(struct drm_i915_private *dev_priv,
 
 		sseu->slice_mask |= BIT(s);
 
-		if (IS_SKYLAKE(dev_priv) || IS_KABYLAKE(dev_priv))
+		if (IS_GEN9_BC(dev_priv))
 			sseu->subslice_mask =
 				INTEL_INFO(dev_priv)->sseu.subslice_mask;
 

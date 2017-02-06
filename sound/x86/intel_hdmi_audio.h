@@ -1,0 +1,116 @@
+/*
+ * Copyright (C) 2016 Intel Corporation
+ *  Authors:	Sailaja Bandarupalli <sailaja.bandarupalli@intel.com>
+ *		Ramesh Babu K V	<ramesh.babu@intel.com>
+ *		Vaibhav Agarwal <vaibhav.agarwal@intel.com>
+ *		Jerome Anand <jerome.anand@intel.com>
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining
+ * a copy of this software and associated documentation files
+ * (the "Software"), to deal in the Software without restriction,
+ * including without limitation the rights to use, copy, modify, merge,
+ * publish, distribute, sublicense, and/or sell copies of the Software,
+ * and to permit persons to whom the Software is furnished to do so,
+ * subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice (including the
+ * next paragraph) shall be included in all copies or substantial
+ * portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+ * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+ * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+ * NONINFRINGEMENT.  IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS
+ * BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN
+ * ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+ * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
+
+#ifndef _INTEL_HDMI_AUDIO_H_
+#define _INTEL_HDMI_AUDIO_H_
+
+#include "intel_hdmi_lpe_audio.h"
+
+#define PCM_INDEX		0
+#define MAX_PB_STREAMS		1
+#define MAX_CAP_STREAMS		0
+
+#define HDMI_INFO_FRAME_WORD1	0x000a0184
+#define DP_INFO_FRAME_WORD1	0x00441b84
+#define FIFO_THRESHOLD		0xFE
+#define DMA_FIFO_THRESHOLD	0x7
+#define BYTES_PER_WORD		0x4
+
+/* Sampling rate as per IEC60958 Ver 3 */
+#define CH_STATUS_MAP_32KHZ	0x3
+#define CH_STATUS_MAP_44KHZ	0x0
+#define CH_STATUS_MAP_48KHZ	0x2
+#define CH_STATUS_MAP_88KHZ	0x8
+#define CH_STATUS_MAP_96KHZ	0xA
+#define CH_STATUS_MAP_176KHZ	0xC
+#define CH_STATUS_MAP_192KHZ	0xE
+
+#define MAX_SMPL_WIDTH_20	0x0
+#define MAX_SMPL_WIDTH_24	0x1
+#define SMPL_WIDTH_16BITS	0x1
+#define SMPL_WIDTH_24BITS	0x5
+#define CHANNEL_ALLOCATION	0x1F
+#define VALID_DIP_WORDS		3
+#define LAYOUT0			0
+#define LAYOUT1			1
+#define SWAP_LFE_CENTER		0x00fac4c8
+#define AUD_CONFIG_CH_MASK	0x70
+
+struct pcm_stream_info {
+	struct snd_pcm_substream *substream;
+	int substream_refcount;
+	bool running;
+};
+
+/*
+ * struct snd_intelhad - intelhad driver structure
+ *
+ * @card: ptr to hold card details
+ * @connected: the monitor connection status
+ * @stream_info: stream information
+ * @eld: holds ELD info
+ * @curr_buf: pointer to hold current active ring buf
+ * @valid_buf_cnt: ring buffer count for stream
+ * @had_spinlock: driver lock
+ * @aes_bits: IEC958 status bits
+ * @buff_done: id of current buffer done intr
+ * @dev: platoform device handle
+ * @chmap: holds channel map info
+ */
+struct snd_intelhad {
+	struct snd_card	*card;
+	bool		connected;
+	struct		pcm_stream_info stream_info;
+	unsigned char	eld[HDMI_MAX_ELD_BYTES];
+	bool dp_output;
+	unsigned int	aes_bits;
+	spinlock_t had_spinlock;
+	struct device *dev;
+	struct snd_pcm_chmap *chmap;
+	int tmds_clock_speed;
+	int link_rate;
+
+	/* ring buffer (BD) position index */
+	unsigned int bd_head;
+	/* PCM buffer position indices */
+	unsigned int pcmbuf_head;	/* being processed */
+	unsigned int pcmbuf_filled;	/* to be filled */
+
+	unsigned int num_bds;		/* number of BDs */
+	unsigned int period_bytes;	/* PCM period size in bytes */
+
+	/* internal stuff */
+	int irq;
+	void __iomem *mmio_start;
+	unsigned int had_config_offset;
+	struct work_struct hdmi_audio_wq;
+	struct mutex mutex; /* for protecting chmap and eld */
+};
+
+#endif /* _INTEL_HDMI_AUDIO_ */

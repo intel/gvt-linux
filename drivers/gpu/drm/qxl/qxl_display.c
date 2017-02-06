@@ -624,12 +624,12 @@ qxl_framebuffer_init(struct drm_device *dev,
 	int ret;
 
 	qfb->obj = obj;
+	drm_helper_mode_fill_fb_struct(dev, &qfb->base, mode_cmd);
 	ret = drm_framebuffer_init(dev, &qfb->base, funcs);
 	if (ret) {
 		qfb->obj = NULL;
 		return ret;
 	}
-	drm_helper_mode_fill_fb_struct(&qfb->base, mode_cmd);
 	return 0;
 }
 
@@ -1077,7 +1077,6 @@ static int qdev_output_init(struct drm_device *dev, int num_output)
 				   dev->mode_config.suggested_x_property, 0);
 	drm_object_attach_property(&connector->base,
 				   dev->mode_config.suggested_y_property, 0);
-	drm_connector_register(connector);
 	return 0;
 }
 

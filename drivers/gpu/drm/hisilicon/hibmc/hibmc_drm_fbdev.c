@@ -121,7 +121,7 @@ static int hibmc_drm_fb_create(struct drm_fb_helper *helper,
 
 	hi_fbdev->fb = hibmc_framebuffer_init(priv->dev, &mode_cmd, gobj);
 	if (IS_ERR(hi_fbdev->fb)) {
-		ret = PTR_ERR(info);
+		ret = PTR_ERR(hi_fbdev->fb);
 		DRM_ERROR("failed to initialize framebuffer: %d\n", ret);
 		goto out_release_fbi;
 	}
@@ -135,7 +135,7 @@ static int hibmc_drm_fb_create(struct drm_fb_helper *helper,
 	info->fbops = &hibmc_drm_fb_ops;
 
 	drm_fb_helper_fill_fix(info, hi_fbdev->fb->fb.pitches[0],
-			       hi_fbdev->fb->fb.depth);
+			       hi_fbdev->fb->fb.format->depth);
 	drm_fb_helper_fill_var(info, &priv->fbdev->helper, sizes->fb_width,
 			       sizes->fb_height);
 

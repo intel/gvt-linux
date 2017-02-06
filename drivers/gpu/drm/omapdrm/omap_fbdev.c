@@ -190,7 +190,7 @@ static int omap_fbdev_create(struct drm_fb_helper *helper,
 
 	strcpy(fbi->fix.id, MODULE_NAME);
 
-	drm_fb_helper_fill_fix(fbi, fb->pitches[0], fb->depth);
+	drm_fb_helper_fill_fix(fbi, fb->pitches[0], fb->format->depth);
 	drm_fb_helper_fill_var(fbi, helper, sizes->fb_width, sizes->fb_height);
 
 	dev->mode_config.fb_base = paddr;
@@ -225,10 +225,8 @@ fail:
 
 		drm_fb_helper_release_fbi(helper);
 
-		if (fb) {
-			drm_framebuffer_unregister_private(fb);
+		if (fb)
 			drm_framebuffer_remove(fb);
-		}
 	}
 
 	return ret;
@@ -314,10 +312,8 @@ void omap_fbdev_free(struct drm_device *dev)
 	omap_gem_put_paddr(fbdev->bo);
 
 	/* this will free the backing object */
-	if (fbdev->fb) {
-		drm_framebuffer_unregister_private(fbdev->fb);
+	if (fbdev->fb)
 		drm_framebuffer_remove(fbdev->fb);
-	}
 
 	kfree(fbdev);
 

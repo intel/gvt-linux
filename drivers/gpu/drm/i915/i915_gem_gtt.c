@@ -1423,10 +1423,6 @@ static int gen8_alloc_va_range_4lvl(struct i915_address_space *vm,
 	if (ret)
 		return ret;
 
-	WARN(bitmap_weight(new_pdps, GEN8_PML4ES_PER_PML4) > 2,
-	     "The allocation has spanned more than 512GB. "
-	     "It is highly likely this is incorrect.");
-
 	gen8_for_each_pml4e(pdp, pml4, start, length, pml4e) {
 		WARN_ON(!pdp);
 
@@ -2164,10 +2160,14 @@ static void i915_address_space_init(struct i915_address_space *vm,
 				    const char *name)
 {
 	i915_gem_timeline_init(dev_priv, &vm->timeline, name);
+
 	drm_mm_init(&vm->mm, vm->start, vm->total);
+	vm->mm.head_node.color = I915_COLOR_UNEVICTABLE;
+
 	INIT_LIST_HEAD(&vm->active_list);
 	INIT_LIST_HEAD(&vm->inactive_list);
 	INIT_LIST_HEAD(&vm->unbound_list);
+
 	list_add_tail(&vm->global_link, &dev_priv->vm_list);
 }
 
@@ -2184,14 +2184,14 @@ static void gtt_write_workarounds(struct drm_i915_private *dev_priv)
 	 * called on driver load and after a GPU reset, so you can place
 	 * workarounds here even if they get overwritten by GPU reset.
 	 */
-	/* WaIncreaseDefaultTLBEntries:chv,bdw,skl,bxt */
+	/* WaIncreaseDefaultTLBEntries:chv,bdw,skl,bxt,kbl,glk */
 	if (IS_BROADWELL(dev_priv))
 		I915_WRITE(GEN8_L3_LRA_1_GPGPU, GEN8_L3_LRA_1_GPGPU_DEFAULT_VALUE_BDW);
 	else if (IS_CHERRYVIEW(dev_priv))
 		I915_WRITE(GEN8_L3_LRA_1_GPGPU, GEN8_L3_LRA_1_GPGPU_DEFAULT_VALUE_CHV);
-	else if (IS_SKYLAKE(dev_priv))
+	else if (IS_GEN9_BC(dev_priv))
 		I915_WRITE(GEN8_L3_LRA_1_GPGPU, GEN9_L3_LRA_1_GPGPU_DEFAULT_VALUE_SKL);
-	else if (IS_BROXTON(dev_priv))
+	else if (IS_GEN9_LP(dev_priv))
 		I915_WRITE(GEN8_L3_LRA_1_GPGPU, GEN9_L3_LRA_1_GPGPU_DEFAULT_VALUE_BXT);
 }
 
@@ -2718,11 +2718,16 @@ static void i915_gtt_color_adjust(const struct drm_mm_node *node,
 				  u64 *start,
 				  u64 *end)
 {
-	if (node->color != color)
+	if (node->allocated && node->color != color)
 		*start += I915_GTT_PAGE_SIZE;
 
+	/* Also leave a space between the unallocated reserved node after the
+	 * GTT and any objects within the GTT, i.e. we use the color adjustment
+	 * to insert a guard page to prevent prefetches crossing over the
+	 * GTT boundary.
+	 */
 	node = list_next_entry(node, node_list);
-	if (node->allocated && node->color != color)
+	if (node->color != color)
 		*end -= I915_GTT_PAGE_SIZE;
 }
 
@@ -3241,14 +3246,14 @@ int i915_ggtt_init_hw(struct drm_i915_private *dev_priv)
 
 	INIT_LIST_HEAD(&dev_priv->vm_list);
 
-	/* Subtract the guard page before address space initialization to
-	 * shrink the range used by drm_mm.
+	/* Note that we use page colouring to enforce a guard page at the
+	 * end of the address space. This is required as the CS may prefetch
+	 * beyond the end of the batch buffer, across the page boundary,
+	 * and beyond the end of the GTT if we do not provide a guard.
 	 */
 	mutex_lock(&dev_priv->drm.struct_mutex);
-	ggtt->base.total -= PAGE_SIZE;
 	i915_address_space_init(&ggtt->base, dev_priv, "[global]");
-	ggtt->base.total += PAGE_SIZE;
-	if (!HAS_LLC(dev_priv))
+	if (!HAS_LLC(dev_priv) && !USES_PPGTT(dev_priv))
 		ggtt->base.mm.color_adjust = i915_gtt_color_adjust;
 	mutex_unlock(&dev_priv->drm.struct_mutex);
 

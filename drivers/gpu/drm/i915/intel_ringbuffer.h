@@ -144,6 +144,8 @@ struct intel_ring {
 
 	u32 head;
 	u32 tail;
+	GEM_BUG_ONLY_DECLARE(u32 advance);
+
 	int space;
 	int size;
 	int effective_size;
@@ -211,6 +213,10 @@ struct intel_engine_cs {
 
 	struct intel_render_state *render_state;
 
+	unsigned long irq_posted;
+#define ENGINE_IRQ_BREADCRUMB 0
+#define ENGINE_IRQ_EXECLIST 1
+
 	/* Rather than have every client wait upon all user interrupts,
 	 * with the herd waking after every interrupt and each doing the
 	 * heavyweight seqno dance, we delegate the task (of being the
@@ -229,7 +235,6 @@ struct intel_engine_cs {
 	 */
 	struct intel_breadcrumbs {
 		struct task_struct __rcu *irq_seqno_bh; /* bh for interrupts */
-		bool irq_posted;
 
 		spinlock_t lock; /* protects the lists of requests; irqsafe */
 		struct rb_root waiters; /* sorted by retirement, priority */
@@ -376,13 +381,11 @@ struct intel_engine_cs {
 	struct execlist_port {
 		struct drm_i915_gem_request *request;
 		unsigned int count;
+		GEM_BUG_ONLY_DECLARE(u32 context_id);
 	} execlist_port[2];
 	struct rb_root execlist_queue;
 	struct rb_node *execlist_first;
 	unsigned int fw_domains;
-	bool disable_lite_restore_wa;
-	bool preempt_wa;
-	u32 ctx_desc_template;
 
 	/* Contexts are pinned whilst they are active on the GPU. The last
 	 * context executed remains active whilst the GPU is idle - the
@@ -516,6 +519,7 @@ static inline void intel_ring_advance(struct intel_ring *ring)
 	 * reserved for the command packet (i.e. the value passed to
 	 * intel_ring_begin()).
 	 */
+	GEM_BUG_ONLY_ON(ring->tail != ring->advance);
 }
 
 static inline u32 intel_ring_offset(struct intel_ring *ring, void *addr)

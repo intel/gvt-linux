@@ -1,22 +1,14 @@
-drm-intel drm-intel-fixes 6e7eb1783be7f19eb071c96ddda0bbf22279ff46
-	drm/i915: Always convert incoming exec offsets to non-canonical
-drm-upstream drm-fixes 5d18a619976944dc3114bbe1525880c431196c7a
-	Merge branch 'drm-vmwgfx-fixes-4_10' of git://people.freedesktop.org/~syeh/repos_linux into drm-fixes
-drm-intel drm-intel-next-fixes 05e7866a174f6acdc02558848b3ee0cdf20a51a6
-	Merge tag 'gvt-next-2017-02-07' of https://github.com/01org/gvt-linux into drm-intel-next-fixes
-drm-intel drm-intel-next-queued 1f7b847d72c3583df5048d83bd945d0c2c524c28
-	drm/i915: Disable engine->irq_tasklet around resets
-drm-upstream drm-next 4eaa39c63caf535dc1a8cc43b9a8677a100c09e1
-	Merge branch 'drm-rockchip-next-2017-02-07' of https://github.com/markyzq/kernel-drm-rockchip into drm-next
-sound-upstream for-next 8d8c9aec9ae31b17d9c8ceec8eaa2a0192b6de52
-	ALSA: x86: Avoid unconditional call of snd_pcm_period_elapsed()
-sound-upstream for-linus f3d83317a69e7d658e7c83e24f8b31ac533c39e3
-	Revert "ALSA: line6: Only determine control port properties if needed"
-drm-intel topic/core-for-CI 3f7a5fb77af4f5b38e514b85d491da0046d6bfb8
-	locking/mutex: Clear mutex-handoff flag on interrupt
-drm-misc drm-misc-next 0396162ab9c571ee31f01866cbf168066dbf395d
-	drm/omap: use vblank hooks in struct drm_crtc_funcs
-drm-misc drm-misc-next-fixes f9ad86e42d0303eeb8e0d41bb208153022ebd9d2
-	drm/atomic: fix an error code in mode_fixup()
-drm-misc drm-misc-fixes d5adbfcd5f7bcc6fa58a41c5c5ada0e5c826ce2c
-	Linux 4.10-rc7
+drm-tip/drm-tip 29b6014fdfab0a48deb05fc5cc5b33ba00042118
+	drm-tip: 2017y-02m-08d-21h-01m-50s UTC integration manifest
+kvm-upstream/linux-next a0e136d436ded817c0aade72efdefa56a00b4e5e
+	PTP: add kvm PTP driver
+vfio-upstream/for-linus c019167838156a2efcc60a15fa4207710bac6e82
+	vfio/spapr_tce: Set window when adding additional groups to container
+vfio-upstream/next d88423f7844ea9941d55bde92716a50c3e131dd7
+	vfio: Fix build break when SPAPR_TCE_IOMMU=n
+origin/gvt-next f3620d1c11739b4f38be2f13e93e6b1013ee1204
+	drm/i915/gvt: fix vgpu type size init
+origin/gvt-fixes ba7addcd805e5c83e201b118a2693b921a980b44
+	MAINTAINERS: update new mail list for intel gvt driver
+origin/gvt-next-fixes 5bf63fb40eacb7ed1f1de70ae30a597313fa9960
+	drm/i915/gvt/kvmgt: remove some dead code

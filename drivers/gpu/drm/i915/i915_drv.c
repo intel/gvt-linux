@@ -1317,6 +1317,8 @@ void i915_driver_unload(struct drm_device *dev)
 
 	intel_display_power_get(dev_priv, POWER_DOMAIN_INIT);
 
+	intel_gvt_cleanup(dev_priv);
+
 	drm_modeset_acquire_init(&ctx, 0);
 	while (1) {
 		ret = drm_modeset_lock_all_ctx(dev, &ctx);

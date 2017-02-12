@@ -599,10 +599,62 @@ out:
 static void reset_ring_common(struct intel_engine_cs *engine,
 			      struct drm_i915_gem_request *request)
 {
-	struct intel_ring *ring = request->ring;
+	/* Try to restore the logical GPU state to match the continuation
+	 * of the request queue. If we skip the context/PD restore, then
+	 * the next request may try to execute assuming that its context
+	 * is valid and loaded on the GPU and so may try to access invalid
+	 * memory, prompting repeated GPU hangs.
+	 *
+	 * If the request was guilty, we still restore the logical state
+	 * in case the next request requires it (e.g. the aliasing ppgtt),
+	 * but skip over the hung batch.
+	 *
+	 * If the request was innocent, we try to replay the request with
+	 * the restored context.
+	 */
+	if (request) {
+		struct drm_i915_private *dev_priv = request->i915;
+		struct intel_context *ce = &request->ctx->engine[engine->id];
+		struct i915_hw_ppgtt *ppgtt;
 
-	ring->head = request->postfix;
-	ring->last_retired_head = -1;
+		/* FIXME consider gen8 reset */
+
+		if (ce->state) {
+			I915_WRITE(CCID,
+				   i915_ggtt_offset(ce->state) |
+				   BIT(8) /* must be set! */ |
+				   CCID_EXTENDED_STATE_SAVE |
+				   CCID_EXTENDED_STATE_RESTORE |
+				   CCID_EN);
+		}
+
+		ppgtt = request->ctx->ppgtt ?: engine->i915->mm.aliasing_ppgtt;
+		if (ppgtt) {
+			u32 pd_offset = ppgtt->pd.base.ggtt_offset << 10;
+
+			I915_WRITE(RING_PP_DIR_DCLV(engine), PP_DIR_DCLV_2G);
+			I915_WRITE(RING_PP_DIR_BASE(engine), pd_offset);
+
+			/* Wait for the PD reload to complete */
+			if (intel_wait_for_register(dev_priv,
+						    RING_PP_DIR_BASE(engine),
+						    BIT(0), 0,
+						    10))
+				DRM_ERROR("Wait for reload of ppgtt page-directory timed out\n");
+
+			ppgtt->pd_dirty_rings &= ~intel_engine_flag(engine);
+		}
+
+		/* If the rq hung, jump to its breadcrumb and skip the batch */
+		if (request->fence.error == -EIO) {
+			struct intel_ring *ring = request->ring;
+
+			ring->head = request->postfix;
+			ring->last_retired_head = -1;
+		}
+	} else {
+		engine->legacy_active_context = NULL;
+	}
 }
 
 static int intel_ring_workarounds_emit(struct drm_i915_gem_request *req)
@@ -812,10 +864,10 @@ static int gen9_init_workarounds(struct intel_engine_cs *engine)
 	struct drm_i915_private *dev_priv = engine->i915;
 	int ret;
 
-	/* WaConextSwitchWithConcurrentTLBInvalidate:skl,bxt,kbl */
+	/* WaConextSwitchWithConcurrentTLBInvalidate:skl,bxt,kbl,glk */
 	I915_WRITE(GEN9_CSFE_CHICKEN1_RCS, _MASKED_BIT_ENABLE(GEN9_PREEMPT_GPGPU_SYNC_SWITCH_DISABLE));
 
-	/* WaEnableLbsSlaRetryTimerDecrement:skl,bxt,kbl */
+	/* WaEnableLbsSlaRetryTimerDecrement:skl,bxt,kbl,glk */
 	I915_WRITE(BDW_SCRATCH1, I915_READ(BDW_SCRATCH1) |
 		   GEN9_LBS_SLA_RETRY_TIMER_DECREMENT_ENABLE);
 
@@ -823,8 +875,8 @@ static int gen9_init_workarounds(struct intel_engine_cs *engine)
 	I915_WRITE(GAM_ECOCHK, I915_READ(GAM_ECOCHK) |
 		   ECOCHK_DIS_TLB);
 
-	/* WaClearFlowControlGpgpuContextSave:skl,bxt,kbl */
-	/* WaDisablePartialInstShootdown:skl,bxt,kbl */
+	/* WaClearFlowControlGpgpuContextSave:skl,bxt,kbl,glk */
+	/* WaDisablePartialInstShootdown:skl,bxt,kbl,glk */
 	WA_SET_BIT_MASKED(GEN8_ROW_CHICKEN,
 			  FLOW_CONTROL_ENABLE |
 			  PARTIAL_INSTRUCTION_SHOOTDOWN_DISABLE);
@@ -853,12 +905,12 @@ static int gen9_init_workarounds(struct intel_engine_cs *engine)
 	WA_SET_BIT_MASKED(GEN9_HALF_SLICE_CHICKEN7,
 			  GEN9_ENABLE_GPGPU_PREEMPTION);
 
-	/* Wa4x4STCOptimizationDisable:skl,bxt,kbl */
+	/* Wa4x4STCOptimizationDisable:skl,bxt,kbl,glk */
 	/* WaDisablePartialResolveInVc:skl,bxt,kbl */
 	WA_SET_BIT_MASKED(CACHE_MODE_1, (GEN8_4x4_STC_OPTIMIZATION_DISABLE |
 					 GEN9_PARTIAL_RESOLVE_IN_VC_DISABLE));
 
-	/* WaCcsTlbPrefetchDisable:skl,bxt,kbl */
+	/* WaCcsTlbPrefetchDisable:skl,bxt,kbl,glk */
 	WA_CLR_BIT_MASKED(GEN9_HALF_SLICE_CHICKEN5,
 			  GEN9_CCS_TLB_PREFETCH_ENABLE);
 
@@ -900,14 +952,14 @@ static int gen9_init_workarounds(struct intel_engine_cs *engine)
 		WA_SET_BIT_MASKED(HALF_SLICE_CHICKEN3,
 				  GEN8_SAMPLER_POWER_BYPASS_DIS);
 
-	/* WaDisableSTUnitPowerOptimization:skl,bxt,kbl */
+	/* WaDisableSTUnitPowerOptimization:skl,bxt,kbl,glk */
 	WA_SET_BIT_MASKED(HALF_SLICE_CHICKEN2, GEN8_ST_PO_DISABLE);
 
 	/* WaOCLCoherentLineFlush:skl,bxt,kbl */
 	I915_WRITE(GEN8_L3SQCREG4, (I915_READ(GEN8_L3SQCREG4) |
 				    GEN8_LQSC_FLUSH_COHERENT_LINES));
 
-	/* WaVFEStateAfterPipeControlwithMediaStateClear:skl,bxt */
+	/* WaVFEStateAfterPipeControlwithMediaStateClear:skl,bxt,glk */
 	ret = wa_ring_whitelist_reg(engine, GEN9_CTX_PREEMPT_REG);
 	if (ret)
 		return ret;
@@ -917,7 +969,7 @@ static int gen9_init_workarounds(struct intel_engine_cs *engine)
 	if (ret)
 		return ret;
 
-	/* WaAllowUMDToModifyHDCChicken1:skl,bxt,kbl */
+	/* WaAllowUMDToModifyHDCChicken1:skl,bxt,kbl,glk */
 	ret = wa_ring_whitelist_reg(engine, GEN8_HDC_CHICKEN1);
 	if (ret)
 		return ret;
@@ -1120,6 +1172,22 @@ static int kbl_init_workarounds(struct intel_engine_cs *engine)
 	return 0;
 }
 
+static int glk_init_workarounds(struct intel_engine_cs *engine)
+{
+	struct drm_i915_private *dev_priv = engine->i915;
+	int ret;
+
+	ret = gen9_init_workarounds(engine);
+	if (ret)
+		return ret;
+
+	/* WaToEnableHwFixForPushConstHWBug:glk */
+	WA_SET_BIT_MASKED(COMMON_SLICE_CHICKEN2,
+			  GEN8_SBE_DISABLE_REPLAY_BUF_OPTIMIZATION);
+
+	return 0;
+}
+
 int init_workarounds_ring(struct intel_engine_cs *engine)
 {
 	struct drm_i915_private *dev_priv = engine->i915;
@@ -1143,6 +1211,9 @@ int init_workarounds_ring(struct intel_engine_cs *engine)
 
 	if (IS_KABYLAKE(dev_priv))
 		return kbl_init_workarounds(engine);
+
+	if (IS_GEMINILAKE(dev_priv))
+		return glk_init_workarounds(engine);
 
 	return 0;
 }
@@ -1933,7 +2004,7 @@ intel_ring_free(struct intel_ring *ring)
 	kfree(ring);
 }
 
-static int context_pin(struct i915_gem_context *ctx, unsigned int flags)
+static int context_pin(struct i915_gem_context *ctx)
 {
 	struct i915_vma *vma = ctx->engine[RCS].state;
 	int ret;
@@ -1948,7 +2019,7 @@ static int context_pin(struct i915_gem_context *ctx, unsigned int flags)
 			return ret;
 	}
 
-	return i915_vma_pin(vma, 0, ctx->ggtt_alignment, PIN_GLOBAL | flags);
+	return i915_vma_pin(vma, 0, ctx->ggtt_alignment, PIN_GLOBAL | PIN_HIGH);
 }
 
 static int intel_ring_context_pin(struct intel_engine_cs *engine,
@@ -1963,13 +2034,7 @@ static int intel_ring_context_pin(struct intel_engine_cs *engine,
 		return 0;
 
 	if (ce->state) {
-		unsigned int flags;
-
-		flags = 0;
-		if (i915_gem_context_is_kernel(ctx))
-			flags = PIN_HIGH;
-
-		ret = context_pin(ctx, flags);
+		ret = context_pin(ctx);
 		if (ret)
 			goto error;
 	}
@@ -2219,6 +2284,7 @@ int intel_ring_begin(struct drm_i915_gem_request *req, int num_dwords)
 
 	ring->space -= bytes;
 	GEM_BUG_ON(ring->space < 0);
+	GEM_DEBUG_EXEC(ring->advance = ring->tail + bytes);
 	return 0;
 }
 

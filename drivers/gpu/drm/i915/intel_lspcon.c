@@ -158,22 +158,12 @@ static bool lspcon_probe(struct intel_lspcon *lspcon)
 static void lspcon_resume_in_pcon_wa(struct intel_lspcon *lspcon)
 {
 	struct intel_dp *intel_dp = lspcon_to_intel_dp(lspcon);
+	struct intel_digital_port *dig_port = dp_to_dig_port(intel_dp);
+	struct drm_i915_private *dev_priv = to_i915(dig_port->base.base.dev);
 	unsigned long start = jiffies;
 
-	if (!lspcon->desc_valid)
-		return;
-
 	while (1) {
-		struct intel_dp_desc desc;
-
-		/*
-		 * The w/a only applies in PCON mode and we don't expect any
-		 * AUX errors.
-		 */
-		if (!__intel_dp_read_desc(intel_dp, &desc))
-			return;
-
-		if (!memcmp(&intel_dp->desc, &desc, sizeof(desc))) {
+		if (intel_digital_port_connected(dev_priv, dig_port)) {
 			DRM_DEBUG_KMS("LSPCON recovering in PCON mode after %u ms\n",
 				      jiffies_to_msecs(jiffies - start));
 			return;
@@ -250,7 +240,7 @@ bool lspcon_init(struct intel_digital_port *intel_dig_port)
 		return false;
 	}
 
-	lspcon->desc_valid = intel_dp_read_desc(dp);
+	intel_dp_read_desc(dp);
 
 	DRM_DEBUG_KMS("Success: LSPCON init\n");
 	return true;

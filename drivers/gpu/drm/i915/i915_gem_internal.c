@@ -35,8 +35,10 @@ static void internal_free_pages(struct sg_table *st)
 {
 	struct scatterlist *sg;
 
-	for (sg = st->sgl; sg; sg = __sg_next(sg))
-		__free_pages(sg_page(sg), get_order(sg->length));
+	for (sg = st->sgl; sg; sg = __sg_next(sg)) {
+		if (sg_page(sg))
+			__free_pages(sg_page(sg), get_order(sg->length));
+	}
 
 	sg_free_table(st);
 	kfree(st);
@@ -46,23 +48,11 @@ static struct sg_table *
 i915_gem_object_get_pages_internal(struct drm_i915_gem_object *obj)
 {
 	struct drm_i915_private *i915 = to_i915(obj->base.dev);
-	unsigned int npages = obj->base.size / PAGE_SIZE;
 	struct sg_table *st;
 	struct scatterlist *sg;
+	unsigned int npages;
 	int max_order;
 	gfp_t gfp;
-
-	st = kmalloc(sizeof(*st), GFP_KERNEL);
-	if (!st)
-		return ERR_PTR(-ENOMEM);
-
-	if (sg_alloc_table(st, npages, GFP_KERNEL)) {
-		kfree(st);
-		return ERR_PTR(-ENOMEM);
-	}
-
-	sg = st->sgl;
-	st->nents = 0;
 
 	max_order = MAX_ORDER;
 #ifdef CONFIG_SWIOTLB
@@ -84,6 +74,20 @@ i915_gem_object_get_pages_internal(struct drm_i915_gem_object *obj)
 		gfp &= ~__GFP_HIGHMEM;
 		gfp |= __GFP_DMA32;
 	}
+
+create_st:
+	st = kmalloc(sizeof(*st), GFP_KERNEL);
+	if (!st)
+		return ERR_PTR(-ENOMEM);
+
+	npages = obj->base.size / PAGE_SIZE;
+	if (sg_alloc_table(st, npages, GFP_KERNEL)) {
+		kfree(st);
+		return ERR_PTR(-ENOMEM);
+	}
+
+	sg = st->sgl;
+	st->nents = 0;
 
 	do {
 		int order = min(fls(npages) - 1, max_order);
@@ -112,8 +116,15 @@ i915_gem_object_get_pages_internal(struct drm_i915_gem_object *obj)
 		sg = __sg_next(sg);
 	} while (1);
 
-	if (i915_gem_gtt_prepare_pages(obj, st))
+	if (i915_gem_gtt_prepare_pages(obj, st)) {
+		/* Failed to dma-map try again with single page sg segments */
+		if (get_order(st->sgl->length)) {
+			internal_free_pages(st);
+			max_order = 0;
+			goto create_st;
+		}
 		goto err;
+	}
 
 	/* Mark the pages as dontneed whilst they are still pinned. As soon
 	 * as they are unpinned they are allowed to be reaped by the shrinker,
@@ -124,6 +135,7 @@ i915_gem_object_get_pages_internal(struct drm_i915_gem_object *obj)
 	return st;
 
 err:
+	sg_set_page(sg, NULL, 0, 0);
 	sg_mark_end(sg);
 	internal_free_pages(st);
 	return ERR_PTR(-ENOMEM);

@@ -2641,7 +2641,19 @@ int i915_gem_reset_prepare(struct drm_i915_private *dev_priv)
 	for_each_engine(engine, dev_priv, id) {
 		struct drm_i915_gem_request *request;
 
+		/* Prevent request submission to the hardware until we have
+		 * completed the reset in i915_gem_reset_finish(). If a request
+		 * is completed by one engine, it may then queue a request
+		 * to a second via its engine->irq_tasklet *just* as we are
+		 * calling engine->init_hw() and also writing the ELSP.
+		 * Turning off the engine->irq_tasklet until the reset is over
+		 * prevents the race.
+		 */
+		tasklet_disable(&engine->irq_tasklet);
 		tasklet_kill(&engine->irq_tasklet);
+
+		if (engine->irq_seqno_barrier)
+			engine->irq_seqno_barrier(engine);
 
 		if (engine_stalled(engine)) {
 			request = i915_gem_find_active_request(engine);
@@ -2739,28 +2751,21 @@ static void i915_gem_reset_engine(struct intel_engine_cs *engine)
 {
 	struct drm_i915_gem_request *request;
 
-	if (engine->irq_seqno_barrier)
-		engine->irq_seqno_barrier(engine);
-
 	request = i915_gem_find_active_request(engine);
-	if (!request)
-		return;
+	if (request && i915_gem_reset_request(request)) {
+		DRM_DEBUG_DRIVER("resetting %s to restart from tail of request 0x%x\n",
+				 engine->name, request->global_seqno);
 
-	if (!i915_gem_reset_request(request))
-		return;
-
-	DRM_DEBUG_DRIVER("resetting %s to restart from tail of request 0x%x\n",
-			 engine->name, request->global_seqno);
+		/* If this context is now banned, skip all pending requests. */
+		if (i915_gem_context_is_banned(request->ctx))
+			engine_skip_context(request);
+	}
 
 	/* Setup the CS to resume from the breadcrumb of the hung request */
 	engine->reset_hw(engine, request);
-
-	/* If this context is now banned, skip all of its pending requests. */
-	if (i915_gem_context_is_banned(request->ctx))
-		engine_skip_context(request);
 }
 
-void i915_gem_reset_finish(struct drm_i915_private *dev_priv)
+void i915_gem_reset(struct drm_i915_private *dev_priv)
 {
 	struct intel_engine_cs *engine;
 	enum intel_engine_id id;
@@ -2780,6 +2785,17 @@ void i915_gem_reset_finish(struct drm_i915_private *dev_priv)
 		if (INTEL_GEN(dev_priv) >= 6)
 			gen6_rps_busy(dev_priv);
 	}
+}
+
+void i915_gem_reset_finish(struct drm_i915_private *dev_priv)
+{
+	struct intel_engine_cs *engine;
+	enum intel_engine_id id;
+
+	lockdep_assert_held(&dev_priv->drm.struct_mutex);
+
+	for_each_engine(engine, dev_priv, id)
+		tasklet_enable(&engine->irq_tasklet);
 }
 
 static void nop_submit_request(struct drm_i915_gem_request *request)
@@ -4207,6 +4223,23 @@ static void assert_kernel_context_is_current(struct drm_i915_private *dev_priv)
 			   !i915_gem_context_is_kernel(engine->last_retired_context));
 }
 
+void i915_gem_sanitize(struct drm_i915_private *i915)
+{
+	/*
+	 * If we inherit context state from the BIOS or earlier occupants
+	 * of the GPU, the GPU may be in an inconsistent state when we
+	 * try to take over. The only way to remove the earlier state
+	 * is by resetting. However, resetting on earlier gen is tricky as
+	 * it may impact the display and we are uncertain about the stability
+	 * of the reset, so we only reset recent machines with logical
+	 * context support (that must be reset to remove any stray contexts).
+	 */
+	if (HAS_HW_CONTEXTS(i915)) {
+		int reset = intel_gpu_reset(i915, ALL_ENGINES);
+		WARN_ON(reset && reset != -ENODEV);
+	}
+}
+
 int i915_gem_suspend(struct drm_i915_private *dev_priv)
 {
 	struct drm_device *dev = &dev_priv->drm;
@@ -4277,10 +4310,7 @@ int i915_gem_suspend(struct drm_i915_private *dev_priv)
 	 * machines is a good idea, we don't - just in case it leaves the
 	 * machine in an unusable condition.
 	 */
-	if (HAS_HW_CONTEXTS(dev_priv)) {
-		int reset = intel_gpu_reset(dev_priv, ALL_ENGINES);
-		WARN_ON(reset && reset != -ENODEV);
-	}
+	i915_gem_sanitize(dev_priv);
 
 	return 0;
 
@@ -4355,11 +4385,24 @@ static void init_unused_rings(struct drm_i915_private *dev_priv)
 	}
 }
 
-int
-i915_gem_init_hw(struct drm_i915_private *dev_priv)
+static int __i915_gem_restart_engines(void *data)
 {
+	struct drm_i915_private *i915 = data;
 	struct intel_engine_cs *engine;
 	enum intel_engine_id id;
+	int err;
+
+	for_each_engine(engine, i915, id) {
+		err = engine->init_hw(engine);
+		if (err)
+			return err;
+	}
+
+	return 0;
+}
+
+int i915_gem_init_hw(struct drm_i915_private *dev_priv)
+{
 	int ret;
 
 	dev_priv->gt.last_init_time = ktime_get();
@@ -4405,11 +4448,9 @@ i915_gem_init_hw(struct drm_i915_private *dev_priv)
 	}
 
 	/* Need to do basic initialisation of all rings first: */
-	for_each_engine(engine, dev_priv, id) {
-		ret = engine->init_hw(engine);
-		if (ret)
-			goto out;
-	}
+	ret = __i915_gem_restart_engines(dev_priv);
+	if (ret)
+		goto out;
 
 	intel_mocs_init_l3cc_table(dev_priv);
 
@@ -4496,6 +4537,11 @@ out_unlock:
 	mutex_unlock(&dev_priv->drm.struct_mutex);
 
 	return ret;
+}
+
+void i915_gem_init_mmio(struct drm_i915_private *i915)
+{
+	i915_gem_sanitize(i915);
 }
 
 void
@@ -4613,7 +4659,9 @@ err_out:
 
 void i915_gem_load_cleanup(struct drm_i915_private *dev_priv)
 {
+	i915_gem_drain_freed_objects(dev_priv);
 	WARN_ON(!llist_empty(&dev_priv->mm.free_list));
+	WARN_ON(dev_priv->mm.object_count);
 
 	mutex_lock(&dev_priv->drm.struct_mutex);
 	i915_gem_timeline_fini(&dev_priv->gt.global_timeline);
@@ -4631,13 +4679,9 @@ void i915_gem_load_cleanup(struct drm_i915_private *dev_priv)
 
 int i915_gem_freeze(struct drm_i915_private *dev_priv)
 {
-	intel_runtime_pm_get(dev_priv);
-
 	mutex_lock(&dev_priv->drm.struct_mutex);
 	i915_gem_shrink_all(dev_priv);
 	mutex_unlock(&dev_priv->drm.struct_mutex);
-
-	intel_runtime_pm_put(dev_priv);
 
 	return 0;
 }

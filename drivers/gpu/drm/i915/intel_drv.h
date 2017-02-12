@@ -333,13 +333,20 @@ struct dpll {
 struct intel_atomic_state {
 	struct drm_atomic_state base;
 
-	unsigned int cdclk;
+	struct {
+		/*
+		 * Logical state of cdclk (used for all scaling, watermark,
+		 * etc. calculations and checks). This is computed as if all
+		 * enabled crtcs were active.
+		 */
+		struct intel_cdclk_state logical;
 
-	/*
-	 * Calculated device cdclk, can be different from cdclk
-	 * only when all crtc's are DPMS off.
-	 */
-	unsigned int dev_cdclk;
+		/*
+		 * Actual state of cdclk, can be different from the logical
+		 * state only when all crtc's are DPMS off.
+		 */
+		struct intel_cdclk_state actual;
+	} cdclk;
 
 	bool dpll_set, modeset;
 
@@ -355,9 +362,6 @@ struct intel_atomic_state {
 
 	unsigned int active_crtcs;
 	unsigned int min_pixclk[I915_MAX_PIPES];
-
-	/* SKL/KBL Only */
-	unsigned int cdclk_pll_vco;
 
 	struct intel_shared_dpll_state shared_dpll[I915_NUM_PLLS];
 
@@ -544,6 +548,12 @@ struct intel_crtc_state {
 	 * and get clipped at the edges. */
 	int pipe_src_w, pipe_src_h;
 
+	/*
+	 * Pipe pixel rate, adjusted for
+	 * panel fitter/pipe scaler downscaling.
+	 */
+	unsigned int pixel_rate;
+
 	/* Whether to set up the PCH/FDI. Note that we never allow sharing
 	 * between pch encoders and cpu encoders. */
 	bool has_pch_encoder;
@@ -579,6 +589,14 @@ struct intel_crtc_state {
 	 * plane bpp.
 	 */
 	bool dither;
+
+	/*
+	 * Dither gets enabled for 18bpp which causes CRC mismatch errors for
+	 * compliance video pattern tests.
+	 * Disable dither only if it is a compliance test request for
+	 * 18bpp.
+	 */
+	bool dither_force_disable;
 
 	/* Controls for the clock computation, to override various stages. */
 	bool clock_set;
@@ -697,7 +715,7 @@ struct intel_crtc {
 	bool active;
 	bool lowfreq_avail;
 	u8 plane_ids_mask;
-	unsigned long enabled_power_domains;
+	unsigned long long enabled_power_domains;
 	struct intel_overlay *overlay;
 	struct intel_flip_work *flip_work;
 
@@ -890,12 +908,17 @@ struct intel_dp_desc {
 
 struct intel_dp_compliance_data {
 	unsigned long edid;
+	uint8_t video_pattern;
+	uint16_t hdisplay, vdisplay;
+	uint8_t bpc;
 };
 
 struct intel_dp_compliance {
 	unsigned long test_type;
 	struct intel_dp_compliance_data test_data;
 	bool test_active;
+	int test_link_rate;
+	u8 test_lane_count;
 };
 
 struct intel_dp {
@@ -989,7 +1012,6 @@ struct intel_dp {
 struct intel_lspcon {
 	bool active;
 	enum drm_lspcon_mode mode;
-	bool desc_valid;
 };
 
 struct intel_digital_port {
@@ -1210,8 +1232,6 @@ void intel_ddi_clock_get(struct intel_encoder *encoder,
 			 struct intel_crtc_state *pipe_config);
 void intel_ddi_set_vc_payload_alloc(struct drm_crtc *crtc, bool state);
 uint32_t ddi_signal_levels(struct intel_dp *intel_dp);
-struct intel_shared_dpll *intel_ddi_get_link_dpll(struct intel_dp *intel_dp,
-						  int clock);
 unsigned int intel_fb_align_height(struct drm_device *dev,
 				   unsigned int height,
 				   uint32_t pixel_format,
@@ -1228,12 +1248,24 @@ void intel_audio_codec_disable(struct intel_encoder *encoder);
 void i915_audio_component_init(struct drm_i915_private *dev_priv);
 void i915_audio_component_cleanup(struct drm_i915_private *dev_priv);
 
+/* intel_cdclk.c */
+void intel_init_cdclk_hooks(struct drm_i915_private *dev_priv);
+void intel_update_max_cdclk(struct drm_i915_private *dev_priv);
+void intel_update_cdclk(struct drm_i915_private *dev_priv);
+void intel_update_rawclk(struct drm_i915_private *dev_priv);
+bool intel_cdclk_state_compare(const struct intel_cdclk_state *a,
+			       const struct intel_cdclk_state *b);
+void intel_set_cdclk(struct drm_i915_private *dev_priv,
+		     const struct intel_cdclk_state *cdclk_state);
+
 /* intel_display.c */
 enum transcoder intel_crtc_pch_transcoder(struct intel_crtc *crtc);
-void skl_set_preferred_cdclk_vco(struct drm_i915_private *dev_priv, int vco);
 void intel_update_rawclk(struct drm_i915_private *dev_priv);
+int vlv_get_hpll_vco(struct drm_i915_private *dev_priv);
 int vlv_get_cck_clock(struct drm_i915_private *dev_priv,
 		      const char *name, u32 reg, int ref_freq);
+int vlv_get_cck_clock_hpll(struct drm_i915_private *dev_priv,
+			   const char *name, u32 reg);
 void lpt_disable_pch_transcoder(struct drm_i915_private *dev_priv);
 void lpt_disable_iclkip(struct drm_i915_private *dev_priv);
 extern const struct drm_plane_funcs intel_plane_funcs;
@@ -1487,6 +1519,8 @@ bool __intel_dp_read_desc(struct intel_dp *intel_dp,
 bool intel_dp_read_desc(struct intel_dp *intel_dp);
 int intel_dp_link_required(int pixel_clock, int bpp);
 int intel_dp_max_data_rate(int max_link_clock, int max_lanes);
+bool intel_digital_port_connected(struct drm_i915_private *dev_priv,
+				  struct intel_digital_port *port);
 
 /* intel_dp_aux_backlight.c */
 int intel_dp_aux_init_backlight_funcs(struct intel_connector *intel_connector);
@@ -1786,7 +1820,6 @@ bool skl_wm_level_equals(const struct skl_wm_level *l1,
 bool skl_ddb_allocation_overlaps(const struct skl_ddb_entry **entries,
 				 const struct skl_ddb_entry *ddb,
 				 int ignore);
-uint32_t ilk_pipe_pixel_rate(const struct intel_crtc_state *pipe_config);
 bool ilk_disable_lp_wm(struct drm_device *dev);
 int sanitize_rc6_option(struct drm_i915_private *dev_priv, int enable_rc6);
 static inline int intel_enable_rc6(void)

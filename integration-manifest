@@ -1,22 +1,14 @@
-drm-intel drm-intel-fixes 6e7eb1783be7f19eb071c96ddda0bbf22279ff46
-	drm/i915: Always convert incoming exec offsets to non-canonical
-drm-upstream drm-fixes 697d3a21615672b2bf7724a65755799260325dda
-	Merge tag 'drm-intel-fixes-2017-02-09' of git://anongit.freedesktop.org/git/drm-intel into drm-fixes
-drm-intel drm-intel-next-fixes 05e7866a174f6acdc02558848b3ee0cdf20a51a6
-	Merge tag 'gvt-next-2017-02-07' of https://github.com/01org/gvt-linux into drm-intel-next-fixes
-drm-intel drm-intel-next-queued ae9a043b0c5b0d90dcd9fb8b3a2d27f34f0725fc
-	drm/i915: Rename conditional GEM execution macros
-drm-upstream drm-next 13f62f54d174d3417c3caaafedf5e22a0a03e442
-	Merge branch 'drm-next-4.11' of git://people.freedesktop.org/~agd5f/linux into drm-next
-sound-upstream for-next 3fe2cf7eb21ada0a9683b26c1ae309e7f5e90131
-	ALSA: x86: Support S16 format
-sound-upstream for-linus af677166cf63c179dc2485053166e02c4aea01eb
-	ALSA: hda - adding a new NV HDMI/DP codec ID in the driver
-drm-intel topic/core-for-CI 3f7a5fb77af4f5b38e514b85d491da0046d6bfb8
-	locking/mutex: Clear mutex-handoff flag on interrupt
-drm-misc drm-misc-next a4b10ccead4de0cf46bffb32fcb9e134b202676b
-	drm: Constify drm_mode_config atomic helper private pointer
-drm-misc drm-misc-next-fixes f9ad86e42d0303eeb8e0d41bb208153022ebd9d2
-	drm/atomic: fix an error code in mode_fixup()
-drm-misc drm-misc-fixes 49d29a077af8d2ee3b291ccd8d053541bebe09d7
-	drm: vc4: adapt to new behaviour of drm_crtc.c
+drm-tip/drm-tip f48164e93e75dbbe0bb9dac254779eeea08c0657
+	drm-tip: 2017y-02m-12d-11h-10m-28s UTC integration manifest
+kvm-upstream/linux-next 8ef81a9a453f9048c1683e40b540a4221986a2d1
+	KVM: x86: hide KVM_HC_CLOCK_PAIRING on 32 bit
+vfio-upstream/for-linus 930a42ded3fede7ca3acafc9153f4f2d0f56a92c
+	vfio/spapr_tce: Set window when adding additional groups to container
+vfio-upstream/next d88423f7844ea9941d55bde92716a50c3e131dd7
+	vfio: Fix build break when SPAPR_TCE_IOMMU=n
+origin/gvt-next f3620d1c11739b4f38be2f13e93e6b1013ee1204
+	drm/i915/gvt: fix vgpu type size init
+origin/gvt-fixes ba7addcd805e5c83e201b118a2693b921a980b44
+	MAINTAINERS: update new mail list for intel gvt driver
+origin/gvt-next-fixes 7e5f3d30860ad10a03eece2a0f34633b3f16d2e3
+	drm/i915/gvt: fix crash at function release_shadow_wa_ctx

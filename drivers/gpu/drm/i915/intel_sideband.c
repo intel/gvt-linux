@@ -60,8 +60,7 @@ static int vlv_sideband_rw(struct drm_i915_private *dev_priv, u32 devfn,
 	}
 
 	I915_WRITE(VLV_IOSF_ADDR, addr);
-	if (!is_read)
-		I915_WRITE(VLV_IOSF_DATA, *val);
+	I915_WRITE(VLV_IOSF_DATA, is_read ? 0 : *val);
 	I915_WRITE(VLV_IOSF_DOORBELL_REQ, cmd);
 
 	if (intel_wait_for_register(dev_priv,
@@ -74,7 +73,6 @@ static int vlv_sideband_rw(struct drm_i915_private *dev_priv, u32 devfn,
 
 	if (is_read)
 		*val = I915_READ(VLV_IOSF_DATA);
-	I915_WRITE(VLV_IOSF_DATA, 0);
 
 	return 0;
 }
@@ -93,14 +91,18 @@ u32 vlv_punit_read(struct drm_i915_private *dev_priv, u32 addr)
 	return val;
 }
 
-void vlv_punit_write(struct drm_i915_private *dev_priv, u32 addr, u32 val)
+int vlv_punit_write(struct drm_i915_private *dev_priv, u32 addr, u32 val)
 {
+	int err;
+
 	WARN_ON(!mutex_is_locked(&dev_priv->rps.hw_lock));
 
 	mutex_lock(&dev_priv->sb_lock);
-	vlv_sideband_rw(dev_priv, PCI_DEVFN(0, 0), IOSF_PORT_PUNIT,
-			SB_CRWRDA_NP, addr, &val);
+	err = vlv_sideband_rw(dev_priv, PCI_DEVFN(0, 0), IOSF_PORT_PUNIT,
+			      SB_CRWRDA_NP, addr, &val);
 	mutex_unlock(&dev_priv->sb_lock);
+
+	return err;
 }
 
 u32 vlv_bunit_read(struct drm_i915_private *dev_priv, u32 reg)

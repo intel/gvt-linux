@@ -72,6 +72,7 @@ i915-y += intel_audio.o \
 	  intel_atomic.o \
 	  intel_atomic_plane.o \
 	  intel_bios.o \
+	  intel_cdclk.o \
 	  intel_color.o \
 	  intel_display.o \
 	  intel_dpio_phy.o \
@@ -116,6 +117,9 @@ i915-y += dvo_ch7017.o \
 
 # Post-mortem debug and GPU hang state capture
 i915-$(CONFIG_DRM_I915_CAPTURE_ERROR) += i915_gpu_error.o
+i915-$(CONFIG_DRM_I915_SELFTEST) += \
+	selftests/i915_random.o \
+	selftests/i915_selftest.o
 
 # virtual gpu code
 i915-y += i915_vgpu.o

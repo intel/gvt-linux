@@ -81,7 +81,7 @@ static void irq_enable(struct intel_engine_cs *engine)
 	 * we still need to force the barrier before reading the seqno,
 	 * just in case.
 	 */
-	engine->breadcrumbs.irq_posted = true;
+	set_bit(ENGINE_IRQ_BREADCRUMB, &engine->irq_posted);
 
 	/* Caller disables interrupts */
 	spin_lock(&engine->i915->irq_lock);
@@ -95,8 +95,6 @@ static void irq_disable(struct intel_engine_cs *engine)
 	spin_lock(&engine->i915->irq_lock);
 	engine->irq_disable(engine);
 	spin_unlock(&engine->i915->irq_lock);
-
-	engine->breadcrumbs.irq_posted = false;
 }
 
 static void __intel_breadcrumbs_enable_irq(struct intel_breadcrumbs *b)
@@ -108,6 +106,18 @@ static void __intel_breadcrumbs_enable_irq(struct intel_breadcrumbs *b)
 	assert_spin_locked(&b->lock);
 	if (b->rpm_wakelock)
 		return;
+
+	if (I915_SELFTEST_ONLY(b->mock)) {
+		/* For our mock objects we want to avoid interaction
+		 * with the real hardware (which is not set up). So
+		 * we simply pretend we have enabled the powerwell
+		 * and the irq, and leave it up to the mock
+		 * implementation to call intel_engine_wakeup()
+		 * itself when it wants to simulate a user interrupt,
+		 */
+		b->rpm_wakelock = true;
+		return;
+	}
 
 	/* Since we are waiting on a request, the GPU should be busy
 	 * and should have its own rpm reference. For completeness,
@@ -127,6 +137,7 @@ static void __intel_breadcrumbs_enable_irq(struct intel_breadcrumbs *b)
 	if (!b->irq_enabled ||
 	    test_bit(engine->id, &i915->gpu_error.missed_irq_rings)) {
 		mod_timer(&b->fake_irq, jiffies + 1);
+		i915_queue_hangcheck(i915);
 	} else {
 		/* Ensure we never sleep indefinitely */
 		GEM_BUG_ON(!time_after(b->timeout, jiffies));
@@ -142,6 +153,11 @@ static void __intel_breadcrumbs_disable_irq(struct intel_breadcrumbs *b)
 	assert_spin_locked(&b->lock);
 	if (!b->rpm_wakelock)
 		return;
+
+	if (I915_SELFTEST_ONLY(b->mock)) {
+		b->rpm_wakelock = false;
+		return;
+	}
 
 	if (b->irq_enabled) {
 		irq_disable(engine);
@@ -256,7 +272,8 @@ static bool __intel_engine_add_wait(struct intel_engine_cs *engine,
 			 * in case the seqno passed.
 			 */
 			__intel_breadcrumbs_enable_irq(b);
-			if (READ_ONCE(b->irq_posted))
+			if (test_bit(ENGINE_IRQ_BREADCRUMB,
+				     &engine->irq_posted))
 				wake_up_process(to_wait(next)->tsk);
 		}
 
@@ -459,15 +476,15 @@ static int intel_breadcrumbs_signaler(void *arg)
 		 */
 		request = READ_ONCE(b->first_signal);
 		if (signal_complete(request)) {
+			local_bh_disable();
+			dma_fence_signal(&request->fence);
+			local_bh_enable(); /* kick start the tasklets */
+
 			/* Wake up all other completed waiters and select the
 			 * next bottom-half for the next user interrupt.
 			 */
 			intel_engine_remove_wait(engine,
 						 &request->signaling.wait);
-
-			local_bh_disable();
-			dma_fence_signal(&request->fence);
-			local_bh_enable(); /* kick start the tasklets */
 
 			/* Find the next oldest signal. Note that as we have
 			 * not been holding the lock, another client may
@@ -490,6 +507,9 @@ static int intel_breadcrumbs_signaler(void *arg)
 				break;
 
 			schedule();
+
+			if (kthread_should_park())
+				kthread_parkme();
 		}
 	} while (1);
 	__set_current_state(TASK_RUNNING);
@@ -609,7 +629,7 @@ void intel_engine_reset_breadcrumbs(struct intel_engine_cs *engine)
 	if (intel_engine_has_waiter(engine)) {
 		b->timeout = wait_timeout();
 		__intel_breadcrumbs_enable_irq(b);
-		if (READ_ONCE(b->irq_posted))
+		if (test_bit(ENGINE_IRQ_BREADCRUMB, &engine->irq_posted))
 			wake_up_process(b->first_wait->tsk);
 	} else {
 		/* sanitize the IMR and unmask any auxiliary interrupts */
@@ -661,3 +681,7 @@ unsigned int intel_breadcrumbs_busy(struct drm_i915_private *i915)
 
 	return mask;
 }
+
+#if IS_ENABLED(CONFIG_DRM_I915_SELFTEST)
+#include "selftests/intel_breadcrumbs.c"
+#endif

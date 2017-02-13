@@ -236,6 +236,30 @@ static int assign_hw_id(struct drm_i915_private *dev_priv, unsigned *out)
 	return 0;
 }
 
+static u32 default_desc_template(const struct drm_i915_private *i915,
+				 const struct i915_hw_ppgtt *ppgtt)
+{
+	u32 address_mode;
+	u32 desc;
+
+	desc = GEN8_CTX_VALID | GEN8_CTX_PRIVILEGE;
+
+	address_mode = INTEL_LEGACY_32B_CONTEXT;
+	if (ppgtt && i915_vm_is_48bit(&ppgtt->base))
+		address_mode = INTEL_LEGACY_64B_CONTEXT;
+	desc |= address_mode << GEN8_CTX_ADDRESSING_MODE_SHIFT;
+
+	if (IS_GEN8(i915))
+		desc |= GEN8_CTX_L3LLC_COHERENT;
+
+	/* TODO: WaDisableLiteRestore when we start using semaphore
+	 * signalling between Command Streamers
+	 * ring->ctx_desc_template |= GEN8_CTX_FORCE_RESTORE;
+	 */
+
+	return desc;
+}
+
 static struct i915_gem_context *
 __create_hw_context(struct drm_i915_private *dev_priv,
 		    struct drm_i915_file_private *file_priv)
@@ -309,8 +333,8 @@ __create_hw_context(struct drm_i915_private *dev_priv,
 
 	i915_gem_context_set_bannable(ctx);
 	ctx->ring_size = 4 * PAGE_SIZE;
-	ctx->desc_template = GEN8_CTX_ADDRESSING_MODE(dev_priv) <<
-			     GEN8_CTX_ADDRESSING_MODE_SHIFT;
+	ctx->desc_template =
+		default_desc_template(dev_priv, dev_priv->mm.aliasing_ppgtt);
 	ATOMIC_INIT_NOTIFIER_HEAD(&ctx->status_notifier);
 
 	/* GuC requires the ring to be placed above GUC_WOPCM_TOP. If GuC is not
@@ -330,6 +354,13 @@ err_pid:
 err_out:
 	context_close(ctx);
 	return ERR_PTR(ret);
+}
+
+static void __destroy_hw_context(struct i915_gem_context *ctx,
+				 struct drm_i915_file_private *file_priv)
+{
+	idr_remove(&file_priv->context_idr, ctx->user_handle);
+	context_close(ctx);
 }
 
 /**
@@ -356,12 +387,12 @@ i915_gem_create_context(struct drm_i915_private *dev_priv,
 		if (IS_ERR(ppgtt)) {
 			DRM_DEBUG_DRIVER("PPGTT setup failed (%ld)\n",
 					 PTR_ERR(ppgtt));
-			idr_remove(&file_priv->context_idr, ctx->user_handle);
-			context_close(ctx);
+			__destroy_hw_context(ctx, file_priv);
 			return ERR_CAST(ppgtt);
 		}
 
 		ctx->ppgtt = ppgtt;
+		ctx->desc_template = default_desc_template(dev_priv, ppgtt);
 	}
 
 	trace_i915_context_create(ctx);
@@ -450,6 +481,11 @@ int i915_gem_context_init(struct drm_i915_private *dev_priv)
 			  PTR_ERR(ctx));
 		return PTR_ERR(ctx);
 	}
+
+	/* For easy recognisablity, we want the kernel context to be 0 and then
+	 * all user contexts will have non-zero hw_id.
+	 */
+	GEM_BUG_ON(ctx->hw_id);
 
 	i915_gem_context_clear_bannable(ctx);
 	ctx->priority = I915_PRIORITY_MIN; /* lowest priority; idle task */
@@ -1014,8 +1050,7 @@ int i915_gem_context_destroy_ioctl(struct drm_device *dev, void *data,
 		return PTR_ERR(ctx);
 	}
 
-	idr_remove(&file_priv->context_idr, ctx->user_handle);
-	context_close(ctx);
+	__destroy_hw_context(ctx, file_priv);
 	mutex_unlock(&dev->struct_mutex);
 
 	DRM_DEBUG("HW context %d destroyed\n", args->ctx_id);
@@ -1164,3 +1199,8 @@ int i915_gem_context_reset_stats_ioctl(struct drm_device *dev,
 
 	return 0;
 }
+
+#if IS_ENABLED(CONFIG_DRM_I915_SELFTEST)
+#include "selftests/mock_context.c"
+#include "selftests/i915_gem_context.c"
+#endif

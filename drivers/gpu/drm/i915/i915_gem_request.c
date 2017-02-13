@@ -1025,8 +1025,13 @@ __i915_request_wait_for_execute(struct drm_i915_gem_request *request,
 			break;
 		}
 
+		if (!timeout) {
+			timeout = -ETIME;
+			break;
+		}
+
 		timeout = io_schedule_timeout(timeout);
-	} while (timeout);
+	} while (1);
 	finish_wait(&request->execute.wait, &wait);
 
 	if (flags & I915_WAIT_LOCKED)
@@ -1193,3 +1198,8 @@ void i915_gem_retire_requests(struct drm_i915_private *dev_priv)
 	for_each_engine(engine, dev_priv, id)
 		engine_retire_requests(engine);
 }
+
+#if IS_ENABLED(CONFIG_DRM_I915_SELFTEST)
+#include "selftests/mock_request.c"
+#include "selftests/i915_gem_request.c"
+#endif

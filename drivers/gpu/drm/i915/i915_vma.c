@@ -78,6 +78,9 @@ vma_create(struct drm_i915_gem_object *obj,
 	struct rb_node *rb, **p;
 	int i;
 
+	/* The aliasing_ppgtt should never be used directly! */
+	GEM_BUG_ON(vm == &vm->i915->mm.aliasing_ppgtt->base);
+
 	vma = kmem_cache_zalloc(vm->i915->vmas, GFP_KERNEL);
 	if (vma == NULL)
 		return ERR_PTR(-ENOMEM);
@@ -324,8 +327,8 @@ void i915_vma_unpin_and_release(struct i915_vma **p_vma)
 	__i915_gem_object_release_unless_active(obj);
 }
 
-bool
-i915_vma_misplaced(struct i915_vma *vma, u64 size, u64 alignment, u64 flags)
+bool i915_vma_misplaced(const struct i915_vma *vma,
+			u64 size, u64 alignment, u64 flags)
 {
 	if (!drm_mm_node_allocated(&vma->node))
 		return false;
@@ -687,3 +690,6 @@ destroy:
 	return 0;
 }
 
+#if IS_ENABLED(CONFIG_DRM_I915_SELFTEST)
+#include "selftests/i915_vma.c"
+#endif

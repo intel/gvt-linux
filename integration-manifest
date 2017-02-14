@@ -1,0 +1,22 @@
+drm-intel drm-intel-fixes 7089db84e356562f8ba737c29e472cc42d530dbc
+	Linux 4.10-rc8
+drm-upstream drm-fixes 697d3a21615672b2bf7724a65755799260325dda
+	Merge tag 'drm-intel-fixes-2017-02-09' of git://anongit.freedesktop.org/git/drm-intel into drm-fixes
+drm-intel drm-intel-next-fixes 05e7866a174f6acdc02558848b3ee0cdf20a51a6
+	Merge tag 'gvt-next-2017-02-07' of https://github.com/01org/gvt-linux into drm-intel-next-fixes
+drm-intel drm-intel-next-queued 04a68a35ce6d7b54749989f943993020f48fed62
+	drm/i915/gvt: Disable access to stolen memory as a guest
+drm-upstream drm-next 13f62f54d174d3417c3caaafedf5e22a0a03e442
+	Merge branch 'drm-next-4.11' of git://people.freedesktop.org/~agd5f/linux into drm-next
+sound-upstream for-next 3fe2cf7eb21ada0a9683b26c1ae309e7f5e90131
+	ALSA: x86: Support S16 format
+sound-upstream for-linus af677166cf63c179dc2485053166e02c4aea01eb
+	ALSA: hda - adding a new NV HDMI/DP codec ID in the driver
+drm-intel topic/core-for-CI 3f7a5fb77af4f5b38e514b85d491da0046d6bfb8
+	locking/mutex: Clear mutex-handoff flag on interrupt
+drm-misc drm-misc-next 5b47d08900796081b7a1b1edf3aaedc119b625d4
+	drm/bridge/tfp410: Make symbol tfp410_platform_driver static
+drm-misc drm-misc-next-fixes f9ad86e42d0303eeb8e0d41bb208153022ebd9d2
+	drm/atomic: fix an error code in mode_fixup()
+drm-misc drm-misc-fixes 49d29a077af8d2ee3b291ccd8d053541bebe09d7
+	drm: vc4: adapt to new behaviour of drm_crtc.c

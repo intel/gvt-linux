@@ -1,0 +1,22 @@
+drm-intel drm-intel-fixes 7089db84e356562f8ba737c29e472cc42d530dbc
+	Linux 4.10-rc8
+drm-upstream drm-fixes 697d3a21615672b2bf7724a65755799260325dda
+	Merge tag 'drm-intel-fixes-2017-02-09' of git://anongit.freedesktop.org/git/drm-intel into drm-fixes
+drm-intel drm-intel-next-fixes 0d148cc991e612623aacd93e70531f4e0bfd6d86
+	drm/i915: Fix not finding the VBT when it overlaps with OPREGION_ASLE_EXT
+drm-intel drm-intel-next-queued 06a20d2d2d4187b9bc1a4c2f62e989a97a086a76
+	drm/i915: Fix PLL 8x/3 divider for MIPI video mode
+drm-upstream drm-next 13f62f54d174d3417c3caaafedf5e22a0a03e442
+	Merge branch 'drm-next-4.11' of git://people.freedesktop.org/~agd5f/linux into drm-next
+sound-upstream for-next df56c3dbae0e6df0edcca2e778810a3d8c994f4e
+	ALSA: hda - add sanity check to force the separate stream tags
+sound-upstream for-linus af677166cf63c179dc2485053166e02c4aea01eb
+	ALSA: hda - adding a new NV HDMI/DP codec ID in the driver
+drm-intel topic/core-for-CI 3f7a5fb77af4f5b38e514b85d491da0046d6bfb8
+	locking/mutex: Clear mutex-handoff flag on interrupt
+drm-misc drm-misc-next f642de16c86e9f31d084aa98a50d3a2c923450c2
+	dma-buf/dma-fence: improve doc for dma_fence_add_callback()
+drm-misc drm-misc-next-fixes 1592364de3912dad264262f4bcc61552984c9523
+	drm: Resurrect atomic rmfb code, v3
+drm-misc drm-misc-fixes bb08c04dc867b5f392caec635c097d5d5fcd8c9f
+	drm/dp/mst: fix kernel oops when turning off secondary monitor

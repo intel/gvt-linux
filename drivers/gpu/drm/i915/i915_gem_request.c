@@ -824,6 +824,7 @@ void __i915_add_request(struct drm_i915_gem_request *request, bool flush_caches)
 	struct intel_ring *ring = request->ring;
 	struct intel_timeline *timeline = request->timeline;
 	struct drm_i915_gem_request *prev;
+	u32 *cs;
 	int err;
 
 	lockdep_assert_held(&request->i915->drm.struct_mutex);
@@ -862,10 +863,9 @@ void __i915_add_request(struct drm_i915_gem_request *request, bool flush_caches)
 	 * GPU processing the request, we never over-estimate the
 	 * position of the ring's HEAD.
 	 */
-	err = intel_ring_begin(request, engine->emit_breadcrumb_sz);
-	GEM_BUG_ON(err);
-	request->postfix = ring->tail;
-	ring->tail += engine->emit_breadcrumb_sz * sizeof(u32);
+	cs = intel_ring_begin(request, engine->emit_breadcrumb_sz);
+	GEM_BUG_ON(IS_ERR(cs));
+	request->postfix = intel_ring_offset(request, cs);
 
 	/* Seal the request and mark it as pending execution. Note that
 	 * we may inspect this state, without holding any locks, during
@@ -1198,3 +1198,8 @@ void i915_gem_retire_requests(struct drm_i915_private *dev_priv)
 	for_each_engine(engine, dev_priv, id)
 		engine_retire_requests(engine);
 }
+
+#if IS_ENABLED(CONFIG_DRM_I915_SELFTEST)
+#include "selftests/mock_request.c"
+#include "selftests/i915_gem_request.c"
+#endif

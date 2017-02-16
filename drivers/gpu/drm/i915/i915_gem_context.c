@@ -412,7 +412,8 @@ i915_gem_context_create_gvt(struct drm_device *dev)
 		goto out;
 
 	ctx->execlists_force_single_submission = true;
-	ctx->ring_size = 512 * PAGE_SIZE; /* Max ring buffer size */
+	if (!i915.enable_guc_submission)
+		ctx->ring_size = 512 * PAGE_SIZE; /* Max ring buffer size */
 out:
 	mutex_unlock(&dev->struct_mutex);
 	return ctx;

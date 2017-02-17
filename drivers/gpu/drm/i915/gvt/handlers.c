@@ -150,15 +150,44 @@ static int render_mmio_to_ring_id(struct intel_gvt *gvt, unsigned int reg)
 #define fence_num_to_offset(num) \
 	(num * 8 + i915_mmio_reg_offset(FENCE_REG_GEN6_LO(0)))
 
+
+static void enter_failsafe_mode(struct intel_vgpu *vgpu, int reason)
+{
+	switch (reason) {
+	case GVT_FAILSAFE_UNSUPPORTED_GUEST:
+		pr_err("Detected your guest driver doesn't support GVT-g.\n");
+		break;
+	case GVT_FAILSAFE_INSUFFICIENT_RESOURCE:
+		pr_err("Graphics resource is not enough for the guest\n");
+	default:
+		break;
+	}
+	pr_err("Now vgpu %d will enter failsafe mode.\n", vgpu->id);
+	vgpu->failsafe = true;
+}
+
 static int sanitize_fence_mmio_access(struct intel_vgpu *vgpu,
 		unsigned int fence_num, void *p_data, unsigned int bytes)
 {
 	if (fence_num >= vgpu_fence_sz(vgpu)) {
-		gvt_err("vgpu%d: found oob fence register access\n",
-				vgpu->id);
-		gvt_err("vgpu%d: total fence num %d access fence num %d\n",
-				vgpu->id, vgpu_fence_sz(vgpu), fence_num);
+
+		/* When guest access oob fence regs without access
+		 * pv_info first, we treat guest not supporting GVT,
+		 * and we will let vgpu enter failsafe mode.
+		 */
+		if (!vgpu->pv_notified)
+			enter_failsafe_mode(vgpu,
+					GVT_FAILSAFE_UNSUPPORTED_GUEST);
+
+		if (!vgpu->mmio.disable_warn_untrack) {
+			gvt_err("vgpu%d: found oob fence register access\n",
+					vgpu->id);
+			gvt_err("vgpu%d: total fence %d, access fence %d\n",
+					vgpu->id, vgpu_fence_sz(vgpu),
+					fence_num);
+		}
 		memset(p_data, 0, bytes);
+		return -EINVAL;
 	}
 	return 0;
 }
@@ -1001,6 +1030,7 @@ static int pvinfo_mmio_read(struct intel_vgpu *vgpu, unsigned int offset,
 	if (invalid_read)
 		gvt_err("invalid pvinfo read: [%x:%x] = %x\n",
 				offset, bytes, *(u32 *)p_data);
+	vgpu->pv_notified = true;
 	return 0;
 }
 
@@ -1077,6 +1107,9 @@ static int pvinfo_mmio_write(struct intel_vgpu *vgpu, unsigned int offset,
 	case _vgtif_reg(pdp[3].hi):
 	case _vgtif_reg(execlist_context_descriptor_lo):
 	case _vgtif_reg(execlist_context_descriptor_hi):
+		break;
+	case _vgtif_reg(rsv5[0])..._vgtif_reg(rsv5[3]):
+		enter_failsafe_mode(vgpu, GVT_FAILSAFE_INSUFFICIENT_RESOURCE);
 		break;
 	default:
 		gvt_err("invalid pvinfo write offset %x bytes %x data %x\n",
@@ -1203,7 +1236,7 @@ static int mailbox_write(struct intel_vgpu *vgpu, unsigned int offset,
 	u32 *data0 = &vgpu_vreg(vgpu, GEN6_PCODE_DATA);
 
 	switch (cmd) {
-	case 0x6:
+	case GEN9_PCODE_READ_MEM_LATENCY:
 		/**
 		 * "Read memory latency" command on gen9.
 		 * Below memory latency values are read
@@ -1214,7 +1247,7 @@ static int mailbox_write(struct intel_vgpu *vgpu, unsigned int offset,
 		else
 			*data0 = 0x61514b3d;
 		break;
-	case 0x5:
+	case GEN6_PCODE_READ_RC6VIDS:
 		*data0 |= 0x1;
 		break;
 	}
@@ -1318,6 +1351,17 @@ static int ring_mode_mmio_write(struct intel_vgpu *vgpu, unsigned int offset,
 	bool enable_execlist;
 
 	write_vreg(vgpu, offset, p_data, bytes);
+
+	/* when PPGTT mode enabled, we will check if guest has called
+	 * pvinfo, if not, we will treat this guest as non-gvtg-aware
+	 * guest, and stop emulating its cfg space, mmio, gtt, etc.
+	 */
+	if (((data & _MASKED_BIT_ENABLE(GFX_PPGTT_ENABLE)) ||
+			(data & _MASKED_BIT_ENABLE(GFX_RUN_LIST_ENABLE)))
+			&& !vgpu->pv_notified) {
+		enter_failsafe_mode(vgpu, GVT_FAILSAFE_UNSUPPORTED_GUEST);
+		return 0;
+	}
 	if ((data & _MASKED_BIT_ENABLE(GFX_RUN_LIST_ENABLE))
 			|| (data & _MASKED_BIT_DISABLE(GFX_RUN_LIST_ENABLE))) {
 		enable_execlist = !!(data & GFX_RUN_LIST_ENABLE);
@@ -2159,7 +2203,6 @@ static int init_generic_mmio_info(struct intel_gvt *gvt)
 	MMIO_D(0x1a054, D_ALL);
 
 	MMIO_D(0x44070, D_ALL);
-
 	MMIO_D(0x215c, D_HSW_PLUS);
 	MMIO_DFH(0x2178, D_ALL, F_CMD_ACCESS, NULL, NULL);
 	MMIO_DFH(0x217c, D_ALL, F_CMD_ACCESS, NULL, NULL);
@@ -2330,6 +2373,8 @@ static int init_broadwell_mmio_info(struct intel_gvt *gvt)
 	MMIO_D(GEN6_MBCUNIT_SNPCR, D_BDW_PLUS);
 	MMIO_D(GEN7_MISCCPCTL, D_BDW_PLUS);
 	MMIO_D(0x1c054, D_BDW_PLUS);
+
+	MMIO_DH(GEN6_PCODE_MAILBOX, D_BDW_PLUS, NULL, mailbox_write);
 
 	MMIO_D(GEN8_PRIVATE_PAT_LO, D_BDW_PLUS);
 	MMIO_D(GEN8_PRIVATE_PAT_HI, D_BDW_PLUS);

@@ -4182,6 +4182,8 @@ static int handle_exit(struct kvm_vcpu *vcpu)
 
 	trace_kvm_exit(exit_code, vcpu, KVM_ISA_SVM);
 
+	vcpu->arch.gpa_available = (exit_code == SVM_EXIT_NPF);
+
 	if (!is_cr_intercept(svm, INTERCEPT_CR0_WRITE))
 		vcpu->arch.cr0 = svm->vmcb->save.cr0;
 	if (npt_enabled)
@@ -4353,11 +4355,6 @@ static void svm_refresh_apicv_exec_ctrl(struct kvm_vcpu *vcpu)
 }
 
 static void svm_load_eoi_exitmap(struct kvm_vcpu *vcpu, u64 *eoi_exit_bitmap)
-{
-	return;
-}
-
-static void svm_sync_pir_to_irr(struct kvm_vcpu *vcpu)
 {
 	return;
 }
@@ -5371,7 +5368,6 @@ static struct kvm_x86_ops svm_x86_ops __ro_after_init = {
 	.get_enable_apicv = svm_get_enable_apicv,
 	.refresh_apicv_exec_ctrl = svm_refresh_apicv_exec_ctrl,
 	.load_eoi_exitmap = svm_load_eoi_exitmap,
-	.sync_pir_to_irr = svm_sync_pir_to_irr,
 	.hwapic_irr_update = svm_hwapic_irr_update,
 	.hwapic_isr_update = svm_hwapic_isr_update,
 	.apicv_post_state_restore = avic_post_state_restore,

@@ -1231,7 +1231,7 @@ static int mailbox_write(struct intel_vgpu *vgpu, unsigned int offset,
 	u32 *data0 = &vgpu_vreg(vgpu, GEN6_PCODE_DATA);
 
 	switch (cmd) {
-	case 0x6:
+	case GEN9_PCODE_READ_MEM_LATENCY:
 		/**
 		 * "Read memory latency" command on gen9.
 		 * Below memory latency values are read
@@ -1242,7 +1242,7 @@ static int mailbox_write(struct intel_vgpu *vgpu, unsigned int offset,
 		else
 			*data0 = 0x61514b3d;
 		break;
-	case 0x5:
+	case GEN6_PCODE_READ_RC6VIDS:
 		*data0 |= 0x1;
 		break;
 	}
@@ -2198,7 +2198,6 @@ static int init_generic_mmio_info(struct intel_gvt *gvt)
 	MMIO_D(0x1a054, D_ALL);
 
 	MMIO_D(0x44070, D_ALL);
-
 	MMIO_D(0x215c, D_HSW_PLUS);
 	MMIO_DFH(0x2178, D_ALL, F_CMD_ACCESS, NULL, NULL);
 	MMIO_DFH(0x217c, D_ALL, F_CMD_ACCESS, NULL, NULL);
@@ -2369,6 +2368,8 @@ static int init_broadwell_mmio_info(struct intel_gvt *gvt)
 	MMIO_D(GEN6_MBCUNIT_SNPCR, D_BDW_PLUS);
 	MMIO_D(GEN7_MISCCPCTL, D_BDW_PLUS);
 	MMIO_D(0x1c054, D_BDW_PLUS);
+
+	MMIO_DH(GEN6_PCODE_MAILBOX, D_BDW_PLUS, NULL, mailbox_write);
 
 	MMIO_D(GEN8_PRIVATE_PAT_LO, D_BDW_PLUS);
 	MMIO_D(GEN8_PRIVATE_PAT_HI, D_BDW_PLUS);

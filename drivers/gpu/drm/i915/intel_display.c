@@ -3427,7 +3427,8 @@ static void intel_update_primary_planes(struct drm_device *dev)
 
 static int
 __intel_display_resume(struct drm_device *dev,
-		       struct drm_atomic_state *state)
+		       struct drm_atomic_state *state,
+		       struct drm_modeset_acquire_ctx *ctx)
 {
 	struct drm_crtc_state *crtc_state;
 	struct drm_crtc *crtc;
@@ -3451,7 +3452,7 @@ __intel_display_resume(struct drm_device *dev,
 	/* ignore any reset values/BIOS leftovers in the WM registers */
 	to_intel_atomic_state(state)->skip_intermediate_wm = true;
 
-	ret = drm_atomic_commit(state);
+	ret = drm_atomic_helper_commit_duplicated_state(state, ctx);
 
 	WARN_ON(ret == -EDEADLK);
 	return ret;
@@ -3541,7 +3542,7 @@ void intel_finish_reset(struct drm_i915_private *dev_priv)
 			 */
 			intel_update_primary_planes(dev);
 		} else {
-			ret = __intel_display_resume(dev, state);
+			ret = __intel_display_resume(dev, state, ctx);
 			if (ret)
 				DRM_ERROR("Restoring old state failed with %i\n", ret);
 		}
@@ -3561,7 +3562,7 @@ void intel_finish_reset(struct drm_i915_private *dev_priv)
 			dev_priv->display.hpd_irq_setup(dev_priv);
 		spin_unlock_irq(&dev_priv->irq_lock);
 
-		ret = __intel_display_resume(dev, state);
+		ret = __intel_display_resume(dev, state, ctx);
 		if (ret)
 			DRM_ERROR("Restoring old state failed with %i\n", ret);
 
@@ -9733,7 +9734,7 @@ void intel_release_load_detect_pipe(struct drm_connector *connector,
 	if (!state)
 		return;
 
-	ret = drm_atomic_commit(state);
+	ret = drm_atomic_helper_commit_duplicated_state(state, ctx);
 	if (ret)
 		DRM_DEBUG_KMS("Couldn't release load detect pipe: %i\n", ret);
 	drm_atomic_state_put(state);
@@ -15574,7 +15575,7 @@ void intel_display_resume(struct drm_device *dev)
 	}
 
 	if (!ret)
-		ret = __intel_display_resume(dev, state);
+		ret = __intel_display_resume(dev, state, &ctx);
 
 	drm_modeset_drop_locks(&ctx);
 	drm_modeset_acquire_fini(&ctx);

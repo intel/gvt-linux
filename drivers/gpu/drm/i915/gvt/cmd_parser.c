@@ -833,13 +833,13 @@ static int cmd_reg_handler(struct parser_exec_state *s,
 	if (!intel_gvt_mmio_is_cmd_access(gvt, offset)) {
 		gvt_err("vgpu%d: %s access to non-render register (%x)\n",
 				s->vgpu->id, cmd, offset);
-		return 0;
+		return -EINVAL;
 	}
 
 	if (is_shadowed_mmio(offset)) {
 		gvt_err("vgpu%d: found access of shadowed MMIO %x\n",
 				s->vgpu->id, offset);
-		return 0;
+		return -EINVAL;
 	}
 
 	if (offset == i915_mmio_reg_offset(DERRMR) ||

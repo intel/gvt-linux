@@ -190,12 +190,6 @@
 #define CTX_R_PWR_CLK_STATE		0x42
 #define CTX_GPGPU_CSR_BASE_ADDRESS	0x44
 
-#define GEN8_CTX_VALID (1<<0)
-#define GEN8_CTX_FORCE_PD_RESTORE (1<<1)
-#define GEN8_CTX_FORCE_RESTORE (1<<2)
-#define GEN8_CTX_L3LLC_COHERENT (1<<5)
-#define GEN8_CTX_PRIVILEGE (1<<8)
-
 #define ASSIGN_CTX_REG(reg_state, pos, reg, val) do { \
 	(reg_state)[(pos)+0] = i915_mmio_reg_offset(reg); \
 	(reg_state)[(pos)+1] = (val); \
@@ -212,14 +206,6 @@
 	reg_state[CTX_PDP0_LDW + 1] = lower_32_bits(px_dma(&ppgtt->pml4)); \
 } while (0)
 
-enum {
-	FAULT_AND_HANG = 0,
-	FAULT_AND_HALT, /* Debug only */
-	FAULT_AND_STREAM,
-	FAULT_AND_CONTINUE /* Unsupported */
-};
-#define GEN8_CTX_ID_SHIFT 32
-#define GEN8_CTX_ID_WIDTH 21
 #define GEN8_CTX_RCS_INDIRECT_CTX_OFFSET_DEFAULT	0x17
 #define GEN9_CTX_RCS_INDIRECT_CTX_OFFSET_DEFAULT	0x26
 
@@ -267,30 +253,6 @@ int intel_sanitize_enable_execlists(struct drm_i915_private *dev_priv, int enabl
 	return 0;
 }
 
-static void
-logical_ring_init_platform_invariants(struct intel_engine_cs *engine)
-{
-	struct drm_i915_private *dev_priv = engine->i915;
-
-	engine->disable_lite_restore_wa =
-		IS_BXT_REVID(dev_priv, 0, BXT_REVID_A1) &&
-		(engine->id == VCS || engine->id == VCS2);
-
-	engine->ctx_desc_template = GEN8_CTX_VALID;
-	if (IS_GEN8(dev_priv))
-		engine->ctx_desc_template |= GEN8_CTX_L3LLC_COHERENT;
-	engine->ctx_desc_template |= GEN8_CTX_PRIVILEGE;
-
-	/* TODO: WaDisableLiteRestore when we start using semaphore
-	 * signalling between Command Streamers */
-	/* ring->ctx_desc_template |= GEN8_CTX_FORCE_RESTORE; */
-
-	/* WaEnableForceRestoreInCtxtDescForVCS:skl */
-	/* WaEnableForceRestoreInCtxtDescForVCS:bxt */
-	if (engine->disable_lite_restore_wa)
-		engine->ctx_desc_template |= GEN8_CTX_FORCE_RESTORE;
-}
-
 /**
  * intel_lr_context_descriptor_update() - calculate & cache the descriptor
  * 					  descriptor for a pinned context
@@ -304,7 +266,7 @@ logical_ring_init_platform_invariants(struct intel_engine_cs *engine)
  *
  * This is what a descriptor looks like, from LSB to MSB::
  *
- *      bits  0-11:    flags, GEN8_CTX_* (cached in ctx_desc_template)
+ *      bits  0-11:    flags, GEN8_CTX_* (cached in ctx->desc_template)
  *      bits 12-31:    LRCA, GTT address of (the HWSP of) this context
  *      bits 32-52:    ctx ID, a globally unique tag
  *      bits 53-54:    mbz, reserved for use by hardware
@@ -319,8 +281,7 @@ intel_lr_context_descriptor_update(struct i915_gem_context *ctx,
 
 	BUILD_BUG_ON(MAX_CONTEXT_HW_ID > (1<<GEN8_CTX_ID_WIDTH));
 
-	desc = ctx->desc_template;				/* bits  3-4  */
-	desc |= engine->ctx_desc_template;			/* bits  0-11 */
+	desc = ctx->desc_template;				/* bits  0-11 */
 	desc |= i915_ggtt_offset(ce->state) + LRC_PPHWSP_PN * PAGE_SIZE;
 								/* bits 12-31 */
 	desc |= (u64)ctx->hw_id << GEN8_CTX_ID_SHIFT;		/* bits 32-52 */
@@ -364,6 +325,7 @@ static u64 execlists_update_context(struct drm_i915_gem_request *rq)
 		rq->ctx->ppgtt ?: rq->i915->mm.aliasing_ppgtt;
 	u32 *reg_state = ce->lrc_reg_state;
 
+	GEM_BUG_ON(!IS_ALIGNED(rq->tail, 8));
 	reg_state[CTX_RING_TAIL+1] = rq->tail;
 
 	/* True 32b PPGTT with dynamic page allocation: update PDP
@@ -371,7 +333,7 @@ static u64 execlists_update_context(struct drm_i915_gem_request *rq)
 	 * PML4 is allocated during ppgtt init, so this is not needed
 	 * in 48-bit mode.
 	 */
-	if (ppgtt && !USES_FULL_48BIT_PPGTT(ppgtt->base.dev))
+	if (ppgtt && !i915_vm_is_48bit(&ppgtt->base))
 		execlists_update_context_pdps(ppgtt, reg_state);
 
 	return ce->lrc_desc;
@@ -385,17 +347,20 @@ static void execlists_submit_ports(struct intel_engine_cs *engine)
 		dev_priv->regs + i915_mmio_reg_offset(RING_ELSP(engine));
 	u64 desc[2];
 
+	GEM_BUG_ON(port[0].count > 1);
 	if (!port[0].count)
 		execlists_context_status_change(port[0].request,
 						INTEL_CONTEXT_SCHEDULE_IN);
 	desc[0] = execlists_update_context(port[0].request);
-	engine->preempt_wa = port[0].count++; /* bdw only? fixed on skl? */
+	GEM_DEBUG_EXEC(port[0].context_id = upper_32_bits(desc[0]));
+	port[0].count++;
 
 	if (port[1].request) {
 		GEM_BUG_ON(port[1].count);
 		execlists_context_status_change(port[1].request,
 						INTEL_CONTEXT_SCHEDULE_IN);
 		desc[1] = execlists_update_context(port[1].request);
+		GEM_DEBUG_EXEC(port[1].context_id = upper_32_bits(desc[1]));
 		port[1].count = 1;
 	} else {
 		desc[1] = 0;
@@ -547,22 +512,24 @@ bool intel_execlists_idle(struct drm_i915_private *dev_priv)
 	if (!i915.enable_execlists)
 		return true;
 
-	for_each_engine(engine, dev_priv, id)
+	for_each_engine(engine, dev_priv, id) {
+		/* Interrupt/tasklet pending? */
+		if (test_bit(ENGINE_IRQ_EXECLIST, &engine->irq_posted))
+			return false;
+
+		/* Both ports drained, no more ELSP submission? */
 		if (!execlists_elsp_idle(engine))
 			return false;
+	}
 
 	return true;
 }
 
-static bool execlists_elsp_ready(struct intel_engine_cs *engine)
+static bool execlists_elsp_ready(const struct intel_engine_cs *engine)
 {
-	int port;
+	const struct execlist_port *port = engine->execlist_port;
 
-	port = 1; /* wait for a free slot */
-	if (engine->disable_lite_restore_wa || engine->preempt_wa)
-		port = 0; /* wait for GPU to be idle before continuing */
-
-	return !engine->execlist_port[port].request;
+	return port[0].count + port[1].count < 2;
 }
 
 /*
@@ -577,7 +544,7 @@ static void intel_lrc_irq_handler(unsigned long data)
 
 	intel_uncore_forcewake_get(dev_priv, engine->fw_domains);
 
-	if (!execlists_elsp_idle(engine)) {
+	while (test_and_clear_bit(ENGINE_IRQ_EXECLIST, &engine->irq_posted)) {
 		u32 __iomem *csb_mmio =
 			dev_priv->regs + i915_mmio_reg_offset(RING_CONTEXT_STATUS_PTR(engine));
 		u32 __iomem *buf =
@@ -587,14 +554,38 @@ static void intel_lrc_irq_handler(unsigned long data)
 		csb = readl(csb_mmio);
 		head = GEN8_CSB_READ_PTR(csb);
 		tail = GEN8_CSB_WRITE_PTR(csb);
+		if (head == tail)
+			break;
+
 		if (tail < head)
 			tail += GEN8_CSB_ENTRIES;
-		while (head < tail) {
+		do {
 			unsigned int idx = ++head % GEN8_CSB_ENTRIES;
 			unsigned int status = readl(buf + 2 * idx);
 
+			/* We are flying near dragons again.
+			 *
+			 * We hold a reference to the request in execlist_port[]
+			 * but no more than that. We are operating in softirq
+			 * context and so cannot hold any mutex or sleep. That
+			 * prevents us stopping the requests we are processing
+			 * in port[] from being retired simultaneously (the
+			 * breadcrumb will be complete before we see the
+			 * context-switch). As we only hold the reference to the
+			 * request, any pointer chasing underneath the request
+			 * is subject to a potential use-after-free. Thus we
+			 * store all of the bookkeeping within port[] as
+			 * required, and avoid using unguarded pointers beneath
+			 * request itself. The same applies to the atomic
+			 * status notifier.
+			 */
+
 			if (!(status & GEN8_CTX_STATUS_COMPLETED_MASK))
 				continue;
+
+			/* Check the context/desc id for this event matches */
+			GEM_DEBUG_BUG_ON(readl(buf + 2 * idx + 1) !=
+					 port[0].context_id);
 
 			GEM_BUG_ON(port[0].count == 0);
 			if (--port[0].count == 0) {
@@ -605,13 +596,11 @@ static void intel_lrc_irq_handler(unsigned long data)
 				i915_gem_request_put(port[0].request);
 				port[0] = port[1];
 				memset(&port[1], 0, sizeof(port[1]));
-
-				engine->preempt_wa = false;
 			}
 
 			GEM_BUG_ON(port[0].count == 0 &&
 				   !(status & GEN8_CTX_STATUS_ACTIVE_IDLE));
-		}
+		} while (head < tail);
 
 		writel(_MASKED_FIELD(GEN8_CSB_READ_PTR_MASK,
 				     GEN8_CSB_WRITE_PTR(csb) << 8),
@@ -658,10 +647,11 @@ static void execlists_submit_request(struct drm_i915_gem_request *request)
 	/* Will be called from irq-context when using foreign fences. */
 	spin_lock_irqsave(&engine->timeline->lock, flags);
 
-	if (insert_request(&request->priotree, &engine->execlist_queue))
+	if (insert_request(&request->priotree, &engine->execlist_queue)) {
 		engine->execlist_first = &request->priotree.node;
-	if (execlists_elsp_idle(engine))
-		tasklet_hi_schedule(&engine->irq_tasklet);
+		if (execlists_elsp_ready(engine))
+			tasklet_hi_schedule(&engine->irq_tasklet);
+	}
 
 	spin_unlock_irqrestore(&engine->timeline->lock, flags);
 }
@@ -784,11 +774,9 @@ static int execlists_context_pin(struct intel_engine_cs *engine,
 	}
 	GEM_BUG_ON(!ce->state);
 
-	flags = PIN_GLOBAL;
+	flags = PIN_GLOBAL | PIN_HIGH;
 	if (ctx->ggtt_offset_bias)
 		flags |= PIN_OFFSET_BIAS | ctx->ggtt_offset_bias;
-	if (i915_gem_context_is_kernel(ctx))
-		flags |= PIN_HIGH;
 
 	ret = i915_vma_pin(ce->state, 0, GEN8_LR_CONTEXT_ALIGN, flags);
 	if (ret)
@@ -847,6 +835,7 @@ static int execlists_request_alloc(struct drm_i915_gem_request *request)
 {
 	struct intel_engine_cs *engine = request->engine;
 	struct intel_context *ce = &request->ctx->engine[engine->id];
+	u32 *cs;
 	int ret;
 
 	GEM_BUG_ON(!ce->pin_count);
@@ -871,9 +860,11 @@ static int execlists_request_alloc(struct drm_i915_gem_request *request)
 			goto err;
 	}
 
-	ret = intel_ring_begin(request, 0);
-	if (ret)
+	cs = intel_ring_begin(request, 0);
+	if (IS_ERR(cs)) {
+		ret = PTR_ERR(cs);
 		goto err_unreserve;
+	}
 
 	if (!ce->initialised) {
 		ret = engine->init_context(request);
@@ -900,51 +891,6 @@ err:
 	return ret;
 }
 
-static int intel_logical_ring_workarounds_emit(struct drm_i915_gem_request *req)
-{
-	int ret, i;
-	struct intel_ring *ring = req->ring;
-	struct i915_workarounds *w = &req->i915->workarounds;
-
-	if (w->count == 0)
-		return 0;
-
-	ret = req->engine->emit_flush(req, EMIT_BARRIER);
-	if (ret)
-		return ret;
-
-	ret = intel_ring_begin(req, w->count * 2 + 2);
-	if (ret)
-		return ret;
-
-	intel_ring_emit(ring, MI_LOAD_REGISTER_IMM(w->count));
-	for (i = 0; i < w->count; i++) {
-		intel_ring_emit_reg(ring, w->reg[i].addr);
-		intel_ring_emit(ring, w->reg[i].value);
-	}
-	intel_ring_emit(ring, MI_NOOP);
-
-	intel_ring_advance(ring);
-
-	ret = req->engine->emit_flush(req, EMIT_BARRIER);
-	if (ret)
-		return ret;
-
-	return 0;
-}
-
-#define wa_ctx_emit(batch, index, cmd)					\
-	do {								\
-		int __index = (index)++;				\
-		if (WARN_ON(__index >= (PAGE_SIZE / sizeof(uint32_t)))) { \
-			return -ENOSPC;					\
-		}							\
-		batch[__index] = (cmd);					\
-	} while (0)
-
-#define wa_ctx_emit_reg(batch, index, reg) \
-	wa_ctx_emit((batch), (index), i915_mmio_reg_offset(reg))
-
 /*
  * In this WA we need to set GEN8_L3SQCREG4[21:21] and reset it after
  * PIPE_CONTROL instruction. This is required for the flush to happen correctly
@@ -961,56 +907,29 @@ static int intel_logical_ring_workarounds_emit(struct drm_i915_gem_request *req)
  * This WA is also required for Gen9 so extracting as a function avoids
  * code duplication.
  */
-static inline int gen8_emit_flush_coherentl3_wa(struct intel_engine_cs *engine,
-						uint32_t *batch,
-						uint32_t index)
+static u32 *
+gen8_emit_flush_coherentl3_wa(struct intel_engine_cs *engine, u32 *batch)
 {
-	uint32_t l3sqc4_flush = (0x40400000 | GEN8_LQSC_FLUSH_COHERENT_LINES);
+	*batch++ = MI_STORE_REGISTER_MEM_GEN8 | MI_SRM_LRM_GLOBAL_GTT;
+	*batch++ = i915_mmio_reg_offset(GEN8_L3SQCREG4);
+	*batch++ = i915_ggtt_offset(engine->scratch) + 256;
+	*batch++ = 0;
 
-	wa_ctx_emit(batch, index, (MI_STORE_REGISTER_MEM_GEN8 |
-				   MI_SRM_LRM_GLOBAL_GTT));
-	wa_ctx_emit_reg(batch, index, GEN8_L3SQCREG4);
-	wa_ctx_emit(batch, index, i915_ggtt_offset(engine->scratch) + 256);
-	wa_ctx_emit(batch, index, 0);
+	*batch++ = MI_LOAD_REGISTER_IMM(1);
+	*batch++ = i915_mmio_reg_offset(GEN8_L3SQCREG4);
+	*batch++ = 0x40400000 | GEN8_LQSC_FLUSH_COHERENT_LINES;
 
-	wa_ctx_emit(batch, index, MI_LOAD_REGISTER_IMM(1));
-	wa_ctx_emit_reg(batch, index, GEN8_L3SQCREG4);
-	wa_ctx_emit(batch, index, l3sqc4_flush);
+	batch = gen8_emit_pipe_control(batch,
+				       PIPE_CONTROL_CS_STALL |
+				       PIPE_CONTROL_DC_FLUSH_ENABLE,
+				       0);
 
-	wa_ctx_emit(batch, index, GFX_OP_PIPE_CONTROL(6));
-	wa_ctx_emit(batch, index, (PIPE_CONTROL_CS_STALL |
-				   PIPE_CONTROL_DC_FLUSH_ENABLE));
-	wa_ctx_emit(batch, index, 0);
-	wa_ctx_emit(batch, index, 0);
-	wa_ctx_emit(batch, index, 0);
-	wa_ctx_emit(batch, index, 0);
+	*batch++ = MI_LOAD_REGISTER_MEM_GEN8 | MI_SRM_LRM_GLOBAL_GTT;
+	*batch++ = i915_mmio_reg_offset(GEN8_L3SQCREG4);
+	*batch++ = i915_ggtt_offset(engine->scratch) + 256;
+	*batch++ = 0;
 
-	wa_ctx_emit(batch, index, (MI_LOAD_REGISTER_MEM_GEN8 |
-				   MI_SRM_LRM_GLOBAL_GTT));
-	wa_ctx_emit_reg(batch, index, GEN8_L3SQCREG4);
-	wa_ctx_emit(batch, index, i915_ggtt_offset(engine->scratch) + 256);
-	wa_ctx_emit(batch, index, 0);
-
-	return index;
-}
-
-static inline uint32_t wa_ctx_start(struct i915_wa_ctx_bb *wa_ctx,
-				    uint32_t offset,
-				    uint32_t start_alignment)
-{
-	return wa_ctx->offset = ALIGN(offset, start_alignment);
-}
-
-static inline int wa_ctx_end(struct i915_wa_ctx_bb *wa_ctx,
-			     uint32_t offset,
-			     uint32_t size_alignment)
-{
-	wa_ctx->size = offset - wa_ctx->offset;
-
-	WARN(wa_ctx->size % size_alignment,
-	     "wa_ctx_bb failed sanity checks: size %d is not aligned to %d\n",
-	     wa_ctx->size, size_alignment);
-	return 0;
+	return batch;
 }
 
 /*
@@ -1028,42 +947,28 @@ static inline int wa_ctx_end(struct i915_wa_ctx_bb *wa_ctx,
  * MI_BATCH_BUFFER_END will be added to perctx batch and both of them together
  * makes a complete batch buffer.
  */
-static int gen8_init_indirectctx_bb(struct intel_engine_cs *engine,
-				    struct i915_wa_ctx_bb *wa_ctx,
-				    uint32_t *batch,
-				    uint32_t *offset)
+static u32 *gen8_init_indirectctx_bb(struct intel_engine_cs *engine, u32 *batch)
 {
-	uint32_t scratch_addr;
-	uint32_t index = wa_ctx_start(wa_ctx, *offset, CACHELINE_DWORDS);
-
 	/* WaDisableCtxRestoreArbitration:bdw,chv */
-	wa_ctx_emit(batch, index, MI_ARB_ON_OFF | MI_ARB_DISABLE);
+	*batch++ = MI_ARB_ON_OFF | MI_ARB_DISABLE;
 
 	/* WaFlushCoherentL3CacheLinesAtContextSwitch:bdw */
-	if (IS_BROADWELL(engine->i915)) {
-		int rc = gen8_emit_flush_coherentl3_wa(engine, batch, index);
-		if (rc < 0)
-			return rc;
-		index = rc;
-	}
+	if (IS_BROADWELL(engine->i915))
+		batch = gen8_emit_flush_coherentl3_wa(engine, batch);
 
 	/* WaClearSlmSpaceAtContextSwitch:bdw,chv */
 	/* Actual scratch location is at 128 bytes offset */
-	scratch_addr = i915_ggtt_offset(engine->scratch) + 2 * CACHELINE_BYTES;
-
-	wa_ctx_emit(batch, index, GFX_OP_PIPE_CONTROL(6));
-	wa_ctx_emit(batch, index, (PIPE_CONTROL_FLUSH_L3 |
-				   PIPE_CONTROL_GLOBAL_GTT_IVB |
-				   PIPE_CONTROL_CS_STALL |
-				   PIPE_CONTROL_QW_WRITE));
-	wa_ctx_emit(batch, index, scratch_addr);
-	wa_ctx_emit(batch, index, 0);
-	wa_ctx_emit(batch, index, 0);
-	wa_ctx_emit(batch, index, 0);
+	batch = gen8_emit_pipe_control(batch,
+				       PIPE_CONTROL_FLUSH_L3 |
+				       PIPE_CONTROL_GLOBAL_GTT_IVB |
+				       PIPE_CONTROL_CS_STALL |
+				       PIPE_CONTROL_QW_WRITE,
+				       i915_ggtt_offset(engine->scratch) +
+				       2 * CACHELINE_BYTES);
 
 	/* Pad to end of cacheline */
-	while (index % CACHELINE_DWORDS)
-		wa_ctx_emit(batch, index, MI_NOOP);
+	while ((unsigned long)batch % CACHELINE_BYTES)
+		*batch++ = MI_NOOP;
 
 	/*
 	 * MI_BATCH_BUFFER_END is not required in Indirect ctx BB because
@@ -1071,7 +976,7 @@ static int gen8_init_indirectctx_bb(struct intel_engine_cs *engine,
 	 * in the register CTX_RCS_INDIRECT_CTX
 	 */
 
-	return wa_ctx_end(wa_ctx, *offset = index, CACHELINE_DWORDS);
+	return batch;
 }
 
 /*
@@ -1083,65 +988,40 @@ static int gen8_init_indirectctx_bb(struct intel_engine_cs *engine,
  *  This batch is terminated with MI_BATCH_BUFFER_END and so we need not add padding
  *  to align it with cacheline as padding after MI_BATCH_BUFFER_END is redundant.
  */
-static int gen8_init_perctx_bb(struct intel_engine_cs *engine,
-			       struct i915_wa_ctx_bb *wa_ctx,
-			       uint32_t *batch,
-			       uint32_t *offset)
+static u32 *gen8_init_perctx_bb(struct intel_engine_cs *engine, u32 *batch)
 {
-	uint32_t index = wa_ctx_start(wa_ctx, *offset, CACHELINE_DWORDS);
-
 	/* WaDisableCtxRestoreArbitration:bdw,chv */
-	wa_ctx_emit(batch, index, MI_ARB_ON_OFF | MI_ARB_ENABLE);
+	*batch++ = MI_ARB_ON_OFF | MI_ARB_ENABLE;
+	*batch++ = MI_BATCH_BUFFER_END;
 
-	wa_ctx_emit(batch, index, MI_BATCH_BUFFER_END);
-
-	return wa_ctx_end(wa_ctx, *offset = index, 1);
+	return batch;
 }
 
-static int gen9_init_indirectctx_bb(struct intel_engine_cs *engine,
-				    struct i915_wa_ctx_bb *wa_ctx,
-				    uint32_t *batch,
-				    uint32_t *offset)
+static u32 *gen9_init_indirectctx_bb(struct intel_engine_cs *engine, u32 *batch)
 {
-	int ret;
-	struct drm_i915_private *dev_priv = engine->i915;
-	uint32_t index = wa_ctx_start(wa_ctx, *offset, CACHELINE_DWORDS);
+	/* WaFlushCoherentL3CacheLinesAtContextSwitch:skl,bxt,glk */
+	batch = gen8_emit_flush_coherentl3_wa(engine, batch);
 
-	/* WaDisableCtxRestoreArbitration:bxt */
-	if (IS_BXT_REVID(dev_priv, 0, BXT_REVID_A1))
-		wa_ctx_emit(batch, index, MI_ARB_ON_OFF | MI_ARB_DISABLE);
-
-	/* WaFlushCoherentL3CacheLinesAtContextSwitch:skl,bxt */
-	ret = gen8_emit_flush_coherentl3_wa(engine, batch, index);
-	if (ret < 0)
-		return ret;
-	index = ret;
-
-	/* WaDisableGatherAtSetShaderCommonSlice:skl,bxt,kbl */
-	wa_ctx_emit(batch, index, MI_LOAD_REGISTER_IMM(1));
-	wa_ctx_emit_reg(batch, index, COMMON_SLICE_CHICKEN2);
-	wa_ctx_emit(batch, index, _MASKED_BIT_DISABLE(
-			    GEN9_DISABLE_GATHER_AT_SET_SHADER_COMMON_SLICE));
-	wa_ctx_emit(batch, index, MI_NOOP);
+	/* WaDisableGatherAtSetShaderCommonSlice:skl,bxt,kbl,glk */
+	*batch++ = MI_LOAD_REGISTER_IMM(1);
+	*batch++ = i915_mmio_reg_offset(COMMON_SLICE_CHICKEN2);
+	*batch++ = _MASKED_BIT_DISABLE(
+			GEN9_DISABLE_GATHER_AT_SET_SHADER_COMMON_SLICE);
+	*batch++ = MI_NOOP;
 
 	/* WaClearSlmSpaceAtContextSwitch:kbl */
 	/* Actual scratch location is at 128 bytes offset */
-	if (IS_KBL_REVID(dev_priv, 0, KBL_REVID_A0)) {
-		u32 scratch_addr =
-			i915_ggtt_offset(engine->scratch) + 2 * CACHELINE_BYTES;
-
-		wa_ctx_emit(batch, index, GFX_OP_PIPE_CONTROL(6));
-		wa_ctx_emit(batch, index, (PIPE_CONTROL_FLUSH_L3 |
-					   PIPE_CONTROL_GLOBAL_GTT_IVB |
-					   PIPE_CONTROL_CS_STALL |
-					   PIPE_CONTROL_QW_WRITE));
-		wa_ctx_emit(batch, index, scratch_addr);
-		wa_ctx_emit(batch, index, 0);
-		wa_ctx_emit(batch, index, 0);
-		wa_ctx_emit(batch, index, 0);
+	if (IS_KBL_REVID(engine->i915, 0, KBL_REVID_A0)) {
+		batch = gen8_emit_pipe_control(batch,
+					       PIPE_CONTROL_FLUSH_L3 |
+					       PIPE_CONTROL_GLOBAL_GTT_IVB |
+					       PIPE_CONTROL_CS_STALL |
+					       PIPE_CONTROL_QW_WRITE,
+					       i915_ggtt_offset(engine->scratch)
+					       + 2 * CACHELINE_BYTES);
 	}
 
-	/* WaMediaPoolStateCmdInWABB:bxt */
+	/* WaMediaPoolStateCmdInWABB:bxt,glk */
 	if (HAS_POOLED_EU(engine->i915)) {
 		/*
 		 * EU pool configuration is setup along with golden context
@@ -1156,73 +1036,37 @@ static int gen9_init_indirectctx_bb(struct intel_engine_cs *engine,
 		 * possible configurations, to avoid duplication they are
 		 * not shown here again.
 		 */
-		u32 eu_pool_config = 0x00777000;
-		wa_ctx_emit(batch, index, GEN9_MEDIA_POOL_STATE);
-		wa_ctx_emit(batch, index, GEN9_MEDIA_POOL_ENABLE);
-		wa_ctx_emit(batch, index, eu_pool_config);
-		wa_ctx_emit(batch, index, 0);
-		wa_ctx_emit(batch, index, 0);
-		wa_ctx_emit(batch, index, 0);
+		*batch++ = GEN9_MEDIA_POOL_STATE;
+		*batch++ = GEN9_MEDIA_POOL_ENABLE;
+		*batch++ = 0x00777000;
+		*batch++ = 0;
+		*batch++ = 0;
+		*batch++ = 0;
 	}
 
 	/* Pad to end of cacheline */
-	while (index % CACHELINE_DWORDS)
-		wa_ctx_emit(batch, index, MI_NOOP);
+	while ((unsigned long)batch % CACHELINE_BYTES)
+		*batch++ = MI_NOOP;
 
-	return wa_ctx_end(wa_ctx, *offset = index, CACHELINE_DWORDS);
+	return batch;
 }
 
-static int gen9_init_perctx_bb(struct intel_engine_cs *engine,
-			       struct i915_wa_ctx_bb *wa_ctx,
-			       uint32_t *batch,
-			       uint32_t *offset)
+static u32 *gen9_init_perctx_bb(struct intel_engine_cs *engine, u32 *batch)
 {
-	uint32_t index = wa_ctx_start(wa_ctx, *offset, CACHELINE_DWORDS);
+	*batch++ = MI_BATCH_BUFFER_END;
 
-	/* WaSetDisablePixMaskCammingAndRhwoInCommonSliceChicken:bxt */
-	if (IS_BXT_REVID(engine->i915, 0, BXT_REVID_A1)) {
-		wa_ctx_emit(batch, index, MI_LOAD_REGISTER_IMM(1));
-		wa_ctx_emit_reg(batch, index, GEN9_SLICE_COMMON_ECO_CHICKEN0);
-		wa_ctx_emit(batch, index,
-			    _MASKED_BIT_ENABLE(DISABLE_PIXEL_MASK_CAMMING));
-		wa_ctx_emit(batch, index, MI_NOOP);
-	}
-
-	/* WaClearTdlStateAckDirtyBits:bxt */
-	if (IS_BXT_REVID(engine->i915, 0, BXT_REVID_B0)) {
-		wa_ctx_emit(batch, index, MI_LOAD_REGISTER_IMM(4));
-
-		wa_ctx_emit_reg(batch, index, GEN8_STATE_ACK);
-		wa_ctx_emit(batch, index, _MASKED_BIT_DISABLE(GEN9_SUBSLICE_TDL_ACK_BITS));
-
-		wa_ctx_emit_reg(batch, index, GEN9_STATE_ACK_SLICE1);
-		wa_ctx_emit(batch, index, _MASKED_BIT_DISABLE(GEN9_SUBSLICE_TDL_ACK_BITS));
-
-		wa_ctx_emit_reg(batch, index, GEN9_STATE_ACK_SLICE2);
-		wa_ctx_emit(batch, index, _MASKED_BIT_DISABLE(GEN9_SUBSLICE_TDL_ACK_BITS));
-
-		wa_ctx_emit_reg(batch, index, GEN7_ROW_CHICKEN2);
-		/* dummy write to CS, mask bits are 0 to ensure the register is not modified */
-		wa_ctx_emit(batch, index, 0x0);
-		wa_ctx_emit(batch, index, MI_NOOP);
-	}
-
-	/* WaDisableCtxRestoreArbitration:bxt */
-	if (IS_BXT_REVID(engine->i915, 0, BXT_REVID_A1))
-		wa_ctx_emit(batch, index, MI_ARB_ON_OFF | MI_ARB_ENABLE);
-
-	wa_ctx_emit(batch, index, MI_BATCH_BUFFER_END);
-
-	return wa_ctx_end(wa_ctx, *offset = index, 1);
+	return batch;
 }
 
-static int lrc_setup_wa_ctx_obj(struct intel_engine_cs *engine, u32 size)
+#define CTX_WA_BB_OBJ_SIZE (PAGE_SIZE)
+
+static int lrc_setup_wa_ctx(struct intel_engine_cs *engine)
 {
 	struct drm_i915_gem_object *obj;
 	struct i915_vma *vma;
 	int err;
 
-	obj = i915_gem_object_create(engine->i915, PAGE_ALIGN(size));
+	obj = i915_gem_object_create(engine->i915, CTX_WA_BB_OBJ_SIZE);
 	if (IS_ERR(obj))
 		return PTR_ERR(obj);
 
@@ -1244,80 +1088,77 @@ err:
 	return err;
 }
 
-static void lrc_destroy_wa_ctx_obj(struct intel_engine_cs *engine)
+static void lrc_destroy_wa_ctx(struct intel_engine_cs *engine)
 {
 	i915_vma_unpin_and_release(&engine->wa_ctx.vma);
 }
 
+typedef u32 *(*wa_bb_func_t)(struct intel_engine_cs *engine, u32 *batch);
+
 static int intel_init_workaround_bb(struct intel_engine_cs *engine)
 {
 	struct i915_ctx_workarounds *wa_ctx = &engine->wa_ctx;
-	uint32_t *batch;
-	uint32_t offset;
+	struct i915_wa_ctx_bb *wa_bb[2] = { &wa_ctx->indirect_ctx,
+					    &wa_ctx->per_ctx };
+	wa_bb_func_t wa_bb_fn[2];
 	struct page *page;
+	void *batch, *batch_ptr;
+	unsigned int i;
 	int ret;
 
-	WARN_ON(engine->id != RCS);
+	if (WARN_ON(engine->id != RCS || !engine->scratch))
+		return -EINVAL;
 
-	/* update this when WA for higher Gen are added */
-	if (INTEL_GEN(engine->i915) > 9) {
-		DRM_ERROR("WA batch buffer is not initialized for Gen%d\n",
-			  INTEL_GEN(engine->i915));
+	switch (INTEL_GEN(engine->i915)) {
+	case 9:
+		wa_bb_fn[0] = gen9_init_indirectctx_bb;
+		wa_bb_fn[1] = gen9_init_perctx_bb;
+		break;
+	case 8:
+		wa_bb_fn[0] = gen8_init_indirectctx_bb;
+		wa_bb_fn[1] = gen8_init_perctx_bb;
+		break;
+	default:
+		MISSING_CASE(INTEL_GEN(engine->i915));
 		return 0;
 	}
 
-	/* some WA perform writes to scratch page, ensure it is valid */
-	if (!engine->scratch) {
-		DRM_ERROR("scratch page not allocated for %s\n", engine->name);
-		return -EINVAL;
-	}
-
-	ret = lrc_setup_wa_ctx_obj(engine, PAGE_SIZE);
+	ret = lrc_setup_wa_ctx(engine);
 	if (ret) {
 		DRM_DEBUG_DRIVER("Failed to setup context WA page: %d\n", ret);
 		return ret;
 	}
 
 	page = i915_gem_object_get_dirty_page(wa_ctx->vma->obj, 0);
-	batch = kmap_atomic(page);
-	offset = 0;
+	batch = batch_ptr = kmap_atomic(page);
 
-	if (IS_GEN8(engine->i915)) {
-		ret = gen8_init_indirectctx_bb(engine,
-					       &wa_ctx->indirect_ctx,
-					       batch,
-					       &offset);
-		if (ret)
-			goto out;
-
-		ret = gen8_init_perctx_bb(engine,
-					  &wa_ctx->per_ctx,
-					  batch,
-					  &offset);
-		if (ret)
-			goto out;
-	} else if (IS_GEN9(engine->i915)) {
-		ret = gen9_init_indirectctx_bb(engine,
-					       &wa_ctx->indirect_ctx,
-					       batch,
-					       &offset);
-		if (ret)
-			goto out;
-
-		ret = gen9_init_perctx_bb(engine,
-					  &wa_ctx->per_ctx,
-					  batch,
-					  &offset);
-		if (ret)
-			goto out;
+	/*
+	 * Emit the two workaround batch buffers, recording the offset from the
+	 * start of the workaround batch buffer object for each and their
+	 * respective sizes.
+	 */
+	for (i = 0; i < ARRAY_SIZE(wa_bb_fn); i++) {
+		wa_bb[i]->offset = batch_ptr - batch;
+		if (WARN_ON(!IS_ALIGNED(wa_bb[i]->offset, CACHELINE_BYTES))) {
+			ret = -EINVAL;
+			break;
+		}
+		batch_ptr = wa_bb_fn[i](engine, batch_ptr);
+		wa_bb[i]->size = batch_ptr - (batch + wa_bb[i]->offset);
 	}
 
-out:
+	BUG_ON(batch_ptr - batch > CTX_WA_BB_OBJ_SIZE);
+
 	kunmap_atomic(batch);
 	if (ret)
-		lrc_destroy_wa_ctx_obj(engine);
+		lrc_destroy_wa_ctx(engine);
 
 	return ret;
+}
+
+static u32 port_seqno(struct execlist_port *port)
+{
+	return port->request ? port->request->global_seqno : 0;
 }
 
 static int gen8_init_common_ring(struct intel_engine_cs *engine)
@@ -1343,7 +1184,12 @@ static int gen8_init_common_ring(struct intel_engine_cs *engine)
 	DRM_DEBUG_DRIVER("Execlists enabled for %s\n", engine->name);
 
 	/* After a GPU reset, we may have requests to replay */
+	clear_bit(ENGINE_IRQ_EXECLIST, &engine->irq_posted);
 	if (!execlists_elsp_idle(engine)) {
+		DRM_DEBUG_DRIVER("Restarting %s from requests [0x%x, 0x%x]\n",
+				 engine->name,
+				 port_seqno(&engine->execlist_port[0]),
+				 port_seqno(&engine->execlist_port[1]));
 		engine->execlist_port[0].count = 0;
 		engine->execlist_port[1].count = 0;
 		execlists_submit_ports(engine);
@@ -1388,7 +1234,6 @@ static int gen9_init_render_ring(struct intel_engine_cs *engine)
 static void reset_common_ring(struct intel_engine_cs *engine,
 			      struct drm_i915_gem_request *request)
 {
-	struct drm_i915_private *dev_priv = engine->i915;
 	struct execlist_port *port = engine->execlist_port;
 	struct intel_context *ce;
 
@@ -1429,7 +1274,6 @@ static void reset_common_ring(struct intel_engine_cs *engine,
 		return;
 
 	/* Catch up with any missed context-switch interrupts */
-	I915_WRITE(RING_CONTEXT_STATUS_PTR(engine), _MASKED_FIELD(0xffff, 0));
 	if (request->ctx != port[0].request->ctx) {
 		i915_gem_request_put(port[0].request);
 		port[0] = port[1];
@@ -1440,32 +1284,33 @@ static void reset_common_ring(struct intel_engine_cs *engine,
 
 	/* Reset WaIdleLiteRestore:bdw,skl as well */
 	request->tail = request->wa_tail - WA_TAIL_DWORDS * sizeof(u32);
+	GEM_BUG_ON(!IS_ALIGNED(request->tail, 8));
 }
 
 static int intel_logical_ring_emit_pdps(struct drm_i915_gem_request *req)
 {
 	struct i915_hw_ppgtt *ppgtt = req->ctx->ppgtt;
-	struct intel_ring *ring = req->ring;
 	struct intel_engine_cs *engine = req->engine;
 	const int num_lri_cmds = GEN8_LEGACY_PDPES * 2;
-	int i, ret;
+	u32 *cs;
+	int i;
 
-	ret = intel_ring_begin(req, num_lri_cmds * 2 + 2);
-	if (ret)
-		return ret;
+	cs = intel_ring_begin(req, num_lri_cmds * 2 + 2);
+	if (IS_ERR(cs))
+		return PTR_ERR(cs);
 
-	intel_ring_emit(ring, MI_LOAD_REGISTER_IMM(num_lri_cmds));
+	*cs++ = MI_LOAD_REGISTER_IMM(num_lri_cmds);
 	for (i = GEN8_LEGACY_PDPES - 1; i >= 0; i--) {
 		const dma_addr_t pd_daddr = i915_page_dir_dma_addr(ppgtt, i);
 
-		intel_ring_emit_reg(ring, GEN8_RING_PDP_UDW(engine, i));
-		intel_ring_emit(ring, upper_32_bits(pd_daddr));
-		intel_ring_emit_reg(ring, GEN8_RING_PDP_LDW(engine, i));
-		intel_ring_emit(ring, lower_32_bits(pd_daddr));
+		*cs++ = i915_mmio_reg_offset(GEN8_RING_PDP_UDW(engine, i));
+		*cs++ = upper_32_bits(pd_daddr);
+		*cs++ = i915_mmio_reg_offset(GEN8_RING_PDP_LDW(engine, i));
+		*cs++ = lower_32_bits(pd_daddr);
 	}
 
-	intel_ring_emit(ring, MI_NOOP);
-	intel_ring_advance(ring);
+	*cs++ = MI_NOOP;
+	intel_ring_advance(req, cs);
 
 	return 0;
 }
@@ -1474,8 +1319,8 @@ static int gen8_emit_bb_start(struct drm_i915_gem_request *req,
 			      u64 offset, u32 len,
 			      unsigned int dispatch_flags)
 {
-	struct intel_ring *ring = req->ring;
 	bool ppgtt = !(dispatch_flags & I915_DISPATCH_SECURE);
+	u32 *cs;
 	int ret;
 
 	/* Don't rely in hw updating PDPs, specially in lite-restore.
@@ -1486,7 +1331,7 @@ static int gen8_emit_bb_start(struct drm_i915_gem_request *req,
 	 * not needed in 48-bit.*/
 	if (req->ctx->ppgtt &&
 	    (intel_engine_flag(req->engine) & req->ctx->ppgtt->pd_dirty_rings)) {
-		if (!USES_FULL_48BIT_PPGTT(req->i915) &&
+		if (!i915_vm_is_48bit(&req->ctx->ppgtt->base) &&
 		    !intel_vgpu_active(req->i915)) {
 			ret = intel_logical_ring_emit_pdps(req);
 			if (ret)
@@ -1496,19 +1341,17 @@ static int gen8_emit_bb_start(struct drm_i915_gem_request *req,
 		req->ctx->ppgtt->pd_dirty_rings &= ~intel_engine_flag(req->engine);
 	}
 
-	ret = intel_ring_begin(req, 4);
-	if (ret)
-		return ret;
+	cs = intel_ring_begin(req, 4);
+	if (IS_ERR(cs))
+		return PTR_ERR(cs);
 
 	/* FIXME(BDW): Address space and security selectors. */
-	intel_ring_emit(ring, MI_BATCH_BUFFER_START_GEN8 |
-			(ppgtt<<8) |
-			(dispatch_flags & I915_DISPATCH_RS ?
-			 MI_BATCH_RESOURCE_STREAMER : 0));
-	intel_ring_emit(ring, lower_32_bits(offset));
-	intel_ring_emit(ring, upper_32_bits(offset));
-	intel_ring_emit(ring, MI_NOOP);
-	intel_ring_advance(ring);
+	*cs++ = MI_BATCH_BUFFER_START_GEN8 | (ppgtt << 8) | (dispatch_flags &
+		I915_DISPATCH_RS ? MI_BATCH_RESOURCE_STREAMER : 0);
+	*cs++ = lower_32_bits(offset);
+	*cs++ = upper_32_bits(offset);
+	*cs++ = MI_NOOP;
+	intel_ring_advance(req, cs);
 
 	return 0;
 }
@@ -1529,13 +1372,11 @@ static void gen8_logical_ring_disable_irq(struct intel_engine_cs *engine)
 
 static int gen8_emit_flush(struct drm_i915_gem_request *request, u32 mode)
 {
-	struct intel_ring *ring = request->ring;
-	u32 cmd;
-	int ret;
+	u32 cmd, *cs;
 
-	ret = intel_ring_begin(request, 4);
-	if (ret)
-		return ret;
+	cs = intel_ring_begin(request, 4);
+	if (IS_ERR(cs))
+		return PTR_ERR(cs);
 
 	cmd = MI_FLUSH_DW + 1;
 
@@ -1552,13 +1393,11 @@ static int gen8_emit_flush(struct drm_i915_gem_request *request, u32 mode)
 			cmd |= MI_INVALIDATE_BSD;
 	}
 
-	intel_ring_emit(ring, cmd);
-	intel_ring_emit(ring,
-			I915_GEM_HWS_SCRATCH_ADDR |
-			MI_FLUSH_DW_USE_GTT);
-	intel_ring_emit(ring, 0); /* upper addr */
-	intel_ring_emit(ring, 0); /* value */
-	intel_ring_advance(ring);
+	*cs++ = cmd;
+	*cs++ = I915_GEM_HWS_SCRATCH_ADDR | MI_FLUSH_DW_USE_GTT;
+	*cs++ = 0; /* upper addr */
+	*cs++ = 0; /* value */
+	intel_ring_advance(request, cs);
 
 	return 0;
 }
@@ -1566,13 +1405,11 @@ static int gen8_emit_flush(struct drm_i915_gem_request *request, u32 mode)
 static int gen8_emit_flush_render(struct drm_i915_gem_request *request,
 				  u32 mode)
 {
-	struct intel_ring *ring = request->ring;
 	struct intel_engine_cs *engine = request->engine;
 	u32 scratch_addr =
 		i915_ggtt_offset(engine->scratch) + 2 * CACHELINE_BYTES;
 	bool vf_flush_wa = false, dc_flush_wa = false;
-	u32 flags = 0;
-	int ret;
+	u32 *cs, flags = 0;
 	int len;
 
 	flags |= PIPE_CONTROL_CS_STALL;
@@ -1614,62 +1451,25 @@ static int gen8_emit_flush_render(struct drm_i915_gem_request *request,
 	if (dc_flush_wa)
 		len += 12;
 
-	ret = intel_ring_begin(request, len);
-	if (ret)
-		return ret;
+	cs = intel_ring_begin(request, len);
+	if (IS_ERR(cs))
+		return PTR_ERR(cs);
 
-	if (vf_flush_wa) {
-		intel_ring_emit(ring, GFX_OP_PIPE_CONTROL(6));
-		intel_ring_emit(ring, 0);
-		intel_ring_emit(ring, 0);
-		intel_ring_emit(ring, 0);
-		intel_ring_emit(ring, 0);
-		intel_ring_emit(ring, 0);
-	}
+	if (vf_flush_wa)
+		cs = gen8_emit_pipe_control(cs, 0, 0);
 
-	if (dc_flush_wa) {
-		intel_ring_emit(ring, GFX_OP_PIPE_CONTROL(6));
-		intel_ring_emit(ring, PIPE_CONTROL_DC_FLUSH_ENABLE);
-		intel_ring_emit(ring, 0);
-		intel_ring_emit(ring, 0);
-		intel_ring_emit(ring, 0);
-		intel_ring_emit(ring, 0);
-	}
+	if (dc_flush_wa)
+		cs = gen8_emit_pipe_control(cs, PIPE_CONTROL_DC_FLUSH_ENABLE,
+					    0);
 
-	intel_ring_emit(ring, GFX_OP_PIPE_CONTROL(6));
-	intel_ring_emit(ring, flags);
-	intel_ring_emit(ring, scratch_addr);
-	intel_ring_emit(ring, 0);
-	intel_ring_emit(ring, 0);
-	intel_ring_emit(ring, 0);
+	cs = gen8_emit_pipe_control(cs, flags, scratch_addr);
 
-	if (dc_flush_wa) {
-		intel_ring_emit(ring, GFX_OP_PIPE_CONTROL(6));
-		intel_ring_emit(ring, PIPE_CONTROL_CS_STALL);
-		intel_ring_emit(ring, 0);
-		intel_ring_emit(ring, 0);
-		intel_ring_emit(ring, 0);
-		intel_ring_emit(ring, 0);
-	}
+	if (dc_flush_wa)
+		cs = gen8_emit_pipe_control(cs, PIPE_CONTROL_CS_STALL, 0);
 
-	intel_ring_advance(ring);
+	intel_ring_advance(request, cs);
 
 	return 0;
-}
-
-static void bxt_a_seqno_barrier(struct intel_engine_cs *engine)
-{
-	/*
-	 * On BXT A steppings there is a HW coherency issue whereby the
-	 * MI_STORE_DATA_IMM storing the completed request's seqno
-	 * occasionally doesn't invalidate the CPU cache. Work around this by
-	 * clflushing the corresponding cacheline whenever the caller wants
-	 * the coherency to be guaranteed. Note that this cacheline is known
-	 * to be clean at this point, since we only write it in
-	 * bxt_a_set_seqno(), where we also do a clflush after the write. So
-	 * this clflush in practice becomes an invalidate operation.
-	 */
-	intel_flush_status_page(engine, I915_GEM_HWS_INDEX);
 }
 
 /*
@@ -1677,34 +1477,34 @@ static void bxt_a_seqno_barrier(struct intel_engine_cs *engine)
  * used as a workaround for not being allowed to do lite
  * restore with HEAD==TAIL (WaIdleLiteRestore).
  */
-static void gen8_emit_wa_tail(struct drm_i915_gem_request *request, u32 *out)
+static void gen8_emit_wa_tail(struct drm_i915_gem_request *request, u32 *cs)
 {
-	*out++ = MI_NOOP;
-	*out++ = MI_NOOP;
-	request->wa_tail = intel_ring_offset(request->ring, out);
+	*cs++ = MI_NOOP;
+	*cs++ = MI_NOOP;
+	request->wa_tail = intel_ring_offset(request, cs);
 }
 
-static void gen8_emit_breadcrumb(struct drm_i915_gem_request *request,
-				 u32 *out)
+static void gen8_emit_breadcrumb(struct drm_i915_gem_request *request, u32 *cs)
 {
 	/* w/a: bit 5 needs to be zero for MI_FLUSH_DW address. */
 	BUILD_BUG_ON(I915_GEM_HWS_INDEX_ADDR & (1 << 5));
 
-	*out++ = (MI_FLUSH_DW + 1) | MI_FLUSH_DW_OP_STOREDW;
-	*out++ = intel_hws_seqno_address(request->engine) | MI_FLUSH_DW_USE_GTT;
-	*out++ = 0;
-	*out++ = request->global_seqno;
-	*out++ = MI_USER_INTERRUPT;
-	*out++ = MI_NOOP;
-	request->tail = intel_ring_offset(request->ring, out);
+	*cs++ = (MI_FLUSH_DW + 1) | MI_FLUSH_DW_OP_STOREDW;
+	*cs++ = intel_hws_seqno_address(request->engine) | MI_FLUSH_DW_USE_GTT;
+	*cs++ = 0;
+	*cs++ = request->global_seqno;
+	*cs++ = MI_USER_INTERRUPT;
+	*cs++ = MI_NOOP;
+	request->tail = intel_ring_offset(request, cs);
+	GEM_BUG_ON(!IS_ALIGNED(request->tail, 8));
 
-	gen8_emit_wa_tail(request, out);
+	gen8_emit_wa_tail(request, cs);
 }
 
 static const int gen8_emit_breadcrumb_sz = 6 + WA_TAIL_DWORDS;
 
 static void gen8_emit_breadcrumb_render(struct drm_i915_gem_request *request,
-					u32 *out)
+					u32 *cs)
 {
 	/* We're using qword write, seqno should be aligned to 8 bytes. */
 	BUILD_BUG_ON(I915_GEM_HWS_INDEX & 1);
@@ -1713,20 +1513,20 @@ static void gen8_emit_breadcrumb_render(struct drm_i915_gem_request *request,
 	 * need a prior CS_STALL, which is emitted by the flush
 	 * following the batch.
 	 */
-	*out++ = GFX_OP_PIPE_CONTROL(6);
-	*out++ = (PIPE_CONTROL_GLOBAL_GTT_IVB |
-		  PIPE_CONTROL_CS_STALL |
-		  PIPE_CONTROL_QW_WRITE);
-	*out++ = intel_hws_seqno_address(request->engine);
-	*out++ = 0;
-	*out++ = request->global_seqno;
+	*cs++ = GFX_OP_PIPE_CONTROL(6);
+	*cs++ = PIPE_CONTROL_GLOBAL_GTT_IVB | PIPE_CONTROL_CS_STALL |
+		PIPE_CONTROL_QW_WRITE;
+	*cs++ = intel_hws_seqno_address(request->engine);
+	*cs++ = 0;
+	*cs++ = request->global_seqno;
 	/* We're thrashing one dword of HWS. */
-	*out++ = 0;
-	*out++ = MI_USER_INTERRUPT;
-	*out++ = MI_NOOP;
-	request->tail = intel_ring_offset(request->ring, out);
+	*cs++ = 0;
+	*cs++ = MI_USER_INTERRUPT;
+	*cs++ = MI_NOOP;
+	request->tail = intel_ring_offset(request, cs);
+	GEM_BUG_ON(!IS_ALIGNED(request->tail, 8));
 
-	gen8_emit_wa_tail(request, out);
+	gen8_emit_wa_tail(request, cs);
 }
 
 static const int gen8_emit_breadcrumb_render_sz = 8 + WA_TAIL_DWORDS;
@@ -1735,7 +1535,7 @@ static int gen8_init_rcs_context(struct drm_i915_gem_request *req)
 {
 	int ret;
 
-	ret = intel_logical_ring_workarounds_emit(req);
+	ret = intel_ring_workarounds_emit(req);
 	if (ret)
 		return ret;
 
@@ -1781,7 +1581,7 @@ void intel_logical_ring_cleanup(struct intel_engine_cs *engine)
 
 	intel_engine_cleanup_common(engine);
 
-	lrc_destroy_wa_ctx_obj(engine);
+	lrc_destroy_wa_ctx(engine);
 	engine->i915 = NULL;
 	dev_priv->engine[engine->id] = NULL;
 	kfree(engine);
@@ -1819,8 +1619,6 @@ logical_ring_default_vfuncs(struct intel_engine_cs *engine)
 	engine->irq_enable = gen8_logical_ring_enable_irq;
 	engine->irq_disable = gen8_logical_ring_disable_irq;
 	engine->emit_bb_start = gen8_emit_bb_start;
-	if (IS_BXT_REVID(engine->i915, 0, BXT_REVID_A1))
-		engine->irq_seqno_barrier = bxt_a_seqno_barrier;
 }
 
 static inline void
@@ -1877,7 +1675,6 @@ logical_ring_setup(struct intel_engine_cs *engine)
 	tasklet_init(&engine->irq_tasklet,
 		     intel_lrc_irq_handler, (unsigned long)engine);
 
-	logical_ring_init_platform_invariants(engine);
 	logical_ring_default_vfuncs(engine);
 	logical_ring_default_irqs(engine);
 }
@@ -2070,15 +1867,14 @@ static void execlists_init_reg_state(u32 *reg_state,
 			u32 ggtt_offset = i915_ggtt_offset(wa_ctx->vma);
 
 			reg_state[CTX_RCS_INDIRECT_CTX+1] =
-				(ggtt_offset + wa_ctx->indirect_ctx.offset * sizeof(uint32_t)) |
-				(wa_ctx->indirect_ctx.size / CACHELINE_DWORDS);
+				(ggtt_offset + wa_ctx->indirect_ctx.offset) |
+				(wa_ctx->indirect_ctx.size / CACHELINE_BYTES);
 
 			reg_state[CTX_RCS_INDIRECT_CTX_OFFSET+1] =
 				intel_lr_indirect_ctx_offset(engine) << 6;
 
 			reg_state[CTX_BB_PER_CTX_PTR+1] =
-				(ggtt_offset + wa_ctx->per_ctx.offset * sizeof(uint32_t)) |
-				0x01;
+				(ggtt_offset + wa_ctx->per_ctx.offset) | 0x01;
 		}
 	}
 	reg_state[CTX_LRI_HEADER_1] = MI_LOAD_REGISTER_IMM(9) | MI_LRI_FORCE_POSTED;
@@ -2102,7 +1898,7 @@ static void execlists_init_reg_state(u32 *reg_state,
 	ASSIGN_CTX_REG(reg_state, CTX_PDP0_LDW, GEN8_RING_PDP_LDW(engine, 0),
 		       0);
 
-	if (ppgtt && USES_FULL_48BIT_PPGTT(ppgtt->base.dev)) {
+	if (ppgtt && i915_vm_is_48bit(&ppgtt->base)) {
 		/* 64b PPGTT (48bit canonical)
 		 * PDP0_DESCRIPTOR contains the base address to PML4 and
 		 * other PDP Descriptors are ignored.

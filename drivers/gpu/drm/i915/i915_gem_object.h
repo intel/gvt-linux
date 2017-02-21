@@ -33,6 +33,8 @@
 
 #include <drm/i915_drm.h>
 
+#include "i915_selftest.h"
+
 struct drm_i915_gem_object_ops {
 	unsigned int flags;
 #define I915_GEM_OBJECT_HAS_STRUCT_PAGE 0x1
@@ -84,6 +86,7 @@ struct drm_i915_gem_object {
 	struct list_head obj_exec_link;
 
 	struct list_head batch_pool_link;
+	I915_SELFTEST_DECLARE(struct list_head st_link);
 
 	unsigned long flags;
 
@@ -162,19 +165,23 @@ struct drm_i915_gem_object {
 	struct reservation_object *resv;
 
 	/** References from framebuffers, locks out tiling changes. */
-	unsigned long framebuffer_references;
+	atomic_t framebuffer_references;
 
 	/** Record of address bit 17 of each page at last unbind. */
 	unsigned long *bit_17;
 
-	struct i915_gem_userptr {
-		uintptr_t ptr;
-		unsigned read_only :1;
+	union {
+		struct i915_gem_userptr {
+			uintptr_t ptr;
+			unsigned read_only :1;
 
-		struct i915_mm_struct *mm;
-		struct i915_mmu_object *mmu_object;
-		struct work_struct *work;
-	} userptr;
+			struct i915_mm_struct *mm;
+			struct i915_mmu_object *mmu_object;
+			struct work_struct *work;
+		} userptr;
+
+		unsigned long scratch;
+	};
 
 	/** for phys allocated objects */
 	struct drm_dma_handle *phys_handle;

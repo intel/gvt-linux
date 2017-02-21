@@ -426,6 +426,7 @@ void __i915_gem_request_submit(struct drm_i915_gem_request *request)
 	spin_unlock(&request->timeline->lock);
 
 	i915_sw_fence_commit(&request->execute);
+	trace_i915_gem_request_execute(request);
 }
 
 void i915_gem_request_submit(struct drm_i915_gem_request *request)
@@ -449,6 +450,7 @@ submit_notify(struct i915_sw_fence *fence, enum i915_sw_fence_notify state)
 
 	switch (state) {
 	case FENCE_COMPLETE:
+		trace_i915_gem_request_submit(request);
 		request->engine->submit_request(request);
 		break;
 
@@ -824,6 +826,7 @@ void __i915_add_request(struct drm_i915_gem_request *request, bool flush_caches)
 	struct intel_ring *ring = request->ring;
 	struct intel_timeline *timeline = request->timeline;
 	struct drm_i915_gem_request *prev;
+	u32 *cs;
 	int err;
 
 	lockdep_assert_held(&request->i915->drm.struct_mutex);
@@ -862,10 +865,9 @@ void __i915_add_request(struct drm_i915_gem_request *request, bool flush_caches)
 	 * GPU processing the request, we never over-estimate the
 	 * position of the ring's HEAD.
 	 */
-	err = intel_ring_begin(request, engine->emit_breadcrumb_sz);
-	GEM_BUG_ON(err);
-	request->postfix = ring->tail;
-	ring->tail += engine->emit_breadcrumb_sz * sizeof(u32);
+	cs = intel_ring_begin(request, engine->emit_breadcrumb_sz);
+	GEM_BUG_ON(IS_ERR(cs));
+	request->postfix = intel_ring_offset(request, cs);
 
 	/* Seal the request and mark it as pending execution. Note that
 	 * we may inspect this state, without holding any locks, during
@@ -963,7 +965,8 @@ static bool busywait_stop(unsigned long timeout, unsigned int cpu)
 bool __i915_spin_request(const struct drm_i915_gem_request *req,
 			 int state, unsigned long timeout_us)
 {
-	unsigned int cpu;
+	struct intel_engine_cs *engine = req->engine;
+	unsigned int irq, cpu;
 
 	/* When waiting for high frequency requests, e.g. during synchronous
 	 * rendering split between the CPU and GPU, the finite amount of time
@@ -975,10 +978,19 @@ bool __i915_spin_request(const struct drm_i915_gem_request *req,
 	 * takes to sleep on a request, on the order of a microsecond.
 	 */
 
+	irq = atomic_read(&engine->irq_count);
 	timeout_us += local_clock_us(&cpu);
 	do {
 		if (__i915_gem_request_completed(req))
 			return true;
+
+		/* Seqno are meant to be ordered *before* the interrupt. If
+		 * we see an interrupt without a corresponding seqno advance,
+		 * assume we won't see one in the near future but require
+		 * the engine->seqno_barrier() to fixup coherency.
+		 */
+		if (atomic_read(&engine->irq_count) != irq)
+			break;
 
 		if (signal_pending_state(state, current))
 			break;
@@ -1082,7 +1094,7 @@ long i915_wait_request(struct drm_i915_gem_request *req,
 	if (!timeout)
 		return -ETIME;
 
-	trace_i915_gem_request_wait_begin(req);
+	trace_i915_gem_request_wait_begin(req, flags);
 
 	if (!i915_sw_fence_done(&req->execute)) {
 		timeout = __i915_request_wait_for_execute(req, flags, timeout);
@@ -1198,3 +1210,8 @@ void i915_gem_retire_requests(struct drm_i915_private *dev_priv)
 	for_each_engine(engine, dev_priv, id)
 		engine_retire_requests(engine);
 }
+
+#if IS_ENABLED(CONFIG_DRM_I915_SELFTEST)
+#include "selftests/mock_request.c"
+#include "selftests/i915_gem_request.c"
+#endif

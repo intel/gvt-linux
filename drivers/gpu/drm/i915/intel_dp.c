@@ -28,8 +28,10 @@
 #include <linux/i2c.h>
 #include <linux/slab.h>
 #include <linux/export.h>
+#include <linux/types.h>
 #include <linux/notifier.h>
 #include <linux/reboot.h>
+#include <asm/byteorder.h>
 #include <drm/drmP.h>
 #include <drm/drm_atomic_helper.h>
 #include <drm/drm_crtc.h>
@@ -226,7 +228,7 @@ intel_dp_source_rates(struct intel_dp *intel_dp, const int **source_rates)
 	if (IS_GEN9_LP(dev_priv)) {
 		*source_rates = bxt_rates;
 		size = ARRAY_SIZE(bxt_rates);
-	} else if (IS_SKYLAKE(dev_priv) || IS_KABYLAKE(dev_priv)) {
+	} else if (IS_GEN9_BC(dev_priv)) {
 		*source_rates = skl_rates;
 		size = ARRAY_SIZE(skl_rates);
 	} else {
@@ -916,7 +918,7 @@ static uint32_t ilk_get_aux_clock_divider(struct intel_dp *intel_dp, int index)
 	 * divide by 2000 and use that
 	 */
 	if (intel_dig_port->port == PORT_A)
-		return DIV_ROUND_CLOSEST(dev_priv->cdclk_freq, 2000);
+		return DIV_ROUND_CLOSEST(dev_priv->cdclk.hw.cdclk, 2000);
 	else
 		return DIV_ROUND_CLOSEST(dev_priv->rawclk_freq, 2000);
 }
@@ -1593,6 +1595,13 @@ static int intel_dp_compute_bpp(struct intel_dp *intel_dp,
 	if (bpc > 0)
 		bpp = min(bpp, 3*bpc);
 
+	/* For DP Compliance we override the computed bpp for the pipe */
+	if (intel_dp->compliance.test_data.bpc != 0) {
+		pipe_config->pipe_bpp =	3*intel_dp->compliance.test_data.bpc;
+		pipe_config->dither_force_disable = pipe_config->pipe_bpp == 6*3;
+		DRM_DEBUG_KMS("Setting pipe_bpp to %d\n",
+			      pipe_config->pipe_bpp);
+	}
 	return bpp;
 }
 
@@ -1613,6 +1622,7 @@ intel_dp_compute_config(struct intel_encoder *encoder,
 	/* Conveniently, the link BW constants become indices with a shift...*/
 	int min_clock = 0;
 	int max_clock;
+	int link_rate_index;
 	int bpp, mode_rate;
 	int link_avail, link_clock;
 	int common_rates[DP_MAX_SUPPORTED_RATES] = {};
@@ -1654,6 +1664,15 @@ intel_dp_compute_config(struct intel_encoder *encoder,
 	if (adjusted_mode->flags & DRM_MODE_FLAG_DBLCLK)
 		return false;
 
+	/* Use values requested by Compliance Test Request */
+	if (intel_dp->compliance.test_type == DP_TEST_LINK_TRAINING) {
+		link_rate_index = intel_dp_link_rate_index(intel_dp,
+							   common_rates,
+							   intel_dp->compliance.test_link_rate);
+		if (link_rate_index >= 0)
+			min_clock = max_clock = link_rate_index;
+		min_lane_count = max_lane_count = intel_dp->compliance.test_lane_count;
+	}
 	DRM_DEBUG_KMS("DP link computation with max lane count %i "
 		      "max bw %d pixel clock %iKHz\n",
 		      max_lane_count, common_rates[max_clock],
@@ -1753,8 +1772,7 @@ found:
 	 * DPLL0 VCO may need to be adjusted to get the correct
 	 * clock for eDP. This will affect cdclk as well.
 	 */
-	if (is_edp(intel_dp) &&
-	    (IS_SKYLAKE(dev_priv) || IS_KABYLAKE(dev_priv))) {
+	if (is_edp(intel_dp) && IS_GEN9_BC(dev_priv)) {
 		int vco;
 
 		switch (pipe_config->port_clock / 2) {
@@ -1767,7 +1785,7 @@ found:
 			break;
 		}
 
-		to_intel_atomic_state(pipe_config->base.state)->cdclk_pll_vco = vco;
+		to_intel_atomic_state(pipe_config->base.state)->cdclk.logical.vco = vco;
 	}
 
 	if (!HAS_DDI(dev_priv))
@@ -3922,19 +3940,112 @@ intel_dp_get_sink_irq_esi(struct intel_dp *intel_dp, u8 *sink_irq_vector)
 
 static uint8_t intel_dp_autotest_link_training(struct intel_dp *intel_dp)
 {
-	uint8_t test_result = DP_TEST_ACK;
-	return test_result;
+	int status = 0;
+	int min_lane_count = 1;
+	int common_rates[DP_MAX_SUPPORTED_RATES] = {};
+	int link_rate_index, test_link_rate;
+	uint8_t test_lane_count, test_link_bw;
+	/* (DP CTS 1.2)
+	 * 4.3.1.11
+	 */
+	/* Read the TEST_LANE_COUNT and TEST_LINK_RTAE fields (DP CTS 3.1.4) */
+	status = drm_dp_dpcd_readb(&intel_dp->aux, DP_TEST_LANE_COUNT,
+				   &test_lane_count);
+
+	if (status <= 0) {
+		DRM_DEBUG_KMS("Lane count read failed\n");
+		return DP_TEST_NAK;
+	}
+	test_lane_count &= DP_MAX_LANE_COUNT_MASK;
+	/* Validate the requested lane count */
+	if (test_lane_count < min_lane_count ||
+	    test_lane_count > intel_dp->max_sink_lane_count)
+		return DP_TEST_NAK;
+
+	status = drm_dp_dpcd_readb(&intel_dp->aux, DP_TEST_LINK_RATE,
+				   &test_link_bw);
+	if (status <= 0) {
+		DRM_DEBUG_KMS("Link Rate read failed\n");
+		return DP_TEST_NAK;
+	}
+	/* Validate the requested link rate */
+	test_link_rate = drm_dp_bw_code_to_link_rate(test_link_bw);
+	link_rate_index = intel_dp_link_rate_index(intel_dp,
+						   common_rates,
+						   test_link_rate);
+	if (link_rate_index < 0)
+		return DP_TEST_NAK;
+
+	intel_dp->compliance.test_lane_count = test_lane_count;
+	intel_dp->compliance.test_link_rate = test_link_rate;
+
+	return DP_TEST_ACK;
 }
 
 static uint8_t intel_dp_autotest_video_pattern(struct intel_dp *intel_dp)
 {
-	uint8_t test_result = DP_TEST_NAK;
-	return test_result;
+	uint8_t test_pattern;
+	uint16_t test_misc;
+	__be16 h_width, v_height;
+	int status = 0;
+
+	/* Read the TEST_PATTERN (DP CTS 3.1.5) */
+	status = drm_dp_dpcd_read(&intel_dp->aux, DP_TEST_PATTERN,
+				  &test_pattern, 1);
+	if (status <= 0) {
+		DRM_DEBUG_KMS("Test pattern read failed\n");
+		return DP_TEST_NAK;
+	}
+	if (test_pattern != DP_COLOR_RAMP)
+		return DP_TEST_NAK;
+
+	status = drm_dp_dpcd_read(&intel_dp->aux, DP_TEST_H_WIDTH_HI,
+				  &h_width, 2);
+	if (status <= 0) {
+		DRM_DEBUG_KMS("H Width read failed\n");
+		return DP_TEST_NAK;
+	}
+
+	status = drm_dp_dpcd_read(&intel_dp->aux, DP_TEST_V_HEIGHT_HI,
+				  &v_height, 2);
+	if (status <= 0) {
+		DRM_DEBUG_KMS("V Height read failed\n");
+		return DP_TEST_NAK;
+	}
+
+	status = drm_dp_dpcd_read(&intel_dp->aux, DP_TEST_MISC0,
+				  &test_misc, 1);
+	if (status <= 0) {
+		DRM_DEBUG_KMS("TEST MISC read failed\n");
+		return DP_TEST_NAK;
+	}
+	if ((test_misc & DP_TEST_COLOR_FORMAT_MASK) != DP_COLOR_FORMAT_RGB)
+		return DP_TEST_NAK;
+	if (test_misc & DP_TEST_DYNAMIC_RANGE_CEA)
+		return DP_TEST_NAK;
+	switch (test_misc & DP_TEST_BIT_DEPTH_MASK) {
+	case DP_TEST_BIT_DEPTH_6:
+		intel_dp->compliance.test_data.bpc = 6;
+		break;
+	case DP_TEST_BIT_DEPTH_8:
+		intel_dp->compliance.test_data.bpc = 8;
+		break;
+	default:
+		return DP_TEST_NAK;
+	}
+
+	intel_dp->compliance.test_data.video_pattern = test_pattern;
+	intel_dp->compliance.test_data.hdisplay = be16_to_cpu(h_width);
+	intel_dp->compliance.test_data.vdisplay = be16_to_cpu(v_height);
+	/* Set test active flag here so userspace doesn't interrupt things */
+	intel_dp->compliance.test_active = 1;
+
+	return DP_TEST_ACK;
 }
 
 static uint8_t intel_dp_autotest_edid(struct intel_dp *intel_dp)
 {
-	uint8_t test_result = DP_TEST_NAK;
+	uint8_t test_result = DP_TEST_ACK;
 	struct intel_connector *intel_connector = intel_dp->attached_connector;
 	struct drm_connector *connector = &intel_connector->base;
 
@@ -3969,7 +4080,7 @@ static uint8_t intel_dp_autotest_edid(struct intel_dp *intel_dp)
 			DRM_DEBUG_KMS("Failed to write EDID checksum\n");
 
 		test_result = DP_TEST_ACK | DP_TEST_EDID_CHECKSUM_WRITE;
-		intel_dp->compliance.test_data.edid = INTEL_DP_RESOLUTION_STANDARD;
+		intel_dp->compliance.test_data.edid = INTEL_DP_RESOLUTION_PREFERRED;
 	}
 
 	/* Set test active flag here so userspace doesn't interrupt things */
@@ -3987,45 +4098,42 @@ static uint8_t intel_dp_autotest_phy_pattern(struct intel_dp *intel_dp)
 static void intel_dp_handle_test_request(struct intel_dp *intel_dp)
 {
 	uint8_t response = DP_TEST_NAK;
-	uint8_t rxdata = 0;
-	int status = 0;
+	uint8_t request = 0;
+	int status;
 
-	status = drm_dp_dpcd_read(&intel_dp->aux, DP_TEST_REQUEST, &rxdata, 1);
+	status = drm_dp_dpcd_readb(&intel_dp->aux, DP_TEST_REQUEST, &request);
 	if (status <= 0) {
 		DRM_DEBUG_KMS("Could not read test request from sink\n");
 		goto update_status;
 	}
 
-	switch (rxdata) {
+	switch (request) {
 	case DP_TEST_LINK_TRAINING:
 		DRM_DEBUG_KMS("LINK_TRAINING test requested\n");
-		intel_dp->compliance.test_type = DP_TEST_LINK_TRAINING;
 		response = intel_dp_autotest_link_training(intel_dp);
 		break;
 	case DP_TEST_LINK_VIDEO_PATTERN:
 		DRM_DEBUG_KMS("TEST_PATTERN test requested\n");
-		intel_dp->compliance.test_type = DP_TEST_LINK_VIDEO_PATTERN;
 		response = intel_dp_autotest_video_pattern(intel_dp);
 		break;
 	case DP_TEST_LINK_EDID_READ:
 		DRM_DEBUG_KMS("EDID test requested\n");
-		intel_dp->compliance.test_type = DP_TEST_LINK_EDID_READ;
 		response = intel_dp_autotest_edid(intel_dp);
 		break;
 	case DP_TEST_LINK_PHY_TEST_PATTERN:
 		DRM_DEBUG_KMS("PHY_PATTERN test requested\n");
-		intel_dp->compliance.test_type = DP_TEST_LINK_PHY_TEST_PATTERN;
 		response = intel_dp_autotest_phy_pattern(intel_dp);
 		break;
 	default:
-		DRM_DEBUG_KMS("Invalid test request '%02x'\n", rxdata);
+		DRM_DEBUG_KMS("Invalid test request '%02x'\n", request);
 		break;
 	}
 
+	if (response & DP_TEST_ACK)
+		intel_dp->compliance.test_type = request;
+
 update_status:
-	status = drm_dp_dpcd_write(&intel_dp->aux,
-				   DP_TEST_RESPONSE,
-				   &response, 1);
+	status = drm_dp_dpcd_writeb(&intel_dp->aux, DP_TEST_RESPONSE, response);
 	if (status <= 0)
 		DRM_DEBUG_KMS("Could not write test response to sink\n");
 }
@@ -4137,9 +4245,8 @@ intel_dp_check_link_status(struct intel_dp *intel_dp)
 	if (!intel_dp->lane_count)
 		return;
 
-	/* if link training is requested we should perform it always */
-	if ((intel_dp->compliance.test_type == DP_TEST_LINK_TRAINING) ||
-	    (!drm_dp_channel_eq_ok(link_status, intel_dp->lane_count))) {
+	/* Retrain if Channel EQ or CR not ok */
+	if (!drm_dp_channel_eq_ok(link_status, intel_dp->lane_count)) {
 		DRM_DEBUG_KMS("%s: channel EQ not ok, retraining\n",
 			      intel_encoder->base.name);
 
@@ -4164,6 +4271,7 @@ static bool
 intel_dp_short_pulse(struct intel_dp *intel_dp)
 {
 	struct drm_device *dev = intel_dp_to_dev(intel_dp);
+	struct intel_encoder *intel_encoder = &dp_to_dig_port(intel_dp)->base;
 	u8 sink_irq_vector = 0;
 	u8 old_sink_count = intel_dp->sink_count;
 	bool ret;
@@ -4197,7 +4305,7 @@ intel_dp_short_pulse(struct intel_dp *intel_dp)
 				   sink_irq_vector);
 
 		if (sink_irq_vector & DP_AUTOMATED_TEST_REQUEST)
-			DRM_DEBUG_DRIVER("Test request in short pulse not handled\n");
+			intel_dp_handle_test_request(intel_dp);
 		if (sink_irq_vector & (DP_CP_IRQ | DP_SINK_SPECIFIC_IRQ))
 			DRM_DEBUG_DRIVER("CP or sink specific irq unhandled\n");
 	}
@@ -4205,6 +4313,11 @@ intel_dp_short_pulse(struct intel_dp *intel_dp)
 	drm_modeset_lock(&dev->mode_config.connection_mutex, NULL);
 	intel_dp_check_link_status(intel_dp);
 	drm_modeset_unlock(&dev->mode_config.connection_mutex);
+	if (intel_dp->compliance.test_type == DP_TEST_LINK_TRAINING) {
+		DRM_DEBUG_KMS("Link Training Compliance Test requested\n");
+		/* Send a Hotplug Uevent to userspace to start modeset */
+		drm_kms_helper_hotplug_event(intel_encoder->base.dev);
+	}
 
 	return true;
 }
@@ -4511,11 +4624,15 @@ intel_dp_long_pulse(struct intel_connector *intel_connector)
 		      yesno(intel_dp_source_supports_hbr2(intel_dp)),
 		      yesno(drm_dp_tps3_supported(intel_dp->dpcd)));
 
-	/* Set the max lane count for sink */
-	intel_dp->max_sink_lane_count = drm_dp_max_lane_count(intel_dp->dpcd);
+	if (intel_dp->reset_link_params) {
+		/* Set the max lane count for sink */
+		intel_dp->max_sink_lane_count = drm_dp_max_lane_count(intel_dp->dpcd);
 
-	/* Set the max link BW for sink */
-	intel_dp->max_sink_link_bw = intel_dp_max_link_bw(intel_dp);
+		/* Set the max link BW for sink */
+		intel_dp->max_sink_link_bw = intel_dp_max_link_bw(intel_dp);
+
+		intel_dp->reset_link_params = false;
+	}
 
 	intel_dp_print_rates(intel_dp);
 
@@ -4897,6 +5014,8 @@ void intel_dp_encoder_reset(struct drm_encoder *encoder)
 	if (lspcon->active)
 		lspcon_resume(lspcon);
 
+	intel_dp->reset_link_params = true;
+
 	pps_lock(intel_dp);
 
 	if (IS_VALLEYVIEW(dev_priv) || IS_CHERRYVIEW(dev_priv))
@@ -4966,6 +5085,7 @@ intel_dp_hpd_pulse(struct intel_digital_port *intel_dig_port, bool long_hpd)
 		      long_hpd ? "long" : "short");
 
 	if (long_hpd) {
+		intel_dp->reset_link_params = true;
 		intel_dp->detect_done = false;
 		return IRQ_NONE;
 	}
@@ -5790,6 +5910,33 @@ out_vdd_off:
 	return false;
 }
 
+static void
+intel_dp_init_connector_port_info(struct intel_digital_port *intel_dig_port)
+{
+	struct intel_encoder *encoder = &intel_dig_port->base;
+
+	/* Set up the hotplug pin. */
+	switch (intel_dig_port->port) {
+	case PORT_A:
+		encoder->hpd_pin = HPD_PORT_A;
+		break;
+	case PORT_B:
+		encoder->hpd_pin = HPD_PORT_B;
+		break;
+	case PORT_C:
+		encoder->hpd_pin = HPD_PORT_C;
+		break;
+	case PORT_D:
+		encoder->hpd_pin = HPD_PORT_D;
+		break;
+	case PORT_E:
+		encoder->hpd_pin = HPD_PORT_E;
+		break;
+	default:
+		MISSING_CASE(intel_dig_port->port);
+	}
+}
+
 bool
 intel_dp_init_connector(struct intel_digital_port *intel_dig_port,
 			struct intel_connector *intel_connector)
@@ -5807,6 +5954,7 @@ intel_dp_init_connector(struct intel_digital_port *intel_dig_port,
 		 intel_dig_port->max_lanes, port_name(port)))
 		return false;
 
+	intel_dp->reset_link_params = true;
 	intel_dp->pps_pipe = INVALID_PIPE;
 	intel_dp->active_pipe = INVALID_PIPE;
 
@@ -5875,28 +6023,7 @@ intel_dp_init_connector(struct intel_digital_port *intel_dig_port,
 	else
 		intel_connector->get_hw_state = intel_connector_get_hw_state;
 
-	/* Set up the hotplug pin. */
-	switch (port) {
-	case PORT_A:
-		intel_encoder->hpd_pin = HPD_PORT_A;
-		break;
-	case PORT_B:
-		intel_encoder->hpd_pin = HPD_PORT_B;
-		if (IS_BXT_REVID(dev_priv, 0, BXT_REVID_A1))
-			intel_encoder->hpd_pin = HPD_PORT_A;
-		break;
-	case PORT_C:
-		intel_encoder->hpd_pin = HPD_PORT_C;
-		break;
-	case PORT_D:
-		intel_encoder->hpd_pin = HPD_PORT_D;
-		break;
-	case PORT_E:
-		intel_encoder->hpd_pin = HPD_PORT_E;
-		break;
-	default:
-		BUG();
-	}
+	intel_dp_init_connector_port_info(intel_dig_port);
 
 	/* init MST on ports that can support it */
 	if (HAS_DP_MST(dev_priv) && !is_edp(intel_dp) &&

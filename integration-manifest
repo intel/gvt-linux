@@ -1,0 +1,22 @@
+drm-intel drm-intel-fixes 7089db84e356562f8ba737c29e472cc42d530dbc
+	Linux 4.10-rc8
+drm-upstream drm-fixes 18a0de8816766a0da7537ef82156b5418ba5cd6e
+	Merge branch 'drm-fixes-4.10' of git://people.freedesktop.org/~agd5f/linux into drm-fixes
+drm-intel drm-intel-next-fixes 998d75730b40afc218c059d811869abe9676b305
+	drm/i915: Fix not finding the VBT when it overlaps with OPREGION_ASLE_EXT
+drm-intel drm-intel-next-queued 99c181a0fac084470842133bdeb3f78de3203ba9
+	drm/i915/tracepoints: Add hw_id to context tracepoints
+drm-upstream drm-next 9ca70356a9260403c1bda40d942935e55d00c11c
+	Revert "drm: Resurrect atomic rmfb code, v3"
+sound-upstream for-next 34371d236eab28933eefc0d77bd1e3df62fc585b
+	ALSA: usb-audio: localize function without external linkage
+sound-upstream for-linus 34371d236eab28933eefc0d77bd1e3df62fc585b
+	ALSA: usb-audio: localize function without external linkage
+drm-intel topic/core-for-CI ce3000be4f666479e49a4e844bda2a469b0bbb4d
+	e1000e: Undo e1000e_pm_freeze if __e1000_shutdown fails
+drm-misc drm-misc-next 54d82e0f2d5e64b2c4ed81785e7005f285ba42aa
+	drm: qxl: use vblank hooks in struct drm_crtc_funcs
+drm-misc drm-misc-next-fixes 2220fc1ab363e6fab1f321430d69be17a8b92bd7
+	uapi: add missing install of dma-buf.h
+drm-misc drm-misc-fixes bb08c04dc867b5f392caec635c097d5d5fcd8c9f
+	drm/dp/mst: fix kernel oops when turning off secondary monitor

@@ -322,10 +322,11 @@ update_connector_routing(struct drm_atomic_state *state,
 	}
 
 	if (!drm_encoder_crtc_ok(new_encoder, connector_state->crtc)) {
-		DRM_DEBUG_ATOMIC("[ENCODER:%d:%s] incompatible with [CRTC:%d]\n",
+		DRM_DEBUG_ATOMIC("[ENCODER:%d:%s] incompatible with [CRTC:%d:%s]\n",
 				 new_encoder->base.id,
 				 new_encoder->name,
-				 connector_state->crtc->base.id);
+				 connector_state->crtc->base.id,
+				 connector_state->crtc->name);
 		return -EINVAL;
 	}
 
@@ -1119,7 +1120,8 @@ drm_atomic_helper_wait_for_vblanks(struct drm_device *dev,
 					drm_crtc_vblank_count(crtc),
 				msecs_to_jiffies(50));
 
-		WARN(!ret, "[CRTC:%d] vblank wait timed out\n", crtc->base.id);
+		WARN(!ret, "[CRTC:%d:%s] vblank wait timed out\n",
+		     crtc->base.id, crtc->name);
 
 		drm_crtc_vblank_put(crtc);
 	}
@@ -1170,7 +1172,7 @@ EXPORT_SYMBOL(drm_atomic_helper_commit_tail);
 static void commit_tail(struct drm_atomic_state *old_state)
 {
 	struct drm_device *dev = old_state->dev;
-	struct drm_mode_config_helper_funcs *funcs;
+	const struct drm_mode_config_helper_funcs *funcs;
 
 	funcs = dev->mode_config.helper_private;
 
@@ -1977,11 +1979,11 @@ void drm_atomic_helper_swap_state(struct drm_atomic_state *state,
 	int i;
 	long ret;
 	struct drm_connector *connector;
-	struct drm_connector_state *conn_state;
+	struct drm_connector_state *conn_state, *old_conn_state;
 	struct drm_crtc *crtc;
-	struct drm_crtc_state *crtc_state;
+	struct drm_crtc_state *crtc_state, *old_crtc_state;
 	struct drm_plane *plane;
-	struct drm_plane_state *plane_state;
+	struct drm_plane_state *plane_state, *old_plane_state;
 	struct drm_crtc_commit *commit;
 
 	if (stall) {
@@ -2005,13 +2007,17 @@ void drm_atomic_helper_swap_state(struct drm_atomic_state *state,
 		}
 	}
 
-	for_each_connector_in_state(state, connector, conn_state, i) {
+	for_each_oldnew_connector_in_state(state, connector, old_conn_state, conn_state, i) {
+		WARN_ON(connector->state != old_conn_state);
+
 		connector->state->state = state;
 		swap(state->connectors[i].state, connector->state);
 		connector->state->state = NULL;
 	}
 
-	for_each_crtc_in_state(state, crtc, crtc_state, i) {
+	for_each_oldnew_crtc_in_state(state, crtc, old_crtc_state, crtc_state, i) {
+		WARN_ON(crtc->state != old_crtc_state);
+
 		crtc->state->state = state;
 		swap(state->crtcs[i].state, crtc->state);
 		crtc->state->state = NULL;
@@ -2026,7 +2032,9 @@ void drm_atomic_helper_swap_state(struct drm_atomic_state *state,
 		}
 	}
 
-	for_each_plane_in_state(state, plane, plane_state, i) {
+	for_each_oldnew_plane_in_state(state, plane, old_plane_state, plane_state, i) {
+		WARN_ON(plane->state != old_plane_state);
+
 		plane->state->state = state;
 		swap(state->planes[i].state, plane->state);
 		plane->state->state = NULL;
@@ -2477,7 +2485,7 @@ EXPORT_SYMBOL(drm_atomic_helper_disable_all);
  *
  * See also:
  * drm_atomic_helper_duplicate_state(), drm_atomic_helper_disable_all(),
- * drm_atomic_helper_resume()
+ * drm_atomic_helper_resume(), drm_atomic_helper_commit_duplicated_state()
  */
 struct drm_atomic_state *drm_atomic_helper_suspend(struct drm_device *dev)
 {
@@ -2518,6 +2526,47 @@ unlock:
 EXPORT_SYMBOL(drm_atomic_helper_suspend);
 
 /**
+ * drm_atomic_helper_commit_duplicated_state - commit duplicated state
+ * @state: duplicated atomic state to commit
+ * @ctx: pointer to acquire_ctx to use for commit.
+ *
+ * The state returned by drm_atomic_helper_duplicate_state() and
+ * drm_atomic_helper_suspend() is partially invalid, and needs to
+ * be fixed up before commit.
+ *
+ * Returns:
+ * 0 on success or a negative error code on failure.
+ *
+ * See also:
+ * drm_atomic_helper_suspend()
+ */
+int drm_atomic_helper_commit_duplicated_state(struct drm_atomic_state *state,
+					      struct drm_modeset_acquire_ctx *ctx)
+{
+	int i;
+	struct drm_plane *plane;
+	struct drm_plane_state *plane_state;
+	struct drm_connector *connector;
+	struct drm_connector_state *conn_state;
+	struct drm_crtc *crtc;
+	struct drm_crtc_state *crtc_state;
+
+	state->acquire_ctx = ctx;
+
+	for_each_new_plane_in_state(state, plane, plane_state, i)
+		state->planes[i].old_state = plane->state;
+
+	for_each_new_crtc_in_state(state, crtc, crtc_state, i)
+		state->crtcs[i].old_state = crtc->state;
+
+	for_each_new_connector_in_state(state, connector, conn_state, i)
+		state->connectors[i].old_state = connector->state;
+
+	return drm_atomic_commit(state);
+}
+EXPORT_SYMBOL(drm_atomic_helper_commit_duplicated_state);
+
+/**
  * drm_atomic_helper_resume - subsystem-level resume helper
  * @dev: DRM device
  * @state: atomic state to resume to
@@ -2540,9 +2589,9 @@ int drm_atomic_helper_resume(struct drm_device *dev,
 	int err;
 
 	drm_mode_config_reset(dev);
+
 	drm_modeset_lock_all(dev);
-	state->acquire_ctx = config->acquire_ctx;
-	err = drm_atomic_commit(state);
+	err = drm_atomic_helper_commit_duplicated_state(state, config->acquire_ctx);
 	drm_modeset_unlock_all(dev);
 
 	return err;
@@ -2718,7 +2767,8 @@ static int page_flip_common(
 				struct drm_atomic_state *state,
 				struct drm_crtc *crtc,
 				struct drm_framebuffer *fb,
-				struct drm_pending_vblank_event *event)
+				struct drm_pending_vblank_event *event,
+				uint32_t flags)
 {
 	struct drm_plane *plane = crtc->primary;
 	struct drm_plane_state *plane_state;
@@ -2730,11 +2780,11 @@ static int page_flip_common(
 		return PTR_ERR(crtc_state);
 
 	crtc_state->event = event;
+	crtc_state->pageflip_flags = flags;
 
 	plane_state = drm_atomic_get_plane_state(state, plane);
 	if (IS_ERR(plane_state))
 		return PTR_ERR(plane_state);
-
 
 	ret = drm_atomic_set_crtc_for_plane(plane_state, crtc);
 	if (ret != 0)
@@ -2744,8 +2794,8 @@ static int page_flip_common(
 	/* Make sure we don't accidentally do a full modeset. */
 	state->allow_modeset = false;
 	if (!crtc_state->active) {
-		DRM_DEBUG_ATOMIC("[CRTC:%d] disabled, rejecting legacy flip\n",
-				 crtc->base.id);
+		DRM_DEBUG_ATOMIC("[CRTC:%d:%s] disabled, rejecting legacy flip\n",
+				 crtc->base.id, crtc->name);
 		return -EINVAL;
 	}
 
@@ -2762,10 +2812,6 @@ static int page_flip_common(
  * Provides a default &drm_crtc_funcs.page_flip implementation
  * using the atomic driver interface.
  *
- * Note that for now so called async page flips (i.e. updates which are not
- * synchronized to vblank) are not supported, since the atomic interfaces have
- * no provisions for this yet.
- *
  * Returns:
  * Returns 0 on success, negative errno numbers on failure.
  *
@@ -2781,9 +2827,6 @@ int drm_atomic_helper_page_flip(struct drm_crtc *crtc,
 	struct drm_atomic_state *state;
 	int ret = 0;
 
-	if (flags & DRM_MODE_PAGE_FLIP_ASYNC)
-		return -EINVAL;
-
 	state = drm_atomic_state_alloc(plane->dev);
 	if (!state)
 		return -ENOMEM;
@@ -2791,7 +2834,7 @@ int drm_atomic_helper_page_flip(struct drm_crtc *crtc,
 	state->acquire_ctx = drm_modeset_legacy_acquire_ctx(crtc);
 
 retry:
-	ret = page_flip_common(state, crtc, fb, event);
+	ret = page_flip_common(state, crtc, fb, event, flags);
 	if (ret != 0)
 		goto fail;
 
@@ -2846,9 +2889,6 @@ int drm_atomic_helper_page_flip_target(
 	struct drm_crtc_state *crtc_state;
 	int ret = 0;
 
-	if (flags & DRM_MODE_PAGE_FLIP_ASYNC)
-		return -EINVAL;
-
 	state = drm_atomic_state_alloc(plane->dev);
 	if (!state)
 		return -ENOMEM;
@@ -2856,7 +2896,7 @@ int drm_atomic_helper_page_flip_target(
 	state->acquire_ctx = drm_modeset_legacy_acquire_ctx(crtc);
 
 retry:
-	ret = page_flip_common(state, crtc, fb, event);
+	ret = page_flip_common(state, crtc, fb, event, flags);
 	if (ret != 0)
 		goto fail;
 
@@ -3056,6 +3096,7 @@ void __drm_atomic_helper_crtc_duplicate_state(struct drm_crtc *crtc,
 	state->color_mgmt_changed = false;
 	state->zpos_changed = false;
 	state->event = NULL;
+	state->pageflip_flags = 0;
 }
 EXPORT_SYMBOL(__drm_atomic_helper_crtc_duplicate_state);
 

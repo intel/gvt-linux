@@ -1,0 +1,22 @@
+drm-intel drm-intel-fixes c470abd4fde40ea6a0846a2beab642a578c0b8cd
+	Linux 4.10
+drm-upstream drm-fixes 18a0de8816766a0da7537ef82156b5418ba5cd6e
+	Merge branch 'drm-fixes-4.10' of git://people.freedesktop.org/~agd5f/linux into drm-fixes
+drm-intel drm-intel-next-fixes 998d75730b40afc218c059d811869abe9676b305
+	drm/i915: Fix not finding the VBT when it overlaps with OPREGION_ASLE_EXT
+drm-intel drm-intel-next-queued 4509276ee824bb967885c095c610767e42345c36
+	drm/i915: Remove Braswell GGTT update w/a
+drm-upstream drm-next f81fa767077bbc9ac49c61ed97d28de09f3d069d
+	drm/sti: fix build warnings in sti_drv.c and sti_vtg.c files
+sound-upstream for-next 7086b7b3d101e0e6fca2bf7ca2f14483fc881837
+	ALSA: usb-audio: Tidy up mixer_us16x08.c
+sound-upstream for-linus 7086b7b3d101e0e6fca2bf7ca2f14483fc881837
+	ALSA: usb-audio: Tidy up mixer_us16x08.c
+drm-intel topic/core-for-CI ce3000be4f666479e49a4e844bda2a469b0bbb4d
+	e1000e: Undo e1000e_pm_freeze if __e1000_shutdown fails
+drm-misc drm-misc-next 54d82e0f2d5e64b2c4ed81785e7005f285ba42aa
+	drm: qxl: use vblank hooks in struct drm_crtc_funcs
+drm-misc drm-misc-next-fixes dc5e1d628a7bb631450ea661553a8bb496891f47
+	drm: zte: fix static checker warning on variable 'fmt'
+drm-misc drm-misc-fixes bb08c04dc867b5f392caec635c097d5d5fcd8c9f
+	drm/dp/mst: fix kernel oops when turning off secondary monitor

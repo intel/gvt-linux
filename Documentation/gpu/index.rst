@@ -14,6 +14,7 @@ Linux GPU Driver Developer's Guide
    tinydrm
    vga-switcheroo
    vgaarbiter
+   todo
 
 .. only::  subproject and html
 

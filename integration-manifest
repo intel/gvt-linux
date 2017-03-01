@@ -1,24 +1,12 @@
-drm-intel drm-intel-fixes c470abd4fde40ea6a0846a2beab642a578c0b8cd
+drm-tip/drm-tip 5d37006b578e38562382215e8782cfced9c992ce
+	drm-tip: 2017y-02m-28d-16h-27m-13s UTC integration manifest
+vfio-upstream/for-linus 930a42ded3fede7ca3acafc9153f4f2d0f56a92c
+	vfio/spapr_tce: Set window when adding additional groups to container
+vfio-upstream/next d9d84780f17cd9e25ddde10eb40357b96b7d6874
+	vfio: fix a typo in comment of function vfio_pin_pages
+origin/gvt-next 28b6def6ec6408e08970a0f1107b483961bfc7ae
+	drm/i915: Update DRIVER_DATE to 20170206
+origin/gvt-fixes c470abd4fde40ea6a0846a2beab642a578c0b8cd
 	Linux 4.10
-drm-upstream drm-fixes 18a0de8816766a0da7537ef82156b5418ba5cd6e
-	Merge branch 'drm-fixes-4.10' of git://people.freedesktop.org/~agd5f/linux into drm-fixes
-drm-intel drm-intel-next-fixes 998d75730b40afc218c059d811869abe9676b305
-	drm/i915: Fix not finding the VBT when it overlaps with OPREGION_ASLE_EXT
-drm-intel drm-intel-next-queued 0c33518db7d394d4eef1ce13f9dce32713f14beb
-	drm/i915/guc: Reorder __i915_guc_submit to reduce spinlock holdtime
-drm-upstream drm-next a44ddbcbbd72ba8569df1ecbb4b1372506454dff
-	Merge tag 'drm-misc-next-fixes-2017-02-27' of git://anongit.freedesktop.org/git/drm-misc into drm-next
-sound-upstream for-next 71321eb3f2d0df4e6c327e0b936eec4458a12054
-	ALSA: timer: Reject user params with too small ticks
-sound-upstream for-linus 71321eb3f2d0df4e6c327e0b936eec4458a12054
-	ALSA: timer: Reject user params with too small ticks
-drm-intel topic/core-for-CI c6096dc072558602b8efadda07ff2b887a9df33a
-	Merge remote-tracking branch 'x86/sched/urgent' into topic/core-for-CI
-drm-misc drm-misc-next fb4fe33f9331790238fe36e2398c3bb38005a428
-	drm: qxl: Enable atomic modesetting ioctl
-drm-misc drm-misc-next-fixes 888022c0473d079bff9b47fb50434b1f20f8f37f
-	dma-buf: add support for compat ioctl
-drm-misc drm-misc-fixes bb08c04dc867b5f392caec635c097d5d5fcd8c9f
-	drm/dp/mst: fix kernel oops when turning off secondary monitor
-drm-intel topic/designware-baytrail ca9b131b63aaf21419725bcf90497877d6bf6271
-	drm/i915: Listen for PMIC bus access notifications
+origin/gvt-next-fixes 858b0f571d30916bd69c45922045f24f26d6bfc9
+	drm/i915/gvt: set SFUSE_STRAP properly for vitual monitor detection

@@ -1,0 +1,24 @@
+drm-intel drm-intel-fixes c470abd4fde40ea6a0846a2beab642a578c0b8cd
+	Linux 4.10
+drm-upstream drm-fixes 18a0de8816766a0da7537ef82156b5418ba5cd6e
+	Merge branch 'drm-fixes-4.10' of git://people.freedesktop.org/~agd5f/linux into drm-fixes
+drm-intel drm-intel-next-fixes 998d75730b40afc218c059d811869abe9676b305
+	drm/i915: Fix not finding the VBT when it overlaps with OPREGION_ASLE_EXT
+drm-intel drm-intel-next-queued a746095c2db08d765222bf0058e76fb329d69e0e
+	drm/i915: Enable DDI IO power domains in the DP MST path
+drm-upstream drm-next a44ddbcbbd72ba8569df1ecbb4b1372506454dff
+	Merge tag 'drm-misc-next-fixes-2017-02-27' of git://anongit.freedesktop.org/git/drm-misc into drm-next
+sound-upstream for-next f3ac9f737603da80c2da3e84b89e74429836bb6d
+	ALSA: seq: Fix link corruption by event error handling
+sound-upstream for-linus f3ac9f737603da80c2da3e84b89e74429836bb6d
+	ALSA: seq: Fix link corruption by event error handling
+drm-intel topic/core-for-CI c6096dc072558602b8efadda07ff2b887a9df33a
+	Merge remote-tracking branch 'x86/sched/urgent' into topic/core-for-CI
+drm-misc drm-misc-next afc1ebf4562a14b8a981a0de2a3aa063dbd4c5b2
+	Revert "drm/i915: Implement Link Rate fallback on Link training failure"
+drm-misc drm-misc-next-fixes a44ddbcbbd72ba8569df1ecbb4b1372506454dff
+	Merge tag 'drm-misc-next-fixes-2017-02-27' of git://anongit.freedesktop.org/git/drm-misc into drm-next
+drm-misc drm-misc-fixes 3bc8b11dc78e95d0691effa95cf807e013e6449f
+	drm/edid: Add EDID_QUIRK_FORCE_8BPC quirk for Rotel RSX-1058
+drm-intel topic/designware-baytrail ca9b131b63aaf21419725bcf90497877d6bf6271
+	drm/i915: Listen for PMIC bus access notifications

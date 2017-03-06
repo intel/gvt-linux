@@ -1,24 +1,12 @@
-drm-intel drm-intel-fixes c1ae3cfa0e89fa1a7ecc4c99031f5e9ae99d9201
-	Linux 4.11-rc1
-drm-upstream drm-fixes 18a0de8816766a0da7537ef82156b5418ba5cd6e
-	Merge branch 'drm-fixes-4.10' of git://people.freedesktop.org/~agd5f/linux into drm-fixes
-drm-intel drm-intel-next-fixes 998d75730b40afc218c059d811869abe9676b305
-	drm/i915: Fix not finding the VBT when it overlaps with OPREGION_ASLE_EXT
-drm-intel drm-intel-next-queued 505b681539a7e14aeb866515d3ef1a67375839bc
-	drm/i915: Update DRIVER_DATE to 20170306
-drm-upstream drm-next a44ddbcbbd72ba8569df1ecbb4b1372506454dff
-	Merge tag 'drm-misc-next-fixes-2017-02-27' of git://anongit.freedesktop.org/git/drm-misc into drm-next
-sound-upstream for-next f3ac9f737603da80c2da3e84b89e74429836bb6d
-	ALSA: seq: Fix link corruption by event error handling
-sound-upstream for-linus f3ac9f737603da80c2da3e84b89e74429836bb6d
-	ALSA: seq: Fix link corruption by event error handling
-drm-intel topic/core-for-CI c6096dc072558602b8efadda07ff2b887a9df33a
-	Merge remote-tracking branch 'x86/sched/urgent' into topic/core-for-CI
-drm-misc drm-misc-next ca39b449f6d03e8235969f12f5dd25b8eb4304d6
-	drm/vc4: Fix OOPSes from trying to cache a partially constructed BO.
-drm-misc drm-misc-next-fixes a44ddbcbbd72ba8569df1ecbb4b1372506454dff
-	Merge tag 'drm-misc-next-fixes-2017-02-27' of git://anongit.freedesktop.org/git/drm-misc into drm-next
-drm-misc drm-misc-fixes 36fc579761b50784b63dafd0f2e796b659e0f5ee
-	drm/edid: Add EDID_QUIRK_FORCE_8BPC quirk for Rotel RSX-1058
-drm-intel topic/designware-baytrail 264ec1a8221c60f9ccf13f58ac597da21235132d
-	drm/i915: Listen for PMIC bus access notifications
+drm-tip/drm-tip f95d0140659ff38d30dd1b94e78003bda556f897
+	drm-tip: 2017y-03m-06d-08h-57m-41s UTC integration manifest
+vfio-upstream/for-linus 930a42ded3fede7ca3acafc9153f4f2d0f56a92c
+	vfio/spapr_tce: Set window when adding additional groups to container
+vfio-upstream/next d9d84780f17cd9e25ddde10eb40357b96b7d6874
+	vfio: fix a typo in comment of function vfio_pin_pages
+origin/gvt-next 28b6def6ec6408e08970a0f1107b483961bfc7ae
+	drm/i915: Update DRIVER_DATE to 20170206
+origin/gvt-fixes c470abd4fde40ea6a0846a2beab642a578c0b8cd
+	Linux 4.10
+origin/gvt-next-fixes c2e04fdab33181b53b5a2f9662b7b607b720f79f
+	drm/i915/gvt: protect RO and Rsvd bits of virtual vgpu configuration space

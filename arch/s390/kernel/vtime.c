@@ -6,7 +6,7 @@
  */
 
 #include <linux/kernel_stat.h>
-#include <linux/cputime.h>
+#include <linux/sched/cputime.h>
 #include <linux/export.h>
 #include <linux/kernel.h>
 #include <linux/timex.h>
@@ -350,7 +350,7 @@ static void __add_vtimer(struct vtimer_list *timer, int periodic)
 }
 
 /*
- * add_virt_timer - add an oneshot virtual CPU timer
+ * add_virt_timer - add a oneshot virtual CPU timer
  */
 void add_virt_timer(struct vtimer_list *timer)
 {

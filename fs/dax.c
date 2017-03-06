@@ -27,6 +27,7 @@
 #include <linux/pagevec.h>
 #include <linux/pmem.h>
 #include <linux/sched.h>
+#include <linux/sched/signal.h>
 #include <linux/uio.h>
 #include <linux/vmstat.h>
 #include <linux/pfn_t.h>
@@ -1436,7 +1437,8 @@ out:
 	return result;
 }
 #else
-static int dax_iomap_pmd_fault(struct vm_fault *vmf, struct iomap_ops *ops)
+static int dax_iomap_pmd_fault(struct vm_fault *vmf,
+			       const struct iomap_ops *ops)
 {
 	return VM_FAULT_FALLBACK;
 }

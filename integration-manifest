@@ -1,0 +1,24 @@
+drm-intel drm-intel-fixes 70647f9163aa4fc7090b0d6795d026ebe3897928
+	Merge tag 'gvt-fixes-2017-03-08' of https://github.com/01org/gvt-linux into drm-intel-fixes
+drm-upstream drm-fixes 18a0de8816766a0da7537ef82156b5418ba5cd6e
+	Merge branch 'drm-fixes-4.10' of git://people.freedesktop.org/~agd5f/linux into drm-fixes
+drm-intel drm-intel-next-fixes 998d75730b40afc218c059d811869abe9676b305
+	drm/i915: Fix not finding the VBT when it overlaps with OPREGION_ASLE_EXT
+drm-intel drm-intel-next-queued 86b04268d4b25c3a00fa5f77ceebabecf681040a
+	drm/i915: Fix up verify_encoder_state
+drm-upstream drm-next 6796b129b0e98162a84e0b6322ac28587556d427
+	Merge branch 'linux-4.12' of git://github.com/skeggsb/linux into drm-next
+sound-upstream for-next f3ac9f737603da80c2da3e84b89e74429836bb6d
+	ALSA: seq: Fix link corruption by event error handling
+sound-upstream for-linus f3ac9f737603da80c2da3e84b89e74429836bb6d
+	ALSA: seq: Fix link corruption by event error handling
+drm-intel topic/core-for-CI 92d6def47482144016bb379e8d015f41e36e4b96
+	e1000e: Undo e1000e_pm_freeze if __e1000_shutdown fails
+drm-misc drm-misc-next 1bdb5d5b8e571b8a1ce7b0f0e3abbb359c303bef
+	drm/debugfs: Remove the drm_driver.debugfs_cleanup callback
+drm-misc drm-misc-next-fixes a44ddbcbbd72ba8569df1ecbb4b1372506454dff
+	Merge tag 'drm-misc-next-fixes-2017-02-27' of git://anongit.freedesktop.org/git/drm-misc into drm-next
+drm-misc drm-misc-fixes 864558ec58ab3d7e6d9014991f7181d49f05c37e
+	drm/msm: Fix compilation error when CONFIG_DEBUG_FS undefined
+drm-intel topic/designware-baytrail 264ec1a8221c60f9ccf13f58ac597da21235132d
+	drm/i915: Listen for PMIC bus access notifications

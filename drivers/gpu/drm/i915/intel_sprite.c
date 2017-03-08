@@ -65,6 +65,8 @@ int intel_usecs_to_scanlines(const struct drm_display_mode *adjusted_mode,
 			    1000 * adjusted_mode->crtc_htotal);
 }
 
+#define VBLANK_EVASION_TIME_US 100
+
 /**
  * intel_pipe_update_start() - start update of a set of display registers
  * @crtc: the crtc of which the registers are going to be updated
@@ -92,7 +94,8 @@ void intel_pipe_update_start(struct intel_crtc *crtc)
 		vblank_start = DIV_ROUND_UP(vblank_start, 2);
 
 	/* FIXME needs to be calibrated sensibly */
-	min = vblank_start - intel_usecs_to_scanlines(adjusted_mode, 100);
+	min = vblank_start - intel_usecs_to_scanlines(adjusted_mode,
+						      VBLANK_EVASION_TIME_US);
 	max = vblank_start - 1;
 
 	local_irq_disable();
@@ -158,6 +161,7 @@ void intel_pipe_update_end(struct intel_crtc *crtc, struct intel_flip_work *work
 	int scanline_end = intel_get_crtc_scanline(crtc);
 	u32 end_vbl_count = intel_crtc_get_vblank_counter(crtc);
 	ktime_t end_vbl_time = ktime_get();
+	struct drm_i915_private *dev_priv = to_i915(crtc->base.dev);
 
 	if (work) {
 		work->flip_queued_vblank = end_vbl_count;
@@ -183,6 +187,9 @@ void intel_pipe_update_end(struct intel_crtc *crtc, struct intel_flip_work *work
 
 	local_irq_enable();
 
+	if (intel_vgpu_active(dev_priv))
+		return;
+
 	if (crtc->debug.start_vbl_count &&
 	    crtc->debug.start_vbl_count != end_vbl_count) {
 		DRM_ERROR("Atomic update failure on pipe %c (start=%u end=%u) time %lld us, min %d, max %d, scanline start %d, end %d\n",
@@ -191,7 +198,12 @@ void intel_pipe_update_end(struct intel_crtc *crtc, struct intel_flip_work *work
 			  ktime_us_delta(end_vbl_time, crtc->debug.start_vbl_time),
 			  crtc->debug.min_vbl, crtc->debug.max_vbl,
 			  crtc->debug.scanline_start, scanline_end);
-	}
+	} else if (ktime_us_delta(end_vbl_time, crtc->debug.start_vbl_time) >
+		   VBLANK_EVASION_TIME_US)
+		DRM_WARN("Atomic update on pipe (%c) took %lld us, max time under evasion is %u us\n",
+			 pipe_name(pipe),
+			 ktime_us_delta(end_vbl_time, crtc->debug.start_vbl_time),
+			 VBLANK_EVASION_TIME_US);
 }
 
 static void
@@ -219,13 +231,22 @@ skl_update_plane(struct drm_plane *drm_plane,
 	uint32_t src_w = drm_rect_width(&plane_state->base.src) >> 16;
 	uint32_t src_h = drm_rect_height(&plane_state->base.src) >> 16;
 
-	plane_ctl = PLANE_CTL_ENABLE |
-		PLANE_CTL_PIPE_GAMMA_ENABLE |
-		PLANE_CTL_PIPE_CSC_ENABLE;
+	plane_ctl = PLANE_CTL_ENABLE;
+
+	if (IS_GEMINILAKE(dev_priv)) {
+		I915_WRITE(PLANE_COLOR_CTL(pipe, plane_id),
+			   PLANE_COLOR_PIPE_GAMMA_ENABLE |
+			   PLANE_COLOR_PIPE_CSC_ENABLE |
+			   PLANE_COLOR_PLANE_GAMMA_DISABLE);
+	} else {
+		plane_ctl |=
+			PLANE_CTL_PIPE_GAMMA_ENABLE |
+			PLANE_CTL_PIPE_CSC_ENABLE |
+			PLANE_CTL_PLANE_GAMMA_DISABLE;
+	}
 
 	plane_ctl |= skl_plane_ctl_format(fb->format->format);
 	plane_ctl |= skl_plane_ctl_tiling(fb->modifier);
-
 	plane_ctl |= skl_plane_ctl_rotation(rotation);
 
 	if (key->flags) {

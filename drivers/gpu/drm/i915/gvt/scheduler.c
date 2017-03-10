@@ -84,7 +84,7 @@ static int populate_shadow_context(struct intel_vgpu_workload *workload)
 				(u32)((workload->ctx_desc.lrca + i) <<
 				GTT_PAGE_SHIFT));
 		if (context_gpa == INTEL_GVT_INVALID_ADDR) {
-			gvt_err("Invalid guest context descriptor\n");
+			gvt_vgpu_err("Invalid guest context descriptor\n");
 			return -EINVAL;
 		}
 
@@ -139,6 +139,9 @@ static int shadow_context_status_change(struct notifier_block *nb,
 	struct intel_vgpu_workload *workload =
 		scheduler->current_workload[req->engine->id];
 
+	if (unlikely(!workload))
+		return NOTIFY_OK;
+
 	switch (action) {
 	case INTEL_CONTEXT_SCHEDULE_IN:
 		intel_gvt_load_render_mmio(workload->vgpu,
@@ -148,6 +151,15 @@ static int shadow_context_status_change(struct notifier_block *nb,
 	case INTEL_CONTEXT_SCHEDULE_OUT:
 		intel_gvt_restore_render_mmio(workload->vgpu,
 					      workload->ring_id);
+		/* If the status is -EINPROGRESS means this workload
+		 * doesn't meet any issue during dispatching so when
+		 * get the SCHEDULE_OUT set the status to be zero for
+		 * good. If the status is NOT -EINPROGRESS means there
+		 * is something wrong happened during dispatching and
+		 * the status should not be set to zero
+		 */
+		if (workload->status == -EINPROGRESS)
+			workload->status = 0;
 		atomic_set(&workload->shadow_ctx_active, 0);
 		break;
 	default:
@@ -164,6 +176,7 @@ static int dispatch_workload(struct intel_vgpu_workload *workload)
 	struct i915_gem_context *shadow_ctx = workload->vgpu->shadow_ctx;
 	struct drm_i915_private *dev_priv = workload->vgpu->gvt->dev_priv;
 	struct drm_i915_gem_request *rq;
+	struct intel_vgpu *vgpu = workload->vgpu;
 	int ret;
 
 	gvt_dbg_sched("ring id %d prepare to dispatch workload %p\n",
@@ -177,7 +190,7 @@ static int dispatch_workload(struct intel_vgpu_workload *workload)
 
 	rq = i915_gem_request_alloc(dev_priv->engine[ring_id], shadow_ctx);
 	if (IS_ERR(rq)) {
-		gvt_err("fail to allocate gem request\n");
+		gvt_vgpu_err("fail to allocate gem request\n");
 		ret = PTR_ERR(rq);
 		goto out;
 	}
@@ -310,7 +323,7 @@ static void update_guest_context(struct intel_vgpu_workload *workload)
 				(u32)((workload->ctx_desc.lrca + i) <<
 					GTT_PAGE_SHIFT));
 		if (context_gpa == INTEL_GVT_INVALID_ADDR) {
-			gvt_err("invalid guest context descriptor\n");
+			gvt_vgpu_err("invalid guest context descriptor\n");
 			return;
 		}
 
@@ -359,15 +372,23 @@ static void complete_current_workload(struct intel_gvt *gvt, int ring_id)
 	workload = scheduler->current_workload[ring_id];
 	vgpu = workload->vgpu;
 
-	if (!workload->status && !vgpu->resetting) {
+	/* For the workload w/ request, needs to wait for the context
+	 * switch to make sure request is completed.
+	 * For the workload w/o request, directly complete the workload.
+	 */
+	if (workload->req) {
 		wait_event(workload->shadow_ctx_status_wq,
 			   !atomic_read(&workload->shadow_ctx_active));
 
-		update_guest_context(workload);
+		i915_gem_request_put(fetch_and_zero(&workload->req));
 
-		for_each_set_bit(event, workload->pending_events,
-				 INTEL_GVT_EVENT_MAX)
-			intel_vgpu_trigger_virtual_event(vgpu, event);
+		if (!workload->status && !vgpu->resetting) {
+			update_guest_context(workload);
+
+			for_each_set_bit(event, workload->pending_events,
+					 INTEL_GVT_EVENT_MAX)
+				intel_vgpu_trigger_virtual_event(vgpu, event);
+		}
 	}
 
 	gvt_dbg_sched("ring id %d complete workload %p status %d\n",
@@ -397,7 +418,7 @@ static int workload_thread(void *priv)
 	int ring_id = p->ring_id;
 	struct intel_gvt_workload_scheduler *scheduler = &gvt->scheduler;
 	struct intel_vgpu_workload *workload = NULL;
-	long lret;
+	struct intel_vgpu *vgpu = NULL;
 	int ret;
 	bool need_force_wake = IS_SKYLAKE(gvt->dev_priv);
 	DEFINE_WAIT_FUNC(wait, woken_wake_function);
@@ -440,28 +461,30 @@ static int workload_thread(void *priv)
 		mutex_unlock(&gvt->lock);
 
 		if (ret) {
-			gvt_err("fail to dispatch workload, skip\n");
+			vgpu = workload->vgpu;
+			gvt_vgpu_err("fail to dispatch workload, skip\n");
 			goto complete;
 		}
 
 		gvt_dbg_sched("ring id %d wait workload %p\n",
 				workload->ring_id, workload);
-
-		lret = i915_wait_request(workload->req,
+retry:
+		i915_wait_request(workload->req,
 					 0, MAX_SCHEDULE_TIMEOUT);
-		if (lret < 0) {
-			workload->status = lret;
-			gvt_err("fail to wait workload, skip\n");
-		} else {
-			workload->status = 0;
+		/* I915 has replay mechanism and a request will be replayed
+		 * if there is i915 reset. So the seqno will be updated anyway.
+		 * If the seqno is not updated yet after waiting, which means
+		 * the replay may still be in progress and we can wait again.
+		 */
+		if (!i915_gem_request_completed(workload->req)) {
+			gvt_dbg_sched("workload %p not completed, wait again\n",
+					workload);
+			goto retry;
 		}
 
 complete:
 		gvt_dbg_sched("will complete workload %p, status: %d\n",
 				workload, workload->status);
-
-		if (workload->req)
-			i915_gem_request_put(fetch_and_zero(&workload->req));
 
 		complete_current_workload(gvt, ring_id);
 

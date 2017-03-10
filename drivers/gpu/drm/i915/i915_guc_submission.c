@@ -348,7 +348,7 @@ int i915_guc_wq_reserve(struct drm_i915_gem_request *request)
 	u32 freespace;
 	int ret;
 
-	spin_lock(&client->wq_lock);
+	spin_lock_irq(&client->wq_lock);
 	freespace = CIRC_SPACE(client->wq_tail, desc->head, client->wq_size);
 	freespace -= client->wq_rsvd;
 	if (likely(freespace >= wqi_size)) {
@@ -358,21 +358,27 @@ int i915_guc_wq_reserve(struct drm_i915_gem_request *request)
 		client->no_wq_space++;
 		ret = -EAGAIN;
 	}
-	spin_unlock(&client->wq_lock);
+	spin_unlock_irq(&client->wq_lock);
 
 	return ret;
 }
 
+static void guc_client_update_wq_rsvd(struct i915_guc_client *client, int size)
+{
+	unsigned long flags;
+
+	spin_lock_irqsave(&client->wq_lock, flags);
+	client->wq_rsvd += size;
+	spin_unlock_irqrestore(&client->wq_lock, flags);
+}
+
 void i915_guc_wq_unreserve(struct drm_i915_gem_request *request)
 {
-	const size_t wqi_size = sizeof(struct guc_wq_item);
+	const int wqi_size = sizeof(struct guc_wq_item);
 	struct i915_guc_client *client = request->i915->guc.execbuf_client;
 
 	GEM_BUG_ON(READ_ONCE(client->wq_rsvd) < wqi_size);
-
-	spin_lock(&client->wq_lock);
-	client->wq_rsvd -= wqi_size;
-	spin_unlock(&client->wq_lock);
+	guc_client_update_wq_rsvd(client, -wqi_size);
 }
 
 /* Construct a Work Item and append it to the GuC's Work Queue */
@@ -509,15 +515,18 @@ static void __i915_guc_submit(struct drm_i915_gem_request *rq)
 	unsigned int engine_id = engine->id;
 	struct intel_guc *guc = &rq->i915->guc;
 	struct i915_guc_client *client = guc->execbuf_client;
+	unsigned long flags;
 	int b_ret;
-
-	spin_lock(&client->wq_lock);
-	guc_wq_item_append(client, rq);
 
 	/* WA to flush out the pending GMADR writes to ring buffer. */
 	if (i915_vma_is_map_and_fenceable(rq->ring->vma))
 		POSTING_READ_FW(GUC_STATUS);
 
+	trace_i915_gem_request_in(rq, 0);
+
+	spin_lock_irqsave(&client->wq_lock, flags);
+
+	guc_wq_item_append(client, rq);
 	b_ret = guc_ring_doorbell(client);
 
 	client->submissions[engine_id] += 1;
@@ -527,7 +536,8 @@ static void __i915_guc_submit(struct drm_i915_gem_request *rq)
 
 	guc->submissions[engine_id] += 1;
 	guc->last_seqno[engine_id] = rq->global_seqno;
-	spin_unlock(&client->wq_lock);
+
+	spin_unlock_irqrestore(&client->wq_lock, flags);
 }
 
 static void i915_guc_submit(struct drm_i915_gem_request *rq)
@@ -926,6 +936,26 @@ static void guc_reset_wq(struct i915_guc_client *client)
 	client->wq_tail = 0;
 }
 
+static void guc_interrupts_capture(struct drm_i915_private *dev_priv)
+{
+	struct intel_engine_cs *engine;
+	enum intel_engine_id id;
+	int irqs;
+
+	/* tell all command streamers to forward interrupts (but not vblank) to GuC */
+	irqs = _MASKED_BIT_ENABLE(GFX_INTERRUPT_STEERING);
+	for_each_engine(engine, dev_priv, id)
+		I915_WRITE(RING_MODE_GEN7(engine), irqs);
+
+	/* route USER_INTERRUPT to Host, all others are sent to GuC. */
+	irqs = GT_RENDER_USER_INTERRUPT << GEN8_RCS_IRQ_SHIFT |
+	       GT_RENDER_USER_INTERRUPT << GEN8_BCS_IRQ_SHIFT;
+	/* These three registers have the same bit definitions */
+	I915_WRITE(GUC_BCS_RCS_IER, ~irqs);
+	I915_WRITE(GUC_VCS2_VCS1_IER, ~irqs);
+	I915_WRITE(GUC_WD_VECS_IER, ~irqs);
+}
+
 int i915_guc_submission_enable(struct drm_i915_private *dev_priv)
 {
 	struct intel_guc *guc = &dev_priv->guc;
@@ -943,16 +973,23 @@ int i915_guc_submission_enable(struct drm_i915_private *dev_priv)
 
 	/* Take over from manual control of ELSP (execlists) */
 	for_each_engine(engine, dev_priv, id) {
-		struct drm_i915_gem_request *rq;
-
 		engine->submit_request = i915_guc_submit;
 		engine->schedule = NULL;
+	}
 
-		/* Replay the current set of previously submitted requests */
+	guc_interrupts_capture(dev_priv);
+
+	/* Replay the current set of previously submitted requests */
+	for_each_engine(engine, dev_priv, id) {
+		const int wqi_size = sizeof(struct guc_wq_item);
+		struct drm_i915_gem_request *rq;
+
+		spin_lock_irq(&engine->timeline->lock);
 		list_for_each_entry(rq, &engine->timeline->requests, link) {
-			client->wq_rsvd += sizeof(struct guc_wq_item);
+			guc_client_update_wq_rsvd(client, wqi_size);
 			__i915_guc_submit(rq);
 		}
+		spin_unlock_irq(&engine->timeline->lock);
 	}
 
 	return 0;

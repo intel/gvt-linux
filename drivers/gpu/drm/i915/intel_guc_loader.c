@@ -91,70 +91,6 @@ const char *intel_uc_fw_status_repr(enum intel_uc_fw_status status)
 	}
 };
 
-static void guc_interrupts_release(struct drm_i915_private *dev_priv)
-{
-	struct intel_engine_cs *engine;
-	enum intel_engine_id id;
-	int irqs;
-
-	/* tell all command streamers NOT to forward interrupts or vblank to GuC */
-	irqs = _MASKED_FIELD(GFX_FORWARD_VBLANK_MASK, GFX_FORWARD_VBLANK_NEVER);
-	irqs |= _MASKED_BIT_DISABLE(GFX_INTERRUPT_STEERING);
-	for_each_engine(engine, dev_priv, id)
-		I915_WRITE(RING_MODE_GEN7(engine), irqs);
-
-	/* route all GT interrupts to the host */
-	I915_WRITE(GUC_BCS_RCS_IER, 0);
-	I915_WRITE(GUC_VCS2_VCS1_IER, 0);
-	I915_WRITE(GUC_WD_VECS_IER, 0);
-}
-
-static void guc_interrupts_capture(struct drm_i915_private *dev_priv)
-{
-	struct intel_engine_cs *engine;
-	enum intel_engine_id id;
-	int irqs;
-	u32 tmp;
-
-	/* tell all command streamers to forward interrupts (but not vblank) to GuC */
-	irqs = _MASKED_BIT_ENABLE(GFX_INTERRUPT_STEERING);
-	for_each_engine(engine, dev_priv, id)
-		I915_WRITE(RING_MODE_GEN7(engine), irqs);
-
-	/* route USER_INTERRUPT to Host, all others are sent to GuC. */
-	irqs = GT_RENDER_USER_INTERRUPT << GEN8_RCS_IRQ_SHIFT |
-	       GT_RENDER_USER_INTERRUPT << GEN8_BCS_IRQ_SHIFT;
-	/* These three registers have the same bit definitions */
-	I915_WRITE(GUC_BCS_RCS_IER, ~irqs);
-	I915_WRITE(GUC_VCS2_VCS1_IER, ~irqs);
-	I915_WRITE(GUC_WD_VECS_IER, ~irqs);
-
-	/*
-	 * The REDIRECT_TO_GUC bit of the PMINTRMSK register directs all
-	 * (unmasked) PM interrupts to the GuC. All other bits of this
-	 * register *disable* generation of a specific interrupt.
-	 *
-	 * 'pm_intr_keep' indicates bits that are NOT to be set when
-	 * writing to the PM interrupt mask register, i.e. interrupts
-	 * that must not be disabled.
-	 *
-	 * If the GuC is handling these interrupts, then we must not let
-	 * the PM code disable ANY interrupt that the GuC is expecting.
-	 * So for each ENABLED (0) bit in this register, we must SET the
-	 * bit in pm_intr_keep so that it's left enabled for the GuC.
-	 *
-	 * OTOH the REDIRECT_TO_GUC bit is initially SET in pm_intr_keep
-	 * (so interrupts go to the DISPLAY unit at first); but here we
-	 * need to CLEAR that bit, which will result in the register bit
-	 * being left SET!
-	 */
-	tmp = I915_READ(GEN6_PMINTRMSK);
-	if (tmp & GEN8_PMINTR_REDIRECT_TO_GUC) {
-		dev_priv->rps.pm_intr_keep |= ~tmp;
-		dev_priv->rps.pm_intr_keep &= ~GEN8_PMINTR_REDIRECT_TO_GUC;
-	}
-}
-
 static u32 get_gttype(struct drm_i915_private *dev_priv)
 {
 	/* XXX: GT type based on PCI device ID? field seems unused by fw */
@@ -475,7 +411,6 @@ int intel_guc_setup(struct drm_i915_private *dev_priv)
 		goto fail;
 	}
 
-	guc_interrupts_release(dev_priv);
 	gen9_reset_guc_interrupts(dev_priv);
 
 	/* We need to notify the guc whenever we change the GGTT */
@@ -520,10 +455,6 @@ int intel_guc_setup(struct drm_i915_private *dev_priv)
 
 	guc_fw->load_status = INTEL_UC_FIRMWARE_SUCCESS;
 
-	DRM_DEBUG_DRIVER("GuC fw status: fetch %s, load %s\n",
-		intel_uc_fw_status_repr(guc_fw->fetch_status),
-		intel_uc_fw_status_repr(guc_fw->load_status));
-
 	intel_guc_auth_huc(dev_priv);
 
 	if (i915.enable_guc_submission) {
@@ -533,8 +464,12 @@ int intel_guc_setup(struct drm_i915_private *dev_priv)
 		err = i915_guc_submission_enable(dev_priv);
 		if (err)
 			goto fail;
-		guc_interrupts_capture(dev_priv);
 	}
+
+	DRM_INFO("GuC %s (firmware %s [version %u.%u])\n",
+		 i915.enable_guc_submission ? "submission enabled" : "loaded",
+		 guc_fw->path,
+		 guc_fw->major_ver_found, guc_fw->minor_ver_found);
 
 	return 0;
 
@@ -542,7 +477,6 @@ fail:
 	if (guc_fw->load_status == INTEL_UC_FIRMWARE_PENDING)
 		guc_fw->load_status = INTEL_UC_FIRMWARE_FAIL;
 
-	guc_interrupts_release(dev_priv);
 	i915_guc_submission_disable(dev_priv);
 	i915_guc_submission_fini(dev_priv);
 	i915_ggtt_disable_guc(dev_priv);
@@ -713,12 +647,9 @@ fail:
 	DRM_DEBUG_DRIVER("uC fw fetch status FAIL; err %d, fw %p, obj %p\n",
 		err, fw, uc_fw->obj);
 
-	mutex_lock(&dev_priv->drm.struct_mutex);
-	obj = uc_fw->obj;
+	obj = fetch_and_zero(&uc_fw->obj);
 	if (obj)
 		i915_gem_object_put(obj);
-	uc_fw->obj = NULL;
-	mutex_unlock(&dev_priv->drm.struct_mutex);
 
 	release_firmware(fw);		/* OK even if fw is NULL */
 	uc_fw->fetch_status = INTEL_UC_FIRMWARE_FAIL;
@@ -792,16 +723,16 @@ void intel_guc_init(struct drm_i915_private *dev_priv)
 void intel_guc_fini(struct drm_i915_private *dev_priv)
 {
 	struct intel_uc_fw *guc_fw = &dev_priv->guc.fw;
+	struct drm_i915_gem_object *obj;
 
 	mutex_lock(&dev_priv->drm.struct_mutex);
-	guc_interrupts_release(dev_priv);
 	i915_guc_submission_disable(dev_priv);
 	i915_guc_submission_fini(dev_priv);
-
-	if (guc_fw->obj)
-		i915_gem_object_put(guc_fw->obj);
-	guc_fw->obj = NULL;
 	mutex_unlock(&dev_priv->drm.struct_mutex);
+
+	obj = fetch_and_zero(&guc_fw->obj);
+	if (obj)
+		i915_gem_object_put(obj);
 
 	guc_fw->fetch_status = INTEL_UC_FIRMWARE_NONE;
 }

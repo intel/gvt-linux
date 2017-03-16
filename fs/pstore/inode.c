@@ -186,6 +186,26 @@ static const struct file_operations pstore_file_operations = {
 	.release	= seq_release,
 };
 
+struct pstore_unlink_work {
+	struct work_struct work;
+	struct dentry *dentry;
+};
+
+static void pstore_unlink_work(struct work_struct *work)
+{
+	struct pstore_unlink_work *arg = container_of(work, typeof(*arg), work);
+	struct dentry *dentry = arg->dentry;
+	struct pstore_private *p = d_inode(dentry)->i_private;
+
+	mutex_lock(&p->psi->read_mutex);
+	p->psi->erase(p->type, p->id, p->count,
+		      d_inode(dentry)->i_ctime, p->psi);
+	mutex_unlock(&p->psi->read_mutex);
+
+	dput(dentry);
+	kfree(arg);
+}
+
 /*
  * When a file is unlinked from our file system we call the
  * platform driver to erase the record from persistent store.
@@ -193,20 +213,23 @@ static const struct file_operations pstore_file_operations = {
 static int pstore_unlink(struct inode *dir, struct dentry *dentry)
 {
 	struct pstore_private *p = d_inode(dentry)->i_private;
+	struct pstore_unlink_work *work;
 	int err;
 
 	err = pstore_check_syslog_permissions(p);
 	if (err)
 		return err;
 
-	if (p->psi->erase) {
-		mutex_lock(&p->psi->read_mutex);
-		p->psi->erase(p->type, p->id, p->count,
-			      d_inode(dentry)->i_ctime, p->psi);
-		mutex_unlock(&p->psi->read_mutex);
-	} else {
+	if (!p->psi->erase)
 		return -EPERM;
-	}
+
+	work = kmalloc(sizeof(*work), GFP_KERNEL);
+	if (!work)
+		return -ENOMEM;
+
+	work->dentry = dget(dentry);
+	INIT_WORK(&work->work, pstore_unlink_work);
+	schedule_work(&work->work);
 
 	return simple_unlink(dir, dentry);
 }

@@ -175,6 +175,7 @@ static int dispatch_workload(struct intel_vgpu_workload *workload)
 	int ring_id = workload->ring_id;
 	struct i915_gem_context *shadow_ctx = workload->vgpu->shadow_ctx;
 	struct drm_i915_private *dev_priv = workload->vgpu->gvt->dev_priv;
+	struct intel_engine_cs *engine = dev_priv->engine[ring_id];
 	struct drm_i915_gem_request *rq;
 	struct intel_vgpu *vgpu = workload->vgpu;
 	int ret;
@@ -187,6 +188,21 @@ static int dispatch_workload(struct intel_vgpu_workload *workload)
 				    GEN8_CTX_ADDRESSING_MODE_SHIFT;
 
 	mutex_lock(&dev_priv->drm.struct_mutex);
+
+	/* pin shadow context by gvt even the shadow context will be pinned
+	 * when i915 alloc request. That is because gvt will update the guest
+	 * context from shadow context when workload is completed, and at that
+	 * moment, i915 may already unpined the shadow context to make the
+	 * shadow_ctx pages invalid. So gvt need to pin itself. After update
+	 * the guest context, gvt can unpin the shadow_ctx safely.
+	 */
+	ret = engine->context_pin(engine, shadow_ctx);
+	if (ret) {
+		gvt_vgpu_err("fail to pin shadow context\n");
+		workload->status = ret;
+		mutex_unlock(&dev_priv->drm.struct_mutex);
+		return ret;
+	}
 
 	rq = i915_gem_request_alloc(dev_priv->engine[ring_id], shadow_ctx);
 	if (IS_ERR(rq)) {
@@ -203,9 +219,12 @@ static int dispatch_workload(struct intel_vgpu_workload *workload)
 	if (ret)
 		goto out;
 
-	ret = intel_gvt_scan_and_shadow_wa_ctx(&workload->wa_ctx);
-	if (ret)
-		goto out;
+	if ((workload->ring_id == RCS) &&
+	    (workload->wa_ctx.indirect_ctx.size != 0)) {
+		ret = intel_gvt_scan_and_shadow_wa_ctx(&workload->wa_ctx);
+		if (ret)
+			goto out;
+	}
 
 	ret = populate_shadow_context(workload);
 	if (ret)
@@ -228,6 +247,9 @@ out:
 
 	if (!IS_ERR_OR_NULL(rq))
 		i915_add_request_no_flush(rq);
+	else
+		engine->context_unpin(engine, shadow_ctx);
+
 	mutex_unlock(&dev_priv->drm.struct_mutex);
 	return ret;
 }
@@ -377,6 +399,10 @@ static void complete_current_workload(struct intel_gvt *gvt, int ring_id)
 	 * For the workload w/o request, directly complete the workload.
 	 */
 	if (workload->req) {
+		struct drm_i915_private *dev_priv =
+			workload->vgpu->gvt->dev_priv;
+		struct intel_engine_cs *engine =
+			dev_priv->engine[workload->ring_id];
 		wait_event(workload->shadow_ctx_status_wq,
 			   !atomic_read(&workload->shadow_ctx_active));
 
@@ -389,6 +415,10 @@ static void complete_current_workload(struct intel_gvt *gvt, int ring_id)
 					 INTEL_GVT_EVENT_MAX)
 				intel_vgpu_trigger_virtual_event(vgpu, event);
 		}
+		mutex_lock(&dev_priv->drm.struct_mutex);
+		/* unpin shadow ctx as the shadow_ctx update is done */
+		engine->context_unpin(engine, workload->vgpu->shadow_ctx);
+		mutex_unlock(&dev_priv->drm.struct_mutex);
 	}
 
 	gvt_dbg_sched("ring id %d complete workload %p status %d\n",
@@ -468,19 +498,7 @@ static int workload_thread(void *priv)
 
 		gvt_dbg_sched("ring id %d wait workload %p\n",
 				workload->ring_id, workload);
-retry:
-		i915_wait_request(workload->req,
-					 0, MAX_SCHEDULE_TIMEOUT);
-		/* I915 has replay mechanism and a request will be replayed
-		 * if there is i915 reset. So the seqno will be updated anyway.
-		 * If the seqno is not updated yet after waiting, which means
-		 * the replay may still be in progress and we can wait again.
-		 */
-		if (!i915_gem_request_completed(workload->req)) {
-			gvt_dbg_sched("workload %p not completed, wait again\n",
-					workload);
-			goto retry;
-		}
+		i915_wait_request(workload->req, 0, MAX_SCHEDULE_TIMEOUT);
 
 complete:
 		gvt_dbg_sched("will complete workload %p, status: %d\n",

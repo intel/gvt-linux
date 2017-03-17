@@ -103,6 +103,7 @@ struct intel_vgpu_workload {
 
 	/* shadow batch buffer */
 	struct list_head shadow_bb;
+	struct list_head mapped_shadow_bb;
 	struct intel_shadow_wa_ctx wa_ctx;
 };
 
@@ -110,7 +111,7 @@ struct intel_vgpu_workload {
 struct intel_shadow_bb_entry {
 	struct list_head list;
 	struct drm_i915_gem_object *obj;
-	void *va;
+	struct i915_vma *batch;
 	unsigned long len;
 	u32 *bb_start_cmd_va;
 };

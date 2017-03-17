@@ -1064,7 +1064,7 @@ static int cmd_advance_default(struct parser_exec_state *s)
 	return ip_gma_advance(s, cmd_length(s));
 }
 
-static int cmd_handler_mi_batch_buffer_end(struct parser_exec_state *s)
+static int batch_buffer_end(struct parser_exec_state *s)
 {
 	int ret;
 
@@ -1080,6 +1080,21 @@ static int cmd_handler_mi_batch_buffer_end(struct parser_exec_state *s)
 		ret = ip_gma_set(s, s->ret_ip_gma_ring);
 	}
 	return ret;
+}
+
+static int cmd_handler_mi_batch_buffer_end(struct parser_exec_state *s)
+{
+	struct intel_shadow_bb_entry *entry_obj;
+
+	batch_buffer_end(s);
+
+	entry_obj = list_last_entry(&s->workload->mapped_shadow_bb,
+				    struct intel_shadow_bb_entry, list);
+
+	i915_gem_object_unpin_map(entry_obj->obj);
+	list_move_tail(&entry_obj->list, &s->workload->shadow_bb);
+
+	return 0;
 }
 
 struct mi_display_flip_command_info {
@@ -1633,6 +1648,7 @@ static int perform_bb_shadow(struct parser_exec_state *s)
 {
 	struct intel_shadow_bb_entry *entry_obj;
 	struct intel_vgpu *vgpu = s->vgpu;
+	unsigned int dst_needs_clflush;
 	unsigned long gma = 0;
 	uint32_t bb_size;
 	void *dst = NULL;
@@ -1649,41 +1665,46 @@ static int perform_bb_shadow(struct parser_exec_state *s)
 	if (entry_obj == NULL)
 		return -ENOMEM;
 
-	entry_obj->obj =
-		i915_gem_object_create(s->vgpu->gvt->dev_priv,
-				       roundup(bb_size, PAGE_SIZE));
+	entry_obj->obj = i915_gem_batch_pool_get(
+		&s->workload->req->engine->batch_pool, PAGE_ALIGN(bb_size));
 	if (IS_ERR(entry_obj->obj)) {
 		ret = PTR_ERR(entry_obj->obj);
-		goto free_entry;
+		kfree(entry_obj);
+		return ret;
 	}
+
+	entry_obj->obj->active_count++;
 	entry_obj->len = bb_size;
 	INIT_LIST_HEAD(&entry_obj->list);
 
+	ret = i915_gem_obj_prepare_shmem_write(entry_obj->obj,
+			&dst_needs_clflush);
+	if (ret) {
+		kfree(entry_obj);
+		return ret;
+	}
 	dst = i915_gem_object_pin_map(entry_obj->obj, I915_MAP_WB);
 	if (IS_ERR(dst)) {
+		i915_gem_obj_finish_shmem_access(entry_obj->obj);
+		kfree(entry_obj);
 		ret = PTR_ERR(dst);
-		goto put_obj;
+		return ret;
 	}
 
-	ret = i915_gem_object_set_to_cpu_domain(entry_obj->obj, false);
-	if (ret) {
-		gvt_vgpu_err("failed to set shadow batch to CPU\n");
-		goto unmap_src;
-	}
-
-	entry_obj->va = dst;
 	entry_obj->bb_start_cmd_va = s->ip_va;
 
 	/* copy batch buffer to shadow batch buffer*/
 	ret = copy_gma_to_hva(s->vgpu, s->vgpu->gtt.ggtt_mm,
-			      gma, gma + bb_size,
-			      dst);
+			      gma, gma + bb_size, dst);
 	if (ret < 0) {
-		gvt_vgpu_err("fail to copy guest ring buffer\n");
-		goto unmap_src;
+		gvt_err("fail to copy guest batch buffer\n");
+		i915_gem_object_unpin_map(entry_obj->obj);
+		i915_gem_obj_finish_shmem_access(entry_obj->obj);
+		kfree(entry_obj);
+		return ret;
 	}
 
-	list_add(&entry_obj->list, &s->workload->shadow_bb);
+	list_add_tail(&entry_obj->list, &s->workload->mapped_shadow_bb);
 	/*
 	 * ip_va saves the virtual address of the shadow batch buffer, while
 	 * ip_gma saves the graphics address of the original batch buffer.
@@ -1695,14 +1716,7 @@ static int perform_bb_shadow(struct parser_exec_state *s)
 	s->ip_va = dst;
 	s->ip_gma = gma;
 
-	return 0;
-
-unmap_src:
-	i915_gem_object_unpin_map(entry_obj->obj);
-put_obj:
-	i915_gem_object_put(entry_obj->obj);
-free_entry:
-	kfree(entry_obj);
+	i915_gem_obj_finish_shmem_access(entry_obj->obj);
 	return ret;
 }
 
@@ -1740,7 +1754,7 @@ static int cmd_handler_mi_batch_buffer_start(struct parser_exec_state *s)
 			gvt_vgpu_err("invalid shadow batch buffer\n");
 	} else {
 		/* emulate a batch buffer end to do return right */
-		ret = cmd_handler_mi_batch_buffer_end(s);
+		ret = batch_buffer_end(s);
 		if (ret < 0)
 			return ret;
 	}

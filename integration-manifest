@@ -1,24 +1,12 @@
-drm-intel drm-intel-fixes b7048ea12fbb2724ee0cd30752d4fac43cab0651
-	drm/i915: Do .init_clock_gating() earlier to avoid it clobbering watermarks
-drm-upstream drm-fixes 27b713c2e08ef27d500a79166098d42b24977500
-	Merge branch 'drm-fixes-4.11' of git://people.freedesktop.org/~agd5f/linux into drm-fixes
-drm-intel drm-intel-next-fixes 998d75730b40afc218c059d811869abe9676b305
-	drm/i915: Fix not finding the VBT when it overlaps with OPREGION_ASLE_EXT
-drm-intel drm-intel-next-queued e3b1895fc1d29ebd8a8e3374fc076f138a1f8f4b
-	drm/i915/vgpu: Neuter forcewakes for VGPU more thoroughly
-drm-upstream drm-next b7d6c8db498cdbbd0004970d02c86210ce3a6cbc
-	drm/nouveau/secboot: fix NULL pointer dereference
-sound-upstream for-next f3ac9f737603da80c2da3e84b89e74429836bb6d
-	ALSA: seq: Fix link corruption by event error handling
-sound-upstream for-linus f3ac9f737603da80c2da3e84b89e74429836bb6d
-	ALSA: seq: Fix link corruption by event error handling
-drm-intel topic/core-for-CI 602da91f4754eab179ff4725ceefb107d264167d
-	e1000e: Undo e1000e_pm_freeze if __e1000_shutdown fails
-drm-misc drm-misc-next bb7d78568814a31a11fa14f1479a9fe51f1582ad
-	drm/vc4: Add HDMI audio support
-drm-misc drm-misc-next-fixes a44ddbcbbd72ba8569df1ecbb4b1372506454dff
-	Merge tag 'drm-misc-next-fixes-2017-02-27' of git://anongit.freedesktop.org/git/drm-misc into drm-next
-drm-misc drm-misc-fixes 3f81e1340706e9a7f854808e2f580c3106805d0c
-	drm: mxsfb: Implement drm_panel handling
-drm-intel topic/designware-baytrail 264ec1a8221c60f9ccf13f58ac597da21235132d
-	drm/i915: Listen for PMIC bus access notifications
+drm-tip/drm-tip 03d01320f28dfbae10d844cfedef8e72f58b55f5
+	drm-tip: 2017y-03m-17d-09h-54m-24s UTC integration manifest
+vfio-upstream/for-linus 930a42ded3fede7ca3acafc9153f4f2d0f56a92c
+	vfio/spapr_tce: Set window when adding additional groups to container
+vfio-upstream/next d9d84780f17cd9e25ddde10eb40357b96b7d6874
+	vfio: fix a typo in comment of function vfio_pin_pages
+origin/gvt-next ab9da627906adceaff5522e3bdd91825dcfa9d43
+	drm/i915: make context status notifier head be per engine
+origin/gvt-fixes 2958b9013fcbabeeba221161d0712f5259f1e15d
+	drm/i915/gvt: Fix gvt scheduler interval time
+origin/gvt-next-fixes 627c845c0907894a1e5cd2d90ff4fc86c9e4458e
+	drm/i915/gvt: change some gvt_err to gvt_dbg_cmd

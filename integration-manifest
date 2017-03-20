@@ -1,0 +1,24 @@
+drm-intel drm-intel-fixes b7048ea12fbb2724ee0cd30752d4fac43cab0651
+	drm/i915: Do .init_clock_gating() earlier to avoid it clobbering watermarks
+drm-upstream drm-fixes 27b713c2e08ef27d500a79166098d42b24977500
+	Merge branch 'drm-fixes-4.11' of git://people.freedesktop.org/~agd5f/linux into drm-fixes
+drm-intel drm-intel-next-fixes 998d75730b40afc218c059d811869abe9676b305
+	drm/i915: Fix not finding the VBT when it overlaps with OPREGION_ASLE_EXT
+drm-intel drm-intel-next-queued c5bd2e14e85d180bc7fb3b8b62ac9348bddaf898
+	drm/i915: Update DRIVER_DATE to 20170320
+drm-upstream drm-next b7d6c8db498cdbbd0004970d02c86210ce3a6cbc
+	drm/nouveau/secboot: fix NULL pointer dereference
+sound-upstream for-next f3ac9f737603da80c2da3e84b89e74429836bb6d
+	ALSA: seq: Fix link corruption by event error handling
+sound-upstream for-linus f3ac9f737603da80c2da3e84b89e74429836bb6d
+	ALSA: seq: Fix link corruption by event error handling
+drm-intel topic/core-for-CI 873458124d35e69c28e9668e47e2ad4a75884842
+	fs/pstore: Perform erase from a worker
+drm-misc drm-misc-next 7b34734816d5170f40329598390de22d0166e4e9
+	drm: vc4: remove redundant check of plane being non-null
+drm-misc drm-misc-next-fixes a44ddbcbbd72ba8569df1ecbb4b1372506454dff
+	Merge tag 'drm-misc-next-fixes-2017-02-27' of git://anongit.freedesktop.org/git/drm-misc into drm-next
+drm-misc drm-misc-fixes 3f81e1340706e9a7f854808e2f580c3106805d0c
+	drm: mxsfb: Implement drm_panel handling
+drm-intel topic/designware-baytrail 264ec1a8221c60f9ccf13f58ac597da21235132d
+	drm/i915: Listen for PMIC bus access notifications

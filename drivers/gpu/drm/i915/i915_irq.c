@@ -33,6 +33,7 @@
 #include <linux/circ_buf.h>
 #include <drm/drmP.h>
 #include <drm/i915_drm.h>
+#include <xen/xen.h>
 #include "i915_drv.h"
 #include "i915_trace.h"
 #include "intel_drv.h"
@@ -3461,8 +3462,12 @@ static void gen8_de_irq_postinstall(struct drm_i915_private *dev_priv)
 	enum pipe pipe;
 
 	if (INTEL_INFO(dev_priv)->gen >= 9) {
-		de_pipe_masked |= GEN9_PIPE_PLANE1_FLIP_DONE |
-				  GEN9_DE_PIPE_IRQ_FAULT_ERRORS;
+		if (xen_initial_domain())
+			de_pipe_masked |= GEN9_PIPE_PLANE1_FLIP_DONE;
+		else
+			de_pipe_masked |= GEN9_PIPE_PLANE1_FLIP_DONE |
+					  GEN9_DE_PIPE_IRQ_FAULT_ERRORS;
+
 		de_port_masked |= GEN9_AUX_CHANNEL_B | GEN9_AUX_CHANNEL_C |
 				  GEN9_AUX_CHANNEL_D;
 		if (IS_GEN9_LP(dev_priv))

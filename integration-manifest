@@ -1,24 +1,12 @@
-drm-intel drm-intel-fixes 590379aef2e3fb7d00a093ed556c0a2714f86916
-	drm/i915: make context status notifier head be per engine
-drm-upstream drm-fixes d08997cb416ae4f502b34b20b1edba48a43fe418
-	Merge tag 'drm-intel-fixes-2017-03-22' of git://anongit.freedesktop.org/git/drm-intel into drm-fixes
-drm-intel drm-intel-next-fixes 998d75730b40afc218c059d811869abe9676b305
-	drm/i915: Fix not finding the VBT when it overlaps with OPREGION_ASLE_EXT
-drm-intel drm-intel-next-queued 2e70b8c6bf0003bf1691ac5cab5aff128747d494
-	drm/i915/execlists: Relax the locked clear_bit(IRQ_EXECLIST)
-drm-upstream drm-next 65d1086c44791112188f6aebbdc3a27cab3736d3
-	BackMerge tag 'v4.11-rc3' into drm-next
-sound-upstream for-next a16fbb85c78a3ce56dc4515ffb8632b82cc969c7
-	ALSA: hda/ca0132: Remove double parentheses
-sound-upstream for-linus 3f307834e695f59dac4337a40316bdecfb9d0508
-	ALSA: hda - Adding a group of pin definition to fix headset problem
-drm-intel topic/core-for-CI 11467fe85a027de8b3e5e13215c06d14ecdc64e8
-	e1000e: Undo e1000e_pm_freeze if __e1000_shutdown fails
-drm-misc drm-misc-next e448054b5c63b834bba874453d1f2da4e7d39461
-	drm/scdc: declare drm_scdc_get_scrambling_status
-drm-misc drm-misc-next-fixes a44ddbcbbd72ba8569df1ecbb4b1372506454dff
-	Merge tag 'drm-misc-next-fixes-2017-02-27' of git://anongit.freedesktop.org/git/drm-misc into drm-next
-drm-misc drm-misc-fixes 12ffed96d4369f086261ba2ee734fa8c932d7f55
-	drm/fb-helper: Allow var->x/yres(_virtual) < fb->width/height again
-drm-intel topic/designware-baytrail 264ec1a8221c60f9ccf13f58ac597da21235132d
-	drm/i915: Listen for PMIC bus access notifications
+drm-tip/drm-tip 006b6a643f4618829132da0eee5a5e07fece725a
+	drm-tip: 2017y-03m-23d-22h-16m-00s UTC integration manifest
+vfio-upstream/for-linus 65b1adebfe43c642dfe3b109edb5d992db5fbe72
+	vfio: Rework group release notifier warning
+vfio-upstream/next d9d84780f17cd9e25ddde10eb40357b96b7d6874
+	vfio: fix a typo in comment of function vfio_pin_pages
+origin/gvt-next dffafe37c8a5cff5edd79c7b5ed87403ee3ecd79
+	drm/i915/gvt: Add mdev device attribute group
+origin/gvt-fixes bc2d4b62db67f817b09c782219996630e9c2f5e2
+	drm/i915/gvt: Use force single submit flag to distinguish gvt request from i915 request
+origin/gvt-next-fixes 627c845c0907894a1e5cd2d90ff4fc86c9e4458e
+	drm/i915/gvt: change some gvt_err to gvt_dbg_cmd

@@ -1,22 +1,12 @@
-drm-intel drm-intel-fixes 0abfe7e2570d7c729a7662e82c09a23f00f29346
-	drm/i915: Restore marking context objects as dirty on pinning
-drm-upstream drm-fixes d64a04720b0e64c1cd0726a3a27b360822fbee22
-	Merge branch 'drm-fixes-4.11' of git://people.freedesktop.org/~agd5f/linux into drm-fixes
-drm-intel drm-intel-next-fixes 998d75730b40afc218c059d811869abe9676b305
-	drm/i915: Fix not finding the VBT when it overlaps with OPREGION_ASLE_EXT
-drm-intel drm-intel-next-queued 44a126ba5d13db90945115324851466685b03733
-	drm/i915: kill intel_ddi_pll_select()
-drm-upstream drm-next 65d1086c44791112188f6aebbdc3a27cab3736d3
-	BackMerge tag 'v4.11-rc3' into drm-next
-sound-upstream for-next 13f99ebdd602ebdafb909e15ec6ffb1e34690167
-	ALSA: au88x0: avoid theoretical uninitialized access
-sound-upstream for-linus 3f307834e695f59dac4337a40316bdecfb9d0508
-	ALSA: hda - Adding a group of pin definition to fix headset problem
-drm-intel topic/core-for-CI ecf522b9010f38f423f2394df14e170dc7384940
-	e1000e: Undo e1000e_pm_freeze if __e1000_shutdown fails
-drm-misc drm-misc-next 99612b27763f819e53d5d892ce81a4b042a1de11
-	drm/tegra: Don't use modeset_lock_crtc
-drm-misc drm-misc-next-fixes a44ddbcbbd72ba8569df1ecbb4b1372506454dff
-	Merge tag 'drm-misc-next-fixes-2017-02-27' of git://anongit.freedesktop.org/git/drm-misc into drm-next
-drm-misc drm-misc-fixes c02ed2e75ef4c74e41e421acb4ef1494671585e8
-	Linux 4.11-rc4
+drm-tip/drm-tip c3ca5620be419c7e20c39d07f6cf7d1cb7c3bfc8
+	drm-tip: 2017y-03m-27d-20h-31m-03s UTC integration manifest
+vfio-upstream/for-linus 65b1adebfe43c642dfe3b109edb5d992db5fbe72
+	vfio: Rework group release notifier warning
+vfio-upstream/next d9d84780f17cd9e25ddde10eb40357b96b7d6874
+	vfio: fix a typo in comment of function vfio_pin_pages
+origin/gvt-next dffafe37c8a5cff5edd79c7b5ed87403ee3ecd79
+	drm/i915/gvt: Add mdev device attribute group
+origin/gvt-fixes 0f2fd49748793af20a72be3cb69b59d1a750793b
+	drm/i915/gvt: remove the redundant info NULL check
+origin/gvt-next-fixes 627c845c0907894a1e5cd2d90ff4fc86c9e4458e
+	drm/i915/gvt: change some gvt_err to gvt_dbg_cmd

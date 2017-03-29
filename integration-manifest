@@ -1,22 +1,12 @@
-drm-intel drm-intel-fixes 0abfe7e2570d7c729a7662e82c09a23f00f29346
-	drm/i915: Restore marking context objects as dirty on pinning
-drm-upstream drm-fixes d64a04720b0e64c1cd0726a3a27b360822fbee22
-	Merge branch 'drm-fixes-4.11' of git://people.freedesktop.org/~agd5f/linux into drm-fixes
-drm-intel drm-intel-next-fixes 998d75730b40afc218c059d811869abe9676b305
-	drm/i915: Fix not finding the VBT when it overlaps with OPREGION_ASLE_EXT
-drm-intel drm-intel-next-queued c276be4f38dfef1968400939aa2e33602d0a7156
-	Merge remote-tracking branch 'airlied/drm-next' into drm-intel-next-queued
-drm-upstream drm-next 8bcad07a45637fb88e799466e4eee83859e8ffd3
-	drm/i915/gvt: fix error return check for copy_gma_to_hva()
-sound-upstream for-next 5992e30034c43917968f2327d2948d22be6d4603
-	ALSA: firewire-motu: add support for MOTU 828mk3 (FireWire/Hybrid) as a model with protocol version 3
-sound-upstream for-linus 2d7d54002e396c180db0c800c1046f0a3c471597
-	ALSA: seq: Fix race during FIFO resize
-drm-intel topic/core-for-CI ecf522b9010f38f423f2394df14e170dc7384940
-	e1000e: Undo e1000e_pm_freeze if __e1000_shutdown fails
-drm-misc drm-misc-next d26f96c74dd027caf14713ae736b4d174535412d
-	drm/atomic-helper: remove backoff hack from disable/update_plane
-drm-misc drm-misc-next-fixes a44ddbcbbd72ba8569df1ecbb4b1372506454dff
-	Merge tag 'drm-misc-next-fixes-2017-02-27' of git://anongit.freedesktop.org/git/drm-misc into drm-next
-drm-misc drm-misc-fixes c02ed2e75ef4c74e41e421acb4ef1494671585e8
-	Linux 4.11-rc4
+drm-tip/drm-tip 6eba0df2cbffc88882e5c8eca6a072d5ea727428
+	drm-tip: 2017y-03m-29d-07h-22m-18s UTC integration manifest
+vfio-upstream/for-linus 65b1adebfe43c642dfe3b109edb5d992db5fbe72
+	vfio: Rework group release notifier warning
+vfio-upstream/next d9d84780f17cd9e25ddde10eb40357b96b7d6874
+	vfio: fix a typo in comment of function vfio_pin_pages
+origin/gvt-next decbb0093e9187c5fbb9d386d823b86e3da7c157
+	drm/i915/gvt: refine shadow batch buffer
+origin/gvt-fixes 0f2fd49748793af20a72be3cb69b59d1a750793b
+	drm/i915/gvt: remove the redundant info NULL check
+origin/gvt-next-fixes 627c845c0907894a1e5cd2d90ff4fc86c9e4458e
+	drm/i915/gvt: change some gvt_err to gvt_dbg_cmd

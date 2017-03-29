@@ -12483,6 +12483,11 @@ static int intel_atomic_check(struct drm_device *dev,
 	ret = drm_atomic_helper_check_modeset(dev, state);
 	if (ret)
 		return ret;
+	/* enocder->atomic_check might upgrade some crtc to a full modeset */
+	ret = drm_atomic_helper_check_modeset(dev, state);
+	if (ret)
+		return ret;
+
 
 	for_each_oldnew_crtc_in_state(state, crtc, old_crtc_state, crtc_state, i) {
 		struct intel_crtc_state *pipe_config =
@@ -13449,7 +13454,8 @@ intel_legacy_cursor_update(struct drm_plane *plane,
 			   int crtc_x, int crtc_y,
 			   unsigned int crtc_w, unsigned int crtc_h,
 			   uint32_t src_x, uint32_t src_y,
-			   uint32_t src_w, uint32_t src_h)
+			   uint32_t src_w, uint32_t src_h,
+			   struct drm_modeset_acquire_ctx *ctx)
 {
 	struct drm_i915_private *dev_priv = to_i915(crtc->dev);
 	int ret;
@@ -13562,7 +13568,7 @@ out_free:
 slow:
 	return drm_atomic_helper_update_plane(plane, crtc, fb,
 					      crtc_x, crtc_y, crtc_w, crtc_h,
-					      src_x, src_y, src_w, src_h);
+					      src_x, src_y, src_w, src_h, ctx);
 }
 
 static const struct drm_plane_funcs intel_cursor_plane_funcs = {

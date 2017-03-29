@@ -94,8 +94,10 @@ int drm_atomic_helper_update_plane(struct drm_plane *plane,
 				   int crtc_x, int crtc_y,
 				   unsigned int crtc_w, unsigned int crtc_h,
 				   uint32_t src_x, uint32_t src_y,
-				   uint32_t src_w, uint32_t src_h);
-int drm_atomic_helper_disable_plane(struct drm_plane *plane);
+				   uint32_t src_w, uint32_t src_h,
+				   struct drm_modeset_acquire_ctx *ctx);
+int drm_atomic_helper_disable_plane(struct drm_plane *plane,
+				    struct drm_modeset_acquire_ctx *ctx);
 int __drm_atomic_helper_disable_plane(struct drm_plane *plane,
 		struct drm_plane_state *plane_state);
 int drm_atomic_helper_set_config(struct drm_mode_set *set);
@@ -104,6 +106,7 @@ int __drm_atomic_helper_set_config(struct drm_mode_set *set,
 
 int drm_atomic_helper_disable_all(struct drm_device *dev,
 				  struct drm_modeset_acquire_ctx *ctx);
+void drm_atomic_helper_shutdown(struct drm_device *dev);
 struct drm_atomic_state *drm_atomic_helper_suspend(struct drm_device *dev);
 int drm_atomic_helper_commit_duplicated_state(struct drm_atomic_state *state,
 					      struct drm_modeset_acquire_ctx *ctx);

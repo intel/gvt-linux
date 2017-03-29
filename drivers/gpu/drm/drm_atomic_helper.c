@@ -2077,6 +2077,7 @@ EXPORT_SYMBOL(drm_atomic_helper_swap_state);
  * @src_y: y offset of @fb for panning
  * @src_w: width of source rectangle in @fb
  * @src_h: height of source rectangle in @fb
+ * @ctx: lock acquire context
  *
  * Provides a default plane update handler using the atomic driver interface.
  *
@@ -2089,7 +2090,8 @@ int drm_atomic_helper_update_plane(struct drm_plane *plane,
 				   int crtc_x, int crtc_y,
 				   unsigned int crtc_w, unsigned int crtc_h,
 				   uint32_t src_x, uint32_t src_y,
-				   uint32_t src_w, uint32_t src_h)
+				   uint32_t src_w, uint32_t src_h,
+				   struct drm_modeset_acquire_ctx *ctx)
 {
 	struct drm_atomic_state *state;
 	struct drm_plane_state *plane_state;
@@ -2099,8 +2101,7 @@ int drm_atomic_helper_update_plane(struct drm_plane *plane,
 	if (!state)
 		return -ENOMEM;
 
-	state->acquire_ctx = drm_modeset_legacy_acquire_ctx(crtc);
-retry:
+	state->acquire_ctx = ctx;
 	plane_state = drm_atomic_get_plane_state(state, plane);
 	if (IS_ERR(plane_state)) {
 		ret = PTR_ERR(plane_state);
@@ -2125,59 +2126,33 @@ retry:
 
 	ret = drm_atomic_commit(state);
 fail:
-	if (ret == -EDEADLK)
-		goto backoff;
-
 	drm_atomic_state_put(state);
 	return ret;
-
-backoff:
-	drm_atomic_state_clear(state);
-	drm_atomic_legacy_backoff(state);
-
-	/*
-	 * Someone might have exchanged the framebuffer while we dropped locks
-	 * in the backoff code. We need to fix up the fb refcount tracking the
-	 * core does for us.
-	 */
-	plane->old_fb = plane->fb;
-
-	goto retry;
 }
 EXPORT_SYMBOL(drm_atomic_helper_update_plane);
 
 /**
  * drm_atomic_helper_disable_plane - Helper for primary plane disable using * atomic
  * @plane: plane to disable
+ * @ctx: lock acquire context
  *
  * Provides a default plane disable handler using the atomic driver interface.
  *
  * RETURNS:
  * Zero on success, error code on failure
  */
-int drm_atomic_helper_disable_plane(struct drm_plane *plane)
+int drm_atomic_helper_disable_plane(struct drm_plane *plane,
+				    struct drm_modeset_acquire_ctx *ctx)
 {
 	struct drm_atomic_state *state;
 	struct drm_plane_state *plane_state;
 	int ret = 0;
 
-	/*
-	 * FIXME: Without plane->crtc set we can't get at the implicit legacy
-	 * acquire context. The real fix will be to wire the acquire ctx through
-	 * everywhere we need it, but meanwhile prevent chaos by just skipping
-	 * this noop. The critical case is the cursor ioctls which a) only grab
-	 * crtc/cursor-plane locks (so we need the crtc to get at the right
-	 * acquire context) and b) can try to disable the plane multiple times.
-	 */
-	if (!plane->crtc)
-		return 0;
-
 	state = drm_atomic_state_alloc(plane->dev);
 	if (!state)
 		return -ENOMEM;
 
-	state->acquire_ctx = drm_modeset_legacy_acquire_ctx(plane->crtc);
-retry:
+	state->acquire_ctx = ctx;
 	plane_state = drm_atomic_get_plane_state(state, plane);
 	if (IS_ERR(plane_state)) {
 		ret = PTR_ERR(plane_state);
@@ -2193,24 +2168,8 @@ retry:
 
 	ret = drm_atomic_commit(state);
 fail:
-	if (ret == -EDEADLK)
-		goto backoff;
-
 	drm_atomic_state_put(state);
 	return ret;
-
-backoff:
-	drm_atomic_state_clear(state);
-	drm_atomic_legacy_backoff(state);
-
-	/*
-	 * Someone might have exchanged the framebuffer while we dropped locks
-	 * in the backoff code. We need to fix up the fb refcount tracking the
-	 * core does for us.
-	 */
-	plane->old_fb = plane->fb;
-
-	goto retry;
 }
 EXPORT_SYMBOL(drm_atomic_helper_disable_plane);
 
@@ -2443,7 +2402,8 @@ commit:
  * that they are connected to.
  *
  * This is used for example in suspend/resume to disable all currently active
- * functions when suspending.
+ * functions when suspending. If you just want to shut down everything at e.g.
+ * driver unload, look at drm_atomic_helper_shutdown().
  *
  * Note that if callers haven't already acquired all modeset locks this might
  * return -EDEADLK, which must be handled by calling drm_modeset_backoff().
@@ -2452,7 +2412,8 @@ commit:
  * 0 on success or a negative error code on failure.
  *
  * See also:
- * drm_atomic_helper_suspend(), drm_atomic_helper_resume()
+ * drm_atomic_helper_suspend(), drm_atomic_helper_resume() and
+ * drm_atomic_helper_shutdown().
  */
 int drm_atomic_helper_disable_all(struct drm_device *dev,
 				  struct drm_modeset_acquire_ctx *ctx)
@@ -2515,6 +2476,42 @@ free:
 }
 
 EXPORT_SYMBOL(drm_atomic_helper_disable_all);
+
+/**
+ * drm_atomic_helper_shutdown - shutdown all CRTC
+ * @dev: DRM device
+ *
+ * This shuts down all CRTC, which is useful for driver unloading. Shutdown on
+ * suspend should instead be handled with drm_atomic_helper_suspend(), since
+ * that also takes a snapshot of the modeset state to be restored on resume.
+ *
+ * This is just a convenience wrapper around drm_atomic_helper_disable_all(),
+ * and it is the atomic version of drm_crtc_force_disable_all().
+ */
+void drm_atomic_helper_shutdown(struct drm_device *dev)
+{
+	struct drm_modeset_acquire_ctx ctx;
+	int ret;
+
+	drm_modeset_acquire_init(&ctx, 0);
+	while (1) {
+		ret = drm_modeset_lock_all_ctx(dev, &ctx);
+		if (!ret)
+			ret = drm_atomic_helper_disable_all(dev, &ctx);
+
+		if (ret != -EDEADLK)
+			break;
+
+		drm_modeset_backoff(&ctx);
+	}
+
+	if (ret)
+		DRM_ERROR("Disabling all crtc's during unload failed with %i\n", ret);
+
+	drm_modeset_drop_locks(&ctx);
+	drm_modeset_acquire_fini(&ctx);
+}
+EXPORT_SYMBOL(drm_atomic_helper_shutdown);
 
 /**
  * drm_atomic_helper_suspend - subsystem-level suspend helper

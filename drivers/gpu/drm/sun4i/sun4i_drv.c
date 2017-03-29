@@ -24,41 +24,8 @@
 #include "sun4i_drv.h"
 #include "sun4i_framebuffer.h"
 #include "sun4i_layer.h"
-#include "sun4i_tcon.h"
 
-static int sun4i_drv_enable_vblank(struct drm_device *drm, unsigned int pipe)
-{
-	struct sun4i_drv *drv = drm->dev_private;
-	struct sun4i_tcon *tcon = drv->tcon;
-
-	DRM_DEBUG_DRIVER("Enabling VBLANK on pipe %d\n", pipe);
-
-	sun4i_tcon_enable_vblank(tcon, true);
-
-	return 0;
-}
-
-static void sun4i_drv_disable_vblank(struct drm_device *drm, unsigned int pipe)
-{
-	struct sun4i_drv *drv = drm->dev_private;
-	struct sun4i_tcon *tcon = drv->tcon;
-
-	DRM_DEBUG_DRIVER("Disabling VBLANK on pipe %d\n", pipe);
-
-	sun4i_tcon_enable_vblank(tcon, false);
-}
-
-static const struct file_operations sun4i_drv_fops = {
-	.owner		= THIS_MODULE,
-	.open		= drm_open,
-	.release	= drm_release,
-	.unlocked_ioctl	= drm_ioctl,
-	.compat_ioctl	= drm_compat_ioctl,
-	.poll		= drm_poll,
-	.read		= drm_read,
-	.llseek		= no_llseek,
-	.mmap		= drm_gem_cma_mmap,
-};
+DEFINE_DRM_GEM_CMA_FOPS(sun4i_drv_fops);
 
 static struct drm_driver sun4i_drv_driver = {
 	.driver_features	= DRIVER_GEM | DRIVER_MODESET | DRIVER_PRIME | DRIVER_ATOMIC,
@@ -90,11 +57,6 @@ static struct drm_driver sun4i_drv_driver = {
 	.gem_prime_mmap		= drm_gem_cma_prime_mmap,
 
 	/* Frame Buffer Operations */
-
-	/* VBlank Operations */
-	.get_vblank_counter	= drm_vblank_no_hw_counter,
-	.enable_vblank		= sun4i_drv_enable_vblank,
-	.disable_vblank		= sun4i_drv_disable_vblank,
 };
 
 static void sun4i_remove_framebuffers(void)

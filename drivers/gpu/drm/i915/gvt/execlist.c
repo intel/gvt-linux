@@ -374,12 +374,11 @@ static void prepare_shadow_batch_buffer(struct intel_vgpu_workload *workload)
 	/* pin the gem object to ggtt */
 	list_for_each_entry(entry_obj, &workload->shadow_bb, list) {
 		struct i915_vma *vma;
-
-		vma = i915_gem_object_ggtt_pin(entry_obj->obj, NULL, 0, 4, 0);
+		vma = i915_gem_object_ggtt_pin(entry_obj->obj, NULL, 0, 0, 0);
 		if (IS_ERR(vma)) {
 			return;
 		}
-
+		entry_obj->batch = vma;
 		/* FIXME: we are not tracking our pinned VMA leaving it
 		 * up to the core to fix up the stray pin_count upon
 		 * free.
@@ -389,14 +388,19 @@ static void prepare_shadow_batch_buffer(struct intel_vgpu_workload *workload)
 		entry_obj->bb_start_cmd_va[1] = i915_ggtt_offset(vma);
 		if (gmadr_bytes == 8)
 			entry_obj->bb_start_cmd_va[2] = 0;
+
+		i915_gem_object_get(entry_obj->obj);
+		i915_gem_object_unpin_pages(entry_obj->obj);
 	}
 }
 
 static int update_wa_ctx_2_shadow_ctx(struct intel_shadow_wa_ctx *wa_ctx)
 {
-	int ring_id = wa_ctx->workload->ring_id;
-	struct i915_gem_context *shadow_ctx =
-		wa_ctx->workload->vgpu->shadow_ctx;
+	struct intel_vgpu_workload *workload = container_of(wa_ctx,
+					struct intel_vgpu_workload,
+					wa_ctx);
+	int ring_id = workload->ring_id;
+	struct i915_gem_context *shadow_ctx = workload->vgpu->shadow_ctx;
 	struct drm_i915_gem_object *ctx_obj =
 		shadow_ctx->engine[ring_id].state->obj;
 	struct execlist_ring_context *shadow_ring_context;
@@ -477,7 +481,8 @@ static void release_shadow_batch_buffer(struct intel_vgpu_workload *workload)
 
 		list_for_each_entry_safe(entry_obj, temp, &workload->shadow_bb,
 					 list) {
-			i915_gem_object_unpin_map(entry_obj->obj);
+			i915_vma_unpin(entry_obj->batch);
+			--entry_obj->obj->active_count;
 			i915_gem_object_put(entry_obj->obj);
 			list_del(&entry_obj->list);
 			kfree(entry_obj);
@@ -650,6 +655,7 @@ static int submit_context(struct intel_vgpu *vgpu, int ring_id,
 
 	INIT_LIST_HEAD(&workload->list);
 	INIT_LIST_HEAD(&workload->shadow_bb);
+	INIT_LIST_HEAD(&workload->mapped_shadow_bb);
 
 	init_waitqueue_head(&workload->shadow_ctx_status_wq);
 	atomic_set(&workload->shadow_ctx_active, 0);
@@ -680,7 +686,6 @@ static int submit_context(struct intel_vgpu *vgpu, int ring_id,
 			CACHELINE_BYTES;
 		workload->wa_ctx.per_ctx.guest_gma =
 			per_ctx & PER_CTX_ADDR_MASK;
-		workload->wa_ctx.workload = workload;
 
 		WARN_ON(workload->wa_ctx.indirect_ctx.size && !(per_ctx & 0x1));
 	}

@@ -1,22 +1,12 @@
-drm-intel drm-intel-fixes dd68f2ba0720e76c3a5bfa3f639c546f926792f5
-	drm/i915/execlists: Wrap tail pointer after reset tweaking
-drm-upstream drm-fixes d64a04720b0e64c1cd0726a3a27b360822fbee22
-	Merge branch 'drm-fixes-4.11' of git://people.freedesktop.org/~agd5f/linux into drm-fixes
-drm-intel drm-intel-next-fixes 998d75730b40afc218c059d811869abe9676b305
-	drm/i915: Fix not finding the VBT when it overlaps with OPREGION_ASLE_EXT
-drm-intel drm-intel-next-queued 2f075565e32b7dc92559f9bc294ac94a487999fc
-	drm/i915: Use LINEAR modifier instead of NONE
-drm-upstream drm-next 8bcad07a45637fb88e799466e4eee83859e8ffd3
-	drm/i915/gvt: fix error return check for copy_gma_to_hva()
-sound-upstream for-next 5992e30034c43917968f2327d2948d22be6d4603
-	ALSA: firewire-motu: add support for MOTU 828mk3 (FireWire/Hybrid) as a model with protocol version 3
-sound-upstream for-linus 2d7d54002e396c180db0c800c1046f0a3c471597
-	ALSA: seq: Fix race during FIFO resize
-drm-intel topic/core-for-CI ecf522b9010f38f423f2394df14e170dc7384940
-	e1000e: Undo e1000e_pm_freeze if __e1000_shutdown fails
-drm-misc drm-misc-next b33b02707ba3eeccbf8e3687ab5c4124db6d3479
-	drm: Peek at the current counter/timestamp for vblank queries
-drm-misc drm-misc-next-fixes a44ddbcbbd72ba8569df1ecbb4b1372506454dff
-	Merge tag 'drm-misc-next-fixes-2017-02-27' of git://anongit.freedesktop.org/git/drm-misc into drm-next
-drm-misc drm-misc-fixes c02ed2e75ef4c74e41e421acb4ef1494671585e8
-	Linux 4.11-rc4
+drm-tip/drm-tip e2bbafd9baa779a48160c2ffbb5fae6d6afe8d65
+	drm-tip: 2017y-03m-29d-20h-27m-37s UTC integration manifest
+vfio-upstream/for-linus 65b1adebfe43c642dfe3b109edb5d992db5fbe72
+	vfio: Rework group release notifier warning
+vfio-upstream/next d9d84780f17cd9e25ddde10eb40357b96b7d6874
+	vfio: fix a typo in comment of function vfio_pin_pages
+origin/gvt-next b35f34d1da4e77637869c8041a355da810f69fb6
+	drm/i915/gvt: control the scheduler by timeslice usage
+origin/gvt-fixes b79c52aef3cdee903017c1e9834b53996d70010e
+	drm/i915/gvt: Activate/de-activate vGPU in mdev ops.
+origin/gvt-next-fixes 627c845c0907894a1e5cd2d90ff4fc86c9e4458e
+	drm/i915/gvt: change some gvt_err to gvt_dbg_cmd

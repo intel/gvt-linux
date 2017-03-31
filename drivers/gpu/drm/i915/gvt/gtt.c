@@ -32,7 +32,8 @@
  *    Bing Niu <bing.niu@intel.com>
  *
  */
-
+#include <linux/types.h>
+#include <xen/xen.h>
 #include "i915_drv.h"
 #include "gvt.h"
 #include "i915_pvinfo.h"
@@ -1388,6 +1389,10 @@ static int ppgtt_handle_guest_write_page_table_bytes(
 	int ret;
 
 	index = (pa & (PAGE_SIZE - 1)) >> info->gtt_entry_size_shift;
+
+	if (xen_initial_domain())
+		/* Set guest ppgtt entry.Optional for KVMGT,but MUST for XENGT*/
+		intel_gvt_hypervisor_write_gpa(vgpu, pa, p_data, bytes);
 
 	ppgtt_get_guest_entry(spt, &we, index);
 

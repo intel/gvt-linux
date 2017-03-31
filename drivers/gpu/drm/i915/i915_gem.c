@@ -2321,7 +2321,7 @@ rebuild_st:
 	st->nents = 0;
 	for (i = 0; i < page_count; i++) {
 		page = shmem_read_mapping_page_gfp(mapping, i, gfp);
-		if (IS_ERR(page)) {
+		if (unlikely(IS_ERR(page))) {
 			i915_gem_shrink(dev_priv,
 					page_count,
 					I915_SHRINK_BOUND |
@@ -2329,12 +2329,21 @@ rebuild_st:
 					I915_SHRINK_PURGEABLE);
 			page = shmem_read_mapping_page_gfp(mapping, i, gfp);
 		}
-		if (IS_ERR(page)) {
+		if (unlikely(IS_ERR(page))) {
+			gfp_t reclaim;
+
 			/* We've tried hard to allocate the memory by reaping
 			 * our own buffer, now let the real VM do its job and
 			 * go down in flames if truly OOM.
+			 *
+			 * However, since graphics tend to be disposable,
+			 * defer the oom here by reporting the ENOMEM back
+			 * to userspace.
 			 */
-			page = shmem_read_mapping_page(mapping, i);
+			reclaim = mapping_gfp_constraint(mapping, 0);
+			reclaim |= __GFP_NORETRY; /* reclaim, but no oom */
+
+			page = shmem_read_mapping_page_gfp(mapping, i, reclaim);
 			if (IS_ERR(page)) {
 				ret = PTR_ERR(page);
 				goto err_sg;
@@ -3307,8 +3316,14 @@ i915_gem_object_flush_gtt_write_domain(struct drm_i915_gem_object *obj)
 	 * system agents we cannot reproduce this behaviour).
 	 */
 	wmb();
-	if (INTEL_GEN(dev_priv) >= 6 && !HAS_LLC(dev_priv))
-		POSTING_READ(RING_ACTHD(dev_priv->engine[RCS]->mmio_base));
+	if (INTEL_GEN(dev_priv) >= 6 && !HAS_LLC(dev_priv)) {
+		if (intel_runtime_pm_get_if_in_use(dev_priv)) {
+			spin_lock_irq(&dev_priv->uncore.lock);
+			POSTING_READ_FW(RING_ACTHD(dev_priv->engine[RCS]->mmio_base));
+			spin_unlock_irq(&dev_priv->uncore.lock);
+			intel_runtime_pm_put(dev_priv);
+		}
+	}
 
 	intel_fb_obj_flush(obj, write_origin(obj, I915_GEM_DOMAIN_GTT));
 
@@ -4596,10 +4611,12 @@ int i915_gem_init_hw(struct drm_i915_private *dev_priv)
 
 	intel_mocs_init_l3cc_table(dev_priv);
 
-	/* We can't enable contexts until all firmware is loaded */
-	ret = intel_uc_init_hw(dev_priv);
-	if (ret)
-		goto out;
+	if (i915.enable_guc_loading) {
+		/* We can't enable contexts until all firmware is loaded */
+		ret = intel_uc_init_hw(dev_priv);
+		if (ret)
+			goto out;
+	}
 
 out:
 	intel_uncore_forcewake_put(dev_priv, FORCEWAKE_ALL);

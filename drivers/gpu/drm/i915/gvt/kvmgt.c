@@ -295,10 +295,12 @@ static ssize_t description_show(struct kobject *kobj, struct device *dev,
 		return 0;
 
 	return sprintf(buf, "low_gm_size: %dMB\nhigh_gm_size: %dMB\n"
-		       "fence: %d\nresolution: %s\n",
+		       "fence: %d\nresolution: %s\n"
+		       "weight: %d\n",
 		       BYTES_TO_MB(type->low_gm_size),
 		       BYTES_TO_MB(type->high_gm_size),
-		       type->fence, vgpu_edid_str(type->resolution));
+		       type->fence, vgpu_edid_str(type->resolution),
+		       type->weight);
 }
 
 static MDEV_TYPE_ATTR_RO(available_instances);
@@ -1372,13 +1374,6 @@ static int kvmgt_guest_init(struct mdev_device *mdev)
 
 static bool kvmgt_guest_exit(struct kvmgt_guest_info *info)
 {
-	struct intel_vgpu *vgpu = info->vgpu;
-
-	if (!info) {
-		gvt_vgpu_err("kvmgt_guest_info invalid\n");
-		return false;
-	}
-
 	kvm_page_track_unregister_notifier(info->kvm, &info->track_node);
 	kvm_put_kvm(info->kvm);
 	kvmgt_protect_table_destroy(info);

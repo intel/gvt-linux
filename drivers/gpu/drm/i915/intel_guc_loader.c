@@ -148,16 +148,14 @@ static void guc_params_init(struct drm_i915_private *dev_priv)
 	} else
 		params[GUC_CTL_DEBUG] = GUC_LOG_DISABLED;
 
-	if (guc->ads_vma) {
-		u32 ads = guc_ggtt_offset(guc->ads_vma) >> PAGE_SHIFT;
-		params[GUC_CTL_DEBUG] |= ads << GUC_ADS_ADDR_SHIFT;
-		params[GUC_CTL_DEBUG] |= GUC_ADS_ENABLED;
-	}
-
 	/* If GuC submission is enabled, set up additional parameters here */
 	if (i915.enable_guc_submission) {
-		u32 pgs = guc_ggtt_offset(dev_priv->guc.ctx_pool_vma);
-		u32 ctx_in_16 = GUC_MAX_GPU_CONTEXTS / 16;
+		u32 ads = guc_ggtt_offset(guc->ads_vma) >> PAGE_SHIFT;
+		u32 pgs = guc_ggtt_offset(dev_priv->guc.stage_desc_pool);
+		u32 ctx_in_16 = GUC_MAX_STAGE_DESCRIPTORS / 16;
+
+		params[GUC_CTL_DEBUG] |= ads << GUC_ADS_ADDR_SHIFT;
+		params[GUC_CTL_DEBUG] |= GUC_ADS_ENABLED;
 
 		pgs >>= PAGE_SHIFT;
 		params[GUC_CTL_CTXINFO] = (pgs << GUC_CTL_BASE_ADDR_SHIFT) |
@@ -429,25 +427,4 @@ int intel_guc_select_fw(struct intel_guc *guc)
 	}
 
 	return 0;
-}
-
-/**
- * intel_guc_fini() - clean up all allocated resources
- * @dev_priv:	i915 device private
- */
-void intel_guc_fini(struct drm_i915_private *dev_priv)
-{
-	struct intel_uc_fw *guc_fw = &dev_priv->guc.fw;
-	struct drm_i915_gem_object *obj;
-
-	mutex_lock(&dev_priv->drm.struct_mutex);
-	i915_guc_submission_disable(dev_priv);
-	i915_guc_submission_fini(dev_priv);
-	mutex_unlock(&dev_priv->drm.struct_mutex);
-
-	obj = fetch_and_zero(&guc_fw->obj);
-	if (obj)
-		i915_gem_object_put(obj);
-
-	guc_fw->fetch_status = INTEL_UC_FIRMWARE_NONE;
 }

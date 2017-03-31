@@ -70,10 +70,14 @@ static struct intel_vgpu *vgpu_from_id(int vm_id)
 	/* vm_id is negtive in del_instance call */
 	if (vm_id < 0)
 		vm_id = -vm_id;
-	for (i = 0; i < GVT_MAX_VGPU_INSTANCE; i++)
-		if (xengt_priv.vgpus[i] && (vm_id == ((struct xengt_hvm_dev *)
-			(xengt_priv.vgpus[i]->handle))->vm_id))
-			return xengt_priv.vgpus[i];
+	for (i = 0; i < GVT_MAX_VGPU_INSTANCE; i++) {
+		if (xengt_priv.vgpus[i]) {
+			struct xengt_hvm_dev *info = (struct xengt_hvm_dev *)
+				(xengt_priv.vgpus[i]->handle);
+			if (info->vm_id == vm_id)
+				return xengt_priv.vgpus[i];
+		}
+	}
 	return NULL;
 }
 
@@ -180,10 +184,12 @@ static int xengt_sysfs_del_instance(struct xengt_hvm_params *vp)
 {
 	int ret = 0;
 	struct intel_vgpu *vgpu = vgpu_from_id(vp->vm_id);
-	struct xengt_hvm_dev *info = (struct xengt_hvm_dev *) vgpu->handle;
+	struct xengt_hvm_dev *info;
 
 	if (vgpu) {
-		gvt_dbg_core("pei: remove vm-%d sysfs node.\n", vp->vm_id);
+		gvt_dbg_core("xengt: remove vm-%d sysfs node.\n", vp->vm_id);
+
+		info = (struct xengt_hvm_dev *) vgpu->handle;
 		kobject_put(&info->kobj);
 
 		mutex_lock(&gvt_sysfs_lock);

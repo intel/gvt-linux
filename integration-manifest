@@ -1,22 +1,12 @@
-drm-intel drm-intel-fixes dd68f2ba0720e76c3a5bfa3f639c546f926792f5
-	drm/i915/execlists: Wrap tail pointer after reset tweaking
-drm-upstream drm-fixes d64a04720b0e64c1cd0726a3a27b360822fbee22
-	Merge branch 'drm-fixes-4.11' of git://people.freedesktop.org/~agd5f/linux into drm-fixes
-drm-intel drm-intel-next-fixes 998d75730b40afc218c059d811869abe9676b305
-	drm/i915: Fix not finding the VBT when it overlaps with OPREGION_ASLE_EXT
-drm-intel drm-intel-next-queued 8490ae207f1d1dd6765e89dd7c189c2c975ee3bc
-	drm/i915: Suppress busy status for engines if wedged
-drm-upstream drm-next 8bcad07a45637fb88e799466e4eee83859e8ffd3
-	drm/i915/gvt: fix error return check for copy_gma_to_hva()
-sound-upstream for-next ac310dc9fafcffaddbde7ca2137edb59cd4f414f
-	ALSA: oxygen: simply setting of the shortname for Xonar DG cards
-sound-upstream for-linus 9dfcce42b09cde01b2b1f5527ed91112a04a8ab0
-	Merge tag 'asoc-fix-v4.11-rc4' of git://git.kernel.org/pub/scm/linux/kernel/git/broonie/sound into for-linus
-drm-intel topic/core-for-CI ecf522b9010f38f423f2394df14e170dc7384940
-	e1000e: Undo e1000e_pm_freeze if __e1000_shutdown fails
-drm-misc drm-misc-next 031e5896dfdc24839d60f168f6e8560e294674d3
-	drm: Clear e after kfree in drm_mode_page_flip_ioctl
-drm-misc drm-misc-next-fixes a44ddbcbbd72ba8569df1ecbb4b1372506454dff
-	Merge tag 'drm-misc-next-fixes-2017-02-27' of git://anongit.freedesktop.org/git/drm-misc into drm-next
-drm-misc drm-misc-fixes c02ed2e75ef4c74e41e421acb4ef1494671585e8
-	Linux 4.11-rc4
+drm-tip/drm-tip d217cd61ada383a577dc686dd74f77856695ec84
+	drm-tip: 2017y-03m-30d-18h-24m-46s UTC integration manifest
+vfio-upstream/for-linus 65b1adebfe43c642dfe3b109edb5d992db5fbe72
+	vfio: Rework group release notifier warning
+vfio-upstream/next d9d84780f17cd9e25ddde10eb40357b96b7d6874
+	vfio: fix a typo in comment of function vfio_pin_pages
+origin/gvt-next b35f34d1da4e77637869c8041a355da810f69fb6
+	drm/i915/gvt: control the scheduler by timeslice usage
+origin/gvt-fixes f85726905745fb4f6e15c68e2ade9da5390f8d89
+	drm/i915/gvt: exclude cfg space from failsafe mode
+origin/gvt-next-fixes 627c845c0907894a1e5cd2d90ff4fc86c9e4458e
+	drm/i915/gvt: change some gvt_err to gvt_dbg_cmd

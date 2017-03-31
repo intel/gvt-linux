@@ -42,18 +42,19 @@ static int init_vgpu_opregion(struct intel_vgpu *vgpu, u32 gpa)
 	if (!vgpu_opregion(vgpu)->va)
 		return -ENOMEM;
 
-	memcpy(vgpu_opregion(vgpu)->va, vgpu->gvt->opregion.opregion_va,
-	       INTEL_GVT_OPREGION_SIZE);
+	if (vgpu->gvt->opregion.opregion_va) {
+		memcpy(vgpu_opregion(vgpu)->va, vgpu->gvt->opregion.opregion_va,
+				INTEL_GVT_OPREGION_SIZE);
+		/* for unknown reason, the value in LID field is incorrect
+		 * which block the windows guest, so workaround it by force
+		 * setting it to "OPEN"
+		 */
+		buf = (u8 *)vgpu_opregion(vgpu)->va;
+		buf[INTEL_GVT_OPREGION_CLID] = 0x3;
+	}
 
 	for (i = 0; i < INTEL_GVT_OPREGION_PAGES; i++)
 		vgpu_opregion(vgpu)->gfn[i] = (gpa >> PAGE_SHIFT) + i;
-
-	/* for unknown reason, the value in LID field is incorrect
-	 * which block the windows guest, so workaround it by force
-	 * setting it to "OPEN"
-	 */
-	buf = (u8 *)vgpu_opregion(vgpu)->va;
-	buf[INTEL_GVT_OPREGION_CLID] = 0x3;
 
 	return 0;
 }
@@ -120,6 +121,12 @@ int intel_vgpu_init_opregion(struct intel_vgpu *vgpu, u32 gpa)
 	if (intel_gvt_host.hypervisor_type == INTEL_GVT_HYPERVISOR_XEN) {
 		gvt_dbg_core("emulate opregion from kernel\n");
 
+		/* clean opregion content before it could be reused. */
+		if (gpa == 0)
+			return 0;
+		if (vgpu_opregion(vgpu)->va)
+			intel_vgpu_clean_opregion(vgpu);
+
 		ret = init_vgpu_opregion(vgpu, gpa);
 		if (ret)
 			return ret;
@@ -139,7 +146,8 @@ int intel_vgpu_init_opregion(struct intel_vgpu *vgpu, u32 gpa)
  */
 void intel_gvt_clean_opregion(struct intel_gvt *gvt)
 {
-	memunmap(gvt->opregion.opregion_va);
+	if (gvt->opregion.opregion_va)
+		memunmap(gvt->opregion.opregion_va);
 	gvt->opregion.opregion_va = NULL;
 }
 
@@ -156,6 +164,11 @@ int intel_gvt_init_opregion(struct intel_gvt *gvt)
 
 	pci_read_config_dword(gvt->dev_priv->drm.pdev, INTEL_GVT_PCI_OPREGION,
 			&gvt->opregion.opregion_pa);
+
+	if (gvt->opregion.opregion_pa == 0) {
+		gvt_err("host opregion doesn't exist\n");
+		return 0;
+	}
 
 	gvt->opregion.opregion_va = memremap(gvt->opregion.opregion_pa,
 					     INTEL_GVT_OPREGION_SIZE, MEMREMAP_WB);

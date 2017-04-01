@@ -1268,7 +1268,7 @@ struct intel_vgpu *xengt_instance_create(domid_t vm_id,
 	vgpu = intel_gvt_ops->vgpu_create(xengt_priv.gvt, vgpu_type);
 	if (IS_ERR(vgpu))
 		return NULL;
-
+	intel_gvt_ops->vgpu_activate(vgpu);
 	info = kzalloc(sizeof(struct xengt_hvm_dev), GFP_KERNEL);
 	if (info == NULL)
 		goto err;

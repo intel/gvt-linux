@@ -1181,8 +1181,9 @@ void xengt_instance_destroy(struct intel_vgpu *vgpu)
 	struct xengt_hvm_dev *info;
 	int vcpu;
 
-	info = (struct xengt_hvm_dev *)vgpu->handle;
+	intel_gvt_ops->vgpu_deactivate(vgpu);
 
+	info = (struct xengt_hvm_dev *)vgpu->handle;
 	if (info == NULL)
 		goto free_vgpu;
 

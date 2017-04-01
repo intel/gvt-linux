@@ -699,8 +699,6 @@ static int xengt_hvm_vmem_init(struct intel_vgpu *vgpu)
 	if (!info->vm_id)
 		return 0;
 
-	//ASSERT(info->vmem_vma == NULL && info->vmem_vma_low_1mb == NULL);
-
 	info->vmem_sz = xengt_get_max_gpfn(info->vm_id);
 	info->vmem_sz <<= PAGE_SHIFT;
 
@@ -774,7 +772,7 @@ static int xengt_hvm_vmem_init(struct intel_vgpu *vgpu)
 		 */
 		if (!info->vmem_vma_4k[gpfn] &&
 			((i % 64 == 0) || (i >= (1ULL << (32 - VMEM_BUCK_SHIFT)))))
-			gvt_err("VM%d: can't map gpfn 0x%lx\n", info->vm_id, gpfn);
+			gvt_dbg_mm("VM%d: can't map gpfn 0x%lx\n", info->vm_id, gpfn);
 	}
 
 	return 0;
@@ -801,8 +799,6 @@ static void xengt_vmem_destroy(struct intel_vgpu *vgpu)
 	 */
 	if (info->vmem_vma == NULL && info->vmem_vma_low_1mb == NULL)
 		return;
-
-	//ASSERT(info->vmem_vma != NULL && info->vmem_vma_low_1mb != NULL);
 
 	nr_low_1mb_bkt = VMEM_1MB >> PAGE_SHIFT;
 	nr_high_bkt = (info->vmem_sz >> VMEM_BUCK_SHIFT);

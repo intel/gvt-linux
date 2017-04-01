@@ -1,22 +1,12 @@
-drm-intel drm-intel-fixes ecf8e89917d600fe846ebda911a9e690c6babfd0
-	drm/i915: Use a dummy timeline name for a signaled fence
-drm-upstream drm-fixes 3a2d78228a4fd3dadff2b528528aa8901f724a87
-	Merge tag 'drm-misc-fixes-2017-03-31' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
-drm-intel drm-intel-next-fixes 998d75730b40afc218c059d811869abe9676b305
-	drm/i915: Fix not finding the VBT when it overlaps with OPREGION_ASLE_EXT
-drm-intel drm-intel-next-queued 5f09ad8be7bc2d09f2248ad102f0024e6bdb4613
-	drm/i915: Clear gt.active_requests before checking idle status
-drm-upstream drm-next 8cd3ac52963f2e99f4c21d1c9ce89531ce66c2d6
-	Merge branch 'drm-next-4.12' of git://people.freedesktop.org/~agd5f/linux into drm-next
-sound-upstream for-next a8c006aafead3c45ae5d5601e3717055bccf41bc
-	ALSA: timer: Info leak in snd_timer_user_tinterrupt()
-sound-upstream for-linus 2f726aec19a9d2c63bec9a8a53a3910ffdcd09f8
-	ALSA: hda - fix a problem for lineout on a Dell AIO machine
-drm-intel topic/core-for-CI ecf522b9010f38f423f2394df14e170dc7384940
-	e1000e: Undo e1000e_pm_freeze if __e1000_shutdown fails
-drm-misc drm-misc-next 5eb2c72c8acc3f84c85f9d504b87f25f78ef0eb0
-	dma-buf: fence debugging
-drm-misc drm-misc-next-fixes a44ddbcbbd72ba8569df1ecbb4b1372506454dff
-	Merge tag 'drm-misc-next-fixes-2017-02-27' of git://anongit.freedesktop.org/git/drm-misc into drm-next
-drm-misc drm-misc-fixes 6d6e500391875cc372336c88e9a8af377be19c36
-	drm/vc4: Allocate the right amount of space for boot-time CRTC state.
+drm-tip/drm-tip 19ceec7d516a7c4614833ba7a3724a4bea0c59d3
+	drm-tip: 2017y-03m-31d-20h-10m-03s UTC integration manifest
+vfio-upstream/for-linus 65b1adebfe43c642dfe3b109edb5d992db5fbe72
+	vfio: Rework group release notifier warning
+vfio-upstream/next d9d84780f17cd9e25ddde10eb40357b96b7d6874
+	vfio: fix a typo in comment of function vfio_pin_pages
+origin/gvt-next b35f34d1da4e77637869c8041a355da810f69fb6
+	drm/i915/gvt: control the scheduler by timeslice usage
+origin/gvt-fixes 17e320735c55a7d0334cfdf5aa7b54c6f3bde8d1
+	drm/i915: disable KASAN for handlers
+origin/gvt-next-fixes 627c845c0907894a1e5cd2d90ff4fc86c9e4458e
+	drm/i915/gvt: change some gvt_err to gvt_dbg_cmd

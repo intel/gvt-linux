@@ -6,3 +6,5 @@ GVT_SOURCE := gvt.o aperture_gm.o handlers.o vgpu.o trace_points.o firmware.o \
 ccflags-y				+= -I$(src) -I$(src)/$(GVT_DIR) -Wall
 i915-y					+= $(addprefix $(GVT_DIR)/, $(GVT_SOURCE))
 obj-$(CONFIG_DRM_I915_GVT_KVMGT)	+= $(GVT_DIR)/kvmgt.o
+
+KASAN_SANITIZE_handlers.o := n

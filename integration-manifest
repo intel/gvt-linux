@@ -1,5 +1,5 @@
-drm-tip/drm-tip d217cd61ada383a577dc686dd74f77856695ec84
-	drm-tip: 2017y-03m-30d-18h-24m-46s UTC integration manifest
+drm-tip/drm-tip 19ceec7d516a7c4614833ba7a3724a4bea0c59d3
+	drm-tip: 2017y-03m-31d-20h-10m-03s UTC integration manifest
 vfio-upstream/for-linus 65b1adebfe43c642dfe3b109edb5d992db5fbe72
 	vfio: Rework group release notifier warning
 vfio-upstream/next d9d84780f17cd9e25ddde10eb40357b96b7d6874
@@ -10,3 +10,5 @@ origin/gvt-fixes f85726905745fb4f6e15c68e2ade9da5390f8d89
 	drm/i915/gvt: exclude cfg space from failsafe mode
 origin/gvt-next-fixes 627c845c0907894a1e5cd2d90ff4fc86c9e4458e
 	drm/i915/gvt: change some gvt_err to gvt_dbg_cmd
+origin/topic/gvt-xengt 87cc84cf96b574cf934ae10395c7511c733776e7
+	drm/i915/xengt: fix a NULL pointer issue

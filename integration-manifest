@@ -1,0 +1,24 @@
+drm-intel drm-intel-fixes cf082a4a264d5e0bb79f0055be02d255438836a4
+	Merge tag 'gvt-fixes-2017-04-01' of https://github.com/01org/gvt-linux into drm-intel-fixes
+drm-upstream drm-fixes 130e35e4bbceb2c04ff0ad9b1a0bcef7acc11498
+	Merge branch 'msm-fixes-4.11-rc6' of git://people.freedesktop.org/~robclark/linux into drm-fixes
+drm-intel drm-intel-next-fixes 998d75730b40afc218c059d811869abe9676b305
+	drm/i915: Fix not finding the VBT when it overlaps with OPREGION_ASLE_EXT
+drm-intel drm-intel-next-queued 895203044067af64400cedbc055898bcec98d102
+	drm/i915: Make legacy cursor updates more unsynced
+drm-upstream drm-next e1b489d207c73e67810659a88c45b8db4bd62773
+	Merge tag 'omapdrm-4.12' of git://git.kernel.org/pub/scm/linux/kernel/git/tomba/linux into drm-next
+sound-upstream for-next f87e7f25893d7db4da465c6b50882197e518d4af
+	ALSA: hda - Improved position reporting on SKL+
+sound-upstream for-linus 2f726aec19a9d2c63bec9a8a53a3910ffdcd09f8
+	ALSA: hda - fix a problem for lineout on a Dell AIO machine
+drm-intel topic/core-for-CI ecf522b9010f38f423f2394df14e170dc7384940
+	e1000e: Undo e1000e_pm_freeze if __e1000_shutdown fails
+drm-misc drm-misc-next 5db06a8a98f515f67446a69c57577c4c363ec65d
+	drm: Pass CRTC ID in userspace vblank events
+drm-misc drm-misc-next-fixes a44ddbcbbd72ba8569df1ecbb4b1372506454dff
+	Merge tag 'drm-misc-next-fixes-2017-02-27' of git://anongit.freedesktop.org/git/drm-misc into drm-next
+drm-misc drm-misc-fixes a71c9a1c779f2499fb2afc0553e543f18aff6edf
+	Linux 4.11-rc5
+drm-misc topic/synopsys-media-formats 3c2507d308afb233dd41387b41512e7aa97535f0
+	documentation: media: Add documentation for new RGB and YUV bus formats

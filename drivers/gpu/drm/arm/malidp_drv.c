@@ -100,7 +100,7 @@ static void malidp_atomic_commit_tail(struct drm_atomic_state *state)
 	drm_atomic_helper_cleanup_planes(drm, state);
 }
 
-static struct drm_mode_config_helper_funcs malidp_mode_config_helpers = {
+static const struct drm_mode_config_helper_funcs malidp_mode_config_helpers = {
 	.atomic_commit_tail = malidp_atomic_commit_tail,
 };
 
@@ -110,25 +110,6 @@ static const struct drm_mode_config_funcs malidp_mode_config_funcs = {
 	.atomic_check = drm_atomic_helper_check,
 	.atomic_commit = drm_atomic_helper_commit,
 };
-
-static int malidp_enable_vblank(struct drm_device *drm, unsigned int crtc)
-{
-	struct malidp_drm *malidp = drm->dev_private;
-	struct malidp_hw_device *hwdev = malidp->dev;
-
-	malidp_hw_enable_irq(hwdev, MALIDP_DE_BLOCK,
-			     hwdev->map.de_irq_map.vsync_irq);
-	return 0;
-}
-
-static void malidp_disable_vblank(struct drm_device *drm, unsigned int pipe)
-{
-	struct malidp_drm *malidp = drm->dev_private;
-	struct malidp_hw_device *hwdev = malidp->dev;
-
-	malidp_hw_disable_irq(hwdev, MALIDP_DE_BLOCK,
-			      hwdev->map.de_irq_map.vsync_irq);
-}
 
 static int malidp_init(struct drm_device *drm)
 {
@@ -197,25 +178,12 @@ static void malidp_lastclose(struct drm_device *drm)
 	drm_fbdev_cma_restore_mode(malidp->fbdev);
 }
 
-static const struct file_operations fops = {
-	.owner = THIS_MODULE,
-	.open = drm_open,
-	.release = drm_release,
-	.unlocked_ioctl = drm_ioctl,
-	.compat_ioctl = drm_compat_ioctl,
-	.poll = drm_poll,
-	.read = drm_read,
-	.llseek = noop_llseek,
-	.mmap = drm_gem_cma_mmap,
-};
+DEFINE_DRM_GEM_CMA_FOPS(fops);
 
 static struct drm_driver malidp_driver = {
 	.driver_features = DRIVER_GEM | DRIVER_MODESET | DRIVER_ATOMIC |
 			   DRIVER_PRIME,
 	.lastclose = malidp_lastclose,
-	.get_vblank_counter = drm_vblank_no_hw_counter,
-	.enable_vblank = malidp_enable_vblank,
-	.disable_vblank = malidp_disable_vblank,
 	.gem_free_object_unlocked = drm_gem_cma_free_object,
 	.gem_vm_ops = &drm_gem_cma_vm_ops,
 	.dumb_create = drm_gem_cma_dumb_create,

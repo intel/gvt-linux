@@ -199,8 +199,13 @@ static void emulate_monitor_status_change(struct intel_vgpu *vgpu)
 	}
 
 	if (intel_vgpu_has_monitor_on_port(vgpu, PORT_D)) {
-		vgpu_vreg(vgpu, SDEISR) |= SDE_PORTD_HOTPLUG_CPT;
 		vgpu_vreg(vgpu, SFUSE_STRAP) |= SFUSE_STRAP_DDID_DETECTED;
+		vgpu_vreg(vgpu, TRANS_DDI_FUNC_CTL(PIPE_A)) &= ~(TRANS_DDI_BPC_MASK |
+			TRANS_DDI_MODE_SELECT_MASK | TRANS_DDI_PORT_MASK);
+		vgpu_vreg(vgpu, TRANS_DDI_FUNC_CTL(PIPE_A)) |= (TRANS_DDI_BPC_8 |
+			TRANS_DDI_MODE_SELECT_DP_SST | (PORT_D << TRANS_DDI_PORT_SHIFT));
+		vgpu_vreg(vgpu, DDI_BUF_CTL(PORT_D)) |= DDI_BUF_CTL_ENABLE;
+		vgpu_vreg(vgpu, SDEISR) |= SDE_PORTD_HOTPLUG_CPT;
 	}
 
 	if ((IS_SKYLAKE(dev_priv) || IS_KABYLAKE(dev_priv)) &&

@@ -1,0 +1,14 @@
+drm-tip/drm-tip bf30bc2a70b83a77ba63436023f3550083715c56
+	drm-tip: 2017y-04m-04d-20h-00m-56s UTC integration manifest
+vfio-upstream/for-linus 65b1adebfe43c642dfe3b109edb5d992db5fbe72
+	vfio: Rework group release notifier warning
+vfio-upstream/next d9d84780f17cd9e25ddde10eb40357b96b7d6874
+	vfio: fix a typo in comment of function vfio_pin_pages
+origin/gvt-next b35f34d1da4e77637869c8041a355da810f69fb6
+	drm/i915/gvt: control the scheduler by timeslice usage
+origin/gvt-fixes aa4ce4493c88dc324911152d1ccd25469366dba3
+	drm/i915/gvt: Fix firmware loading interface for GVT-g golden HW state
+origin/gvt-next-fixes 627c845c0907894a1e5cd2d90ff4fc86c9e4458e
+	drm/i915/gvt: change some gvt_err to gvt_dbg_cmd
+origin/topic/gvt-xengt 5365501a177e072b1d2adf6ed98f8282452d8de6
+	drm/i915/xengt: active vgpu when xengt instance is created

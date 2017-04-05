@@ -2622,14 +2622,22 @@ EXPORT_SYMBOL(drm_atomic_helper_commit_duplicated_state);
 int drm_atomic_helper_resume(struct drm_device *dev,
 			     struct drm_atomic_state *state)
 {
-	struct drm_mode_config *config = &dev->mode_config;
+	struct drm_modeset_acquire_ctx ctx;
 	int err;
 
 	drm_mode_config_reset(dev);
 
-	drm_modeset_lock_all(dev);
-	err = drm_atomic_helper_commit_duplicated_state(state, config->acquire_ctx);
-	drm_modeset_unlock_all(dev);
+	drm_modeset_acquire_init(&ctx, 0);
+	while (1) {
+		err = drm_atomic_helper_commit_duplicated_state(state, &ctx);
+		if (err != -EDEADLK)
+			break;
+
+		drm_modeset_backoff(&ctx);
+	}
+
+	drm_modeset_drop_locks(&ctx);
+	drm_modeset_acquire_fini(&ctx);
 
 	return err;
 }
@@ -2975,7 +2983,7 @@ int drm_atomic_helper_connector_dpms(struct drm_connector *connector,
 	if (!state)
 		return -ENOMEM;
 
-	state->acquire_ctx = drm_modeset_legacy_acquire_ctx(crtc);
+	state->acquire_ctx = crtc->dev->mode_config.acquire_ctx;
 retry:
 	crtc_state = drm_atomic_get_crtc_state(state, crtc);
 	if (IS_ERR(crtc_state)) {

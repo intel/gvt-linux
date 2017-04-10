@@ -178,9 +178,7 @@ struct virtio_gpu_device {
 
 	struct virtio_gpu_queue ctrlq;
 	struct virtio_gpu_queue cursorq;
-	struct list_head free_vbufs;
-	spinlock_t free_vbufs_lock;
-	void *vbufs;
+	struct kmem_cache *vbufs;
 	bool vqs_ready;
 
 	struct idr	resource_idr;
@@ -422,6 +420,5 @@ static inline void virtio_gpu_object_unreserve(struct virtio_gpu_object *bo)
 
 /* virgl debufs */
 int virtio_gpu_debugfs_init(struct drm_minor *minor);
-void virtio_gpu_debugfs_takedown(struct drm_minor *minor);
 
 #endif

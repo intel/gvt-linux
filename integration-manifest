@@ -1,22 +1,12 @@
-drm-intel drm-intel-fixes cf082a4a264d5e0bb79f0055be02d255438836a4
-	Merge tag 'gvt-fixes-2017-04-01' of https://github.com/01org/gvt-linux into drm-intel-fixes
-drm-upstream drm-fixes 130e35e4bbceb2c04ff0ad9b1a0bcef7acc11498
-	Merge branch 'msm-fixes-4.11-rc6' of git://people.freedesktop.org/~robclark/linux into drm-fixes
-drm-intel drm-intel-next-fixes 998d75730b40afc218c059d811869abe9676b305
-	drm/i915: Fix not finding the VBT when it overlaps with OPREGION_ASLE_EXT
-drm-intel drm-intel-next-queued bea4e4a4f831df1c104be60b3caa7205ba1bb4f9
-	drm/i915/guc: Use wait_for_register_fw() while waiting for MMIO response
-drm-upstream drm-next 0168778115687486575a6831df865dbc4f5369fe
-	Merge branch 'drm-next-4.12' of git://people.freedesktop.org/~agd5f/linux into drm-next
-sound-upstream for-next 1f9d3d98694b1cef93f99a54e6830e9717616ba6
-	ALSA: hda - set intel audio clock to a proper value
-sound-upstream for-linus 3d016d57fdc5e6caa4cd67896f4b081bccad6e2c
-	ALSA: oxfw: fix regression to handle Stanton SCS.1m/1d
-drm-intel topic/core-for-CI ecf522b9010f38f423f2394df14e170dc7384940
-	e1000e: Undo e1000e_pm_freeze if __e1000_shutdown fails
-drm-misc drm-misc-next c18701c5f2c9fdb2386d521c1a1f7b216c041b4a
-	MAINTAINERS: Update maintainers/reviewers for bridge drivers
-drm-misc drm-misc-next-fixes c98cdff94a6a7877923dec1329c2b76d6247d076
-	Revert "drm: Don't allow interruptions when opening debugfs/crc"
-drm-misc drm-misc-fixes a71c9a1c779f2499fb2afc0553e543f18aff6edf
-	Linux 4.11-rc5
+drm-tip/drm-tip d86f5fa557fdf089bdb5b51f625a7f5967f11015
+	drm-tip: 2017y-04m-10d-06h-38m-49s UTC integration manifest
+vfio-upstream/for-linus 65b1adebfe43c642dfe3b109edb5d992db5fbe72
+	vfio: Rework group release notifier warning
+vfio-upstream/next d9d84780f17cd9e25ddde10eb40357b96b7d6874
+	vfio: fix a typo in comment of function vfio_pin_pages
+origin/gvt-next 0b063bd3ea9c13df78c82aa742e581c39f9d6156
+	drm/i915/gvt: cleanup some too chatty scheduler message
+origin/gvt-fixes a34f83639490a5cc11a9d5c1b3773d4b6eb69a9e
+	drm/i915/gvt: set the correct default value of CTX STATUS PTR
+origin/gvt-next-fixes 627c845c0907894a1e5cd2d90ff4fc86c9e4458e
+	drm/i915/gvt: change some gvt_err to gvt_dbg_cmd

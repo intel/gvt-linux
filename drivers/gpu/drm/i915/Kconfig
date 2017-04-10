@@ -19,6 +19,8 @@ config DRM_I915
 	select INPUT if ACPI
 	select ACPI_VIDEO if ACPI
 	select ACPI_BUTTON if ACPI
+	select SYNC_FILE
+	select IOSF_MBI
 	help
 	  Choose this option if you have a system that has "Intel Graphics
 	  Media Accelerator" or "HD Graphics" integrated graphics,
@@ -121,6 +123,15 @@ config DRM_I915_GVT_KVMGT
 	help
 	  Choose this option if you want to enable KVMGT support for
 	  Intel GVT-g.
+
+config DRM_I915_GVT_XENGT
+	tristate "Enable XEN support for Intel GVT-g"
+	depends on DRM_I915_GVT
+	depends on XEN
+	default n
+	help
+	  Choose this option if you want to enable XENGT support for
+	  Intel GVT-g under XEN hypervisor environment.
 
 menu "drm/i915 Debugging"
 depends on DRM_I915

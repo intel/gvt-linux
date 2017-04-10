@@ -126,6 +126,15 @@ config DRM_I915_GVT_KVMGT
 	  Choose this option if you want to enable KVMGT support for
 	  Intel GVT-g.
 
+config DRM_I915_GVT_XENGT
+	tristate "Enable XEN support for Intel GVT-g"
+	depends on DRM_I915_GVT
+	depends on XEN
+	default n
+	help
+	  Choose this option if you want to enable XENGT support for
+	  Intel GVT-g under XEN hypervisor environment.
+
 menu "drm/i915 Debugging"
 depends on DRM_I915
 depends on EXPERT

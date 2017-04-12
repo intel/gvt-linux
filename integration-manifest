@@ -1,0 +1,22 @@
+drm-intel drm-intel-fixes c053b5a506d3afc038c485a86e3d461f6c7fb207
+	drm/i915: Don't call synchronize_rcu_expedited under struct_mutex
+drm-upstream drm-fixes 130e35e4bbceb2c04ff0ad9b1a0bcef7acc11498
+	Merge branch 'msm-fixes-4.11-rc6' of git://people.freedesktop.org/~robclark/linux into drm-fixes
+drm-intel drm-intel-next-fixes 998d75730b40afc218c059d811869abe9676b305
+	drm/i915: Fix not finding the VBT when it overlaps with OPREGION_ASLE_EXT
+drm-intel drm-intel-next-queued 48ae80741da4b8a26b6df0f765713912bc7cc480
+	drm/i915: Fix use after free in lpe_audio_platdev_destroy()
+drm-upstream drm-next d455937ed1cff44b9e5567f0ab697ad486429c0f
+	Merge branch 'msm-next' of git://people.freedesktop.org/~robclark/linux into drm-next
+sound-upstream for-next 49c41e1f23882f7950cff66992115bba03f1bbcf
+	ALSA: line6: constify snd_kcontrol_new structures
+sound-upstream for-linus 3d016d57fdc5e6caa4cd67896f4b081bccad6e2c
+	ALSA: oxfw: fix regression to handle Stanton SCS.1m/1d
+drm-intel topic/core-for-CI 841c8c95663fe5743f958dfcd1adc4e27b3748b8
+	Revert "sched/clock: Fix broken stable to unstable transfer"
+drm-misc drm-misc-next c18701c5f2c9fdb2386d521c1a1f7b216c041b4a
+	MAINTAINERS: Update maintainers/reviewers for bridge drivers
+drm-misc drm-misc-next-fixes 8cb68c83ab99a474ae847602f0c514d0fe17cc82
+	drm: Fix get_property logic fumble
+drm-misc drm-misc-fixes 0c45b36f8acc89cb94c8696a27574f01e0e411dc
+	drm/udl: Fix unaligned memory access in udl_render_hline

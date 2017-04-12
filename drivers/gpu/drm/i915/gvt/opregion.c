@@ -22,6 +22,7 @@
  */
 
 #include <linux/acpi.h>
+#include <xen/xen.h>
 #include "i915_drv.h"
 #include "gvt.h"
 
@@ -254,7 +255,11 @@ static int init_vgpu_opregion(struct intel_vgpu *vgpu, u32 gpa)
 {
 	int i, ret;
 
-	if (WARN((vgpu_opregion(vgpu)->va),
+	if (xen_initial_domain() && vgpu_opregion(vgpu)->va) {
+		gvt_vgpu_err("opregion has been initialized already.\n");
+		intel_vgpu_clean_opregion(vgpu);
+	}
+	else if (WARN((vgpu_opregion(vgpu)->va),
 			"vgpu%d: opregion has been initialized already.\n",
 			vgpu->id))
 		return -EINVAL;

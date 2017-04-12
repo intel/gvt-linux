@@ -100,7 +100,7 @@ static void malidp_atomic_commit_tail(struct drm_atomic_state *state)
 	drm_atomic_helper_cleanup_planes(drm, state);
 }
 
-static struct drm_mode_config_helper_funcs malidp_mode_config_helpers = {
+static const struct drm_mode_config_helper_funcs malidp_mode_config_helpers = {
 	.atomic_commit_tail = malidp_atomic_commit_tail,
 };
 
@@ -110,25 +110,6 @@ static const struct drm_mode_config_funcs malidp_mode_config_funcs = {
 	.atomic_check = drm_atomic_helper_check,
 	.atomic_commit = drm_atomic_helper_commit,
 };
-
-static int malidp_enable_vblank(struct drm_device *drm, unsigned int crtc)
-{
-	struct malidp_drm *malidp = drm->dev_private;
-	struct malidp_hw_device *hwdev = malidp->dev;
-
-	malidp_hw_enable_irq(hwdev, MALIDP_DE_BLOCK,
-			     hwdev->map.de_irq_map.vsync_irq);
-	return 0;
-}
-
-static void malidp_disable_vblank(struct drm_device *drm, unsigned int pipe)
-{
-	struct malidp_drm *malidp = drm->dev_private;
-	struct malidp_hw_device *hwdev = malidp->dev;
-
-	malidp_hw_disable_irq(hwdev, MALIDP_DE_BLOCK,
-			      hwdev->map.de_irq_map.vsync_irq);
-}
 
 static int malidp_init(struct drm_device *drm)
 {
@@ -197,25 +178,12 @@ static void malidp_lastclose(struct drm_device *drm)
 	drm_fbdev_cma_restore_mode(malidp->fbdev);
 }
 
-static const struct file_operations fops = {
-	.owner = THIS_MODULE,
-	.open = drm_open,
-	.release = drm_release,
-	.unlocked_ioctl = drm_ioctl,
-	.compat_ioctl = drm_compat_ioctl,
-	.poll = drm_poll,
-	.read = drm_read,
-	.llseek = noop_llseek,
-	.mmap = drm_gem_cma_mmap,
-};
+DEFINE_DRM_GEM_CMA_FOPS(fops);
 
 static struct drm_driver malidp_driver = {
 	.driver_features = DRIVER_GEM | DRIVER_MODESET | DRIVER_ATOMIC |
 			   DRIVER_PRIME,
 	.lastclose = malidp_lastclose,
-	.get_vblank_counter = drm_vblank_no_hw_counter,
-	.enable_vblank = malidp_enable_vblank,
-	.disable_vblank = malidp_disable_vblank,
 	.gem_free_object_unlocked = drm_gem_cma_free_object,
 	.gem_vm_ops = &drm_gem_cma_vm_ops,
 	.dumb_create = drm_gem_cma_dumb_create,
@@ -315,7 +283,6 @@ static int malidp_bind(struct device *dev)
 {
 	struct resource *res;
 	struct drm_device *drm;
-	struct device_node *ep;
 	struct malidp_drm *malidp;
 	struct malidp_hw_device *hwdev;
 	struct platform_device *pdev = to_platform_device(dev);
@@ -430,12 +397,7 @@ static int malidp_bind(struct device *dev)
 		goto init_fail;
 
 	/* Set the CRTC's port so that the encoder component can find it */
-	ep = of_graph_get_next_endpoint(dev->of_node, NULL);
-	if (!ep) {
-		ret = -EINVAL;
-		goto port_fail;
-	}
-	malidp->crtc.port = of_get_next_parent(ep);
+	malidp->crtc.port = of_graph_get_port_by_id(dev->of_node, 0);
 
 	ret = component_bind_all(dev, drm);
 	if (ret) {
@@ -490,7 +452,6 @@ irq_init_fail:
 bind_fail:
 	of_node_put(malidp->crtc.port);
 	malidp->crtc.port = NULL;
-port_fail:
 	malidp_fini(drm);
 init_fail:
 	drm->dev_private = NULL;
@@ -548,29 +509,16 @@ static int malidp_compare_dev(struct device *dev, void *data)
 
 static int malidp_platform_probe(struct platform_device *pdev)
 {
-	struct device_node *port, *ep;
+	struct device_node *port;
 	struct component_match *match = NULL;
 
 	if (!pdev->dev.of_node)
 		return -ENODEV;
 
 	/* there is only one output port inside each device, find it */
-	ep = of_graph_get_next_endpoint(pdev->dev.of_node, NULL);
-	if (!ep)
+	port = of_graph_get_remote_node(pdev->dev.of_node, 0, 0);
+	if (!port)
 		return -ENODEV;
-
-	if (!of_device_is_available(ep)) {
-		of_node_put(ep);
-		return -ENODEV;
-	}
-
-	/* add the remote encoder port as component */
-	port = of_graph_get_remote_port_parent(ep);
-	of_node_put(ep);
-	if (!port || !of_device_is_available(port)) {
-		of_node_put(port);
-		return -EAGAIN;
-	}
 
 	drm_of_component_match_add(&pdev->dev, &match, malidp_compare_dev,
 				   port);

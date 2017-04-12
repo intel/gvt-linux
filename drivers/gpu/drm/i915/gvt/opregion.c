@@ -30,10 +30,10 @@ static int init_vgpu_opregion(struct intel_vgpu *vgpu, u32 gpa)
 	u8 *buf;
 	int i;
 
-	if (WARN((vgpu_opregion(vgpu)->va),
-			"vgpu%d: opregion has been initialized already.\n",
-			vgpu->id))
-		return -EINVAL;
+	if (vgpu_opregion(vgpu)->va) {
+		gvt_vgpu_err("opregion has been initialized already.\n");
+		intel_vgpu_clean_opregion(vgpu);
+	}
 
 	vgpu_opregion(vgpu)->va = (void *)__get_free_pages(GFP_KERNEL |
 			__GFP_ZERO,

@@ -660,6 +660,9 @@ static int xengt_map_gfn_to_mfn(unsigned long handle, unsigned long gfn,
 	if (!info)
 		return -EINVAL;
 
+	if (info->on_destroy)
+		return 0;
+
 	rc = xen_hvm_memory_mapping(info->vm_id, gfn, mfn, nr,
 			map ? DPCI_ADD_MAPPING : DPCI_REMOVE_MAPPING);
 	if (rc != 0)
@@ -685,6 +688,9 @@ static int xengt_page_track_add(unsigned long handle, u64 gfn)
 
 	if (!info)
 		return -EINVAL;
+
+	if (info->on_destroy)
+		return 0;
 
 	r = xen_hvm_wp_page_to_ioreq_server(info, gfn, true);
 	if (r) {

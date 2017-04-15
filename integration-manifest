@@ -1,0 +1,22 @@
+drm-intel drm-intel-fixes c053b5a506d3afc038c485a86e3d461f6c7fb207
+	drm/i915: Don't call synchronize_rcu_expedited under struct_mutex
+drm-upstream drm-fixes 2ca62d8a606a95e098799f128f6a40a6300d2a2a
+	Merge branch 'linux-4.11' of git://github.com/skeggsb/linux into drm-fixes
+drm-intel drm-intel-next-fixes 998d75730b40afc218c059d811869abe9676b305
+	drm/i915: Fix not finding the VBT when it overlaps with OPREGION_ASLE_EXT
+drm-intel drm-intel-next-queued b0fd47adc6233e4c198a97e1ddb05accd31eeacb
+	drm/i915: Copy user requested buffers into the error state
+drm-upstream drm-next ab6eb211b07a42a6346e284056422fd9a8576a99
+	Merge tag 'drm/panel/for-4.12-rc1' of git://anongit.freedesktop.org/tegra/linux into drm-next
+sound-upstream for-next ae369e559f16c5245d6b987c43799179af16e4d6
+	ALSA: firewire-tascam: support drain callback for MIDI playback substream
+sound-upstream for-linus dfb00a56935186171abb5280b3407c3f910011f1
+	ALSA: firewire-lib: fix inappropriate assignment between signed/unsigned type
+drm-intel topic/core-for-CI 841c8c95663fe5743f958dfcd1adc4e27b3748b8
+	Revert "sched/clock: Fix broken stable to unstable transfer"
+drm-misc drm-misc-next ccb92b945e9ac718f1c7b37216eaae02ccde032f
+	MAINTAINERS: add maintainers for DRM STM driver
+drm-misc drm-misc-next-fixes 2f410f88c0a1c7e19762918d2614f506a7b63a82
+	drm/sti: fix GDP size to support up to UHD resolution
+drm-misc drm-misc-fixes 0c45b36f8acc89cb94c8696a27574f01e0e411dc
+	drm/udl: Fix unaligned memory access in udl_render_hline

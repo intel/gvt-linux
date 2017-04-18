@@ -42,6 +42,7 @@
 #include <xen/interface/hvm/params.h>
 #include <xen/interface/hvm/ioreq.h>
 #include <xen/interface/hvm/hvm_op.h>
+#include <xen/interface/hvm/dm_op.h>
 #include <xen/interface/memory.h>
 #include <xen/interface/platform.h>
 #include <xen/interface/vcpu.h>
@@ -472,30 +473,48 @@ retry:
 
 static int xen_hvm_create_iorequest_server(struct xengt_hvm_dev *info)
 {
-	struct xen_hvm_create_ioreq_server arg;
+	xen_dm_op_buf_t dm_buf;
+	struct xen_dm_op op;
+	struct xen_dm_op_create_ioreq_server *data;
 	int r;
 
-	arg.domid = info->vm_id;
-	arg.handle_bufioreq = 0;
-	r = HYPERVISOR_hvm_op(HVMOP_create_ioreq_server, &arg);
+	memset(&op, 0, sizeof(op));
+
+	op.op = XEN_DMOP_create_ioreq_server;
+	data = &op.u.create_ioreq_server;
+	data->handle_bufioreq = 0;
+
+	dm_buf.h = &op;
+	dm_buf.size = sizeof(op);
+
+	r = HYPERVISOR_dm_op(info->vm_id, 1, &dm_buf);
 	if (r < 0) {
 		gvt_err("Cannot create io-requset server: %d!\n", r);
 		return r;
 	}
-	info->iosrv_id = arg.id;
+	info->iosrv_id = data->id;
 
 	return r;
 }
 
 static int xen_hvm_toggle_iorequest_server(struct xengt_hvm_dev *info, bool enable)
 {
-	struct xen_hvm_set_ioreq_server_state arg;
+	xen_dm_op_buf_t dm_buf;
+	struct xen_dm_op op;
+	struct xen_dm_op_set_ioreq_server_state *data;
 	int r;
 
-	arg.domid = info->vm_id;
-	arg.id = info->iosrv_id;
-	arg.enabled = enable;
-	r = HYPERVISOR_hvm_op(HVMOP_set_ioreq_server_state, &arg);
+	memset(&op, 0, sizeof(op));
+
+	op.op = XEN_DMOP_set_ioreq_server_state;
+	data = &op.u.set_ioreq_server_state;
+	data->id = info->iosrv_id;
+	data->enabled = !!enable;
+
+	dm_buf.h = &op;
+	dm_buf.size = sizeof(op);
+
+	r = HYPERVISOR_dm_op(info->vm_id, 1, &dm_buf);
 	if (r < 0) {
 		gvt_err("Cannot %s io-request server: %d!\n",
 			enable ? "enable" : "disbale",  r);
@@ -507,28 +526,46 @@ static int xen_hvm_toggle_iorequest_server(struct xengt_hvm_dev *info, bool enab
 
 static int xen_hvm_get_ioreq_pfn(struct xengt_hvm_dev *info, uint64_t *value)
 {
-	struct xen_hvm_get_ioreq_server_info arg;
+	xen_dm_op_buf_t dm_buf;
+	struct xen_dm_op op;
+	struct xen_dm_op_get_ioreq_server_info *data;
 	int r;
 
-	arg.domid = info->vm_id;
-	arg.id = info->iosrv_id;
-	r = HYPERVISOR_hvm_op(HVMOP_get_ioreq_server_info, &arg);
+	memset(&op, 0, sizeof(op));
+
+	op.op = XEN_DMOP_get_ioreq_server_info;
+	data = &op.u.get_ioreq_server_info;
+	data->id = info->iosrv_id;
+
+	dm_buf.h = &op;
+	dm_buf.size = sizeof(op);
+
+	r = HYPERVISOR_dm_op(info->vm_id, 1, &dm_buf);
 	if (r < 0) {
 		gvt_err("Cannot get ioreq pfn: %d!\n", r);
 		return r;
 	}
-	*value = arg.ioreq_pfn;
+	*value = data->ioreq_pfn;
 	return r;
 }
 
 static int xen_hvm_destroy_iorequest_server(struct xengt_hvm_dev *info)
 {
-	struct xen_hvm_destroy_ioreq_server arg;
+	xen_dm_op_buf_t dm_buf;
+	struct xen_dm_op op;
+	struct xen_dm_op_destroy_ioreq_server *data;
 	int r;
 
-	arg.domid = info->vm_id;
-	arg.id = info->iosrv_id;
-	r = HYPERVISOR_hvm_op(HVMOP_destroy_ioreq_server, &arg);
+	memset(&op, 0, sizeof(op));
+
+	op.op = XEN_DMOP_destroy_ioreq_server;
+	data = &op.u.destroy_ioreq_server;
+	data->id = info->iosrv_id;
+
+	dm_buf.h = &op;
+	dm_buf.size = sizeof(op);
+
+	r = HYPERVISOR_dm_op(info->vm_id, 1, &dm_buf);
 	if (r < 0) {
 		gvt_err("Cannot destroy io-request server(%d): %d!\n",
 			info->iosrv_id, r);
@@ -559,57 +596,87 @@ static struct vm_struct *xen_hvm_map_iopage(struct xengt_hvm_dev *info)
 static int xen_hvm_map_io_range_to_ioreq_server(struct xengt_hvm_dev *info,
 		int is_mmio, uint64_t start, uint64_t end, int map)
 {
-	xen_hvm_io_range_t arg;
-	int rc;
+	xen_dm_op_buf_t dm_buf;
+	struct xen_dm_op op;
+	struct xen_dm_op_ioreq_server_range *data;
+	int r;
 
-	arg.domid = info->vm_id;
-	arg.id = info->iosrv_id;
-	arg.type = is_mmio ? HVMOP_IO_RANGE_MEMORY : HVMOP_IO_RANGE_PORT;
-	arg.start = start;
-	arg.end = end;
+	memset(&op, 0, sizeof(op));
 
-	if (map)
-		rc = HYPERVISOR_hvm_op(
-			HVMOP_map_io_range_to_ioreq_server, &arg);
-	else
-		rc = HYPERVISOR_hvm_op(
-			HVMOP_unmap_io_range_from_ioreq_server, &arg);
+	op.op = map ? XEN_DMOP_map_io_range_to_ioreq_server :
+		XEN_DMOP_unmap_io_range_from_ioreq_server;
+	data = map ? &op.u.map_io_range_to_ioreq_server :
+		&op.u.unmap_io_range_from_ioreq_server;
+	data->id = info->iosrv_id;
+	data->type = is_mmio ? XEN_DMOP_IO_RANGE_MEMORY :
+		XEN_DMOP_IO_RANGE_PORT;
+	data->start = start;
+	data->end = end;
 
-	return rc;
+	dm_buf.h = &op;
+	dm_buf.size = sizeof(op);
+
+	r = HYPERVISOR_dm_op(info->vm_id, 1, &dm_buf);
+	if (r < 0) {
+		gvt_err("Couldn't %s io_range 0x%llx ~ 0x%llx, vm_id:%d:%d\n",
+			map ? "map" : "unmap",
+			start, end, info->vm_id, r);
+	}
+	return r;
 }
 
 static int xen_hvm_map_pcidev_to_ioreq_server(struct xengt_hvm_dev *info,
-											uint64_t sbdf)
+					uint64_t sbdf)
 {
-	xen_hvm_io_range_t arg;
-	int rc;
+	xen_dm_op_buf_t dm_buf;
+	struct xen_dm_op op;
+	struct xen_dm_op_ioreq_server_range *data;
+	int r;
 
-	arg.domid = info->vm_id;
-	arg.id = info->iosrv_id;
-	arg.type = HVMOP_IO_RANGE_PCI;
-	arg.start = arg.end = sbdf;
-	rc = HYPERVISOR_hvm_op(HVMOP_map_io_range_to_ioreq_server, &arg);
-	if (rc < 0) {
-		gvt_err("Cannot map pci_dev to ioreq_server: %d!\n", rc);
-		return rc;
-	}
+	memset(&op, 0, sizeof(op));
 
-	return rc;
+	op.op = XEN_DMOP_map_io_range_to_ioreq_server;
+	data = &op.u.map_io_range_to_ioreq_server;
+	data->id = info->iosrv_id;
+	data->type = XEN_DMOP_IO_RANGE_PCI;
+	data->start = data->end = sbdf;
+
+	dm_buf.h = &op;
+	dm_buf.size = sizeof(op);
+
+	r = HYPERVISOR_dm_op(info->vm_id, 1, &dm_buf);
+	if (r < 0)
+		gvt_err("Cannot map pci_dev to ioreq_server: %d!\n", r);
+
+	return r;
 }
 
 static int xen_hvm_set_mem_type(domid_t vm_id, uint16_t mem_type,
 		uint64_t first_pfn, uint64_t nr)
 {
-	xen_hvm_set_mem_type_t args;
-	int rc;
+	xen_dm_op_buf_t dm_buf;
+	struct xen_dm_op op;
+	struct xen_dm_op_set_mem_type *data;
+	int r;
 
-	args.domid = vm_id;
-	args.hvmmem_type = mem_type;
-	args.first_pfn = first_pfn;
-	args.nr = 1;
-	rc = HYPERVISOR_hvm_op(HVMOP_set_mem_type, &args);
+	memset(&op, 0, sizeof(op));
 
-	return rc;
+	op.op = XEN_DMOP_set_mem_type;
+	data = &op.u.set_mem_type;
+
+	data->mem_type = mem_type;
+	data->first_pfn = first_pfn;
+	data->nr = nr;
+
+	dm_buf.h = &op;
+	dm_buf.size = sizeof(op);
+
+	r = HYPERVISOR_dm_op(vm_id, 1, &dm_buf);
+	if (r < 0) {
+		gvt_err("Cannot set mem type for 0x%llx ~ 0x%llx, memtype: %x\n",
+			first_pfn, first_pfn+nr, mem_type);
+	}
+	return r;
 }
 
 static int xen_hvm_wp_page_to_ioreq_server(struct xengt_hvm_dev *info,
@@ -1385,16 +1452,22 @@ static void xengt_detach_vgpu(unsigned long handle)
 static int xengt_inject_msi(unsigned long handle, u32 addr_lo, u16 data)
 {
 	struct xengt_hvm_dev *info = (struct xengt_hvm_dev *)handle;
-	struct xen_hvm_inject_msi msi;
+	xen_dm_op_buf_t dm_buf;
+	struct xen_dm_op op;
+	struct xen_dm_op_inject_msi *arg;
 
-	if (!info)
-		return -EINVAL;
+	memset(&op, 0, sizeof(op));
 
-	msi.domid = info->vm_id;
-	msi.addr = addr_lo; /* only low addr used */
-	msi.data = data;
+	op.op = XEN_DMOP_inject_msi;
+	arg = &op.u.inject_msi;
 
-	return HYPERVISOR_hvm_op(HVMOP_inject_msi, &msi);
+	arg->addr = (uint64_aligned_t)addr_lo;
+	arg->data = (uint32_t)data;
+
+	dm_buf.h = &op;
+	dm_buf.size = sizeof(op);
+
+	return HYPERVISOR_dm_op(info->vm_id, 1, &dm_buf);
 }
 
 static unsigned long xengt_virt_to_mfn(void *addr)

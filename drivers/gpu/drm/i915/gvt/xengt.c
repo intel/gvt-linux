@@ -651,6 +651,33 @@ static int xen_hvm_map_pcidev_to_ioreq_server(struct xengt_hvm_dev *info,
 	return r;
 }
 
+static int hvm_claim_ioreq_server_type(struct xengt_hvm_dev *info,
+		uint32_t set)
+{
+
+	xen_dm_op_buf_t dm_buf;
+	struct xen_dm_op op;
+	struct xen_dm_op_map_mem_type_to_ioreq_server *data;
+	int r;
+
+	memset(&op, 0, sizeof(op));
+
+	op.op = XEN_DMOP_map_mem_type_to_ioreq_server;
+	data = &op.u.map_mem_type_to_ioreq_server;
+	data->id = info->iosrv_id;
+	data->type = HVMMEM_ioreq_server;
+	data->flags = (set == 1) ? XEN_DMOP_IOREQ_MEM_ACCESS_WRITE : 0;
+
+	dm_buf.h = &op;
+	dm_buf.size = sizeof(op);
+
+	r = HYPERVISOR_dm_op(info->vm_id, 1, &dm_buf);
+	if (r < 0)
+		gvt_err("Cannot map mem type to ioreq_server\n");
+
+	return r;
+}
+
 static int xen_hvm_set_mem_type(domid_t vm_id, uint16_t mem_type,
 		uint64_t first_pfn, uint64_t nr)
 {
@@ -683,36 +710,13 @@ static int xen_hvm_wp_page_to_ioreq_server(struct xengt_hvm_dev *info,
 		unsigned long page, bool set)
 {
 	int rc = 0;
-	uint64_t start, end;
 	uint16_t mem_type;
 
-	start = page << PAGE_SHIFT;
-	end = ((page + 1) << PAGE_SHIFT) - 1;
-
-	if (set) {
-		rc = xen_hvm_map_io_range_to_ioreq_server(info, 1,
-				start, end, true);
-		if (rc < 0) {
-			gvt_err("map page 0x%lx failed: %d!\n",	page, rc);
-			return rc;
-		}
-	}
-
-	mem_type = set ? HVMMEM_mmio_write_dm : HVMMEM_ram_rw;
+	mem_type = set ? HVMMEM_ioreq_server : HVMMEM_ram_rw;
 	rc = xen_hvm_set_mem_type(info->vm_id, mem_type, page, 1);
 	if (rc < 0) {
 		gvt_err("set mem type of page 0x%lx to %s fail - %d!\n", page,
-				set ? "HVMMEM_mmio_write_dm" : "HVMMEM_ram_rw", rc);
-		return rc;
-	}
-
-	if (!set) {
-		rc = xen_hvm_map_io_range_to_ioreq_server(info, 1,
-				start, end, false);
-		if (rc < 0) {
-			gvt_err("unmap page 0x%lx failed: %d!\n", page, rc);
-			return rc;
-		}
+				set ? "HVMMEM_ioreq_server" : "HVMMEM_ram_rw", rc);
 	}
 
 	return rc;
@@ -1269,8 +1273,10 @@ void xengt_instance_destroy(struct intel_vgpu *vgpu)
 	if (!info->nr_vcpu || info->evtchn_irq == NULL)
 		goto out1;
 
-	if (info->iosrv_id != 0)
+	if (info->iosrv_id != 0) {
+		hvm_claim_ioreq_server_type(info, 0);
 		xen_hvm_destroy_iorequest_server(info);
+	}
 
 	for (vcpu = 0; vcpu < info->nr_vcpu; vcpu++) {
 		if (info->evtchn_irq[vcpu] >= 0)
@@ -1335,6 +1341,10 @@ struct intel_vgpu *xengt_instance_create(domid_t vm_id,
 
 	rc = xen_hvm_map_pcidev_to_ioreq_server(info,
 			PCI_BDF2(0, 0x10));//FIXME hack the dev bdf
+	if (rc < 0)
+		goto err;
+
+	rc = hvm_claim_ioreq_server_type(info, 1);
 	if (rc < 0)
 		goto err;
 

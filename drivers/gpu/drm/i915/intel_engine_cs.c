@@ -26,59 +26,84 @@
 #include "intel_ringbuffer.h"
 #include "intel_lrc.h"
 
-static const struct engine_info {
+struct engine_class_info {
 	const char *name;
-	unsigned int exec_id;
-	unsigned int hw_id;
-	u32 mmio_base;
-	unsigned irq_shift;
 	int (*init_legacy)(struct intel_engine_cs *engine);
 	int (*init_execlists)(struct intel_engine_cs *engine);
-} intel_engines[] = {
-	[RCS] = {
+};
+
+static const struct engine_class_info intel_engine_classes[] = {
+	[RENDER_CLASS] = {
 		.name = "rcs",
-		.hw_id = RCS_HW,
-		.exec_id = I915_EXEC_RENDER,
-		.mmio_base = RENDER_RING_BASE,
-		.irq_shift = GEN8_RCS_IRQ_SHIFT,
 		.init_execlists = logical_render_ring_init,
 		.init_legacy = intel_init_render_ring_buffer,
 	},
-	[BCS] = {
+	[COPY_ENGINE_CLASS] = {
 		.name = "bcs",
-		.hw_id = BCS_HW,
-		.exec_id = I915_EXEC_BLT,
-		.mmio_base = BLT_RING_BASE,
-		.irq_shift = GEN8_BCS_IRQ_SHIFT,
 		.init_execlists = logical_xcs_ring_init,
 		.init_legacy = intel_init_blt_ring_buffer,
 	},
-	[VCS] = {
+	[VIDEO_DECODE_CLASS] = {
 		.name = "vcs",
-		.hw_id = VCS_HW,
-		.exec_id = I915_EXEC_BSD,
-		.mmio_base = GEN6_BSD_RING_BASE,
-		.irq_shift = GEN8_VCS1_IRQ_SHIFT,
 		.init_execlists = logical_xcs_ring_init,
 		.init_legacy = intel_init_bsd_ring_buffer,
 	},
-	[VCS2] = {
-		.name = "vcs2",
-		.hw_id = VCS2_HW,
-		.exec_id = I915_EXEC_BSD,
-		.mmio_base = GEN8_BSD2_RING_BASE,
-		.irq_shift = GEN8_VCS2_IRQ_SHIFT,
-		.init_execlists = logical_xcs_ring_init,
-		.init_legacy = intel_init_bsd2_ring_buffer,
-	},
-	[VECS] = {
+	[VIDEO_ENHANCEMENT_CLASS] = {
 		.name = "vecs",
-		.hw_id = VECS_HW,
-		.exec_id = I915_EXEC_VEBOX,
-		.mmio_base = VEBOX_RING_BASE,
-		.irq_shift = GEN8_VECS_IRQ_SHIFT,
 		.init_execlists = logical_xcs_ring_init,
 		.init_legacy = intel_init_vebox_ring_buffer,
+	},
+};
+
+struct engine_info {
+	unsigned int hw_id;
+	unsigned int uabi_id;
+	u8 class;
+	u8 instance;
+	u32 mmio_base;
+	unsigned irq_shift;
+};
+
+static const struct engine_info intel_engines[] = {
+	[RCS] = {
+		.hw_id = RCS_HW,
+		.uabi_id = I915_EXEC_RENDER,
+		.class = RENDER_CLASS,
+		.instance = 0,
+		.mmio_base = RENDER_RING_BASE,
+		.irq_shift = GEN8_RCS_IRQ_SHIFT,
+	},
+	[BCS] = {
+		.hw_id = BCS_HW,
+		.uabi_id = I915_EXEC_BLT,
+		.class = COPY_ENGINE_CLASS,
+		.instance = 0,
+		.mmio_base = BLT_RING_BASE,
+		.irq_shift = GEN8_BCS_IRQ_SHIFT,
+	},
+	[VCS] = {
+		.hw_id = VCS_HW,
+		.uabi_id = I915_EXEC_BSD,
+		.class = VIDEO_DECODE_CLASS,
+		.instance = 0,
+		.mmio_base = GEN6_BSD_RING_BASE,
+		.irq_shift = GEN8_VCS1_IRQ_SHIFT,
+	},
+	[VCS2] = {
+		.hw_id = VCS2_HW,
+		.uabi_id = I915_EXEC_BSD,
+		.class = VIDEO_DECODE_CLASS,
+		.instance = 1,
+		.mmio_base = GEN8_BSD2_RING_BASE,
+		.irq_shift = GEN8_VCS2_IRQ_SHIFT,
+	},
+	[VECS] = {
+		.hw_id = VECS_HW,
+		.uabi_id = I915_EXEC_VEBOX,
+		.class = VIDEO_ENHANCEMENT_CLASS,
+		.instance = 0,
+		.mmio_base = VEBOX_RING_BASE,
+		.irq_shift = GEN8_VECS_IRQ_SHIFT,
 	},
 };
 
@@ -87,7 +112,11 @@ intel_engine_setup(struct drm_i915_private *dev_priv,
 		   enum intel_engine_id id)
 {
 	const struct engine_info *info = &intel_engines[id];
+	const struct engine_class_info *class_info;
 	struct intel_engine_cs *engine;
+
+	GEM_BUG_ON(info->class >= ARRAY_SIZE(intel_engine_classes));
+	class_info = &intel_engine_classes[info->class];
 
 	GEM_BUG_ON(dev_priv->engine[id]);
 	engine = kzalloc(sizeof(*engine), GFP_KERNEL);
@@ -96,11 +125,15 @@ intel_engine_setup(struct drm_i915_private *dev_priv,
 
 	engine->id = id;
 	engine->i915 = dev_priv;
-	engine->name = info->name;
-	engine->exec_id = info->exec_id;
+	WARN_ON(snprintf(engine->name, sizeof(engine->name), "%s%u",
+			 class_info->name, info->instance) >=
+		sizeof(engine->name));
+	engine->uabi_id = info->uabi_id;
 	engine->hw_id = engine->guc_id = info->hw_id;
 	engine->mmio_base = info->mmio_base;
 	engine->irq_shift = info->irq_shift;
+	engine->class = info->class;
+	engine->instance = info->instance;
 
 	/* Nothing to do here, execute in order of dependencies */
 	engine->schedule = NULL;
@@ -120,10 +153,10 @@ intel_engine_setup(struct drm_i915_private *dev_priv,
 int intel_engines_init_early(struct drm_i915_private *dev_priv)
 {
 	struct intel_device_info *device_info = mkwrite_device_info(dev_priv);
-	unsigned int ring_mask = INTEL_INFO(dev_priv)->ring_mask;
-	unsigned int mask = 0;
+	const unsigned int ring_mask = INTEL_INFO(dev_priv)->ring_mask;
 	struct intel_engine_cs *engine;
 	enum intel_engine_id id;
+	unsigned int mask = 0;
 	unsigned int i;
 	int err;
 
@@ -150,6 +183,12 @@ int intel_engines_init_early(struct drm_i915_private *dev_priv)
 	if (WARN_ON(mask != ring_mask))
 		device_info->ring_mask = mask;
 
+	/* We always presume we have at least RCS available for later probing */
+	if (WARN_ON(!HAS_ENGINE(dev_priv, RCS))) {
+		err = -ENODEV;
+		goto cleanup;
+	}
+
 	device_info->num_rings = hweight32(mask);
 
 	return 0;
@@ -175,12 +214,14 @@ int intel_engines_init(struct drm_i915_private *dev_priv)
 	int err = 0;
 
 	for_each_engine(engine, dev_priv, id) {
+		const struct engine_class_info *class_info =
+			&intel_engine_classes[engine->class];
 		int (*init)(struct intel_engine_cs *engine);
 
 		if (i915.enable_execlists)
-			init = intel_engines[id].init_execlists;
+			init = class_info->init_execlists;
 		else
-			init = intel_engines[id].init_legacy;
+			init = class_info->init_legacy;
 		if (!init) {
 			kfree(engine);
 			dev_priv->engine[id] = NULL;
@@ -223,6 +264,9 @@ void intel_engine_init_global_seqno(struct intel_engine_cs *engine, u32 seqno)
 {
 	struct drm_i915_private *dev_priv = engine->i915;
 
+	GEM_BUG_ON(!intel_engine_is_idle(engine));
+	GEM_BUG_ON(i915_gem_active_isset(&engine->timeline->last_request));
+
 	/* Our semaphore implementation is strictly monotonic (i.e. we proceed
 	 * so long as the semaphore value in the register/page is greater
 	 * than the sync value), so whenever we reset the seqno,
@@ -253,13 +297,12 @@ void intel_engine_init_global_seqno(struct intel_engine_cs *engine, u32 seqno)
 	intel_write_status_page(engine, I915_GEM_HWS_INDEX, seqno);
 	clear_bit(ENGINE_IRQ_BREADCRUMB, &engine->irq_posted);
 
-	GEM_BUG_ON(i915_gem_active_isset(&engine->timeline->last_request));
-	engine->hangcheck.seqno = seqno;
-
 	/* After manually advancing the seqno, fake the interrupt in case
 	 * there are any waiters for that seqno.
 	 */
 	intel_engine_wakeup(engine);
+
+	GEM_BUG_ON(intel_engine_get_seqno(engine) != seqno);
 }
 
 static void intel_engine_init_timeline(struct intel_engine_cs *engine)
@@ -1086,10 +1129,17 @@ bool intel_engine_is_idle(struct intel_engine_cs *engine)
 {
 	struct drm_i915_private *dev_priv = engine->i915;
 
+	/* More white lies, if wedged, hw state is inconsistent */
+	if (i915_terminally_wedged(&dev_priv->gpu_error))
+		return true;
+
 	/* Any inflight/incomplete requests? */
 	if (!i915_seqno_passed(intel_engine_get_seqno(engine),
 			       intel_engine_last_submit(engine)))
 		return false;
+
+	if (I915_SELFTEST_ONLY(engine->breadcrumbs.mock))
+		return true;
 
 	/* Interrupt/tasklet pending? */
 	if (test_bit(ENGINE_IRQ_EXECLIST, &engine->irq_posted))

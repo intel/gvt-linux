@@ -79,8 +79,8 @@
 
 #define DRIVER_NAME		"i915"
 #define DRIVER_DESC		"Intel Graphics"
-#define DRIVER_DATE		"20170403"
-#define DRIVER_TIMESTAMP	1491198738
+#define DRIVER_DATE		"20170418"
+#define DRIVER_TIMESTAMP	1492507096
 
 /* Use I915_STATE_WARN(x) and I915_STATE_WARN_ON() (rather than WARN() and
  * WARN_ON()) for hw state sanity checks to check for unexpected conditions
@@ -1025,6 +1025,9 @@ struct i915_gpu_state {
 			u32 *pages[0];
 		} *ringbuffer, *batchbuffer, *wa_batchbuffer, *ctx, *hws_page;
 
+		struct drm_i915_error_object **user_bo;
+		long user_bo_count;
+
 		struct drm_i915_error_object *wa_ctx;
 
 		struct drm_i915_error_request {
@@ -1510,12 +1513,6 @@ struct i915_gem_mm {
 
 	/** LRU list of objects with fence regs on them. */
 	struct list_head fence_list;
-
-	/**
-	 * Are we in a non-interruptible section of code like
-	 * modesetting?
-	 */
-	bool interruptible;
 
 	/* the indicator for dispatch video commands on two BSD rings */
 	atomic_t bsd_engine_dispatch_index;
@@ -3091,14 +3088,26 @@ void assert_forcewakes_inactive(struct drm_i915_private *dev_priv);
 
 int intel_wait_for_register(struct drm_i915_private *dev_priv,
 			    i915_reg_t reg,
-			    const u32 mask,
-			    const u32 value,
-			    const unsigned long timeout_ms);
+			    u32 mask,
+			    u32 value,
+			    unsigned int timeout_ms);
+int __intel_wait_for_register_fw(struct drm_i915_private *dev_priv,
+				 i915_reg_t reg,
+				 u32 mask,
+				 u32 value,
+				 unsigned int fast_timeout_us,
+				 unsigned int slow_timeout_ms,
+				 u32 *out_value);
+static inline
 int intel_wait_for_register_fw(struct drm_i915_private *dev_priv,
 			       i915_reg_t reg,
-			       const u32 mask,
-			       const u32 value,
-			       const unsigned long timeout_ms);
+			       u32 mask,
+			       u32 value,
+			       unsigned int timeout_ms)
+{
+	return __intel_wait_for_register_fw(dev_priv, reg, mask, value,
+					    2, timeout_ms, NULL);
+}
 
 static inline bool intel_gvt_active(struct drm_i915_private *dev_priv)
 {
@@ -3447,8 +3456,9 @@ int i915_gem_object_wait_priority(struct drm_i915_gem_object *obj,
 #define I915_PRIORITY_DISPLAY I915_PRIORITY_MAX
 
 int __must_check
-i915_gem_object_set_to_gtt_domain(struct drm_i915_gem_object *obj,
-				  bool write);
+i915_gem_object_set_to_wc_domain(struct drm_i915_gem_object *obj, bool write);
+int __must_check
+i915_gem_object_set_to_gtt_domain(struct drm_i915_gem_object *obj, bool write);
 int __must_check
 i915_gem_object_set_to_cpu_domain(struct drm_i915_gem_object *obj, bool write);
 struct i915_vma * __must_check

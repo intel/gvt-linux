@@ -1108,19 +1108,19 @@ __gen6_write(32)
 #undef GEN6_WRITE_FOOTER
 #undef GEN6_WRITE_HEADER
 
-#define ASSIGN_WRITE_MMIO_VFUNCS(x) \
+#define ASSIGN_WRITE_MMIO_VFUNCS(i915, x) \
 do { \
-	dev_priv->uncore.funcs.mmio_writeb = x##_write8; \
-	dev_priv->uncore.funcs.mmio_writew = x##_write16; \
-	dev_priv->uncore.funcs.mmio_writel = x##_write32; \
+	(i915)->uncore.funcs.mmio_writeb = x##_write8; \
+	(i915)->uncore.funcs.mmio_writew = x##_write16; \
+	(i915)->uncore.funcs.mmio_writel = x##_write32; \
 } while (0)
 
-#define ASSIGN_READ_MMIO_VFUNCS(x) \
+#define ASSIGN_READ_MMIO_VFUNCS(i915, x) \
 do { \
-	dev_priv->uncore.funcs.mmio_readb = x##_read8; \
-	dev_priv->uncore.funcs.mmio_readw = x##_read16; \
-	dev_priv->uncore.funcs.mmio_readl = x##_read32; \
-	dev_priv->uncore.funcs.mmio_readq = x##_read64; \
+	(i915)->uncore.funcs.mmio_readb = x##_read8; \
+	(i915)->uncore.funcs.mmio_readw = x##_read16; \
+	(i915)->uncore.funcs.mmio_readl = x##_read32; \
+	(i915)->uncore.funcs.mmio_readq = x##_read64; \
 } while (0)
 
 
@@ -1310,34 +1310,34 @@ void intel_uncore_init(struct drm_i915_private *dev_priv)
 		i915_pmic_bus_access_notifier;
 
 	if (IS_GEN(dev_priv, 2, 4) || intel_vgpu_active(dev_priv)) {
-		ASSIGN_WRITE_MMIO_VFUNCS(gen2);
-		ASSIGN_READ_MMIO_VFUNCS(gen2);
+		ASSIGN_WRITE_MMIO_VFUNCS(dev_priv, gen2);
+		ASSIGN_READ_MMIO_VFUNCS(dev_priv, gen2);
 	} else if (IS_GEN5(dev_priv)) {
-		ASSIGN_WRITE_MMIO_VFUNCS(gen5);
-		ASSIGN_READ_MMIO_VFUNCS(gen5);
+		ASSIGN_WRITE_MMIO_VFUNCS(dev_priv, gen5);
+		ASSIGN_READ_MMIO_VFUNCS(dev_priv, gen5);
 	} else if (IS_GEN(dev_priv, 6, 7)) {
-		ASSIGN_WRITE_MMIO_VFUNCS(gen6);
+		ASSIGN_WRITE_MMIO_VFUNCS(dev_priv, gen6);
 
 		if (IS_VALLEYVIEW(dev_priv)) {
 			ASSIGN_FW_DOMAINS_TABLE(__vlv_fw_ranges);
-			ASSIGN_READ_MMIO_VFUNCS(fwtable);
+			ASSIGN_READ_MMIO_VFUNCS(dev_priv, fwtable);
 		} else {
-			ASSIGN_READ_MMIO_VFUNCS(gen6);
+			ASSIGN_READ_MMIO_VFUNCS(dev_priv, gen6);
 		}
 	} else if (IS_GEN8(dev_priv)) {
 		if (IS_CHERRYVIEW(dev_priv)) {
 			ASSIGN_FW_DOMAINS_TABLE(__chv_fw_ranges);
-			ASSIGN_WRITE_MMIO_VFUNCS(fwtable);
-			ASSIGN_READ_MMIO_VFUNCS(fwtable);
+			ASSIGN_WRITE_MMIO_VFUNCS(dev_priv, fwtable);
+			ASSIGN_READ_MMIO_VFUNCS(dev_priv, fwtable);
 
 		} else {
-			ASSIGN_WRITE_MMIO_VFUNCS(gen8);
-			ASSIGN_READ_MMIO_VFUNCS(gen6);
+			ASSIGN_WRITE_MMIO_VFUNCS(dev_priv, gen8);
+			ASSIGN_READ_MMIO_VFUNCS(dev_priv, gen6);
 		}
 	} else {
 		ASSIGN_FW_DOMAINS_TABLE(__gen9_fw_ranges);
-		ASSIGN_WRITE_MMIO_VFUNCS(fwtable);
-		ASSIGN_READ_MMIO_VFUNCS(fwtable);
+		ASSIGN_WRITE_MMIO_VFUNCS(dev_priv, fwtable);
+		ASSIGN_READ_MMIO_VFUNCS(dev_priv, fwtable);
 		if (HAS_DECOUPLED_MMIO(dev_priv)) {
 			dev_priv->uncore.funcs.mmio_readl =
 						gen9_decoupled_read32;
@@ -1353,8 +1353,6 @@ void intel_uncore_init(struct drm_i915_private *dev_priv)
 
 	i915_check_and_clear_faults(dev_priv);
 }
-#undef ASSIGN_WRITE_MMIO_VFUNCS
-#undef ASSIGN_READ_MMIO_VFUNCS
 
 void intel_uncore_fini(struct drm_i915_private *dev_priv)
 {
@@ -1585,19 +1583,23 @@ static int gen6_reset_engines(struct drm_i915_private *dev_priv,
 }
 
 /**
- * intel_wait_for_register_fw - wait until register matches expected state
+ * __intel_wait_for_register_fw - wait until register matches expected state
  * @dev_priv: the i915 device
  * @reg: the register to read
  * @mask: mask to apply to register value
  * @value: expected value
- * @timeout_ms: timeout in millisecond
+ * @fast_timeout_us: fast timeout in microsecond for atomic/tight wait
+ * @slow_timeout_ms: slow timeout in millisecond
+ * @out_value: optional placeholder to hold registry value
  *
  * This routine waits until the target register @reg contains the expected
  * @value after applying the @mask, i.e. it waits until ::
  *
  *     (I915_READ_FW(reg) & mask) == value
  *
- * Otherwise, the wait will timeout after @timeout_ms milliseconds.
+ * Otherwise, the wait will timeout after @slow_timeout_ms milliseconds.
+ * For atomic context @slow_timeout_ms must be zero and @fast_timeout_us
+ * must be not larger than 20,0000 microseconds.
  *
  * Note that this routine assumes the caller holds forcewake asserted, it is
  * not suitable for very long waits. See intel_wait_for_register() if you
@@ -1606,16 +1608,31 @@ static int gen6_reset_engines(struct drm_i915_private *dev_priv,
  *
  * Returns 0 if the register matches the desired condition, or -ETIMEOUT.
  */
-int intel_wait_for_register_fw(struct drm_i915_private *dev_priv,
-			       i915_reg_t reg,
-			       const u32 mask,
-			       const u32 value,
-			       const unsigned long timeout_ms)
+int __intel_wait_for_register_fw(struct drm_i915_private *dev_priv,
+				 i915_reg_t reg,
+				 u32 mask,
+				 u32 value,
+				 unsigned int fast_timeout_us,
+				 unsigned int slow_timeout_ms,
+				 u32 *out_value)
 {
-#define done ((I915_READ_FW(reg) & mask) == value)
-	int ret = wait_for_us(done, 2);
+	u32 reg_value;
+#define done (((reg_value = I915_READ_FW(reg)) & mask) == value)
+	int ret;
+
+	/* Catch any overuse of this function */
+	might_sleep_if(slow_timeout_ms);
+	GEM_BUG_ON(fast_timeout_us > 20000);
+
+	ret = -ETIMEDOUT;
+	if (fast_timeout_us && fast_timeout_us <= 20000)
+		ret = _wait_for_atomic(done, fast_timeout_us, 0);
 	if (ret)
-		ret = wait_for(done, timeout_ms);
+		ret = wait_for(done, slow_timeout_ms);
+
+	if (out_value)
+		*out_value = reg_value;
+
 	return ret;
 #undef done
 }
@@ -1639,18 +1656,26 @@ int intel_wait_for_register_fw(struct drm_i915_private *dev_priv,
  */
 int intel_wait_for_register(struct drm_i915_private *dev_priv,
 			    i915_reg_t reg,
-			    const u32 mask,
-			    const u32 value,
-			    const unsigned long timeout_ms)
+			    u32 mask,
+			    u32 value,
+			    unsigned int timeout_ms)
 {
-
 	unsigned fw =
 		intel_uncore_forcewake_for_reg(dev_priv, reg, FW_REG_READ);
 	int ret;
 
-	intel_uncore_forcewake_get(dev_priv, fw);
-	ret = wait_for_us((I915_READ_FW(reg) & mask) == value, 2);
-	intel_uncore_forcewake_put(dev_priv, fw);
+	might_sleep();
+
+	spin_lock_irq(&dev_priv->uncore.lock);
+	intel_uncore_forcewake_get__locked(dev_priv, fw);
+
+	ret = __intel_wait_for_register_fw(dev_priv,
+					   reg, mask, value,
+					   2, 0, NULL);
+
+	intel_uncore_forcewake_put__locked(dev_priv, fw);
+	spin_unlock_irq(&dev_priv->uncore.lock);
+
 	if (ret)
 		ret = wait_for((I915_READ_NOTRACE(reg) & mask) == value,
 			       timeout_ms);
@@ -1873,5 +1898,6 @@ intel_uncore_forcewake_for_reg(struct drm_i915_private *dev_priv,
 }
 
 #if IS_ENABLED(CONFIG_DRM_I915_SELFTEST)
+#include "selftests/mock_uncore.c"
 #include "selftests/intel_uncore.c"
 #endif

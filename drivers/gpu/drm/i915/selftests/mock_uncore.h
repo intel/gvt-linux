@@ -22,52 +22,9 @@
  *
  */
 
-#include "mock_drm.h"
+#ifndef __MOCK_UNCORE_H
+#define __MOCK_UNCORE_H
 
-struct drm_file *mock_file(struct drm_i915_private *i915)
-{
-	struct file *filp;
-	struct inode *inode;
-	struct drm_file *file;
-	int err;
+void mock_uncore_init(struct drm_i915_private *i915);
 
-	inode = kzalloc(sizeof(*inode), GFP_KERNEL);
-	if (!inode) {
-		err = -ENOMEM;
-		goto err;
-	}
-
-	inode->i_rdev = i915->drm.primary->index;
-
-	filp = kzalloc(sizeof(*filp), GFP_KERNEL);
-	if (!filp) {
-		err = -ENOMEM;
-		goto err_inode;
-	}
-
-	err = drm_open(inode, filp);
-	if (err)
-		goto err_filp;
-
-	file = filp->private_data;
-	memset(&file->filp, POISON_INUSE, sizeof(file->filp));
-	file->authenticated = true;
-
-	kfree(filp);
-	kfree(inode);
-	return file;
-
-err_filp:
-	kfree(filp);
-err_inode:
-	kfree(inode);
-err:
-	return ERR_PTR(err);
-}
-
-void mock_file_free(struct drm_i915_private *i915, struct drm_file *file)
-{
-	struct file filp = { .private_data = file };
-
-	drm_release(NULL, &filp);
-}
+#endif /* !__MOCK_UNCORE_H */

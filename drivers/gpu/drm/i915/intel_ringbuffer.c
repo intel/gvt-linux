@@ -538,9 +538,9 @@ static int init_ring_common(struct intel_engine_cs *engine)
 	I915_WRITE_CTL(engine, RING_CTL_SIZE(ring->size) | RING_VALID);
 
 	/* If the head is still not zero, the ring is dead */
-	if (intel_wait_for_register_fw(dev_priv, RING_CTL(engine->mmio_base),
-				       RING_VALID, RING_VALID,
-				       50)) {
+	if (intel_wait_for_register(dev_priv, RING_CTL(engine->mmio_base),
+				    RING_VALID, RING_VALID,
+				    50)) {
 		DRM_ERROR("%s initialization failed "
 			  "ctl %08x (valid? %d) head %08x [%08x] tail %08x [%08x] start %08x [expected %08x]\n",
 			  engine->name,
@@ -1259,6 +1259,8 @@ static int init_phys_status_page(struct intel_engine_cs *engine)
 {
 	struct drm_i915_private *dev_priv = engine->i915;
 
+	GEM_BUG_ON(engine->id != RCS);
+
 	dev_priv->status_page_dmah =
 		drm_pci_alloc(&dev_priv->drm, PAGE_SIZE, PAGE_SIZE);
 	if (!dev_priv->status_page_dmah)
@@ -1270,17 +1272,18 @@ static int init_phys_status_page(struct intel_engine_cs *engine)
 	return 0;
 }
 
-int intel_ring_pin(struct intel_ring *ring, unsigned int offset_bias)
+int intel_ring_pin(struct intel_ring *ring,
+		   struct drm_i915_private *i915,
+		   unsigned int offset_bias)
 {
-	unsigned int flags;
-	enum i915_map_type map;
+	enum i915_map_type map = HAS_LLC(i915) ? I915_MAP_WB : I915_MAP_WC;
 	struct i915_vma *vma = ring->vma;
+	unsigned int flags;
 	void *addr;
 	int ret;
 
 	GEM_BUG_ON(ring->vaddr);
 
-	map = HAS_LLC(ring->engine->i915) ? I915_MAP_WB : I915_MAP_WC;
 
 	flags = PIN_GLOBAL;
 	if (offset_bias)
@@ -1338,7 +1341,7 @@ intel_ring_create_vma(struct drm_i915_private *dev_priv, int size)
 
 	obj = i915_gem_object_create_stolen(dev_priv, size);
 	if (!obj)
-		obj = i915_gem_object_create(dev_priv, size);
+		obj = i915_gem_object_create_internal(dev_priv, size);
 	if (IS_ERR(obj))
 		return ERR_CAST(obj);
 
@@ -1368,8 +1371,6 @@ intel_engine_create_ring(struct intel_engine_cs *engine, int size)
 	ring = kzalloc(sizeof(*ring), GFP_KERNEL);
 	if (!ring)
 		return ERR_PTR(-ENOMEM);
-
-	ring->engine = engine;
 
 	INIT_LIST_HEAD(&ring->request_list);
 
@@ -1481,78 +1482,70 @@ static void intel_ring_context_unpin(struct intel_engine_cs *engine,
 
 static int intel_init_ring_buffer(struct intel_engine_cs *engine)
 {
-	struct drm_i915_private *dev_priv = engine->i915;
 	struct intel_ring *ring;
-	int ret;
-
-	WARN_ON(engine->buffer);
+	int err;
 
 	intel_engine_setup_common(engine);
 
-	ret = intel_engine_init_common(engine);
-	if (ret)
-		goto error;
+	err = intel_engine_init_common(engine);
+	if (err)
+		goto err;
+
+	if (HWS_NEEDS_PHYSICAL(engine->i915))
+		err = init_phys_status_page(engine);
+	else
+		err = init_status_page(engine);
+	if (err)
+		goto err;
 
 	ring = intel_engine_create_ring(engine, 32 * PAGE_SIZE);
 	if (IS_ERR(ring)) {
-		ret = PTR_ERR(ring);
-		goto error;
-	}
-
-	if (HWS_NEEDS_PHYSICAL(dev_priv)) {
-		WARN_ON(engine->id != RCS);
-		ret = init_phys_status_page(engine);
-		if (ret)
-			goto error;
-	} else {
-		ret = init_status_page(engine);
-		if (ret)
-			goto error;
+		err = PTR_ERR(ring);
+		goto err_hws;
 	}
 
 	/* Ring wraparound at offset 0 sometimes hangs. No idea why. */
-	ret = intel_ring_pin(ring, I915_GTT_PAGE_SIZE);
-	if (ret) {
-		intel_ring_free(ring);
-		goto error;
-	}
+	err = intel_ring_pin(ring, engine->i915, I915_GTT_PAGE_SIZE);
+	if (err)
+		goto err_ring;
+
+	GEM_BUG_ON(engine->buffer);
 	engine->buffer = ring;
 
 	return 0;
 
-error:
-	intel_engine_cleanup(engine);
-	return ret;
+err_ring:
+	intel_ring_free(ring);
+err_hws:
+	if (HWS_NEEDS_PHYSICAL(engine->i915))
+		cleanup_phys_status_page(engine);
+	else
+		cleanup_status_page(engine);
+err:
+	intel_engine_cleanup_common(engine);
+	return err;
 }
 
 void intel_engine_cleanup(struct intel_engine_cs *engine)
 {
-	struct drm_i915_private *dev_priv;
+	struct drm_i915_private *dev_priv = engine->i915;
 
-	dev_priv = engine->i915;
+	WARN_ON(INTEL_GEN(dev_priv) > 2 &&
+		(I915_READ_MODE(engine) & MODE_IDLE) == 0);
 
-	if (engine->buffer) {
-		WARN_ON(INTEL_GEN(dev_priv) > 2 &&
-			(I915_READ_MODE(engine) & MODE_IDLE) == 0);
-
-		intel_ring_unpin(engine->buffer);
-		intel_ring_free(engine->buffer);
-		engine->buffer = NULL;
-	}
+	intel_ring_unpin(engine->buffer);
+	intel_ring_free(engine->buffer);
 
 	if (engine->cleanup)
 		engine->cleanup(engine);
 
-	if (HWS_NEEDS_PHYSICAL(dev_priv)) {
-		WARN_ON(engine->id != RCS);
+	if (HWS_NEEDS_PHYSICAL(dev_priv))
 		cleanup_phys_status_page(engine);
-	} else {
+	else
 		cleanup_status_page(engine);
-	}
 
 	intel_engine_cleanup_common(engine);
 
-	engine->i915 = NULL;
 	dev_priv->engine[engine->id] = NULL;
 	kfree(engine);
 }
@@ -1736,11 +1729,11 @@ static void gen6_bsd_submit_request(struct drm_i915_gem_request *request)
 	I915_WRITE64_FW(GEN6_BSD_RNCID, 0x0);
 
 	/* Wait for the ring not to be idle, i.e. for it to wake up. */
-	if (intel_wait_for_register_fw(dev_priv,
-				       GEN6_BSD_SLEEP_PSMI_CONTROL,
-				       GEN6_BSD_SLEEP_INDICATOR,
-				       0,
-				       50))
+	if (__intel_wait_for_register_fw(dev_priv,
+					 GEN6_BSD_SLEEP_PSMI_CONTROL,
+					 GEN6_BSD_SLEEP_INDICATOR,
+					 0,
+					 1000, 0, NULL))
 		DRM_ERROR("timed out waiting for the BSD ring to wake up\n");
 
 	/* Now that the ring is fully powered up, update the tail */
@@ -2178,20 +2171,6 @@ int intel_init_bsd_ring_buffer(struct intel_engine_cs *engine)
 		else
 			engine->irq_enable_mask = I915_BSD_USER_INTERRUPT;
 	}
-
-	return intel_init_ring_buffer(engine);
-}
-
-/**
- * Initialize the second BSD ring (eg. Broadwell GT3, Skylake GT3)
- */
-int intel_init_bsd2_ring_buffer(struct intel_engine_cs *engine)
-{
-	struct drm_i915_private *dev_priv = engine->i915;
-
-	intel_ring_default_vfuncs(dev_priv, engine);
-
-	engine->emit_flush = gen6_bsd_ring_flush;
 
 	return intel_init_ring_buffer(engine);
 }

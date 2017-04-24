@@ -1,0 +1,22 @@
+drm-intel drm-intel-fixes 5a7ad1146caa895ad718a534399e38bd2ba721b7
+	Linux 4.11-rc8
+drm-upstream drm-fixes 2ca62d8a606a95e098799f128f6a40a6300d2a2a
+	Merge branch 'linux-4.11' of git://github.com/skeggsb/linux into drm-fixes
+drm-intel drm-intel-next-fixes ab6eb211b07a42a6346e284056422fd9a8576a99
+	Merge tag 'drm/panel/for-4.12-rc1' of git://anongit.freedesktop.org/tegra/linux into drm-next
+drm-intel drm-intel-next-queued 695eaa3b60a0a9a2baf41241e60b589efb6479ee
+	drm/i915: Include interesting seqno in the missed breadcrumb debug
+drm-upstream drm-next 6b1462700b4a6a1244c018cdd2fa97ded43090a0
+	Merge tag 'drm-misc-next-fixes-2017-04-20' of git://anongit.freedesktop.org/git/drm-misc into drm-next
+sound-upstream for-next 610793fe2b1c7ced8ca5c06a8d8e892aae72c3f2
+	Merge branch 'topic/hda-dual-codecs' into for-next
+sound-upstream for-linus dfb00a56935186171abb5280b3407c3f910011f1
+	ALSA: firewire-lib: fix inappropriate assignment between signed/unsigned type
+drm-intel topic/core-for-CI 841c8c95663fe5743f958dfcd1adc4e27b3748b8
+	Revert "sched/clock: Fix broken stable to unstable transfer"
+drm-misc drm-misc-next d753e41d475421543eaaea5f0feadba827f5fa01
+	drm/cec: Add CEC over Aux register definitions
+drm-misc drm-misc-next-fixes f9b67f0014cba18f1aabb6fa9272335a043eb6fd
+	dma-buf: Rename dma-ops to prevent conflict with kunmap_atomic macro
+drm-misc drm-misc-fixes 0c45b36f8acc89cb94c8696a27574f01e0e411dc
+	drm/udl: Fix unaligned memory access in udl_render_hline

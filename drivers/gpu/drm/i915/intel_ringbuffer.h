@@ -139,12 +139,11 @@ struct intel_ring {
 	struct i915_vma *vma;
 	void *vaddr;
 
-	struct intel_engine_cs *engine;
-
 	struct list_head request_list;
 
 	u32 head;
 	u32 tail;
+	u32 emit;
 
 	int space;
 	int size;
@@ -189,12 +188,18 @@ enum intel_engine_id {
 	VECS
 };
 
+#define INTEL_ENGINE_CS_MAX_NAME 8
+
 struct intel_engine_cs {
 	struct drm_i915_private *i915;
-	const char	*name;
+	char name[INTEL_ENGINE_CS_MAX_NAME];
 	enum intel_engine_id id;
-	unsigned int exec_id;
+	unsigned int uabi_id;
 	unsigned int hw_id;
+
+	u8 class;
+	u8 instance;
+
 	unsigned int guc_id;
 	u32		mmio_base;
 	unsigned int irq_shift;
@@ -487,7 +492,11 @@ intel_write_status_page(struct intel_engine_cs *engine, int reg, u32 value)
 
 struct intel_ring *
 intel_engine_create_ring(struct intel_engine_cs *engine, int size);
-int intel_ring_pin(struct intel_ring *ring, unsigned int offset_bias);
+int intel_ring_pin(struct intel_ring *ring,
+		   struct drm_i915_private *i915,
+		   unsigned int offset_bias);
+void intel_ring_reset(struct intel_ring *ring, u32 tail);
+void intel_ring_update_space(struct intel_ring *ring);
 void intel_ring_unpin(struct intel_ring *ring);
 void intel_ring_free(struct intel_ring *ring);
 
@@ -511,7 +520,7 @@ intel_ring_advance(struct drm_i915_gem_request *req, u32 *cs)
 	 * reserved for the command packet (i.e. the value passed to
 	 * intel_ring_begin()).
 	 */
-	GEM_BUG_ON((req->ring->vaddr + req->ring->tail) != cs);
+	GEM_BUG_ON((req->ring->vaddr + req->ring->emit) != cs);
 }
 
 static inline u32
@@ -540,7 +549,19 @@ assert_ring_tail_valid(const struct intel_ring *ring, unsigned int tail)
 	GEM_BUG_ON(tail >= ring->size);
 }
 
-void intel_ring_update_space(struct intel_ring *ring);
+static inline unsigned int
+intel_ring_set_tail(struct intel_ring *ring, unsigned int tail)
+{
+	/* Whilst writes to the tail are strictly order, there is no
+	 * serialisation between readers and the writers. The tail may be
+	 * read by i915_gem_request_retire() just as it is being updated
+	 * by execlists, as although the breadcrumb is complete, the context
+	 * switch hasn't been seen.
+	 */
+	assert_ring_tail_valid(ring, tail);
+	ring->tail = tail;
+	return tail;
+}
 
 void intel_engine_init_global_seqno(struct intel_engine_cs *engine, u32 seqno);
 
@@ -551,7 +572,6 @@ void intel_engine_cleanup_common(struct intel_engine_cs *engine);
 
 int intel_init_render_ring_buffer(struct intel_engine_cs *engine);
 int intel_init_bsd_ring_buffer(struct intel_engine_cs *engine);
-int intel_init_bsd2_ring_buffer(struct intel_engine_cs *engine);
 int intel_init_blt_ring_buffer(struct intel_engine_cs *engine);
 int intel_init_vebox_ring_buffer(struct intel_engine_cs *engine);
 
@@ -652,7 +672,8 @@ bool intel_engine_add_wait(struct intel_engine_cs *engine,
 			   struct intel_wait *wait);
 void intel_engine_remove_wait(struct intel_engine_cs *engine,
 			      struct intel_wait *wait);
-void intel_engine_enable_signaling(struct drm_i915_gem_request *request);
+void intel_engine_enable_signaling(struct drm_i915_gem_request *request,
+				   bool wakeup);
 void intel_engine_cancel_signaling(struct drm_i915_gem_request *request);
 
 static inline bool intel_engine_has_waiter(const struct intel_engine_cs *engine)

@@ -112,7 +112,6 @@ static struct intel_ring *mock_ring(struct intel_engine_cs *engine)
 	if (!ring)
 		return NULL;
 
-	ring->engine = engine;
 	ring->size = sz;
 	ring->effective_size = sz;
 	ring->vaddr = (void *)(ring + 1);
@@ -141,7 +140,7 @@ struct intel_engine_cs *mock_engine(struct drm_i915_private *i915,
 
 	/* minimal engine setup for requests */
 	engine->base.i915 = i915;
-	engine->base.name = name;
+	snprintf(engine->base.name, sizeof(engine->base.name), "%s", name);
 	engine->base.id = id++;
 	engine->base.status_page.page_addr = (void *)(engine + 1);
 

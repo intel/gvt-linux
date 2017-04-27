@@ -326,8 +326,7 @@ static u64 execlists_update_context(struct drm_i915_gem_request *rq)
 		rq->ctx->ppgtt ?: rq->i915->mm.aliasing_ppgtt;
 	u32 *reg_state = ce->lrc_reg_state;
 
-	assert_ring_tail_valid(rq->ring, rq->tail);
-	reg_state[CTX_RING_TAIL+1] = rq->tail;
+	reg_state[CTX_RING_TAIL+1] = intel_ring_set_tail(rq->ring, rq->tail);
 
 	/* True 32b PPGTT with dynamic page allocation: update PDP
 	 * registers and point the unallocated PDPs to scratch page.
@@ -514,6 +513,15 @@ static void intel_lrc_irq_handler(unsigned long data)
 	struct intel_engine_cs *engine = (struct intel_engine_cs *)data;
 	struct execlist_port *port = engine->execlist_port;
 	struct drm_i915_private *dev_priv = engine->i915;
+
+	/* We can skip acquiring intel_runtime_pm_get() here as it was taken
+	 * on our behalf by the request (see i915_gem_mark_busy()) and it will
+	 * not be relinquished until the device is idle (see
+	 * i915_gem_idle_work_handler()). As a precaution, we make sure
+	 * that all ELSP are drained i.e. we have processed the CSB,
+	 * before allowing ourselves to idle and calling intel_runtime_pm_put().
+	 */
+	GEM_BUG_ON(!dev_priv->gt.awake);
 
 	intel_uncore_forcewake_get(dev_priv, engine->fw_domains);
 
@@ -771,7 +779,7 @@ static int execlists_context_pin(struct intel_engine_cs *engine,
 		goto unpin_vma;
 	}
 
-	ret = intel_ring_pin(ce->ring, ctx->ggtt_offset_bias);
+	ret = intel_ring_pin(ce->ring, ctx->i915, ctx->ggtt_offset_bias);
 	if (ret)
 		goto unpin_map;
 
@@ -1139,14 +1147,11 @@ static int intel_init_workaround_bb(struct intel_engine_cs *engine)
 	return ret;
 }
 
-static u32 port_seqno(struct execlist_port *port)
-{
-	return port->request ? port->request->global_seqno : 0;
-}
-
 static int gen8_init_common_ring(struct intel_engine_cs *engine)
 {
 	struct drm_i915_private *dev_priv = engine->i915;
+	struct execlist_port *port = engine->execlist_port;
+	unsigned int n;
 	int ret;
 
 	ret = intel_mocs_init_engine(engine);
@@ -1167,15 +1172,21 @@ static int gen8_init_common_ring(struct intel_engine_cs *engine)
 
 	/* After a GPU reset, we may have requests to replay */
 	clear_bit(ENGINE_IRQ_EXECLIST, &engine->irq_posted);
-	if (!i915.enable_guc_submission && !execlists_elsp_idle(engine)) {
-		DRM_DEBUG_DRIVER("Restarting %s from requests [0x%x, 0x%x]\n",
-				 engine->name,
-				 port_seqno(&engine->execlist_port[0]),
-				 port_seqno(&engine->execlist_port[1]));
-		engine->execlist_port[0].count = 0;
-		engine->execlist_port[1].count = 0;
-		execlists_submit_ports(engine);
+
+	for (n = 0; n < ARRAY_SIZE(engine->execlist_port); n++) {
+		if (!port[n].request)
+			break;
+
+		DRM_DEBUG_DRIVER("Restarting %s:%d from 0x%x\n",
+				 engine->name, n,
+				 port[n].request->global_seqno);
+
+		/* Discard the current inflight count */
+		port[n].count = 0;
 	}
+
+	if (!i915.enable_guc_submission && !execlists_elsp_idle(engine))
+		execlists_submit_ports(engine);
 
 	return 0;
 }
@@ -1923,21 +1934,30 @@ populate_lr_context(struct i915_gem_context *ctx,
  */
 uint32_t intel_lr_context_size(struct intel_engine_cs *engine)
 {
-	int ret = 0;
+	struct drm_i915_private *dev_priv = engine->i915;
+	int ret;
 
-	WARN_ON(INTEL_GEN(engine->i915) < 8);
+	WARN_ON(INTEL_GEN(dev_priv) < 8);
 
-	switch (engine->id) {
-	case RCS:
-		if (INTEL_GEN(engine->i915) >= 9)
+	switch (engine->class) {
+	case RENDER_CLASS:
+		switch (INTEL_GEN(dev_priv)) {
+		default:
+			MISSING_CASE(INTEL_GEN(dev_priv));
+		case 9:
 			ret = GEN9_LR_CONTEXT_RENDER_SIZE;
-		else
+			break;
+		case 8:
 			ret = GEN8_LR_CONTEXT_RENDER_SIZE;
+			break;
+		}
 		break;
-	case VCS:
-	case BCS:
-	case VECS:
-	case VCS2:
+
+	default:
+		MISSING_CASE(engine->class);
+	case VIDEO_DECODE_CLASS:
+	case VIDEO_ENHANCEMENT_CLASS:
+	case COPY_ENGINE_CLASS:
 		ret = GEN8_LR_CONTEXT_OTHER_SIZE;
 		break;
 	}
@@ -2036,8 +2056,7 @@ void intel_lr_context_resume(struct drm_i915_private *dev_priv)
 			ce->state->obj->mm.dirty = true;
 			i915_gem_object_unpin_map(ce->state->obj);
 
-			ce->ring->head = ce->ring->tail = 0;
-			intel_ring_update_space(ce->ring);
+			intel_ring_reset(ce->ring, 0);
 		}
 	}
 }

@@ -350,6 +350,7 @@ static int i915_getparam(struct drm_device *dev, void *data,
 	case I915_PARAM_HAS_EXEC_SOFTPIN:
 	case I915_PARAM_HAS_EXEC_ASYNC:
 	case I915_PARAM_HAS_EXEC_FENCE:
+	case I915_PARAM_HAS_EXEC_CAPTURE:
 		/* For the time being all of these are always true;
 		 * if some supported hardware does not have one of these
 		 * features this value needs to be provided from
@@ -1213,9 +1214,8 @@ int i915_driver_load(struct pci_dev *pdev, const struct pci_device_id *ent)
 	struct drm_i915_private *dev_priv;
 	int ret;
 
-	/* Enable nuclear pageflip on ILK+, except vlv/chv */
-	if (!i915.nuclear_pageflip &&
-	    (match_info->gen < 5 || match_info->has_gmch_display))
+	/* Enable nuclear pageflip on ILK+ */
+	if (!i915.nuclear_pageflip && match_info->gen < 5)
 		driver.driver_features &= ~DRIVER_ATOMIC;
 
 	ret = -ENOMEM;

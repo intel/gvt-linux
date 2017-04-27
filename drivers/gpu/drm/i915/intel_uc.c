@@ -274,6 +274,11 @@ int intel_uc_init_hw(struct drm_i915_private *dev_priv)
 			goto err_guc;
 	}
 
+	/* init WOPCM */
+	I915_WRITE(GUC_WOPCM_SIZE, intel_guc_wopcm_size(dev_priv));
+	I915_WRITE(DMA_GUC_WOPCM_OFFSET,
+		   GUC_WOPCM_OFFSET_VALUE | HUC_LOADING_AGENT_GUC);
+
 	/* WaEnableuKernelHeaderValidFix:skl */
 	/* WaEnableGuCBootHashCheckNotSet:skl,bxt,kbl */
 	if (IS_GEN9(dev_priv))
@@ -360,19 +365,6 @@ void intel_uc_fini_hw(struct drm_i915_private *dev_priv)
 }
 
 /*
- * Read GuC command/status register (SOFT_SCRATCH_0)
- * Return true if it contains a response rather than a command
- */
-static bool guc_recv(struct intel_guc *guc, u32 *status)
-{
-	struct drm_i915_private *dev_priv = guc_to_i915(guc);
-
-	u32 val = I915_READ(SOFT_SCRATCH(0));
-	*status = val;
-	return INTEL_GUC_RECV_IS_RESPONSE(val);
-}
-
-/*
  * This function implements the MMIO based host to GuC interface.
  */
 int intel_guc_send_mmio(struct intel_guc *guc, const u32 *action, u32 len)
@@ -399,13 +391,14 @@ int intel_guc_send_mmio(struct intel_guc *guc, const u32 *action, u32 len)
 	I915_WRITE(GUC_SEND_INTERRUPT, GUC_SEND_TRIGGER);
 
 	/*
-	 * Fast commands should complete in less than 10us, so sample quickly
-	 * up to that length of time, then switch to a slower sleep-wait loop.
-	 * No inte_guc_send command should ever take longer than 10ms.
+	 * No GuC command should ever take longer than 10ms.
+	 * Fast commands should still complete in 10us.
 	 */
-	ret = wait_for_us(guc_recv(guc, &status), 10);
-	if (ret)
-		ret = wait_for(guc_recv(guc, &status), 10);
+	ret = __intel_wait_for_register_fw(dev_priv,
+					   SOFT_SCRATCH(0),
+					   INTEL_GUC_RECV_MASK,
+					   INTEL_GUC_RECV_MASK,
+					   10, 10, &status);
 	if (status != INTEL_GUC_STATUS_SUCCESS) {
 		/*
 		 * Either the GuC explicitly returned an error (which

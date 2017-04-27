@@ -480,9 +480,7 @@ static void guc_wq_item_append(struct i915_guc_client *client,
 	GEM_BUG_ON(freespace < wqi_size);
 
 	/* The GuC firmware wants the tail index in QWords, not bytes */
-	tail = rq->tail;
-	assert_ring_tail_valid(rq->ring, rq->tail);
-	tail >>= 3;
+	tail = intel_ring_set_tail(rq->ring, rq->tail) >> 3;
 	GEM_BUG_ON(tail > WQ_RING_TAIL_MAX);
 
 	/* For now workqueue item is 4 DWs; workqueue buffer is 2 pages. So we
@@ -651,7 +649,7 @@ static void nested_enable_signaling(struct drm_i915_gem_request *rq)
 	trace_dma_fence_enable_signal(&rq->fence);
 
 	spin_lock_nested(&rq->lock, SINGLE_DEPTH_NESTING);
-	intel_engine_enable_signaling(rq);
+	intel_engine_enable_signaling(rq, true);
 	spin_unlock(&rq->lock);
 }
 

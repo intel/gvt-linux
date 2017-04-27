@@ -1,0 +1,22 @@
+drm-intel drm-intel-fixes 5a7ad1146caa895ad718a534399e38bd2ba721b7
+	Linux 4.11-rc8
+drm-upstream drm-fixes 2ca62d8a606a95e098799f128f6a40a6300d2a2a
+	Merge branch 'linux-4.11' of git://github.com/skeggsb/linux into drm-fixes
+drm-intel drm-intel-next-fixes 88326ef05b262f681d837ecf65db10a7edb609f1
+	drm/i915: Confirm the request is still active before adding it to the await
+drm-intel drm-intel-next-queued e3895af8bb12612972efb1a07f0bb02b2853afda
+	drm/i915: Rename gen8_(un)request_engine_reset to gen8_reset_engine_start/cancel
+drm-upstream drm-next 6b1462700b4a6a1244c018cdd2fa97ded43090a0
+	Merge tag 'drm-misc-next-fixes-2017-04-20' of git://anongit.freedesktop.org/git/drm-misc into drm-next
+sound-upstream for-next ca169cc2f9e1f8ed9c867b197a49d6dd05e5436d
+	ALSA: hda/realtek - Add Dual Codecs support for Lenovo P520/420
+sound-upstream for-linus d4a2fbcee0c8449ce24d6de168f3d90c5e6d7596
+	Merge tag 'asoc-fix-v4.11-rc7' of git://git.kernel.org/pub/scm/linux/kernel/git/broonie/sound into for-linus
+drm-intel topic/core-for-CI e1d0243d74793636de3a9a2c81683a5d8d07d744
+	Revert "sched/clock: Fix broken stable to unstable transfer"
+drm-misc drm-misc-next d753e41d475421543eaaea5f0feadba827f5fa01
+	drm/cec: Add CEC over Aux register definitions
+drm-misc drm-misc-next-fixes f9b67f0014cba18f1aabb6fa9272335a043eb6fd
+	dma-buf: Rename dma-ops to prevent conflict with kunmap_atomic macro
+drm-misc drm-misc-fixes 0c45b36f8acc89cb94c8696a27574f01e0e411dc
+	drm/udl: Fix unaligned memory access in udl_render_hline

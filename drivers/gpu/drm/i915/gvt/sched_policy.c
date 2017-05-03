@@ -57,9 +57,6 @@ static void try_to_schedule_next_vgpu(struct intel_gvt *gvt)
 	if (!scheduler->next_vgpu)
 		return;
 
-	gvt_dbg_sched("try to schedule next vgpu %d\n",
-			scheduler->next_vgpu->id);
-
 	/*
 	 * after the flag is set, workload dispatch thread will
 	 * stop dispatching workload for current vgpu
@@ -68,10 +65,8 @@ static void try_to_schedule_next_vgpu(struct intel_gvt *gvt)
 
 	/* still have uncompleted workload? */
 	for_each_engine(engine, gvt->dev_priv, i) {
-		if (scheduler->current_workload[i]) {
-			gvt_dbg_sched("still have running workload\n");
+		if (scheduler->current_workload[i])
 			return;
-		}
 	}
 
 	/* switch current vgpu */

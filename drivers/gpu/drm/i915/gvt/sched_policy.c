@@ -74,9 +74,6 @@ static void try_to_schedule_next_vgpu(struct intel_gvt *gvt)
 		}
 	}
 
-	gvt_dbg_sched("switch to next vgpu %d\n",
-			scheduler->next_vgpu->id);
-
 	/* switch current vgpu */
 	scheduler->current_vgpu = scheduler->next_vgpu;
 	scheduler->next_vgpu = NULL;
@@ -143,14 +140,10 @@ static void tbs_sched_func(struct work_struct *work)
 
 	if (vgpu) {
 		scheduler->next_vgpu = vgpu;
-		gvt_dbg_sched("pick next vgpu %d\n", vgpu->id);
 	}
 out:
-	if (scheduler->next_vgpu) {
-		gvt_dbg_sched("try to schedule next vgpu %d\n",
-				scheduler->next_vgpu->id);
+	if (scheduler->next_vgpu)
 		try_to_schedule_next_vgpu(gvt);
-	}
 
 	/*
 	 * still have vgpu on runq

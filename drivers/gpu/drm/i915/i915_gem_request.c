@@ -61,7 +61,7 @@ static bool i915_fence_enable_signaling(struct dma_fence *fence)
 	if (i915_fence_signaled(fence))
 		return false;
 
-	intel_engine_enable_signaling(to_request(fence));
+	intel_engine_enable_signaling(to_request(fence), true);
 	return true;
 }
 
@@ -214,8 +214,8 @@ static int reset_all_global_seqno(struct drm_i915_private *i915, u32 seqno)
 		}
 
 		/* Finally reset hw state */
-		tl->seqno = seqno;
 		intel_engine_init_global_seqno(engine, seqno);
+		tl->seqno = seqno;
 
 		list_for_each_entry(timeline, &i915->gt.timelines, link)
 			memset(timeline->engine[id].sync_seqno, 0,
@@ -271,6 +271,48 @@ void i915_gem_retire_noop(struct i915_gem_active *active,
 	/* Space left intentionally blank */
 }
 
+static void advance_ring(struct drm_i915_gem_request *request)
+{
+	unsigned int tail;
+
+	/* We know the GPU must have read the request to have
+	 * sent us the seqno + interrupt, so use the position
+	 * of tail of the request to update the last known position
+	 * of the GPU head.
+	 *
+	 * Note this requires that we are always called in request
+	 * completion order.
+	 */
+	if (list_is_last(&request->ring_link, &request->ring->request_list)) {
+		/* We may race here with execlists resubmitting this request
+		 * as we retire it. The resubmission will move the ring->tail
+		 * forwards (to request->wa_tail). We either read the
+		 * current value that was written to hw, or the value that
+		 * is just about to be. Either works, if we miss the last two
+		 * noops - they are safe to be replayed on a reset.
+		 */
+		tail = READ_ONCE(request->ring->tail);
+	} else {
+		tail = request->postfix;
+	}
+	list_del(&request->ring_link);
+
+	request->ring->head = tail;
+}
+
+static void free_capture_list(struct drm_i915_gem_request *request)
+{
+	struct i915_gem_capture_list *capture;
+
+	capture = request->capture_list;
+	while (capture) {
+		struct i915_gem_capture_list *next = capture->next;
+
+		kfree(capture);
+		capture = next;
+	}
+}
+
 static void i915_gem_request_retire(struct drm_i915_gem_request *request)
 {
 	struct intel_engine_cs *engine = request->engine;
@@ -287,16 +329,6 @@ static void i915_gem_request_retire(struct drm_i915_gem_request *request)
 	list_del_init(&request->link);
 	spin_unlock_irq(&engine->timeline->lock);
 
-	/* We know the GPU must have read the request to have
-	 * sent us the seqno + interrupt, so use the position
-	 * of tail of the request to update the last known position
-	 * of the GPU head.
-	 *
-	 * Note this requires that we are always called in request
-	 * completion order.
-	 */
-	list_del(&request->ring_link);
-	request->ring->head = request->postfix;
 	if (!--request->i915->gt.active_requests) {
 		GEM_BUG_ON(!request->i915->gt.awake);
 		mod_delayed_work(request->i915->wq,
@@ -304,6 +336,9 @@ static void i915_gem_request_retire(struct drm_i915_gem_request *request)
 				 msecs_to_jiffies(100));
 	}
 	unreserve_seqno(request->engine);
+	advance_ring(request);
+
+	free_capture_list(request);
 
 	/* Walk through the active list, calling retire on each. This allows
 	 * objects to track their GPU activity and mark themselves as idle
@@ -402,7 +437,7 @@ void __i915_gem_request_submit(struct drm_i915_gem_request *request)
 	spin_lock_nested(&request->lock, SINGLE_DEPTH_NESTING);
 	request->global_seqno = seqno;
 	if (test_bit(DMA_FENCE_FLAG_ENABLE_SIGNAL_BIT, &request->fence.flags))
-		intel_engine_enable_signaling(request);
+		intel_engine_enable_signaling(request, false);
 	spin_unlock(&request->lock);
 
 	engine->emit_breadcrumb(request,
@@ -603,6 +638,7 @@ i915_gem_request_alloc(struct intel_engine_cs *engine,
 	req->global_seqno = 0;
 	req->file_priv = NULL;
 	req->batch = NULL;
+	req->capture_list = NULL;
 
 	/*
 	 * Reserve space in the ring buffer for all the commands required to
@@ -623,7 +659,7 @@ i915_gem_request_alloc(struct intel_engine_cs *engine,
 	 * GPU processing the request, we never over-estimate the
 	 * position of the head.
 	 */
-	req->head = req->ring->tail;
+	req->head = req->ring->emit;
 
 	/* Check that we didn't interrupt ourselves with a new request */
 	GEM_BUG_ON(req->timeline->seqno != req->fence.seqno);

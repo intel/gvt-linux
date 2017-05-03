@@ -1,22 +1,12 @@
-drm-intel drm-intel-fixes 5a7ad1146caa895ad718a534399e38bd2ba721b7
-	Linux 4.11-rc8
-drm-upstream drm-fixes 2ca62d8a606a95e098799f128f6a40a6300d2a2a
-	Merge branch 'linux-4.11' of git://github.com/skeggsb/linux into drm-fixes
-drm-intel drm-intel-next-fixes 88326ef05b262f681d837ecf65db10a7edb609f1
-	drm/i915: Confirm the request is still active before adding it to the await
-drm-intel drm-intel-next-queued 789a625158b0c0c2bc94a5dc404e7608d6100e5e
-	drm/i915/guc: Enable send function only after successful init
-drm-upstream drm-next 8b03d1ed2c43a2ba5ef3381322ee4515b97381bf
-	Merge branch 'linux-4.12' of git://github.com/skeggsb/linux into drm-next
-sound-upstream for-next a5c3b32a1146e44f6b38fdfdfffc27842953420c
-	Merge tag 'asoc-v4.12' of git://git.kernel.org/pub/scm/linux/kernel/git/broonie/sound into for-linus
-sound-upstream for-linus a5c3b32a1146e44f6b38fdfdfffc27842953420c
-	Merge tag 'asoc-v4.12' of git://git.kernel.org/pub/scm/linux/kernel/git/broonie/sound into for-linus
-drm-intel topic/core-for-CI 10fc9665228befe47fe9fddb519a77fa177ec92f
-	drm/i915: Prevent the system suspend complete optimization
-drm-misc drm-misc-next aa5bfa405c87a82d0b0374bb47c8e05d0fb69c04
-	drm/rockchip: analogix_dp: Remove unused check and variables
-drm-misc drm-misc-next-fixes e345da82bd6bdfa8492f80b3ce4370acfd868d95
-	drm/edid: Add 10 bpc quirk for LGD 764 panel in HP zBook 17 G2
-drm-misc drm-misc-fixes 0c45b36f8acc89cb94c8696a27574f01e0e411dc
-	drm/udl: Fix unaligned memory access in udl_render_hline
+drm-tip/drm-tip cd3a16bd6002a7291013104404f14e4d5dce7285
+	drm-tip: 2017y-05m-03d-08h-32m-06s UTC integration manifest
+vfio-upstream/for-linus 39da7c509acff13fc8cb12ec1bb20337c988ed36
+	Linux 4.11-rc6
+vfio-upstream/next 7cb671e7a34d73b29df77d0b53492277744e57e7
+	vfio/type1: Reduce repetitive calls in vfio_pin_pages_remote()
+origin/gvt-next 302cfc16412a989e37d36b8bff59593b6ac81244
+	drm/i915/gvt: rewrite the trace gvt:gvt_command using trace style approach
+origin/gvt-fixes 324d0249b3dbf91649d97d162879342cb529853b
+	drm/i915/gvt: fix typo: "supporte" -> "support"
+origin/gvt-next-fixes 627c845c0907894a1e5cd2d90ff4fc86c9e4458e
+	drm/i915/gvt: change some gvt_err to gvt_dbg_cmd

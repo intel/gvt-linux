@@ -84,6 +84,11 @@ int intel_gvt_init(struct drm_i915_private *dev_priv)
 		goto bail;
 	}
 
+	if (i915.enable_guc_submission) {
+		DRM_INFO("GPU guest virtualisation [GVT-g] disabled due to enabled GuC submission [i915.enable_guc_submission module parameter]\n");
+		goto bail;
+	}
+
 	/*
 	 * We're not in host or fail to find a MPT module, disable GVT-g
 	 */

@@ -2545,7 +2545,6 @@ static int init_broadwell_mmio_info(struct intel_gvt *gvt)
 	MMIO_F(0x24d0, 48, F_CMD_ACCESS, 0, 0, D_BDW_PLUS,
 		NULL, force_nonpriv_write);
 
-	MMIO_D(0x22040, D_BDW_PLUS);
 	MMIO_D(0x44484, D_BDW_PLUS);
 	MMIO_D(0x4448c, D_BDW_PLUS);
 

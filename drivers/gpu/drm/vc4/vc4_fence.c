@@ -1,6 +1,5 @@
 /*
- * Copyright © 2012 Intel Corporation
- * Copyright © 2014 The Chromium OS Authors
+ * Copyright © 2017 Broadcom
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -20,40 +19,38 @@
  * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
  * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
  * IN THE SOFTWARE.
- *
- * Authors:
- *    Ben Widawsky <ben@bwidawsk.net>
- *
  */
 
-#ifndef _VGEM_DRV_H_
-#define _VGEM_DRV_H_
+#include "vc4_drv.h"
 
-#include <drm/drmP.h>
-#include <drm/drm_gem.h>
-#include <drm/drm_cache.h>
+static const char *vc4_fence_get_driver_name(struct dma_fence *fence)
+{
+	return "vc4";
+}
 
-#include <uapi/drm/vgem_drm.h>
+static const char *vc4_fence_get_timeline_name(struct dma_fence *fence)
+{
+	return "vc4-v3d";
+}
 
-struct vgem_file {
-	struct idr fence_idr;
-	struct mutex fence_mutex;
+static bool vc4_fence_enable_signaling(struct dma_fence *fence)
+{
+	return true;
+}
+
+static bool vc4_fence_signaled(struct dma_fence *fence)
+{
+	struct vc4_fence *f = to_vc4_fence(fence);
+	struct vc4_dev *vc4 = to_vc4_dev(f->dev);
+
+	return vc4->finished_seqno >= f->seqno;
+}
+
+const struct dma_fence_ops vc4_fence_ops = {
+	.get_driver_name = vc4_fence_get_driver_name,
+	.get_timeline_name = vc4_fence_get_timeline_name,
+	.enable_signaling = vc4_fence_enable_signaling,
+	.signaled = vc4_fence_signaled,
+	.wait = dma_fence_default_wait,
+	.release = dma_fence_free,
 };
-
-#define to_vgem_bo(x) container_of(x, struct drm_vgem_gem_object, base)
-struct drm_vgem_gem_object {
-	struct drm_gem_object base;
-	struct page **pages;
-	struct sg_table *table;
-};
-
-int vgem_fence_open(struct vgem_file *file);
-int vgem_fence_attach_ioctl(struct drm_device *dev,
-			    void *data,
-			    struct drm_file *file);
-int vgem_fence_signal_ioctl(struct drm_device *dev,
-			    void *data,
-			    struct drm_file *file);
-void vgem_fence_close(struct vgem_file *file);
-
-#endif

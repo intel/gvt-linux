@@ -125,20 +125,38 @@ static struct kobj_type xengt_ctrl_ktype = {
 	.default_attrs = xengt_ctrl_attrs,
 };
 
+static struct intel_vgpu_type *xengt_choose_vgpu_type(
+		struct xengt_hvm_params *vp)
+{
+	struct intel_vgpu_type *vgpu_type;
+	unsigned int  i;
+
+	for (i = 0;  i < xengt_priv.gvt->num_types; i++) {
+		vgpu_type = &xengt_priv.gvt->types[i];
+		if ((vgpu_type->low_gm_size >> 20) == vp->aperture_sz) {
+			gvt_dbg_core("choose vgpu type:%d\n", i);
+			return vgpu_type;
+		}
+	}
+
+	gvt_err("specify a wrong low_gm_sz in hvm.cfg: %d\n", vp->aperture_sz);
+		return NULL;
+}
+
 static int xengt_sysfs_add_instance(struct xengt_hvm_params *vp)
 {
 	int ret = 0;
 	struct intel_vgpu *vgpu;
 	struct xengt_hvm_dev *info;
+	struct intel_vgpu_type *type;
 
-	/*
-	 * TODO.
-	 * Temporory, we default use gvt's types[0] to create an vgpu
-	 * instance. This should be fixed later to select type based
-	 * on user resource setting.
-	 */
+	type = xengt_choose_vgpu_type(vp);
+	if (type == NULL) {
+		gvt_err("choose vgpu type failed");
+		return -EINVAL;
+	}
 	mutex_lock(&gvt_sysfs_lock);
-	vgpu = xengt_instance_create(vp->vm_id, &xengt_priv.gvt->types[0]);
+	vgpu = xengt_instance_create(vp->vm_id, type);
 	mutex_unlock(&gvt_sysfs_lock);
 	if (vgpu == NULL) {
 		gvt_err("xengt_sysfs_add_instance failed.\n");

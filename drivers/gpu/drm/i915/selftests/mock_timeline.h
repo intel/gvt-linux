@@ -1,5 +1,5 @@
 /*
- * Copyright © 2016 Intel Corporation
+ * Copyright © 2017 Intel Corporation
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -22,15 +22,12 @@
  *
  */
 
-#ifndef __I915_GEM_CLFLUSH_H__
-#define __I915_GEM_CLFLUSH_H__
+#ifndef __MOCK_TIMELINE__
+#define __MOCK_TIMELINE__
 
-struct drm_i915_private;
-struct drm_i915_gem_object;
+#include "../i915_gem_timeline.h"
 
-void i915_gem_clflush_object(struct drm_i915_gem_object *obj,
-			     unsigned int flags);
-#define I915_CLFLUSH_FORCE BIT(0)
-#define I915_CLFLUSH_SYNC BIT(1)
+struct intel_timeline *mock_timeline(u64 context);
+void mock_timeline_destroy(struct intel_timeline *tl);
 
-#endif /* __I915_GEM_CLFLUSH_H__ */
+#endif /* !__MOCK_TIMELINE__ */

@@ -1029,7 +1029,7 @@ static uint16_t vlv_compute_wm_level(const struct intel_crtc_state *crtc_state,
 	if (dev_priv->wm.pri_latency[level] == 0)
 		return USHRT_MAX;
 
-	if (!plane_state->base.visible)
+	if (!intel_wm_plane_visible(crtc_state, plane_state))
 		return 0;
 
 	cpp = plane_state->base.fb->format->cpp[0];
@@ -1039,7 +1039,7 @@ static uint16_t vlv_compute_wm_level(const struct intel_crtc_state *crtc_state,
 	if (WARN_ON(htotal == 0))
 		htotal = 1;
 
-	if (plane->base.type == DRM_PLANE_TYPE_CURSOR) {
+	if (plane->id == PLANE_CURSOR) {
 		/*
 		 * FIXME the formula gives values that are
 		 * too big for the cursor FIFO, and hence we
@@ -1203,7 +1203,7 @@ static bool vlv_plane_wm_compute(struct intel_crtc_state *crtc_state,
 	int level;
 	bool dirty = false;
 
-	if (!plane_state->base.visible) {
+	if (!intel_wm_plane_visible(crtc_state, plane_state)) {
 		dirty |= vlv_raw_plane_wm_set(crtc_state, 0, plane_id, 0);
 		goto out;
 	}
@@ -8135,9 +8135,9 @@ int sandybridge_pcode_read(struct drm_i915_private *dev_priv, u32 mbox, u32 *val
 	I915_WRITE_FW(GEN6_PCODE_DATA1, 0);
 	I915_WRITE_FW(GEN6_PCODE_MAILBOX, GEN6_PCODE_READY | mbox);
 
-	if (intel_wait_for_register_fw(dev_priv,
-				       GEN6_PCODE_MAILBOX, GEN6_PCODE_READY, 0,
-				       500)) {
+	if (__intel_wait_for_register_fw(dev_priv,
+					 GEN6_PCODE_MAILBOX, GEN6_PCODE_READY, 0,
+					 500, 0, NULL)) {
 		DRM_ERROR("timeout waiting for pcode read (%d) to finish\n", mbox);
 		return -ETIMEDOUT;
 	}
@@ -8180,9 +8180,9 @@ int sandybridge_pcode_write(struct drm_i915_private *dev_priv,
 	I915_WRITE_FW(GEN6_PCODE_DATA1, 0);
 	I915_WRITE_FW(GEN6_PCODE_MAILBOX, GEN6_PCODE_READY | mbox);
 
-	if (intel_wait_for_register_fw(dev_priv,
-				       GEN6_PCODE_MAILBOX, GEN6_PCODE_READY, 0,
-				       500)) {
+	if (__intel_wait_for_register_fw(dev_priv,
+					 GEN6_PCODE_MAILBOX, GEN6_PCODE_READY, 0,
+					 500, 0, NULL)) {
 		DRM_ERROR("timeout waiting for pcode write (%d) to finish\n", mbox);
 		return -ETIMEDOUT;
 	}

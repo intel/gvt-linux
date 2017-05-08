@@ -2568,8 +2568,7 @@ static int i915_guc_log_dump(struct seq_file *m, void *data)
 
 static int i915_guc_log_control_get(void *data, u64 *val)
 {
-	struct drm_device *dev = data;
-	struct drm_i915_private *dev_priv = to_i915(dev);
+	struct drm_i915_private *dev_priv = data;
 
 	if (!dev_priv->guc.log.vma)
 		return -EINVAL;
@@ -2581,14 +2580,13 @@ static int i915_guc_log_control_get(void *data, u64 *val)
 
 static int i915_guc_log_control_set(void *data, u64 val)
 {
-	struct drm_device *dev = data;
-	struct drm_i915_private *dev_priv = to_i915(dev);
+	struct drm_i915_private *dev_priv = data;
 	int ret;
 
 	if (!dev_priv->guc.log.vma)
 		return -EINVAL;
 
-	ret = mutex_lock_interruptible(&dev->struct_mutex);
+	ret = mutex_lock_interruptible(&dev_priv->drm.struct_mutex);
 	if (ret)
 		return ret;
 
@@ -2596,7 +2594,7 @@ static int i915_guc_log_control_set(void *data, u64 val)
 	ret = i915_guc_log_control(dev_priv, val);
 	intel_runtime_pm_put(dev_priv);
 
-	mutex_unlock(&dev->struct_mutex);
+	mutex_unlock(&dev_priv->drm.struct_mutex);
 	return ret;
 }
 
@@ -3704,16 +3702,10 @@ static ssize_t i915_displayport_test_active_write(struct file *file,
 	if (len == 0)
 		return 0;
 
-	input_buffer = kmalloc(len + 1, GFP_KERNEL);
-	if (!input_buffer)
-		return -ENOMEM;
+	input_buffer = memdup_user_nul(ubuf, len);
+	if (IS_ERR(input_buffer))
+		return PTR_ERR(input_buffer);
 
-	if (copy_from_user(input_buffer, ubuf, len)) {
-		status = -EFAULT;
-		goto out;
-	}
-
-	input_buffer[len] = '\0';
 	DRM_DEBUG_DRIVER("Copied %d bytes from user\n", (unsigned int)len);
 
 	drm_connector_list_iter_begin(dev, &conn_iter);
@@ -3739,7 +3731,6 @@ static ssize_t i915_displayport_test_active_write(struct file *file,
 		}
 	}
 	drm_connector_list_iter_end(&conn_iter);
-out:
 	kfree(input_buffer);
 	if (status < 0)
 		return status;

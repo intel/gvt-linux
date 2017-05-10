@@ -55,6 +55,7 @@
 #include "i915_reg.h"
 #include "i915_utils.h"
 
+#include "intel_uncore.h"
 #include "intel_bios.h"
 #include "intel_dpll_mgr.h"
 #include "intel_uc.h"
@@ -79,8 +80,8 @@
 
 #define DRIVER_NAME		"i915"
 #define DRIVER_DESC		"Intel Graphics"
-#define DRIVER_DATE		"20170403"
-#define DRIVER_TIMESTAMP	1491198738
+#define DRIVER_DATE		"20170502"
+#define DRIVER_TIMESTAMP	1493710187
 
 /* Use I915_STATE_WARN(x) and I915_STATE_WARN_ON() (rather than WARN() and
  * WARN_ON()) for hw state sanity checks to check for unexpected conditions
@@ -676,116 +677,6 @@ struct drm_i915_display_funcs {
 	void (*load_luts)(struct drm_crtc_state *crtc_state);
 };
 
-enum forcewake_domain_id {
-	FW_DOMAIN_ID_RENDER = 0,
-	FW_DOMAIN_ID_BLITTER,
-	FW_DOMAIN_ID_MEDIA,
-
-	FW_DOMAIN_ID_COUNT
-};
-
-enum forcewake_domains {
-	FORCEWAKE_RENDER = BIT(FW_DOMAIN_ID_RENDER),
-	FORCEWAKE_BLITTER = BIT(FW_DOMAIN_ID_BLITTER),
-	FORCEWAKE_MEDIA	= BIT(FW_DOMAIN_ID_MEDIA),
-	FORCEWAKE_ALL = (FORCEWAKE_RENDER |
-			 FORCEWAKE_BLITTER |
-			 FORCEWAKE_MEDIA)
-};
-
-#define FW_REG_READ  (1)
-#define FW_REG_WRITE (2)
-
-enum decoupled_power_domain {
-	GEN9_DECOUPLED_PD_BLITTER = 0,
-	GEN9_DECOUPLED_PD_RENDER,
-	GEN9_DECOUPLED_PD_MEDIA,
-	GEN9_DECOUPLED_PD_ALL
-};
-
-enum decoupled_ops {
-	GEN9_DECOUPLED_OP_WRITE = 0,
-	GEN9_DECOUPLED_OP_READ
-};
-
-enum forcewake_domains
-intel_uncore_forcewake_for_reg(struct drm_i915_private *dev_priv,
-			       i915_reg_t reg, unsigned int op);
-
-struct intel_uncore_funcs {
-	void (*force_wake_get)(struct drm_i915_private *dev_priv,
-			       enum forcewake_domains domains);
-	void (*force_wake_put)(struct drm_i915_private *dev_priv,
-			       enum forcewake_domains domains);
-
-	uint8_t  (*mmio_readb)(struct drm_i915_private *dev_priv,
-			       i915_reg_t r, bool trace);
-	uint16_t (*mmio_readw)(struct drm_i915_private *dev_priv,
-			       i915_reg_t r, bool trace);
-	uint32_t (*mmio_readl)(struct drm_i915_private *dev_priv,
-			       i915_reg_t r, bool trace);
-	uint64_t (*mmio_readq)(struct drm_i915_private *dev_priv,
-			       i915_reg_t r, bool trace);
-
-	void (*mmio_writeb)(struct drm_i915_private *dev_priv,
-			    i915_reg_t r, uint8_t val, bool trace);
-	void (*mmio_writew)(struct drm_i915_private *dev_priv,
-			    i915_reg_t r, uint16_t val, bool trace);
-	void (*mmio_writel)(struct drm_i915_private *dev_priv,
-			    i915_reg_t r, uint32_t val, bool trace);
-};
-
-struct intel_forcewake_range {
-	u32 start;
-	u32 end;
-
-	enum forcewake_domains domains;
-};
-
-struct intel_uncore {
-	spinlock_t lock; /** lock is also taken in irq contexts. */
-
-	const struct intel_forcewake_range *fw_domains_table;
-	unsigned int fw_domains_table_entries;
-
-	struct notifier_block pmic_bus_access_nb;
-	struct intel_uncore_funcs funcs;
-
-	unsigned fifo_count;
-
-	enum forcewake_domains fw_domains;
-	enum forcewake_domains fw_domains_active;
-
-	u32 fw_set;
-	u32 fw_clear;
-	u32 fw_reset;
-
-	struct intel_uncore_forcewake_domain {
-		enum forcewake_domain_id id;
-		enum forcewake_domains mask;
-		unsigned wake_count;
-		struct hrtimer timer;
-		i915_reg_t reg_set;
-		i915_reg_t reg_ack;
-	} fw_domain[FW_DOMAIN_ID_COUNT];
-
-	int unclaimed_mmio_check;
-};
-
-#define __mask_next_bit(mask) ({					\
-	int __idx = ffs(mask) - 1;					\
-	mask &= ~BIT(__idx);						\
-	__idx;								\
-})
-
-/* Iterate over initialised fw domains */
-#define for_each_fw_domain_masked(domain__, mask__, dev_priv__, tmp__) \
-	for (tmp__ = (mask__); \
-	     tmp__ ? (domain__ = &(dev_priv__)->uncore.fw_domain[__mask_next_bit(tmp__)]), 1 : 0;)
-
-#define for_each_fw_domain(domain__, dev_priv__, tmp__) \
-	for_each_fw_domain_masked(domain__, (dev_priv__)->uncore.fw_domains, dev_priv__, tmp__)
-
 #define CSR_VERSION(major, minor)	((major) << 16 | (minor))
 #define CSR_VERSION_MAJOR(version)	((version) >> 16)
 #define CSR_VERSION_MINOR(version)	((version) & 0xffff)
@@ -822,7 +713,6 @@ struct intel_csr {
 	func(has_gmch_display); \
 	func(has_guc); \
 	func(has_hotplug); \
-	func(has_hw_contexts); \
 	func(has_l3_dpf); \
 	func(has_llc); \
 	func(has_logical_ring_contexts); \
@@ -1024,6 +914,9 @@ struct i915_gpu_state {
 			int unused;
 			u32 *pages[0];
 		} *ringbuffer, *batchbuffer, *wa_batchbuffer, *ctx, *hws_page;
+
+		struct drm_i915_error_object **user_bo;
+		long user_bo_count;
 
 		struct drm_i915_error_object *wa_ctx;
 
@@ -1511,11 +1404,7 @@ struct i915_gem_mm {
 	/** LRU list of objects with fence regs on them. */
 	struct list_head fence_list;
 
-	/**
-	 * Are we in a non-interruptible section of code like
-	 * modesetting?
-	 */
-	bool interruptible;
+	u64 unordered_timeline;
 
 	/* the indicator for dispatch video commands on two BSD rings */
 	atomic_t bsd_engine_dispatch_index;
@@ -1566,7 +1455,7 @@ struct i915_gpu_error {
 	 *
 	 * This is a counter which gets incremented when reset is triggered,
 	 *
-	 * Before the reset commences, the I915_RESET_IN_PROGRESS bit is set
+	 * Before the reset commences, the I915_RESET_BACKOFF bit is set
 	 * meaning that any waiters holding onto the struct_mutex should
 	 * relinquish the lock immediately in order for the reset to start.
 	 *
@@ -1763,13 +1652,15 @@ struct ilk_wm_values {
 	enum intel_ddb_partitioning partitioning;
 };
 
-struct vlv_pipe_wm {
+struct g4x_pipe_wm {
 	uint16_t plane[I915_MAX_PLANES];
+	uint16_t fbc;
 };
 
-struct vlv_sr_wm {
+struct g4x_sr_wm {
 	uint16_t plane;
 	uint16_t cursor;
+	uint16_t fbc;
 };
 
 struct vlv_wm_ddl_values {
@@ -1777,11 +1668,20 @@ struct vlv_wm_ddl_values {
 };
 
 struct vlv_wm_values {
-	struct vlv_pipe_wm pipe[3];
-	struct vlv_sr_wm sr;
+	struct g4x_pipe_wm pipe[3];
+	struct g4x_sr_wm sr;
 	struct vlv_wm_ddl_values ddl[3];
 	uint8_t level;
 	bool cxsr;
+};
+
+struct g4x_wm_values {
+	struct g4x_pipe_wm pipe[2];
+	struct g4x_sr_wm sr;
+	struct g4x_sr_wm hpll;
+	bool cxsr;
+	bool hpll_en;
+	bool fbc_en;
 };
 
 struct skl_ddb_entry {
@@ -2362,7 +2262,6 @@ struct drm_i915_private {
 	 */
 	struct mutex av_mutex;
 
-	uint32_t hw_context_size;
 	struct list_head context_list;
 
 	u32 fdi_rx_config;
@@ -2413,6 +2312,7 @@ struct drm_i915_private {
 			struct ilk_wm_values hw;
 			struct skl_wm_values skl_hw;
 			struct vlv_wm_values vlv;
+			struct g4x_wm_values g4x;
 		};
 
 		uint8_t max_level;
@@ -2870,7 +2770,6 @@ intel_info(const struct drm_i915_private *dev_priv)
 
 #define HWS_NEEDS_PHYSICAL(dev_priv)	((dev_priv)->info.hws_needs_physical)
 
-#define HAS_HW_CONTEXTS(dev_priv)	    ((dev_priv)->info.has_hw_contexts)
 #define HAS_LOGICAL_RING_CONTEXTS(dev_priv) \
 		((dev_priv)->info.has_logical_ring_contexts)
 #define USES_PPGTT(dev_priv)		(i915.enable_ppgtt)
@@ -2909,6 +2808,7 @@ intel_info(const struct drm_i915_private *dev_priv)
 #define HAS_FW_BLC(dev_priv) 	(INTEL_GEN(dev_priv) > 2)
 #define HAS_PIPE_CXSR(dev_priv) ((dev_priv)->info.has_pipe_cxsr)
 #define HAS_FBC(dev_priv)	((dev_priv)->info.has_fbc)
+#define HAS_CUR_FBC(dev_priv)	(!HAS_GMCH_DISPLAY(dev_priv) && INTEL_INFO(dev_priv)->gen >= 7)
 
 #define HAS_IPS(dev_priv)	(IS_HSW_ULT(dev_priv) || IS_BROADWELL(dev_priv))
 
@@ -3026,7 +2926,7 @@ extern unsigned long i915_gfx_val(struct drm_i915_private *dev_priv);
 extern void i915_update_gfx_val(struct drm_i915_private *dev_priv);
 int vlv_force_gfx_clock(struct drm_i915_private *dev_priv, bool on);
 
-int intel_engines_init_early(struct drm_i915_private *dev_priv);
+int intel_engines_init_mmio(struct drm_i915_private *dev_priv);
 int intel_engines_init(struct drm_i915_private *dev_priv);
 
 /* intel_hotplug.c */
@@ -3063,42 +2963,9 @@ void i915_handle_error(struct drm_i915_private *dev_priv,
 		       const char *fmt, ...);
 
 extern void intel_irq_init(struct drm_i915_private *dev_priv);
+extern void intel_irq_fini(struct drm_i915_private *dev_priv);
 int intel_irq_install(struct drm_i915_private *dev_priv);
 void intel_irq_uninstall(struct drm_i915_private *dev_priv);
-
-extern void intel_uncore_sanitize(struct drm_i915_private *dev_priv);
-extern void intel_uncore_init(struct drm_i915_private *dev_priv);
-extern bool intel_uncore_unclaimed_mmio(struct drm_i915_private *dev_priv);
-extern bool intel_uncore_arm_unclaimed_mmio_detection(struct drm_i915_private *dev_priv);
-extern void intel_uncore_fini(struct drm_i915_private *dev_priv);
-extern void intel_uncore_suspend(struct drm_i915_private *dev_priv);
-extern void intel_uncore_resume_early(struct drm_i915_private *dev_priv);
-const char *intel_uncore_forcewake_domain_to_str(const enum forcewake_domain_id id);
-void intel_uncore_forcewake_get(struct drm_i915_private *dev_priv,
-				enum forcewake_domains domains);
-void intel_uncore_forcewake_put(struct drm_i915_private *dev_priv,
-				enum forcewake_domains domains);
-/* Like above but the caller must manage the uncore.lock itself.
- * Must be used with I915_READ_FW and friends.
- */
-void intel_uncore_forcewake_get__locked(struct drm_i915_private *dev_priv,
-					enum forcewake_domains domains);
-void intel_uncore_forcewake_put__locked(struct drm_i915_private *dev_priv,
-					enum forcewake_domains domains);
-u64 intel_uncore_edram_size(struct drm_i915_private *dev_priv);
-
-void assert_forcewakes_inactive(struct drm_i915_private *dev_priv);
-
-int intel_wait_for_register(struct drm_i915_private *dev_priv,
-			    i915_reg_t reg,
-			    const u32 mask,
-			    const u32 value,
-			    const unsigned long timeout_ms);
-int intel_wait_for_register_fw(struct drm_i915_private *dev_priv,
-			       i915_reg_t reg,
-			       const u32 mask,
-			       const u32 value,
-			       const unsigned long timeout_ms);
 
 static inline bool intel_gvt_active(struct drm_i915_private *dev_priv)
 {
@@ -3447,8 +3314,9 @@ int i915_gem_object_wait_priority(struct drm_i915_gem_object *obj,
 #define I915_PRIORITY_DISPLAY I915_PRIORITY_MAX
 
 int __must_check
-i915_gem_object_set_to_gtt_domain(struct drm_i915_gem_object *obj,
-				  bool write);
+i915_gem_object_set_to_wc_domain(struct drm_i915_gem_object *obj, bool write);
+int __must_check
+i915_gem_object_set_to_gtt_domain(struct drm_i915_gem_object *obj, bool write);
 int __must_check
 i915_gem_object_set_to_cpu_domain(struct drm_i915_gem_object *obj, bool write);
 struct i915_vma * __must_check
@@ -3711,8 +3579,8 @@ int  intel_lpe_audio_init(struct drm_i915_private *dev_priv);
 void intel_lpe_audio_teardown(struct drm_i915_private *dev_priv);
 void intel_lpe_audio_irq_handler(struct drm_i915_private *dev_priv);
 void intel_lpe_audio_notify(struct drm_i915_private *dev_priv,
-			    void *eld, int port, int pipe, int tmds_clk_speed,
-			    bool dp_output, int link_rate);
+			    enum pipe pipe, enum port port,
+			    const void *eld, int ls_clock, bool dp_output);
 
 /* intel_i2c.c */
 extern int intel_setup_gmbus(struct drm_i915_private *dev_priv);

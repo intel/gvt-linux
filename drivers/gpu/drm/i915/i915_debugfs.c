@@ -2568,8 +2568,7 @@ static int i915_guc_log_dump(struct seq_file *m, void *data)
 
 static int i915_guc_log_control_get(void *data, u64 *val)
 {
-	struct drm_device *dev = data;
-	struct drm_i915_private *dev_priv = to_i915(dev);
+	struct drm_i915_private *dev_priv = data;
 
 	if (!dev_priv->guc.log.vma)
 		return -EINVAL;
@@ -2581,14 +2580,13 @@ static int i915_guc_log_control_get(void *data, u64 *val)
 
 static int i915_guc_log_control_set(void *data, u64 val)
 {
-	struct drm_device *dev = data;
-	struct drm_i915_private *dev_priv = to_i915(dev);
+	struct drm_i915_private *dev_priv = data;
 	int ret;
 
 	if (!dev_priv->guc.log.vma)
 		return -EINVAL;
 
-	ret = mutex_lock_interruptible(&dev->struct_mutex);
+	ret = mutex_lock_interruptible(&dev_priv->drm.struct_mutex);
 	if (ret)
 		return ret;
 
@@ -2596,7 +2594,7 @@ static int i915_guc_log_control_set(void *data, u64 val)
 	ret = i915_guc_log_control(dev_priv, val);
 	intel_runtime_pm_put(dev_priv);
 
-	mutex_unlock(&dev->struct_mutex);
+	mutex_unlock(&dev_priv->drm.struct_mutex);
 	return ret;
 }
 
@@ -4179,10 +4177,6 @@ fault_irq_set(struct drm_i915_private *i915,
 	if (err)
 		goto err_unlock;
 
-	/* Retire to kick idle work */
-	i915_gem_retire_requests(i915);
-	GEM_BUG_ON(i915->gt.active_requests);
-
 	*irq = val;
 	mutex_unlock(&i915->drm.struct_mutex);
 
@@ -4286,7 +4280,7 @@ i915_drop_caches_set(void *data, u64 val)
 			goto unlock;
 	}
 
-	if (val & (DROP_RETIRE | DROP_ACTIVE))
+	if (val & DROP_RETIRE)
 		i915_gem_retire_requests(dev_priv);
 
 	lockdep_set_current_reclaim_state(GFP_KERNEL);

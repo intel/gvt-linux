@@ -138,10 +138,6 @@
 #include "i915_drv.h"
 #include "intel_mocs.h"
 
-#define GEN9_LR_CONTEXT_RENDER_SIZE (22 * PAGE_SIZE)
-#define GEN8_LR_CONTEXT_RENDER_SIZE (20 * PAGE_SIZE)
-#define GEN8_LR_CONTEXT_OTHER_SIZE (2 * PAGE_SIZE)
-
 #define RING_EXECLIST_QFULL		(1 << 0x2)
 #define RING_EXECLIST1_VALID		(1 << 0x3)
 #define RING_EXECLIST0_VALID		(1 << 0x4)
@@ -326,8 +322,7 @@ static u64 execlists_update_context(struct drm_i915_gem_request *rq)
 		rq->ctx->ppgtt ?: rq->i915->mm.aliasing_ppgtt;
 	u32 *reg_state = ce->lrc_reg_state;
 
-	assert_ring_tail_valid(rq->ring, rq->tail);
-	reg_state[CTX_RING_TAIL+1] = rq->tail;
+	reg_state[CTX_RING_TAIL+1] = intel_ring_set_tail(rq->ring, rq->tail);
 
 	/* True 32b PPGTT with dynamic page allocation: update PDP
 	 * registers and point the unallocated PDPs to scratch page.
@@ -401,18 +396,6 @@ static void execlists_dequeue(struct intel_engine_cs *engine)
 	struct execlist_port *port = engine->execlist_port;
 	struct rb_node *rb;
 	bool submit = false;
-
-	/* After execlist_first is updated, the tasklet will be rescheduled.
-	 *
-	 * If we are currently running (inside the tasklet) and a third
-	 * party queues a request and so updates engine->execlist_first under
-	 * the spinlock (which we have elided), it will atomically set the
-	 * TASKLET_SCHED flag causing the us to be re-executed and pick up
-	 * the change in state (the update to TASKLET_SCHED incurs a memory
-	 * barrier making this cross-cpu checking safe).
-	 */
-	if (!READ_ONCE(engine->execlist_first))
-		return;
 
 	last = port->request;
 	if (last)
@@ -526,6 +509,15 @@ static void intel_lrc_irq_handler(unsigned long data)
 	struct intel_engine_cs *engine = (struct intel_engine_cs *)data;
 	struct execlist_port *port = engine->execlist_port;
 	struct drm_i915_private *dev_priv = engine->i915;
+
+	/* We can skip acquiring intel_runtime_pm_get() here as it was taken
+	 * on our behalf by the request (see i915_gem_mark_busy()) and it will
+	 * not be relinquished until the device is idle (see
+	 * i915_gem_idle_work_handler()). As a precaution, we make sure
+	 * that all ELSP are drained i.e. we have processed the CSB,
+	 * before allowing ourselves to idle and calling intel_runtime_pm_put().
+	 */
+	GEM_BUG_ON(!dev_priv->gt.awake);
 
 	intel_uncore_forcewake_get(dev_priv, engine->fw_domains);
 
@@ -658,15 +650,14 @@ static void execlists_submit_request(struct drm_i915_gem_request *request)
 static struct intel_engine_cs *
 pt_lock_engine(struct i915_priotree *pt, struct intel_engine_cs *locked)
 {
-	struct intel_engine_cs *engine;
+	struct intel_engine_cs *engine =
+		container_of(pt, struct drm_i915_gem_request, priotree)->engine;
 
-	engine = container_of(pt,
-			      struct drm_i915_gem_request,
-			      priotree)->engine;
+	GEM_BUG_ON(!locked);
+
 	if (engine != locked) {
-		if (locked)
-			spin_unlock_irq(&locked->timeline->lock);
-		spin_lock_irq(&engine->timeline->lock);
+		spin_unlock(&locked->timeline->lock);
+		spin_lock(&engine->timeline->lock);
 	}
 
 	return engine;
@@ -674,7 +665,7 @@ pt_lock_engine(struct i915_priotree *pt, struct intel_engine_cs *locked)
 
 static void execlists_schedule(struct drm_i915_gem_request *request, int prio)
 {
-	struct intel_engine_cs *engine = NULL;
+	struct intel_engine_cs *engine;
 	struct i915_dependency *dep, *p;
 	struct i915_dependency stack;
 	LIST_HEAD(dfs);
@@ -708,25 +699,22 @@ static void execlists_schedule(struct drm_i915_gem_request *request, int prio)
 	list_for_each_entry_safe(dep, p, &dfs, dfs_link) {
 		struct i915_priotree *pt = dep->signaler;
 
-		list_for_each_entry(p, &pt->signalers_list, signal_link)
+		/* Within an engine, there can be no cycle, but we may
+		 * refer to the same dependency chain multiple times
+		 * (redundant dependencies are not eliminated) and across
+		 * engines.
+		 */
+		list_for_each_entry(p, &pt->signalers_list, signal_link) {
+			GEM_BUG_ON(p->signaler->priority < pt->priority);
 			if (prio > READ_ONCE(p->signaler->priority))
 				list_move_tail(&p->dfs_link, &dfs);
+		}
 
 		list_safe_reset_next(dep, p, dfs_link);
-		if (!RB_EMPTY_NODE(&pt->node))
-			continue;
-
-		engine = pt_lock_engine(pt, engine);
-
-		/* If it is not already in the rbtree, we can update the
-		 * priority inplace and skip over it (and its dependencies)
-		 * if it is referenced *again* as we descend the dfs.
-		 */
-		if (prio > pt->priority && RB_EMPTY_NODE(&pt->node)) {
-			pt->priority = prio;
-			list_del_init(&dep->dfs_link);
-		}
 	}
+
+	engine = request->engine;
+	spin_lock_irq(&engine->timeline->lock);
 
 	/* Fifo and depth-first replacement ensure our deps execute before us */
 	list_for_each_entry_safe_reverse(dep, p, &dfs, dfs_link) {
@@ -739,16 +727,15 @@ static void execlists_schedule(struct drm_i915_gem_request *request, int prio)
 		if (prio <= pt->priority)
 			continue;
 
-		GEM_BUG_ON(RB_EMPTY_NODE(&pt->node));
-
 		pt->priority = prio;
-		rb_erase(&pt->node, &engine->execlist_queue);
-		if (insert_request(pt, &engine->execlist_queue))
-			engine->execlist_first = &pt->node;
+		if (!RB_EMPTY_NODE(&pt->node)) {
+			rb_erase(&pt->node, &engine->execlist_queue);
+			if (insert_request(pt, &engine->execlist_queue))
+				engine->execlist_first = &pt->node;
+		}
 	}
 
-	if (engine)
-		spin_unlock_irq(&engine->timeline->lock);
+	spin_unlock_irq(&engine->timeline->lock);
 
 	/* XXX Do we need to preempt to make room for us and our deps? */
 }
@@ -788,7 +775,7 @@ static int execlists_context_pin(struct intel_engine_cs *engine,
 		goto unpin_vma;
 	}
 
-	ret = intel_ring_pin(ce->ring, ctx->ggtt_offset_bias);
+	ret = intel_ring_pin(ce->ring, ctx->i915, ctx->ggtt_offset_bias);
 	if (ret)
 		goto unpin_map;
 
@@ -1156,14 +1143,11 @@ static int intel_init_workaround_bb(struct intel_engine_cs *engine)
 	return ret;
 }
 
-static u32 port_seqno(struct execlist_port *port)
-{
-	return port->request ? port->request->global_seqno : 0;
-}
-
 static int gen8_init_common_ring(struct intel_engine_cs *engine)
 {
 	struct drm_i915_private *dev_priv = engine->i915;
+	struct execlist_port *port = engine->execlist_port;
+	unsigned int n;
 	int ret;
 
 	ret = intel_mocs_init_engine(engine);
@@ -1184,15 +1168,21 @@ static int gen8_init_common_ring(struct intel_engine_cs *engine)
 
 	/* After a GPU reset, we may have requests to replay */
 	clear_bit(ENGINE_IRQ_EXECLIST, &engine->irq_posted);
-	if (!i915.enable_guc_submission && !execlists_elsp_idle(engine)) {
-		DRM_DEBUG_DRIVER("Restarting %s from requests [0x%x, 0x%x]\n",
-				 engine->name,
-				 port_seqno(&engine->execlist_port[0]),
-				 port_seqno(&engine->execlist_port[1]));
-		engine->execlist_port[0].count = 0;
-		engine->execlist_port[1].count = 0;
-		execlists_submit_ports(engine);
+
+	for (n = 0; n < ARRAY_SIZE(engine->execlist_port); n++) {
+		if (!port[n].request)
+			break;
+
+		DRM_DEBUG_DRIVER("Restarting %s:%d from 0x%x\n",
+				 engine->name, n,
+				 port[n].request->global_seqno);
+
+		/* Discard the current inflight count */
+		port[n].count = 0;
 	}
+
+	if (!i915.enable_guc_submission && !execlists_elsp_idle(engine))
+		execlists_submit_ports(engine);
 
 	return 0;
 }
@@ -1924,44 +1914,6 @@ populate_lr_context(struct i915_gem_context *ctx,
 	return 0;
 }
 
-/**
- * intel_lr_context_size() - return the size of the context for an engine
- * @engine: which engine to find the context size for
- *
- * Each engine may require a different amount of space for a context image,
- * so when allocating (or copying) an image, this function can be used to
- * find the right size for the specific engine.
- *
- * Return: size (in bytes) of an engine-specific context image
- *
- * Note: this size includes the HWSP, which is part of the context image
- * in LRC mode, but does not include the "shared data page" used with
- * GuC submission. The caller should account for this if using the GuC.
- */
-uint32_t intel_lr_context_size(struct intel_engine_cs *engine)
-{
-	int ret = 0;
-
-	WARN_ON(INTEL_GEN(engine->i915) < 8);
-
-	switch (engine->id) {
-	case RCS:
-		if (INTEL_GEN(engine->i915) >= 9)
-			ret = GEN9_LR_CONTEXT_RENDER_SIZE;
-		else
-			ret = GEN8_LR_CONTEXT_RENDER_SIZE;
-		break;
-	case VCS:
-	case BCS:
-	case VECS:
-	case VCS2:
-		ret = GEN8_LR_CONTEXT_OTHER_SIZE;
-		break;
-	}
-
-	return ret;
-}
-
 static int execlists_context_deferred_alloc(struct i915_gem_context *ctx,
 					    struct intel_engine_cs *engine)
 {
@@ -1974,8 +1926,7 @@ static int execlists_context_deferred_alloc(struct i915_gem_context *ctx,
 
 	WARN_ON(ce->state);
 
-	context_size = round_up(intel_lr_context_size(engine),
-				I915_GTT_PAGE_SIZE);
+	context_size = round_up(engine->context_size, I915_GTT_PAGE_SIZE);
 
 	/* One extra page as the sharing data between driver and GuC */
 	context_size += PAGE_SIZE * LRC_PPHWSP_PN;
@@ -2053,8 +2004,7 @@ void intel_lr_context_resume(struct drm_i915_private *dev_priv)
 			ce->state->obj->mm.dirty = true;
 			i915_gem_object_unpin_map(ce->state->obj);
 
-			ce->ring->head = ce->ring->tail = 0;
-			intel_ring_update_space(ce->ring);
+			intel_ring_reset(ce->ring, 0);
 		}
 	}
 }

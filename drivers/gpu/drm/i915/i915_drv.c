@@ -350,6 +350,7 @@ static int i915_getparam(struct drm_device *dev, void *data,
 	case I915_PARAM_HAS_EXEC_SOFTPIN:
 	case I915_PARAM_HAS_EXEC_ASYNC:
 	case I915_PARAM_HAS_EXEC_FENCE:
+	case I915_PARAM_HAS_EXEC_CAPTURE:
 		/* For the time being all of these are always true;
 		 * if some supported hardware does not have one of these
 		 * features this value needs to be provided from
@@ -549,8 +550,7 @@ static const struct vga_switcheroo_client_ops i915_switcheroo_ops = {
 static void i915_gem_fini(struct drm_i915_private *dev_priv)
 {
 	mutex_lock(&dev_priv->drm.struct_mutex);
-	if (i915.enable_guc_loading)
-		intel_uc_fini_hw(dev_priv);
+	intel_uc_fini_hw(dev_priv);
 	i915_gem_cleanup_engines(dev_priv);
 	i915_gem_context_fini(dev_priv);
 	mutex_unlock(&dev_priv->drm.struct_mutex);
@@ -835,10 +835,6 @@ static int i915_driver_init_early(struct drm_i915_private *dev_priv,
 	intel_uc_init_early(dev_priv);
 	i915_memcpy_init_early(dev_priv);
 
-	ret = intel_engines_init_early(dev_priv);
-	if (ret)
-		return ret;
-
 	ret = i915_workqueues_init(dev_priv);
 	if (ret < 0)
 		goto err_engines;
@@ -948,14 +944,21 @@ static int i915_driver_init_mmio(struct drm_i915_private *dev_priv)
 
 	ret = i915_mmio_setup(dev_priv);
 	if (ret < 0)
-		goto put_bridge;
+		goto err_bridge;
 
 	intel_uncore_init(dev_priv);
+
+	ret = intel_engines_init_mmio(dev_priv);
+	if (ret)
+		goto err_uncore;
+
 	i915_gem_init_mmio(dev_priv);
 
 	return 0;
 
-put_bridge:
+err_uncore:
+	intel_uncore_fini(dev_priv);
+err_bridge:
 	pci_dev_put(dev_priv->bridge_dev);
 
 	return ret;
@@ -1214,9 +1217,8 @@ int i915_driver_load(struct pci_dev *pdev, const struct pci_device_id *ent)
 	struct drm_i915_private *dev_priv;
 	int ret;
 
-	/* Enable nuclear pageflip on ILK+, except vlv/chv */
-	if (!i915.nuclear_pageflip &&
-	    (match_info->gen < 5 || match_info->has_gmch_display))
+	/* Enable nuclear pageflip on ILK+ */
+	if (!i915.nuclear_pageflip && match_info->gen < 5)
 		driver.driver_features &= ~DRIVER_ATOMIC;
 
 	ret = -ENOMEM;
@@ -1309,8 +1311,6 @@ void i915_driver_unload(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv = to_i915(dev);
 	struct pci_dev *pdev = dev_priv->drm.pdev;
-	struct drm_modeset_acquire_ctx ctx;
-	int ret;
 
 	intel_fbdev_fini(dev);
 
@@ -1319,23 +1319,7 @@ void i915_driver_unload(struct drm_device *dev)
 
 	intel_display_power_get(dev_priv, POWER_DOMAIN_INIT);
 
-	drm_modeset_acquire_init(&ctx, 0);
-	while (1) {
-		ret = drm_modeset_lock_all_ctx(dev, &ctx);
-		if (!ret)
-			ret = drm_atomic_helper_disable_all(dev, &ctx);
-
-		if (ret != -EDEADLK)
-			break;
-
-		drm_modeset_backoff(&ctx);
-	}
-
-	if (ret)
-		DRM_ERROR("Disabling all crtc's during unload failed with %i\n", ret);
-
-	drm_modeset_drop_locks(&ctx);
-	drm_modeset_acquire_fini(&ctx);
+	drm_atomic_helper_shutdown(dev);
 
 	intel_gvt_cleanup(dev_priv);
 
@@ -1487,8 +1471,6 @@ static int i915_drm_suspend(struct drm_device *dev)
 			"GEM idle failed, resume might fail\n");
 		goto out;
 	}
-
-	intel_guc_suspend(dev_priv);
 
 	intel_display_suspend(dev);
 
@@ -2196,6 +2178,20 @@ static void vlv_restore_gunit_s0ix_state(struct drm_i915_private *dev_priv)
 	I915_WRITE(VLV_GUNIT_CLOCK_GATE2,	s->clock_gate_dis2);
 }
 
+static int vlv_wait_for_pw_status(struct drm_i915_private *dev_priv,
+				  u32 mask, u32 val)
+{
+	/* The HW does not like us polling for PW_STATUS frequently, so
+	 * use the sleeping loop rather than risk the busy spin within
+	 * intel_wait_for_register().
+	 *
+	 * Transitioning between RC6 states should be at most 2ms (see
+	 * valleyview_enable_rps) so use a 3ms timeout.
+	 */
+	return wait_for((I915_READ_NOTRACE(VLV_GTLC_PW_STATUS) & mask) == val,
+			3);
+}
+
 int vlv_force_gfx_clock(struct drm_i915_private *dev_priv, bool force_on)
 {
 	u32 val;
@@ -2224,8 +2220,9 @@ int vlv_force_gfx_clock(struct drm_i915_private *dev_priv, bool force_on)
 
 static int vlv_allow_gt_wake(struct drm_i915_private *dev_priv, bool allow)
 {
+	u32 mask;
 	u32 val;
-	int err = 0;
+	int err;
 
 	val = I915_READ(VLV_GTLC_WAKE_CTRL);
 	val &= ~VLV_GTLC_ALLOWWAKEREQ;
@@ -2234,45 +2231,32 @@ static int vlv_allow_gt_wake(struct drm_i915_private *dev_priv, bool allow)
 	I915_WRITE(VLV_GTLC_WAKE_CTRL, val);
 	POSTING_READ(VLV_GTLC_WAKE_CTRL);
 
-	err = intel_wait_for_register(dev_priv,
-				      VLV_GTLC_PW_STATUS,
-				      VLV_GTLC_ALLOWWAKEACK,
-				      allow,
-				      1);
+	mask = VLV_GTLC_ALLOWWAKEACK;
+	val = allow ? mask : 0;
+
+	err = vlv_wait_for_pw_status(dev_priv, mask, val);
 	if (err)
 		DRM_ERROR("timeout disabling GT waking\n");
 
 	return err;
 }
 
-static int vlv_wait_for_gt_wells(struct drm_i915_private *dev_priv,
-				 bool wait_for_on)
+static void vlv_wait_for_gt_wells(struct drm_i915_private *dev_priv,
+				  bool wait_for_on)
 {
 	u32 mask;
 	u32 val;
-	int err;
 
 	mask = VLV_GTLC_PW_MEDIA_STATUS_MASK | VLV_GTLC_PW_RENDER_STATUS_MASK;
 	val = wait_for_on ? mask : 0;
-	if ((I915_READ(VLV_GTLC_PW_STATUS) & mask) == val)
-		return 0;
-
-	DRM_DEBUG_KMS("waiting for GT wells to go %s (%08x)\n",
-		      onoff(wait_for_on),
-		      I915_READ(VLV_GTLC_PW_STATUS));
 
 	/*
 	 * RC6 transitioning can be delayed up to 2 msec (see
 	 * valleyview_enable_rps), use 3 msec for safety.
 	 */
-	err = intel_wait_for_register(dev_priv,
-				      VLV_GTLC_PW_STATUS, mask, val,
-				      3);
-	if (err)
+	if (vlv_wait_for_pw_status(dev_priv, mask, val))
 		DRM_ERROR("timeout waiting for GT wells to go %s\n",
 			  onoff(wait_for_on));
-
-	return err;
 }
 
 static void vlv_check_no_gt_access(struct drm_i915_private *dev_priv)
@@ -2293,7 +2277,7 @@ static int vlv_suspend_complete(struct drm_i915_private *dev_priv)
 	 * Bspec defines the following GT well on flags as debug only, so
 	 * don't treat them as hard failures.
 	 */
-	(void)vlv_wait_for_gt_wells(dev_priv, false);
+	vlv_wait_for_gt_wells(dev_priv, false);
 
 	mask = VLV_GTLC_RENDER_CTX_EXISTS | VLV_GTLC_MEDIA_CTX_EXISTS;
 	WARN_ON((I915_READ(VLV_GTLC_WAKE_CTRL) & mask) != mask);

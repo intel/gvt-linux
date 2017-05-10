@@ -69,8 +69,7 @@ static int populate_shadow_context(struct intel_vgpu_workload *workload)
 	gvt_dbg_sched("ring id %d workload lrca %x", ring_id,
 			workload->ctx_desc.lrca);
 
-	context_page_num = intel_lr_context_size(
-			gvt->dev_priv->engine[ring_id]);
+	context_page_num = gvt->dev_priv->engine[ring_id]->context_size;
 
 	context_page_num = context_page_num >> PAGE_SHIFT;
 
@@ -127,6 +126,11 @@ static int populate_shadow_context(struct intel_vgpu_workload *workload)
 	return 0;
 }
 
+static inline bool is_gvt_request(struct drm_i915_gem_request *req)
+{
+	return i915_gem_context_force_single_submission(req->ctx);
+}
+
 static int shadow_context_status_change(struct notifier_block *nb,
 		unsigned long action, void *data)
 {
@@ -137,7 +141,7 @@ static int shadow_context_status_change(struct notifier_block *nb,
 	struct intel_vgpu_workload *workload =
 		scheduler->current_workload[req->engine->id];
 
-	if (unlikely(!workload))
+	if (!is_gvt_request(req) || unlikely(!workload))
 		return NOTIFY_OK;
 
 	switch (action) {
@@ -325,8 +329,7 @@ static void update_guest_context(struct intel_vgpu_workload *workload)
 	gvt_dbg_sched("ring id %d workload lrca %x\n", ring_id,
 			workload->ctx_desc.lrca);
 
-	context_page_num = intel_lr_context_size(
-			gvt->dev_priv->engine[ring_id]);
+	context_page_num = gvt->dev_priv->engine[ring_id]->context_size;
 
 	context_page_num = context_page_num >> PAGE_SHIFT;
 

@@ -26,6 +26,19 @@
 #include "intel_uc.h"
 #include <linux/firmware.h>
 
+/* Cleans up uC firmware by releasing the firmware GEM obj.
+ */
+static void __intel_uc_fw_fini(struct intel_uc_fw *uc_fw)
+{
+	struct drm_i915_gem_object *obj;
+
+	obj = fetch_and_zero(&uc_fw->obj);
+	if (obj)
+		i915_gem_object_put(obj);
+
+	uc_fw->fetch_status = INTEL_UC_FIRMWARE_NONE;
+}
+
 /* Reset GuC providing us with fresh state for both GuC and HuC.
  */
 static int __intel_uc_reset_hw(struct drm_i915_private *dev_priv)
@@ -98,6 +111,9 @@ static void fetch_uc_fw(struct drm_i915_private *dev_priv,
 	struct uc_css_header *css;
 	size_t size;
 	int err;
+
+	if (!uc_fw->path)
+		return;
 
 	uc_fw->fetch_status = INTEL_UC_FIRMWARE_PENDING;
 
@@ -182,10 +198,12 @@ static void fetch_uc_fw(struct drm_i915_private *dev_priv,
 	}
 
 	if (uc_fw->major_ver_wanted == 0 && uc_fw->minor_ver_wanted == 0) {
-		DRM_NOTE("Skipping uC firmware version check\n");
+		DRM_NOTE("Skipping %s firmware version check\n",
+			 intel_uc_fw_type_repr(uc_fw->type));
 	} else if (uc_fw->major_ver_found != uc_fw->major_ver_wanted ||
 		   uc_fw->minor_ver_found < uc_fw->minor_ver_wanted) {
-		DRM_NOTE("uC firmware version %d.%d, required %d.%d\n",
+		DRM_NOTE("%s firmware version %d.%d, required %d.%d\n",
+			 intel_uc_fw_type_repr(uc_fw->type),
 			 uc_fw->major_ver_found, uc_fw->minor_ver_found,
 			 uc_fw->major_ver_wanted, uc_fw->minor_ver_wanted);
 		err = -ENOEXEC;
@@ -224,35 +242,22 @@ fail:
 
 void intel_uc_init_fw(struct drm_i915_private *dev_priv)
 {
-	if (dev_priv->huc.fw.path)
-		fetch_uc_fw(dev_priv, &dev_priv->huc.fw);
-
-	if (dev_priv->guc.fw.path)
-		fetch_uc_fw(dev_priv, &dev_priv->guc.fw);
+	fetch_uc_fw(dev_priv, &dev_priv->huc.fw);
+	fetch_uc_fw(dev_priv, &dev_priv->guc.fw);
 }
 
 void intel_uc_fini_fw(struct drm_i915_private *dev_priv)
 {
-	struct intel_uc_fw *guc_fw = &dev_priv->guc.fw;
-	struct intel_uc_fw *huc_fw = &dev_priv->huc.fw;
-	struct drm_i915_gem_object *obj;
-
-	obj = fetch_and_zero(&guc_fw->obj);
-	if (obj)
-		i915_gem_object_put(obj);
-
-	guc_fw->fetch_status = INTEL_UC_FIRMWARE_NONE;
-
-	obj = fetch_and_zero(&huc_fw->obj);
-	if (obj)
-		i915_gem_object_put(obj);
-
-	huc_fw->fetch_status = INTEL_UC_FIRMWARE_NONE;
+	__intel_uc_fw_fini(&dev_priv->guc.fw);
+	__intel_uc_fw_fini(&dev_priv->huc.fw);
 }
 
 int intel_uc_init_hw(struct drm_i915_private *dev_priv)
 {
 	int ret, attempts;
+
+	if (!i915.enable_guc_loading)
+		return 0;
 
 	gen9_reset_guc_interrupts(dev_priv);
 
@@ -268,6 +273,11 @@ int intel_uc_init_hw(struct drm_i915_private *dev_priv)
 		if (ret)
 			goto err_guc;
 	}
+
+	/* init WOPCM */
+	I915_WRITE(GUC_WOPCM_SIZE, intel_guc_wopcm_size(dev_priv));
+	I915_WRITE(DMA_GUC_WOPCM_OFFSET,
+		   GUC_WOPCM_OFFSET_VALUE | HUC_LOADING_AGENT_GUC);
 
 	/* WaEnableuKernelHeaderValidFix:skl */
 	/* WaEnableGuCBootHashCheckNotSet:skl,bxt,kbl */
@@ -343,25 +353,15 @@ err_guc:
 
 void intel_uc_fini_hw(struct drm_i915_private *dev_priv)
 {
+	if (!i915.enable_guc_loading)
+		return;
+
 	if (i915.enable_guc_submission) {
 		i915_guc_submission_disable(dev_priv);
 		gen9_disable_guc_interrupts(dev_priv);
 		i915_guc_submission_fini(dev_priv);
 	}
 	i915_ggtt_disable_guc(dev_priv);
-}
-
-/*
- * Read GuC command/status register (SOFT_SCRATCH_0)
- * Return true if it contains a response rather than a command
- */
-static bool guc_recv(struct intel_guc *guc, u32 *status)
-{
-	struct drm_i915_private *dev_priv = guc_to_i915(guc);
-
-	u32 val = I915_READ(SOFT_SCRATCH(0));
-	*status = val;
-	return INTEL_GUC_RECV_IS_RESPONSE(val);
 }
 
 /*
@@ -391,13 +391,14 @@ int intel_guc_send_mmio(struct intel_guc *guc, const u32 *action, u32 len)
 	I915_WRITE(GUC_SEND_INTERRUPT, GUC_SEND_TRIGGER);
 
 	/*
-	 * Fast commands should complete in less than 10us, so sample quickly
-	 * up to that length of time, then switch to a slower sleep-wait loop.
-	 * No inte_guc_send command should ever take longer than 10ms.
+	 * No GuC command should ever take longer than 10ms.
+	 * Fast commands should still complete in 10us.
 	 */
-	ret = wait_for_us(guc_recv(guc, &status), 10);
-	if (ret)
-		ret = wait_for(guc_recv(guc, &status), 10);
+	ret = __intel_wait_for_register_fw(dev_priv,
+					   SOFT_SCRATCH(0),
+					   INTEL_GUC_RECV_MASK,
+					   INTEL_GUC_RECV_MASK,
+					   10, 10, &status);
 	if (status != INTEL_GUC_STATUS_SUCCESS) {
 		/*
 		 * Either the GuC explicitly returned an error (which

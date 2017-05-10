@@ -1997,7 +1997,7 @@ intel_tile_width_bytes(const struct drm_framebuffer *fb, int plane)
 	unsigned int cpp = fb->format->cpp[plane];
 
 	switch (fb->modifier) {
-	case DRM_FORMAT_MOD_NONE:
+	case DRM_FORMAT_MOD_LINEAR:
 		return cpp;
 	case I915_FORMAT_MOD_X_TILED:
 		if (IS_GEN2(dev_priv))
@@ -2033,7 +2033,7 @@ intel_tile_width_bytes(const struct drm_framebuffer *fb, int plane)
 static unsigned int
 intel_tile_height(const struct drm_framebuffer *fb, int plane)
 {
-	if (fb->modifier == DRM_FORMAT_MOD_NONE)
+	if (fb->modifier == DRM_FORMAT_MOD_LINEAR)
 		return 1;
 	else
 		return intel_tile_size(to_i915(fb->dev)) /
@@ -2107,7 +2107,7 @@ static unsigned int intel_surf_alignment(const struct drm_framebuffer *fb,
 		return 4096;
 
 	switch (fb->modifier) {
-	case DRM_FORMAT_MOD_NONE:
+	case DRM_FORMAT_MOD_LINEAR:
 		return intel_linear_alignment(dev_priv);
 	case I915_FORMAT_MOD_X_TILED:
 		if (INTEL_GEN(dev_priv) >= 9)
@@ -2290,7 +2290,7 @@ static u32 intel_adjust_tile_offset(int *x, int *y,
 
 	WARN_ON(new_offset > old_offset);
 
-	if (fb->modifier != DRM_FORMAT_MOD_NONE) {
+	if (fb->modifier != DRM_FORMAT_MOD_LINEAR) {
 		unsigned int tile_size, tile_width, tile_height;
 		unsigned int pitch_tiles;
 
@@ -2345,7 +2345,7 @@ static u32 _intel_compute_tile_offset(const struct drm_i915_private *dev_priv,
 	if (alignment)
 		alignment--;
 
-	if (fb_modifier != DRM_FORMAT_MOD_NONE) {
+	if (fb_modifier != DRM_FORMAT_MOD_LINEAR) {
 		unsigned int tile_size, tile_width, tile_height;
 		unsigned int tile_rows, tiles, pitch_tiles;
 
@@ -2471,7 +2471,7 @@ intel_fill_fb_info(struct drm_i915_private *dev_priv,
 						    DRM_ROTATE_0, tile_size);
 		offset /= tile_size;
 
-		if (fb->modifier != DRM_FORMAT_MOD_NONE) {
+		if (fb->modifier != DRM_FORMAT_MOD_LINEAR) {
 			unsigned int tile_width, tile_height;
 			unsigned int pitch_tiles;
 			struct drm_rect r;
@@ -2803,7 +2803,7 @@ static int skl_max_plane_width(const struct drm_framebuffer *fb, int plane,
 	int cpp = fb->format->cpp[plane];
 
 	switch (fb->modifier) {
-	case DRM_FORMAT_MOD_NONE:
+	case DRM_FORMAT_MOD_LINEAR:
 	case I915_FORMAT_MOD_X_TILED:
 		switch (cpp) {
 		case 8:
@@ -3154,7 +3154,7 @@ static void i9xx_disable_primary_plane(struct drm_plane *primary,
 static u32
 intel_fb_stride_alignment(const struct drm_framebuffer *fb, int plane)
 {
-	if (fb->modifier == DRM_FORMAT_MOD_NONE)
+	if (fb->modifier == DRM_FORMAT_MOD_LINEAR)
 		return 64;
 	else
 		return intel_tile_width_bytes(fb, plane);
@@ -3253,7 +3253,7 @@ static u32 skl_plane_ctl_format(uint32_t pixel_format)
 static u32 skl_plane_ctl_tiling(uint64_t fb_modifier)
 {
 	switch (fb_modifier) {
-	case DRM_FORMAT_MOD_NONE:
+	case DRM_FORMAT_MOD_LINEAR:
 		break;
 	case I915_FORMAT_MOD_X_TILED:
 		return PLANE_CTL_TILED_X;
@@ -3410,17 +3410,6 @@ static void skylake_disable_primary_plane(struct drm_plane *primary,
 	POSTING_READ_FW(PLANE_SURF(pipe, plane_id));
 
 	spin_unlock_irqrestore(&dev_priv->uncore.lock, irqflags);
-}
-
-/* Assume fb object is pinned & idle & fenced and just update base pointers */
-static int
-intel_pipe_set_base_atomic(struct drm_crtc *crtc, struct drm_framebuffer *fb,
-			   int x, int y, enum mode_set_atomic state)
-{
-	/* Support for kgdboc is disabled, this needs a major rework. */
-	DRM_ERROR("legacy panic handler not supported any more.\n");
-
-	return -ENODEV;
 }
 
 static void intel_complete_page_flips(struct drm_i915_private *dev_priv)
@@ -4872,12 +4861,9 @@ static void intel_crtc_dpms_overlay_disable(struct intel_crtc *intel_crtc)
 {
 	if (intel_crtc->overlay) {
 		struct drm_device *dev = intel_crtc->base.dev;
-		struct drm_i915_private *dev_priv = to_i915(dev);
 
 		mutex_lock(&dev->struct_mutex);
-		dev_priv->mm.interruptible = false;
 		(void) intel_overlay_switch_off(intel_crtc->overlay);
-		dev_priv->mm.interruptible = true;
 		mutex_unlock(&dev->struct_mutex);
 	}
 
@@ -8390,7 +8376,7 @@ skylake_get_initial_plane_config(struct intel_crtc *crtc,
 	tiling = val & PLANE_CTL_TILED_MASK;
 	switch (tiling) {
 	case PLANE_CTL_TILED_LINEAR:
-		fb->modifier = DRM_FORMAT_MOD_NONE;
+		fb->modifier = DRM_FORMAT_MOD_LINEAR;
 		break;
 	case PLANE_CTL_TILED_X:
 		plane_config->tiling = I915_TILING_X;
@@ -9503,10 +9489,10 @@ static int intel_modeset_setup_plane_state(struct drm_atomic_state *state,
 	return 0;
 }
 
-bool intel_get_load_detect_pipe(struct drm_connector *connector,
-				struct drm_display_mode *mode,
-				struct intel_load_detect_pipe *old,
-				struct drm_modeset_acquire_ctx *ctx)
+int intel_get_load_detect_pipe(struct drm_connector *connector,
+			       struct drm_display_mode *mode,
+			       struct intel_load_detect_pipe *old,
+			       struct drm_modeset_acquire_ctx *ctx)
 {
 	struct intel_crtc *intel_crtc;
 	struct intel_encoder *intel_encoder =
@@ -9529,10 +9515,7 @@ bool intel_get_load_detect_pipe(struct drm_connector *connector,
 
 	old->restore_state = NULL;
 
-retry:
-	ret = drm_modeset_lock(&config->connection_mutex, ctx);
-	if (ret)
-		goto fail;
+	WARN_ON(!drm_modeset_is_locked(&config->connection_mutex));
 
 	/*
 	 * Algorithm gets a little messy:
@@ -9580,6 +9563,7 @@ retry:
 	 */
 	if (!crtc) {
 		DRM_DEBUG_KMS("no pipe available for load-detect\n");
+		ret = -ENODEV;
 		goto fail;
 	}
 
@@ -9636,6 +9620,7 @@ found:
 		DRM_DEBUG_KMS("reusing fbdev for load-detection framebuffer\n");
 	if (IS_ERR(fb)) {
 		DRM_DEBUG_KMS("failed to allocate framebuffer for load-detection\n");
+		ret = PTR_ERR(fb);
 		goto fail;
 	}
 
@@ -9682,10 +9667,8 @@ fail:
 		restore_state = NULL;
 	}
 
-	if (ret == -EDEADLK) {
-		drm_modeset_backoff(ctx);
-		goto retry;
-	}
+	if (ret == -EDEADLK)
+		return ret;
 
 	return false;
 }
@@ -10366,7 +10349,7 @@ static void skl_do_mmio_flip(struct intel_crtc *intel_crtc,
 	ctl = I915_READ(PLANE_CTL(pipe, 0));
 	ctl &= ~PLANE_CTL_TILED_MASK;
 	switch (fb->modifier) {
-	case DRM_FORMAT_MOD_NONE:
+	case DRM_FORMAT_MOD_LINEAR:
 		break;
 	case I915_FORMAT_MOD_X_TILED:
 		ctl |= PLANE_CTL_TILED_X;
@@ -10727,7 +10710,7 @@ out_hang:
 		state = drm_atomic_state_alloc(dev);
 		if (!state)
 			return -ENOMEM;
-		state->acquire_ctx = drm_modeset_legacy_acquire_ctx(crtc);
+		state->acquire_ctx = dev->mode_config.acquire_ctx;
 
 retry:
 		plane_state = drm_atomic_get_plane_state(state, primary);
@@ -11017,7 +11000,6 @@ static int intel_crtc_atomic_check(struct drm_crtc *crtc,
 }
 
 static const struct drm_crtc_helper_funcs intel_helper_funcs = {
-	.mode_set_base_atomic = intel_pipe_set_base_atomic,
 	.atomic_begin = intel_begin_crtc_commit,
 	.atomic_flush = intel_finish_crtc_commit,
 	.atomic_check = intel_crtc_atomic_check,
@@ -13024,17 +13006,6 @@ static int intel_atomic_commit(struct drm_device *dev,
 	struct drm_i915_private *dev_priv = to_i915(dev);
 	int ret = 0;
 
-	/*
-	 * The intel_legacy_cursor_update() fast path takes care
-	 * of avoiding the vblank waits for simple cursor
-	 * movement and flips. For cursor on/off and size changes,
-	 * we want to perform the vblank waits so that watermark
-	 * updates happen during the correct frames. Gen9+ have
-	 * double buffered watermarks and so shouldn't need this.
-	 */
-	if (INTEL_GEN(dev_priv) < 9)
-		state->legacy_cursor_update = false;
-
 	ret = drm_atomic_helper_setup_commit(state, nonblock);
 	if (ret)
 		return ret;
@@ -13049,6 +13020,26 @@ static int intel_atomic_commit(struct drm_device *dev,
 		i915_sw_fence_commit(&intel_state->commit_ready);
 		return ret;
 	}
+
+	/*
+	 * The intel_legacy_cursor_update() fast path takes care
+	 * of avoiding the vblank waits for simple cursor
+	 * movement and flips. For cursor on/off and size changes,
+	 * we want to perform the vblank waits so that watermark
+	 * updates happen during the correct frames. Gen9+ have
+	 * double buffered watermarks and so shouldn't need this.
+	 *
+	 * Do this after drm_atomic_helper_setup_commit() and
+	 * intel_atomic_prepare_commit() because we still want
+	 * to skip the flip and fb cleanup waits. Although that
+	 * does risk yanking the mapping from under the display
+	 * engine.
+	 *
+	 * FIXME doing watermarks and fb cleanup from a vblank worker
+	 * (assuming we had any) would solve these problems.
+	 */
+	if (INTEL_GEN(dev_priv) < 9)
+		state->legacy_cursor_update = false;
 
 	drm_atomic_helper_swap_state(state, true);
 	dev_priv->wm.distrust_bios_wm = false;
@@ -13090,7 +13081,7 @@ void intel_crtc_restore_mode(struct drm_crtc *crtc)
 		return;
 	}
 
-	state->acquire_ctx = drm_modeset_legacy_acquire_ctx(crtc);
+	state->acquire_ctx = crtc->dev->mode_config.acquire_ctx;
 
 retry:
 	crtc_state = drm_atomic_get_crtc_state(state, crtc);
@@ -13113,50 +13104,8 @@ out:
 	drm_atomic_state_put(state);
 }
 
-/*
- * FIXME: Remove this once i915 is fully DRIVER_ATOMIC by calling
- *        drm_atomic_helper_legacy_gamma_set() directly.
- */
-static int intel_atomic_legacy_gamma_set(struct drm_crtc *crtc,
-					 u16 *red, u16 *green, u16 *blue,
-					 uint32_t size)
-{
-	struct drm_device *dev = crtc->dev;
-	struct drm_mode_config *config = &dev->mode_config;
-	struct drm_crtc_state *state;
-	int ret;
-
-	ret = drm_atomic_helper_legacy_gamma_set(crtc, red, green, blue, size);
-	if (ret)
-		return ret;
-
-	/*
-	 * Make sure we update the legacy properties so this works when
-	 * atomic is not enabled.
-	 */
-
-	state = crtc->state;
-
-	drm_object_property_set_value(&crtc->base,
-				      config->degamma_lut_property,
-				      (state->degamma_lut) ?
-				      state->degamma_lut->base.id : 0);
-
-	drm_object_property_set_value(&crtc->base,
-				      config->ctm_property,
-				      (state->ctm) ?
-				      state->ctm->base.id : 0);
-
-	drm_object_property_set_value(&crtc->base,
-				      config->gamma_lut_property,
-				      (state->gamma_lut) ?
-				      state->gamma_lut->base.id : 0);
-
-	return 0;
-}
-
 static const struct drm_crtc_funcs intel_crtc_funcs = {
-	.gamma_set = intel_atomic_legacy_gamma_set,
+	.gamma_set = drm_atomic_helper_legacy_gamma_set,
 	.set_config = drm_atomic_helper_set_config,
 	.set_property = drm_atomic_helper_crtc_set_property,
 	.destroy = intel_crtc_destroy,
@@ -13449,7 +13398,8 @@ intel_legacy_cursor_update(struct drm_plane *plane,
 			   int crtc_x, int crtc_y,
 			   unsigned int crtc_w, unsigned int crtc_h,
 			   uint32_t src_x, uint32_t src_y,
-			   uint32_t src_w, uint32_t src_h)
+			   uint32_t src_w, uint32_t src_h,
+			   struct drm_modeset_acquire_ctx *ctx)
 {
 	struct drm_i915_private *dev_priv = to_i915(crtc->dev);
 	int ret;
@@ -13562,7 +13512,7 @@ out_free:
 slow:
 	return drm_atomic_helper_update_plane(plane, crtc, fb,
 					      crtc_x, crtc_y, crtc_w, crtc_h,
-					      src_x, src_y, src_w, src_h);
+					      src_x, src_y, src_w, src_h, ctx);
 }
 
 static const struct drm_plane_funcs intel_cursor_plane_funcs = {
@@ -13729,7 +13679,7 @@ intel_check_cursor_plane(struct drm_plane *plane,
 		return -ENOMEM;
 	}
 
-	if (fb->modifier != DRM_FORMAT_MOD_NONE) {
+	if (fb->modifier != DRM_FORMAT_MOD_LINEAR) {
 		DRM_DEBUG_KMS("cursor cannot be tiled\n");
 		return -EINVAL;
 	}
@@ -14390,7 +14340,7 @@ static int intel_framebuffer_init(struct intel_framebuffer *intel_fb,
 				      mode_cmd->modifier[0]);
 			goto err;
 		}
-	case DRM_FORMAT_MOD_NONE:
+	case DRM_FORMAT_MOD_LINEAR:
 	case I915_FORMAT_MOD_X_TILED:
 		break;
 	default:
@@ -14413,7 +14363,7 @@ static int intel_framebuffer_init(struct intel_framebuffer *intel_fb,
 					   mode_cmd->pixel_format);
 	if (mode_cmd->pitches[0] > pitch_limit) {
 		DRM_DEBUG_KMS("%s pitch (%u) must be at most %d\n",
-			      mode_cmd->modifier[0] != DRM_FORMAT_MOD_NONE ?
+			      mode_cmd->modifier[0] != DRM_FORMAT_MOD_LINEAR ?
 			      "tiled" : "linear",
 			      mode_cmd->pitches[0], pitch_limit);
 		goto err;
@@ -14983,6 +14933,7 @@ int intel_modeset_init(struct drm_device *dev)
 
 	dev->mode_config.funcs = &intel_mode_funcs;
 
+	init_llist_head(&dev_priv->atomic_helper.free_list);
 	INIT_WORK(&dev_priv->atomic_helper.free_work,
 		  intel_atomic_helper_free_state_worker);
 
@@ -15106,6 +15057,7 @@ static void intel_enable_pipe_a(struct drm_device *dev)
 	struct drm_connector *crt = NULL;
 	struct intel_load_detect_pipe load_detect_temp;
 	struct drm_modeset_acquire_ctx *ctx = dev->mode_config.acquire_ctx;
+	int ret;
 
 	/* We can't just switch on the pipe A, we need to set things up with a
 	 * proper mode and output configuration. As a gross hack, enable pipe A
@@ -15122,7 +15074,10 @@ static void intel_enable_pipe_a(struct drm_device *dev)
 	if (!crt)
 		return;
 
-	if (intel_get_load_detect_pipe(crt, NULL, &load_detect_temp, ctx))
+	ret = intel_get_load_detect_pipe(crt, NULL, &load_detect_temp, ctx);
+	WARN(ret < 0, "All modeset mutexes are locked, but intel_get_load_detect_pipe failed\n");
+
+	if (ret > 0)
 		intel_release_load_detect_pipe(crt, &load_detect_temp, ctx);
 }
 
@@ -15606,13 +15561,6 @@ void intel_display_resume(struct drm_device *dev)
 	if (state)
 		state->acquire_ctx = &ctx;
 
-	/*
-	 * This is a cludge because with real atomic modeset mode_config.mutex
-	 * won't be taken. Unfortunately some probed state like
-	 * audio_codec_enable is still protected by mode_config.mutex, so lock
-	 * it here for now.
-	 */
-	mutex_lock(&dev->mode_config.mutex);
 	drm_modeset_acquire_init(&ctx, 0);
 
 	while (1) {
@@ -15628,7 +15576,6 @@ void intel_display_resume(struct drm_device *dev)
 
 	drm_modeset_drop_locks(&ctx);
 	drm_modeset_acquire_fini(&ctx);
-	mutex_unlock(&dev->mode_config.mutex);
 
 	if (ret)
 		DRM_ERROR("Restoring old state failed with %i\n", ret);

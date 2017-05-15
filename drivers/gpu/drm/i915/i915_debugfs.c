@@ -2494,6 +2494,22 @@ static void i915_guc_client_info(struct seq_file *m,
 	seq_printf(m, "\tTotal: %llu\n", tot);
 }
 
+static bool check_guc_submission(struct seq_file *m)
+{
+	struct drm_i915_private *dev_priv = node_to_i915(m->private);
+	const struct intel_guc *guc = &dev_priv->guc;
+
+	if (!guc->execbuf_client) {
+		seq_printf(m, "GuC submission %s\n",
+			   HAS_GUC_SCHED(dev_priv) ?
+			   "disabled" :
+			   "not supported");
+		return false;
+	}
+
+	return true;
+}
+
 static int i915_guc_info(struct seq_file *m, void *data)
 {
 	struct drm_i915_private *dev_priv = node_to_i915(m->private);
@@ -2502,13 +2518,8 @@ static int i915_guc_info(struct seq_file *m, void *data)
 	enum intel_engine_id id;
 	u64 total;
 
-	if (!guc->execbuf_client) {
-		seq_printf(m, "GuC submission %s\n",
-			   HAS_GUC_SCHED(dev_priv) ?
-			   "disabled" :
-			   "not supported");
+	if (!check_guc_submission(m))
 		return 0;
-	}
 
 	seq_printf(m, "Doorbell map:\n");
 	seq_printf(m, "\t%*pb\n", GUC_NUM_DOORBELLS, guc->doorbell_bitmap);
@@ -2536,6 +2547,60 @@ static int i915_guc_info(struct seq_file *m, void *data)
 	i915_guc_log_info(m, dev_priv);
 
 	/* Add more as required ... */
+
+	return 0;
+}
+
+static int i915_guc_stage_pool(struct seq_file *m, void *data)
+{
+	struct drm_i915_private *dev_priv = node_to_i915(m->private);
+	const struct intel_guc *guc = &dev_priv->guc;
+	struct guc_stage_desc *desc = guc->stage_desc_pool_vaddr;
+	struct i915_guc_client *client = guc->execbuf_client;
+	unsigned int tmp;
+	int index;
+
+	if (!check_guc_submission(m))
+		return 0;
+
+	for (index = 0; index < GUC_MAX_STAGE_DESCRIPTORS; index++, desc++) {
+		struct intel_engine_cs *engine;
+
+		if (!(desc->attribute & GUC_STAGE_DESC_ATTR_ACTIVE))
+			continue;
+
+		seq_printf(m, "GuC stage descriptor %u:\n", index);
+		seq_printf(m, "\tIndex: %u\n", desc->stage_id);
+		seq_printf(m, "\tAttribute: 0x%x\n", desc->attribute);
+		seq_printf(m, "\tPriority: %d\n", desc->priority);
+		seq_printf(m, "\tDoorbell id: %d\n", desc->db_id);
+		seq_printf(m, "\tEngines used: 0x%x\n",
+			   desc->engines_used);
+		seq_printf(m, "\tDoorbell trigger phy: 0x%llx, cpu: 0x%llx, uK: 0x%x\n",
+			   desc->db_trigger_phy,
+			   desc->db_trigger_cpu,
+			   desc->db_trigger_uk);
+		seq_printf(m, "\tProcess descriptor: 0x%x\n",
+			   desc->process_desc);
+		seq_printf(m, "\tWorkqueue adddress: 0x%x, size: 0x%x\n",
+			   desc->wq_addr, desc->wq_size);
+		seq_putc(m, '\n');
+
+		for_each_engine_masked(engine, dev_priv, client->engines, tmp) {
+			u32 guc_engine_id = engine->guc_id;
+			struct guc_execlist_context *lrc =
+						&desc->lrc[guc_engine_id];
+
+			seq_printf(m, "\t%s LRC:\n", engine->name);
+			seq_printf(m, "\t\tContext desc: 0x%x\n",
+				   lrc->context_desc);
+			seq_printf(m, "\t\tContext id: 0x%x\n", lrc->context_id);
+			seq_printf(m, "\t\tLRCA: 0x%x\n", lrc->ring_lrca);
+			seq_printf(m, "\t\tRing begin: 0x%x\n", lrc->ring_begin);
+			seq_printf(m, "\t\tRing end: 0x%x\n", lrc->ring_end);
+			seq_putc(m, '\n');
+		}
+	}
 
 	return 0;
 }
@@ -2568,8 +2633,7 @@ static int i915_guc_log_dump(struct seq_file *m, void *data)
 
 static int i915_guc_log_control_get(void *data, u64 *val)
 {
-	struct drm_device *dev = data;
-	struct drm_i915_private *dev_priv = to_i915(dev);
+	struct drm_i915_private *dev_priv = data;
 
 	if (!dev_priv->guc.log.vma)
 		return -EINVAL;
@@ -2581,14 +2645,13 @@ static int i915_guc_log_control_get(void *data, u64 *val)
 
 static int i915_guc_log_control_set(void *data, u64 val)
 {
-	struct drm_device *dev = data;
-	struct drm_i915_private *dev_priv = to_i915(dev);
+	struct drm_i915_private *dev_priv = data;
 	int ret;
 
 	if (!dev_priv->guc.log.vma)
 		return -EINVAL;
 
-	ret = mutex_lock_interruptible(&dev->struct_mutex);
+	ret = mutex_lock_interruptible(&dev_priv->drm.struct_mutex);
 	if (ret)
 		return ret;
 
@@ -2596,7 +2659,7 @@ static int i915_guc_log_control_set(void *data, u64 val)
 	ret = i915_guc_log_control(dev_priv, val);
 	intel_runtime_pm_put(dev_priv);
 
-	mutex_unlock(&dev->struct_mutex);
+	mutex_unlock(&dev_priv->drm.struct_mutex);
 	return ret;
 }
 
@@ -2855,7 +2918,8 @@ static int i915_dmc_info(struct seq_file *m, void *unused)
 	seq_printf(m, "version: %d.%d\n", CSR_VERSION_MAJOR(csr->version),
 		   CSR_VERSION_MINOR(csr->version));
 
-	if (IS_SKYLAKE(dev_priv) && csr->version >= CSR_VERSION(1, 6)) {
+	if (IS_KABYLAKE(dev_priv) ||
+	    (IS_SKYLAKE(dev_priv) && csr->version >= CSR_VERSION(1, 6))) {
 		seq_printf(m, "DC3 -> DC5 count: %d\n",
 			   I915_READ(SKL_CSR_DC3_DC5_COUNT));
 		seq_printf(m, "DC5 -> DC6 count: %d\n",
@@ -3043,36 +3107,6 @@ static void intel_connector_info(struct seq_file *m,
 		intel_seq_print_mode(m, 2, mode);
 }
 
-static bool cursor_active(struct drm_i915_private *dev_priv, int pipe)
-{
-	u32 state;
-
-	if (IS_I845G(dev_priv) || IS_I865G(dev_priv))
-		state = I915_READ(CURCNTR(PIPE_A)) & CURSOR_ENABLE;
-	else
-		state = I915_READ(CURCNTR(pipe)) & CURSOR_MODE;
-
-	return state;
-}
-
-static bool cursor_position(struct drm_i915_private *dev_priv,
-			    int pipe, int *x, int *y)
-{
-	u32 pos;
-
-	pos = I915_READ(CURPOS(pipe));
-
-	*x = (pos >> CURSOR_X_SHIFT) & CURSOR_POS_MASK;
-	if (pos & (CURSOR_POS_SIGN << CURSOR_X_SHIFT))
-		*x = -*x;
-
-	*y = (pos >> CURSOR_Y_SHIFT) & CURSOR_POS_MASK;
-	if (pos & (CURSOR_POS_SIGN << CURSOR_Y_SHIFT))
-		*y = -*y;
-
-	return cursor_active(dev_priv, pipe);
-}
-
 static const char *plane_type(enum drm_plane_type type)
 {
 	switch (type) {
@@ -3194,9 +3228,7 @@ static int i915_display_info(struct seq_file *m, void *unused)
 	seq_printf(m, "CRTC info\n");
 	seq_printf(m, "---------\n");
 	for_each_intel_crtc(dev, crtc) {
-		bool active;
 		struct intel_crtc_state *pipe_config;
-		int x, y;
 
 		drm_modeset_lock(&crtc->base.mutex, NULL);
 		pipe_config = to_intel_crtc_state(crtc->base.state);
@@ -3208,14 +3240,18 @@ static int i915_display_info(struct seq_file *m, void *unused)
 			   yesno(pipe_config->dither), pipe_config->pipe_bpp);
 
 		if (pipe_config->base.active) {
+			struct intel_plane *cursor =
+				to_intel_plane(crtc->base.cursor);
+
 			intel_crtc_info(m, crtc);
 
-			active = cursor_position(dev_priv, crtc->pipe, &x, &y);
-			seq_printf(m, "\tcursor visible? %s, position (%d, %d), size %dx%d, addr 0x%08x, active? %s\n",
-				   yesno(crtc->cursor_base),
-				   x, y, crtc->base.cursor->state->crtc_w,
-				   crtc->base.cursor->state->crtc_h,
-				   crtc->cursor_addr, yesno(active));
+			seq_printf(m, "\tcursor visible? %s, position (%d, %d), size %dx%d, addr 0x%08x\n",
+				   yesno(cursor->base.state->visible),
+				   cursor->base.state->crtc_x,
+				   cursor->base.state->crtc_y,
+				   cursor->base.state->crtc_w,
+				   cursor->base.state->crtc_h,
+				   cursor->cursor.base);
 			intel_scaler_info(m, crtc);
 			intel_plane_info(m, crtc);
 		}
@@ -3704,16 +3740,10 @@ static ssize_t i915_displayport_test_active_write(struct file *file,
 	if (len == 0)
 		return 0;
 
-	input_buffer = kmalloc(len + 1, GFP_KERNEL);
-	if (!input_buffer)
-		return -ENOMEM;
+	input_buffer = memdup_user_nul(ubuf, len);
+	if (IS_ERR(input_buffer))
+		return PTR_ERR(input_buffer);
 
-	if (copy_from_user(input_buffer, ubuf, len)) {
-		status = -EFAULT;
-		goto out;
-	}
-
-	input_buffer[len] = '\0';
 	DRM_DEBUG_DRIVER("Copied %d bytes from user\n", (unsigned int)len);
 
 	drm_connector_list_iter_begin(dev, &conn_iter);
@@ -3739,7 +3769,6 @@ static ssize_t i915_displayport_test_active_write(struct file *file,
 		}
 	}
 	drm_connector_list_iter_end(&conn_iter);
-out:
 	kfree(input_buffer);
 	if (status < 0)
 		return status;
@@ -3900,6 +3929,8 @@ static void wm_latency_show(struct seq_file *m, const uint16_t wm[8])
 		num_levels = 3;
 	else if (IS_VALLEYVIEW(dev_priv))
 		num_levels = 1;
+	else if (IS_G4X(dev_priv))
+		num_levels = 3;
 	else
 		num_levels = ilk_wm_max_level(dev_priv) + 1;
 
@@ -3912,8 +3943,10 @@ static void wm_latency_show(struct seq_file *m, const uint16_t wm[8])
 		 * - WM1+ latency values in 0.5us units
 		 * - latencies are in us on gen9/vlv/chv
 		 */
-		if (INTEL_GEN(dev_priv) >= 9 || IS_VALLEYVIEW(dev_priv) ||
-		    IS_CHERRYVIEW(dev_priv))
+		if (INTEL_GEN(dev_priv) >= 9 ||
+		    IS_VALLEYVIEW(dev_priv) ||
+		    IS_CHERRYVIEW(dev_priv) ||
+		    IS_G4X(dev_priv))
 			latency *= 10;
 		else if (level > 0)
 			latency *= 5;
@@ -3974,7 +4007,7 @@ static int pri_wm_latency_open(struct inode *inode, struct file *file)
 {
 	struct drm_i915_private *dev_priv = inode->i_private;
 
-	if (INTEL_GEN(dev_priv) < 5)
+	if (INTEL_GEN(dev_priv) < 5 && !IS_G4X(dev_priv))
 		return -ENODEV;
 
 	return single_open(file, pri_wm_latency_show, dev_priv);
@@ -4016,6 +4049,8 @@ static ssize_t wm_latency_write(struct file *file, const char __user *ubuf,
 		num_levels = 3;
 	else if (IS_VALLEYVIEW(dev_priv))
 		num_levels = 1;
+	else if (IS_G4X(dev_priv))
+		num_levels = 3;
 	else
 		num_levels = ilk_wm_max_level(dev_priv) + 1;
 
@@ -4776,6 +4811,7 @@ static const struct drm_info_list i915_debugfs_list[] = {
 	{"i915_guc_info", i915_guc_info, 0},
 	{"i915_guc_load_status", i915_guc_load_status_info, 0},
 	{"i915_guc_log_dump", i915_guc_log_dump, 0},
+	{"i915_guc_stage_pool", i915_guc_stage_pool, 0},
 	{"i915_huc_load_status", i915_huc_load_status_info, 0},
 	{"i915_frequency_info", i915_frequency_info, 0},
 	{"i915_hangcheck_info", i915_hangcheck_info, 0},

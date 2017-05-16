@@ -822,10 +822,6 @@ static int xengt_hvm_vmem_init(struct intel_vgpu *vgpu)
 	info->vmem_sz = xen_get_max_gpfn(info->vm_id);
 	info->vmem_sz <<= PAGE_SHIFT;
 
-	/* warn on non-1MB-aligned memory layout of HVM */
-	if (info->vmem_sz & ~VMEM_BUCK_MASK)
-		gvt_err("VM%d: vmem_sz=0x%llx!\n", info->vm_id, info->vmem_sz);
-
 	nr_low_1mb_bkt = VMEM_1MB >> PAGE_SHIFT;
 	nr_high_bkt = (info->vmem_sz >> VMEM_BUCK_SHIFT);
 	nr_high_4k_bkt = (info->vmem_sz >> PAGE_SHIFT);

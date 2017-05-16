@@ -1,0 +1,22 @@
+drm-intel drm-intel-fixes 2f720aac936dc7a301b757d3b197d86c333d59b8
+	drm/i915: don't do allocate_va_range again on PIN_UPDATE
+drm-upstream drm-fixes 2ca62d8a606a95e098799f128f6a40a6300d2a2a
+	Merge branch 'linux-4.11' of git://github.com/skeggsb/linux into drm-fixes
+drm-intel drm-intel-next-fixes 88326ef05b262f681d837ecf65db10a7edb609f1
+	drm/i915: Confirm the request is still active before adding it to the await
+drm-intel drm-intel-next-queued d567232cbd9ec2a289ddffea4013b7265bbcc3d5
+	drm/i915: use vma->size for appgtt allocate_va_range
+drm-upstream drm-next 7b8cd3363e8a0e6b90a7067f75aaeaae61a7d612
+	drm/i915: Make vblank evade warnings optional
+sound-upstream for-next d4f2d89fac72e0338db91bd72606e5784a35d9fb
+	ALSA: emu10k1: Get rid of set_fs() usage
+sound-upstream for-linus fa16b69f1299004b60b625f181143500a246e5cb
+	ALSA: hda - No loopback on ALC299 codec
+drm-intel topic/core-for-CI c9d77b528e6a1319466b09a20dc4c3d93a0b0ba4
+	drm/i915: Try harder to reset the GPU
+drm-misc drm-misc-next 62b63dcce03c09d31c1f297af4b6245a5159d923
+	drm/cirrus: fix include notation and remove -Iinclude/drm flag
+drm-misc drm-misc-next-fixes e345da82bd6bdfa8492f80b3ce4370acfd868d95
+	drm/edid: Add 10 bpc quirk for LGD 764 panel in HP zBook 17 G2
+drm-misc drm-misc-fixes 0c45b36f8acc89cb94c8696a27574f01e0e411dc
+	drm/udl: Fix unaligned memory access in udl_render_hline

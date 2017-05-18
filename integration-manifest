@@ -1,22 +1,12 @@
-drm-intel drm-intel-fixes 2f720aac936dc7a301b757d3b197d86c333d59b8
-	drm/i915: don't do allocate_va_range again on PIN_UPDATE
-drm-upstream drm-fixes 2ca62d8a606a95e098799f128f6a40a6300d2a2a
-	Merge branch 'linux-4.11' of git://github.com/skeggsb/linux into drm-fixes
-drm-intel drm-intel-next-fixes 88326ef05b262f681d837ecf65db10a7edb609f1
-	drm/i915: Confirm the request is still active before adding it to the await
-drm-intel drm-intel-next-queued d555cb5827d603244969e08444340e3db78c8a37
-	drm/i915/skl+: use linetime latency if ddb size is not available
-drm-upstream drm-next e98c58e55f68f8785aebfab1f8c9a03d8de0afe1
-	Merge tag 'drm-misc-next-2017-05-16' of git://anongit.freedesktop.org/git/drm-misc into drm-next
-sound-upstream for-next b46fe5d9607c2a14618c746a02892ead0f0f4637
-	ALSA: pcm: constify function local and read-only table
-sound-upstream for-linus fa16b69f1299004b60b625f181143500a246e5cb
-	ALSA: hda - No loopback on ALC299 codec
-drm-intel topic/core-for-CI c9d77b528e6a1319466b09a20dc4c3d93a0b0ba4
-	drm/i915: Try harder to reset the GPU
-drm-misc drm-misc-next 5e851c9de72b3e8316997e022f0c589429aca7a3
-	drm: trivial documentation fix to drm_for_each_connector_iter
-drm-misc drm-misc-next-fixes e345da82bd6bdfa8492f80b3ce4370acfd868d95
-	drm/edid: Add 10 bpc quirk for LGD 764 panel in HP zBook 17 G2
-drm-misc drm-misc-fixes 0c45b36f8acc89cb94c8696a27574f01e0e411dc
-	drm/udl: Fix unaligned memory access in udl_render_hline
+drm-tip/drm-tip 28aeb29016ff4ba6576438278ea1c593993b0c97
+	drm-tip: 2017y-05m-18d-06h-01m-15s UTC integration manifest
+vfio-upstream/for-linus 39da7c509acff13fc8cb12ec1bb20337c988ed36
+	Linux 4.11-rc6
+vfio-upstream/next 7cb671e7a34d73b29df77d0b53492277744e57e7
+	vfio/type1: Reduce repetitive calls in vfio_pin_pages_remote()
+origin/gvt-fixes 79d7a8d0afdbc70e016911fe0f57101055ce6125
+	drm/i915/gvt: Disable compression workaround for Gen9
+origin/gvt-next 908bcec68325d8f7cf391c438cdfe9af16fb5739
+	drm/i915/gvt: implement per-vm mmio switching optimization
+origin/gvt-next-fixes 627c845c0907894a1e5cd2d90ff4fc86c9e4458e
+	drm/i915/gvt: change some gvt_err to gvt_dbg_cmd

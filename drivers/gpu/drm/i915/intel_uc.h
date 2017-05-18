@@ -205,11 +205,21 @@ struct intel_guc {
 	uint64_t submissions[I915_NUM_ENGINES];
 	uint32_t last_seqno[I915_NUM_ENGINES];
 
+	/* GuC's FW specific registers used in MMIO send */
+	struct {
+		u32 base;
+		unsigned int count;
+		enum forcewake_domains fw_domains;
+	} send_regs;
+
 	/* To serialize the intel_guc_send actions */
 	struct mutex send_mutex;
 
 	/* GuC's FW specific send function */
 	int (*send)(struct intel_guc *guc, const u32 *data, u32 len);
+
+	/* GuC's FW specific notify function */
+	void (*notify)(struct intel_guc *guc);
 };
 
 struct intel_huc {
@@ -227,10 +237,17 @@ void intel_uc_fini_fw(struct drm_i915_private *dev_priv);
 int intel_uc_init_hw(struct drm_i915_private *dev_priv);
 void intel_uc_fini_hw(struct drm_i915_private *dev_priv);
 int intel_guc_sample_forcewake(struct intel_guc *guc);
+int intel_guc_send_nop(struct intel_guc *guc, const u32 *action, u32 len);
 int intel_guc_send_mmio(struct intel_guc *guc, const u32 *action, u32 len);
+
 static inline int intel_guc_send(struct intel_guc *guc, const u32 *action, u32 len)
 {
 	return guc->send(guc, action, len);
+}
+
+static inline void intel_guc_notify(struct intel_guc *guc)
+{
+	guc->notify(guc);
 }
 
 /* intel_guc_loader.c */
@@ -266,7 +283,7 @@ static inline u32 guc_ggtt_offset(struct i915_vma *vma)
 
 /* intel_huc.c */
 void intel_huc_select_fw(struct intel_huc *huc);
-int intel_huc_init_hw(struct intel_huc *huc);
+void intel_huc_init_hw(struct intel_huc *huc);
 void intel_guc_auth_huc(struct drm_i915_private *dev_priv);
 
 #endif

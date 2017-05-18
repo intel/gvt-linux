@@ -1,5 +1,5 @@
 /*
- * Copyright © 2016 Intel Corporation
+ * Copyright © 2017 Intel Corporation
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -22,15 +22,17 @@
  *
  */
 
-#ifndef __I915_GEM_CLFLUSH_H__
-#define __I915_GEM_CLFLUSH_H__
+#ifndef __I915_SYNCMAP_H__
+#define __I915_SYNCMAP_H__
 
-struct drm_i915_private;
-struct drm_i915_gem_object;
+#include <linux/types.h>
 
-void i915_gem_clflush_object(struct drm_i915_gem_object *obj,
-			     unsigned int flags);
-#define I915_CLFLUSH_FORCE BIT(0)
-#define I915_CLFLUSH_SYNC BIT(1)
+struct i915_syncmap;
+#define KSYNCMAP 16 /* radix of the tree, how many slots in each layer */
 
-#endif /* __I915_GEM_CLFLUSH_H__ */
+void i915_syncmap_init(struct i915_syncmap **root);
+int i915_syncmap_set(struct i915_syncmap **root, u64 id, u32 seqno);
+bool i915_syncmap_is_later(struct i915_syncmap **root, u64 id, u32 seqno);
+void i915_syncmap_free(struct i915_syncmap **root);
+
+#endif /* __I915_SYNCMAP_H__ */

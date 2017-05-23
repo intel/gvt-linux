@@ -1,22 +1,12 @@
-drm-intel drm-intel-fixes 46cd902f6d9a746f0da816cbdfb04b9baf6d7967
-	drm/i915: set initialised only when init_context callback is NULL
-drm-upstream drm-fixes d51aff16e821a755c242e14168f5d4601199eafd
-	Merge branch 'for-upstream/hdlcd' of git://linux-arm.org/linux-ld into drm-fixes
-drm-intel drm-intel-next-fixes 88326ef05b262f681d837ecf65db10a7edb609f1
-	drm/i915: Confirm the request is still active before adding it to the await
-drm-intel drm-intel-next-queued 48f1fc3a301d50c27c07a0fe73cd3a75d4f59552
-	drm/i915/g33: Improve reset reliability
-drm-upstream drm-next e98c58e55f68f8785aebfab1f8c9a03d8de0afe1
-	Merge tag 'drm-misc-next-2017-05-16' of git://anongit.freedesktop.org/git/drm-misc into drm-next
-sound-upstream for-next ffb73b08e79418fbf3f2ea44a7818a6715399d2c
-	ALSA: info: Use kvzalloc() for a temporary write buffer
-sound-upstream for-linus a79e7df97592b2326be81d5dae286bdb5c529a01
-	ALSA: hda - Update the list of quirk models
-drm-intel topic/core-for-CI c7f9ad97bbc045726aecf28556ccca7a5028ab22
-	perf/core: Avoid removing shared pmu_context on unregister
-drm-misc drm-misc-next 665f37e7eec33223bdc50cc1b3e00bca97a30aea
-	drm/pl111: Fix return value check in pl111_amba_probe()
-drm-misc drm-misc-next-fixes e345da82bd6bdfa8492f80b3ce4370acfd868d95
-	drm/edid: Add 10 bpc quirk for LGD 764 panel in HP zBook 17 G2
-drm-misc drm-misc-fixes f928543404bdf6bb4e8d6a6c3ced5edebd0d6f38
-	drm: Fix deadlock retry loop in page_flip_ioctl
+drm-tip/drm-tip f0db4d0afaead343e29f6c4609d4b912ad3304c1
+	drm-tip: 2017y-05m-23d-07h-43m-17s UTC integration manifest
+vfio-upstream/for-linus 39da7c509acff13fc8cb12ec1bb20337c988ed36
+	Linux 4.11-rc6
+vfio-upstream/next 7cb671e7a34d73b29df77d0b53492277744e57e7
+	vfio/type1: Reduce repetitive calls in vfio_pin_pages_remote()
+origin/gvt-fixes 1198b56d0c23af67bb728ffb59d5c54f8afdec84
+	drm/i915/gvt: clean up unsubmited workloads before destroying kmem cache
+origin/gvt-next 9f5037338fd535c52d7e2f0b11118ed5d0fa0726
+	drm/i915/gvt: add RING_INSTDONE and SC_INSTDONE mmio handler in GVT-g
+origin/gvt-next-fixes 627c845c0907894a1e5cd2d90ff4fc86c9e4458e
+	drm/i915/gvt: change some gvt_err to gvt_dbg_cmd

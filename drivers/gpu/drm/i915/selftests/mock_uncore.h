@@ -1,5 +1,5 @@
 /*
- * Copyright © 2016 Intel Corporation
+ * Copyright © 2017 Intel Corporation
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -22,15 +22,9 @@
  *
  */
 
-#ifndef __I915_GEM_CLFLUSH_H__
-#define __I915_GEM_CLFLUSH_H__
+#ifndef __MOCK_UNCORE_H
+#define __MOCK_UNCORE_H
 
-struct drm_i915_private;
-struct drm_i915_gem_object;
+void mock_uncore_init(struct drm_i915_private *i915);
 
-void i915_gem_clflush_object(struct drm_i915_gem_object *obj,
-			     unsigned int flags);
-#define I915_CLFLUSH_FORCE BIT(0)
-#define I915_CLFLUSH_SYNC BIT(1)
-
-#endif /* __I915_GEM_CLFLUSH_H__ */
+#endif /* !__MOCK_UNCORE_H */

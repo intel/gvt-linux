@@ -1074,6 +1074,8 @@ static bool xengt_write_cfg_space(struct intel_vgpu *vgpu,
 	struct xengt_hvm_dev *info = (struct xengt_hvm_dev *)vgpu->handle;
 
 	if (port == PCI_VENDOR_ID) {
+		/* Low 20 bit of val are valid low mem gpfn. */
+		val &= 0xfffff;
 		info->low_mem_max_gpfn = val;
 		return true;
 	}

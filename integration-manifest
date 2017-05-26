@@ -1,22 +1,12 @@
-drm-intel drm-intel-fixes 2e0bb5b38f32eb21fe25e845721a205370adeffe
-	drm/i915/selftests: Silence compiler warning in igt_ctx_exec
-drm-upstream drm-fixes d51aff16e821a755c242e14168f5d4601199eafd
-	Merge branch 'for-upstream/hdlcd' of git://linux-arm.org/linux-ld into drm-fixes
-drm-intel drm-intel-next-fixes 88326ef05b262f681d837ecf65db10a7edb609f1
-	drm/i915: Confirm the request is still active before adding it to the await
-drm-intel drm-intel-next-queued 80debff8d9afbf649a15c7ecb0c2cdeb89b36231
-	drm/i915: Consolidate #ifdef CONFIG_INTEL_IOMMU
-drm-upstream drm-next e98c58e55f68f8785aebfab1f8c9a03d8de0afe1
-	Merge tag 'drm-misc-next-2017-05-16' of git://anongit.freedesktop.org/git/drm-misc into drm-next
-sound-upstream for-next 6dbaf8b913f2976ee776beb7c8bb0c52c7066ced
-	ALSA: sb: remove needless evaluation in implementation for copy callback
-sound-upstream for-linus 1fc2e41f7af4572b07190f9dec28396b418e9a36
-	ALSA: hda - apply STAC_9200_DELL_M22 quirk for Dell Latitude D430
-drm-intel topic/core-for-CI c7f9ad97bbc045726aecf28556ccca7a5028ab22
-	perf/core: Avoid removing shared pmu_context on unregister
-drm-misc drm-misc-next 71ebc9a3795818eab52e81bbcbdfae130ee35d9e
-	dma-buf/sync-file: Defer creation of sync_file->name
-drm-misc drm-misc-next-fixes e345da82bd6bdfa8492f80b3ce4370acfd868d95
-	drm/edid: Add 10 bpc quirk for LGD 764 panel in HP zBook 17 G2
-drm-misc drm-misc-fixes 82bc9a42cf854fdf63155759c0aa790bd1f361b0
-	drm/gma500/psb: Actually use VBT mode when it is found
+drm-tip/drm-tip d47b71fd942d8a88da311863a6cfc2fd73ba1234
+	drm-tip: 2017y-05m-25d-20h-54m-23s UTC integration manifest
+vfio-upstream/for-linus 39da7c509acff13fc8cb12ec1bb20337c988ed36
+	Linux 4.11-rc6
+vfio-upstream/next 7cb671e7a34d73b29df77d0b53492277744e57e7
+	vfio/type1: Reduce repetitive calls in vfio_pin_pages_remote()
+origin/gvt-fixes 6671bb4e17df6530c1cc3a3f9fec706d04a08200
+	drm/i915/gvt: Refine virtual reset function
+origin/gvt-next 6dd4f272fbd0b7d0e7ab6f85d76dc98877259270
+	drm/i915/gvt: Legacy HSW related MMIO handler clean up
+origin/gvt-next-fixes 627c845c0907894a1e5cd2d90ff4fc86c9e4458e
+	drm/i915/gvt: change some gvt_err to gvt_dbg_cmd

@@ -297,9 +297,12 @@ struct vfio_region_info_cap_type {
 #define VFIO_REGION_TYPE_PCI_VENDOR_MASK	(0xffff)
 
 /* 8086 Vendor sub-types */
-#define VFIO_REGION_SUBTYPE_INTEL_IGD_OPREGION	(1)
-#define VFIO_REGION_SUBTYPE_INTEL_IGD_HOST_CFG	(2)
-#define VFIO_REGION_SUBTYPE_INTEL_IGD_LPC_CFG	(3)
+#define VFIO_REGION_SUBTYPE_INTEL_IGD_OPREGION		(1)
+#define VFIO_REGION_SUBTYPE_INTEL_IGD_HOST_CFG		(2)
+#define VFIO_REGION_SUBTYPE_INTEL_IGD_LPC_CFG		(3)
+
+/* Mdev sub-type for device state save and restore */
+#define VFIO_REGION_SUBTYPE_DEVICE_STATE	(4)
 
 /*
  * The MSIX mappable capability informs that MSIX data of a BAR can be mmapped

@@ -329,7 +329,67 @@ static void kvmgt_protect_table_del(struct kvmgt_guest_info *info,
 static size_t intel_vgpu_reg_rw_device_state(struct intel_vgpu *vgpu, char *buf,
 		size_t count, loff_t *ppos, bool iswrite)
 {
-	return 0;
+	unsigned int i = VFIO_PCI_OFFSET_TO_INDEX(*ppos) - VFIO_PCI_NUM_REGIONS;
+	void *base = vgpu->vdev.region[i].data;
+	loff_t pos = *ppos & VFIO_PCI_OFFSET_MASK;
+	uint8_t state;
+	int rc = 0;
+
+	if (pos >= vgpu->vdev.region[i].size) {
+		gvt_vgpu_err("invalid offset for Intel vgpu device state region\n");
+		rc = -EINVAL;
+		goto exit;
+	}
+
+	if (pos == 0) {
+		if (count != 1) {
+			rc = -EFAULT;
+			goto exit;
+		}
+
+		if (iswrite) {
+			if (copy_from_user(&state, buf, count)) {
+				rc = -EFAULT;
+				goto exit;
+			}
+			switch (state) {
+			case VFIO_DEVICE_STOP:
+				intel_gvt_ops->vgpu_deactivate(vgpu);
+				break;
+			case VFIO_DEVICE_START:
+				intel_gvt_ops->vgpu_activate(vgpu);
+				break;
+			default:
+				rc = -EFAULT;
+				goto exit;
+			}
+			memcpy(base, &state, count);
+		} else {
+			if (copy_to_user(buf, base, count))
+				rc = -EFAULT;
+		}
+	} else {
+		if (iswrite) {
+			if (copy_from_user(base + pos, buf, count)) {
+				rc = -EFAULT;
+				goto exit;
+			}
+
+			rc = intel_gvt_ops->vgpu_save_restore(vgpu,
+					buf, count, base, pos, iswrite);
+		} else {
+			if (intel_gvt_ops->vgpu_save_restore(vgpu,
+					buf, count, base, pos, iswrite) != 0) {
+				rc = -EFAULT;
+				goto exit;
+			}
+
+			if (copy_to_user(buf, base + pos, count))
+				 rc = -EFAULT;
+		}
+	}
+exit:
+	return rc;
 }
 
 static void intel_vgpu_reg_release_device_state(struct intel_vgpu *vgpu,

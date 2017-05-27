@@ -507,6 +507,20 @@ int intel_gvt_ggtt_index_g2h(struct intel_vgpu *vgpu, unsigned long g_index,
 int intel_gvt_ggtt_h2g_index(struct intel_vgpu *vgpu, unsigned long h_index,
 			     unsigned long *g_index);
 
+/* apply guest to host gma conversion in GM registers setting */
+static inline u64 intel_gvt_reg_g2h(struct intel_vgpu *vgpu,
+		u32 addr, u32 mask)
+{
+	u64 gma;
+
+	if (addr) {
+		intel_gvt_ggtt_gmadr_g2h(vgpu,
+				addr & mask, &gma);
+		addr = gma | (addr & (~mask));
+	}
+	return addr;
+}
+
 void intel_vgpu_init_cfg_space(struct intel_vgpu *vgpu,
 		bool primary);
 void intel_vgpu_reset_cfg_space(struct intel_vgpu *vgpu);

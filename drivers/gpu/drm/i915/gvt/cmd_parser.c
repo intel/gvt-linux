@@ -944,7 +944,8 @@ static int cmd_handler_lrr(struct parser_exec_state *s)
 }
 
 static inline int cmd_address_audit(struct parser_exec_state *s,
-		unsigned long guest_gma, int op_size, bool index_mode);
+				    unsigned long guest_gma, int op_size,
+				    bool index_mode, int offset);
 
 static int cmd_handler_lrm(struct parser_exec_state *s)
 {
@@ -966,7 +967,8 @@ static int cmd_handler_lrm(struct parser_exec_state *s)
 			gma = cmd_gma(s, i + 1);
 			if (gmadr_bytes == 8)
 				gma |= (cmd_gma_hi(s, i + 2)) << 32;
-			ret |= cmd_address_audit(s, gma, sizeof(u32), false);
+			ret |= cmd_address_audit(s, gma, sizeof(u32),
+						 false, i + 1);
 			if (ret)
 				break;
 		}
@@ -990,7 +992,8 @@ static int cmd_handler_srm(struct parser_exec_state *s)
 			gma = cmd_gma(s, i + 1);
 			if (gmadr_bytes == 8)
 				gma |= (cmd_gma_hi(s, i + 2)) << 32;
-			ret |= cmd_address_audit(s, gma, sizeof(u32), false);
+			ret |= cmd_address_audit(s, gma, sizeof(u32),
+						 false, i + 1);
 			if (ret)
 				break;
 		}
@@ -1062,7 +1065,7 @@ static int cmd_handler_pipe_control(struct parser_exec_state *s)
 				if (cmd_val(s, 1) & (1 << 21))
 					index_mode = true;
 				ret |= cmd_address_audit(s, gma, sizeof(u64),
-						index_mode);
+						index_mode, 2);
 			}
 		}
 	}
@@ -1398,10 +1401,13 @@ static unsigned long get_gma_bb_from_cmd(struct parser_exec_state *s, int index)
 }
 
 static inline int cmd_address_audit(struct parser_exec_state *s,
-		unsigned long guest_gma, int op_size, bool index_mode)
+				    unsigned long guest_gma, int op_size,
+				    bool index_mode, int offset)
 {
 	struct intel_vgpu *vgpu = s->vgpu;
 	u32 max_surface_size = vgpu->gvt->device_info.max_surface_size;
+	int gmadr_bytes = vgpu->gvt->device_info.gmadr_bytes_in_cmd;
+	u64 host_gma;
 	int i;
 	int ret;
 
@@ -1419,6 +1425,14 @@ static inline int cmd_address_audit(struct parser_exec_state *s,
 	} else if (!intel_gvt_ggtt_validate_range(vgpu, guest_gma, op_size)) {
 		ret = -EFAULT;
 		goto err;
+	} else
+		intel_gvt_ggtt_gmadr_g2h(vgpu, guest_gma, &host_gma);
+
+	if (offset > 0) {
+		patch_value(s, cmd_ptr(s, offset), host_gma & GENMASK(31, 2));
+		if (gmadr_bytes == 8)
+			patch_value(s, cmd_ptr(s, offset + 1),
+				(host_gma >> 32) & GENMASK(15, 0));
 	}
 
 	return 0;
@@ -1463,7 +1477,7 @@ static int cmd_handler_mi_store_data_imm(struct parser_exec_state *s)
 		gma = (gma_high << 32) | gma_low;
 		core_id = (cmd_val(s, 1) & (1 << 0)) ? 1 : 0;
 	}
-	ret = cmd_address_audit(s, gma + op_size * core_id, op_size, false);
+	ret = cmd_address_audit(s, gma + op_size * core_id, op_size, false, 1);
 	return ret;
 }
 
@@ -1507,7 +1521,7 @@ static int cmd_handler_mi_op_2f(struct parser_exec_state *s)
 		gma_high = cmd_val(s, 2) & GENMASK(15, 0);
 		gma = (gma_high << 32) | gma;
 	}
-	ret = cmd_address_audit(s, gma, op_size, false);
+	ret = cmd_address_audit(s, gma, op_size, false, 1);
 	return ret;
 }
 
@@ -1547,7 +1561,8 @@ static int cmd_handler_mi_flush_dw(struct parser_exec_state *s)
 		/* Store Data Index */
 		if (cmd_val(s, 0) & (1 << 21))
 			index_mode = true;
-		ret = cmd_address_audit(s, gma, sizeof(u64), index_mode);
+		ret = cmd_address_audit(s, (gma | (1 << 2)),
+					sizeof(u64), index_mode, 1);
 	}
 	/* Check notify bit */
 	if ((cmd_val(s, 0) & (1 << 8)))

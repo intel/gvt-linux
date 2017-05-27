@@ -46,6 +46,7 @@
 #include "sched_policy.h"
 #include "mmio_context.h"
 #include "cmd_parser.h"
+#include "migrate.h"
 #include "fb_decoder.h"
 #include "dmabuf.h"
 #include "page_track.h"

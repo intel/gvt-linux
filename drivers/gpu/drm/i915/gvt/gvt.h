@@ -46,6 +46,7 @@
 #include "sched_policy.h"
 #include "render.h"
 #include "cmd_parser.h"
+#include "migrate.h"
 #include "fb_decoder.h"
 #include "dmabuf.h"
 

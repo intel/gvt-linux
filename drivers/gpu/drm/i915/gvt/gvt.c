@@ -181,6 +181,7 @@ static const struct intel_gvt_ops intel_gvt_ops = {
 	.vgpu_deactivate = intel_gvt_deactivate_vgpu,
 	.gvt_find_vgpu_type = intel_gvt_find_vgpu_type,
 	.get_gvt_attrs = intel_get_gvt_attrs,
+	.vgpu_save_restore = intel_gvt_save_restore,
 };
 
 /**

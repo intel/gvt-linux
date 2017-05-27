@@ -53,11 +53,21 @@ static const struct intel_gvt_ops *intel_gvt_ops;
 #define VFIO_PCI_INDEX_TO_OFFSET(index) ((u64)(index) << VFIO_PCI_OFFSET_SHIFT)
 #define VFIO_PCI_OFFSET_MASK    (((u64)(1) << VFIO_PCI_OFFSET_SHIFT) - 1)
 
+struct vfio_region;
+struct intel_vgpu_regops {
+	size_t (*rw)(struct intel_vgpu *vgpu, char *buf,
+			size_t count, loff_t *ppos, bool iswrite);
+	void (*release)(struct intel_vgpu *vgpu,
+			struct vfio_region *region);
+};
+
 struct vfio_region {
 	u32				type;
 	u32				subtype;
 	size_t				size;
 	u32				flags;
+	const struct intel_vgpu_regops	*ops;
+	void				*data;
 };
 
 struct kvmgt_pgfn {
@@ -316,6 +326,71 @@ static void kvmgt_protect_table_del(struct kvmgt_guest_info *info,
 	}
 }
 
+static size_t intel_vgpu_reg_rw_device_state(struct intel_vgpu *vgpu, char *buf,
+		size_t count, loff_t *ppos, bool iswrite)
+{
+	return 0;
+}
+
+static void intel_vgpu_reg_release_device_state(struct intel_vgpu *vgpu,
+		struct vfio_region *region)
+{
+	vfree(region->data);
+}
+
+static const struct intel_vgpu_regops intel_vgpu_regops_device_state = {
+	.rw	 = intel_vgpu_reg_rw_device_state,
+	.release = intel_vgpu_reg_release_device_state,
+};
+
+static int intel_vgpu_register_region(struct intel_vgpu *vgpu,
+		unsigned int type, unsigned int subtype,
+		const struct intel_vgpu_regops *ops,
+		size_t size, u32 flags, void *data)
+{
+	struct vfio_region *region;
+
+	region = krealloc(vgpu->vdev.region,
+			(vgpu->vdev.num_regions + 1) * sizeof(*region),
+			GFP_KERNEL);
+	if (!region)
+		return -ENOMEM;
+
+	vgpu->vdev.region = region;
+	vgpu->vdev.region[vgpu->vdev.num_regions].type = type;
+	vgpu->vdev.region[vgpu->vdev.num_regions].subtype = subtype;
+	vgpu->vdev.region[vgpu->vdev.num_regions].ops = ops;
+	vgpu->vdev.region[vgpu->vdev.num_regions].size = size;
+	vgpu->vdev.region[vgpu->vdev.num_regions].flags = flags;
+	vgpu->vdev.region[vgpu->vdev.num_regions].data = data;
+	vgpu->vdev.num_regions++;
+
+	return 0;
+}
+
+static int kvmgt_init_migration(struct intel_vgpu *vgpu)
+{
+	void *base;
+	int ret;
+
+	base = vzalloc(MIGRATION_IMG_MAX_SIZE);
+	if (base == NULL)
+		return -ENOMEM;
+
+	ret = intel_vgpu_register_region(vgpu,
+			PCI_VENDOR_ID_INTEL | VFIO_REGION_TYPE_PCI_VENDOR_TYPE,
+			VFIO_REGION_SUBTYPE_DEVICE_STATE,
+			&intel_vgpu_regops_device_state, MIGRATION_IMG_MAX_SIZE,
+			VFIO_REGION_INFO_FLAG_READ |
+			VFIO_REGION_INFO_FLAG_WRITE,
+			base);
+	if (ret)
+		vfree(base);
+
+	return ret;
+
+}
+
 static int intel_vgpu_create(struct kobject *kobj, struct mdev_device *mdev)
 {
 	struct intel_vgpu *vgpu = NULL;
@@ -436,6 +511,8 @@ static int intel_vgpu_open(struct mdev_device *mdev)
 	if (ret)
 		goto undo_group;
 
+	kvmgt_init_migration(vgpu);
+
 	intel_gvt_ops->vgpu_activate(vgpu);
 
 	atomic_set(&vgpu->vdev.released, 0);
@@ -456,6 +533,7 @@ static void __intel_vgpu_release(struct intel_vgpu *vgpu)
 {
 	struct kvmgt_guest_info *info;
 	int ret;
+	int i;
 
 	if (!handle_valid(vgpu->handle))
 		return;
@@ -464,6 +542,13 @@ static void __intel_vgpu_release(struct intel_vgpu *vgpu)
 		return;
 
 	intel_gvt_ops->vgpu_deactivate(vgpu);
+
+	for (i = 0; i < vgpu->vdev.num_regions; i++)
+		vgpu->vdev.region[i].ops->release(vgpu, &vgpu->vdev.region[i]);
+
+	vgpu->vdev.num_regions = 0;
+	kfree(vgpu->vdev.region);
+	vgpu->vdev.region = NULL;
 
 	ret = vfio_unregister_notifier(mdev_dev(vgpu->vdev.mdev), VFIO_IOMMU_NOTIFY,
 					&vgpu->vdev.iommu_notifier);
@@ -546,7 +631,7 @@ static ssize_t intel_vgpu_rw(struct mdev_device *mdev, char *buf,
 	int ret = -EINVAL;
 
 
-	if (index >= VFIO_PCI_NUM_REGIONS) {
+	if (index >= VFIO_PCI_NUM_REGIONS + vgpu->vdev.num_regions) {
 		gvt_vgpu_err("invalid index: %u\n", index);
 		return -EINVAL;
 	}
@@ -574,8 +659,11 @@ static ssize_t intel_vgpu_rw(struct mdev_device *mdev, char *buf,
 	case VFIO_PCI_BAR5_REGION_INDEX:
 	case VFIO_PCI_VGA_REGION_INDEX:
 	case VFIO_PCI_ROM_REGION_INDEX:
+		break;
 	default:
-		gvt_vgpu_err("unsupported region: %u\n", index);
+		index -= VFIO_PCI_NUM_REGIONS;
+		ret = vgpu->vdev.region[index].ops->rw(vgpu, buf,
+				count, ppos, is_write);
 	}
 
 	return ret == 0 ? count : ret;
@@ -586,6 +674,10 @@ static ssize_t intel_vgpu_read(struct mdev_device *mdev, char __user *buf,
 {
 	unsigned int done = 0;
 	int ret;
+	unsigned int index = VFIO_PCI_OFFSET_TO_INDEX(*ppos);
+
+	if (index >= VFIO_PCI_NUM_REGIONS)
+		return intel_vgpu_rw(mdev, (char *)buf, count, ppos, false);
 
 	while (count) {
 		size_t filled;
@@ -646,6 +738,10 @@ static ssize_t intel_vgpu_write(struct mdev_device *mdev,
 {
 	unsigned int done = 0;
 	int ret;
+	unsigned int index = VFIO_PCI_OFFSET_TO_INDEX(*ppos);
+
+	if (index >= VFIO_PCI_NUM_REGIONS)
+		return intel_vgpu_rw(mdev, (char *)buf, count, ppos, true);
 
 	while (count) {
 		size_t filled;
@@ -838,7 +934,8 @@ static long intel_vgpu_ioctl(struct mdev_device *mdev, unsigned int cmd,
 
 		info.flags = VFIO_DEVICE_FLAGS_PCI;
 		info.flags |= VFIO_DEVICE_FLAGS_RESET;
-		info.num_regions = VFIO_PCI_NUM_REGIONS;
+		info.num_regions = VFIO_PCI_NUM_REGIONS +
+				   vgpu->vdev.num_regions;
 		info.num_irqs = VFIO_PCI_NUM_IRQS;
 
 		return copy_to_user((void __user *)arg, &info, minsz) ?
@@ -958,6 +1055,7 @@ static long intel_vgpu_ioctl(struct mdev_device *mdev, unsigned int cmd,
 		}
 
 		if (caps.size) {
+			info.flags |= VFIO_REGION_INFO_FLAG_CAPS;
 			if (info.argsz < sizeof(info) + caps.size) {
 				info.argsz = sizeof(info) + caps.size;
 				info.cap_offset = 0;

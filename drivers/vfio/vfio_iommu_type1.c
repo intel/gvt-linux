@@ -41,6 +41,7 @@
 #include <linux/notifier.h>
 #include <linux/dma-iommu.h>
 #include <linux/irqdomain.h>
+#include <linux/vmalloc.h>
 
 #define DRIVER_VERSION  "0.2"
 #define DRIVER_AUTHOR   "Alex Williamson <alex.williamson@redhat.com>"
@@ -1658,6 +1659,23 @@ static int vfio_domains_have_iommu_cache(struct vfio_iommu *iommu)
 	return ret;
 }
 
+static void vfio_dma_update_dirty_bitmap(struct vfio_iommu *iommu,
+				u64 start_addr, u64 npage, void *bitmap)
+{
+	u64 iova = start_addr;
+	struct vfio_dma *dma;
+	int i;
+
+	for (i = 0; i < npage; i++) {
+		dma = vfio_find_dma(iommu, iova, PAGE_SIZE);
+		if (dma)
+			if (vfio_find_vpfn(dma, iova))
+				set_bit(i, bitmap);
+
+		iova += PAGE_SIZE;
+	}
+}
+
 static long vfio_iommu_type1_ioctl(void *iommu_data,
 				   unsigned int cmd, unsigned long arg)
 {
@@ -1728,6 +1746,30 @@ static long vfio_iommu_type1_ioctl(void *iommu_data,
 
 		return copy_to_user((void __user *)arg, &unmap, minsz) ?
 			-EFAULT : 0;
+	} else if (cmd == VFIO_IOMMU_GET_DIRTY_BITMAP) {
+		struct vfio_iommu_get_dirty_bitmap d;
+		unsigned long bitmap_sz;
+		unsigned int *bitmap;
+
+		minsz = offsetofend(struct vfio_iommu_get_dirty_bitmap,
+				    page_nr);
+
+		if (copy_from_user(&d, (void __user *)arg, minsz))
+			return -EFAULT;
+
+		bitmap_sz = (BITS_TO_LONGS(d.page_nr) + 1) *
+			    sizeof(unsigned long);
+		bitmap = vzalloc(bitmap_sz);
+		vfio_dma_update_dirty_bitmap(iommu, d.start_addr,
+					     d.page_nr, bitmap);
+
+		if (copy_to_user((void __user *)arg + minsz,
+				bitmap, bitmap_sz)) {
+			vfree(bitmap);
+			return -EFAULT;
+		}
+		vfree(bitmap);
+		return 0;
 	}
 
 	return -ENOTTY;

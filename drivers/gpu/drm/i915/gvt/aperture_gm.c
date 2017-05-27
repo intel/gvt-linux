@@ -144,8 +144,10 @@ void intel_vgpu_write_fence(struct intel_vgpu *vgpu,
 	I915_WRITE(fence_reg_lo, 0);
 	POSTING_READ(fence_reg_lo);
 
-	I915_WRITE(fence_reg_hi, upper_32_bits(value));
-	I915_WRITE(fence_reg_lo, lower_32_bits(value));
+	I915_WRITE(fence_reg_hi,
+		intel_gvt_reg_g2h(vgpu, upper_32_bits(value), 0xFFFFF000));
+	I915_WRITE(fence_reg_lo,
+		intel_gvt_reg_g2h(vgpu, lower_32_bits(value), 0xFFFFF000));
 	POSTING_READ(fence_reg_lo);
 }
 

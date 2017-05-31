@@ -165,7 +165,6 @@ struct intel_vgpu {
 	struct list_head workload_q_head[I915_NUM_ENGINES];
 	struct kmem_cache *workloads;
 	atomic_t running_workload_num;
-	ktime_t last_ctx_submit_time;
 	DECLARE_BITMAP(tlb_handle_pending, I915_NUM_ENGINES);
 	struct i915_gem_context *shadow_ctx;
 
@@ -257,7 +256,12 @@ static inline struct intel_gvt *to_gvt(struct drm_i915_private *i915)
 
 enum {
 	INTEL_GVT_REQUEST_EMULATE_VBLANK = 0,
+
+	/* Scheduling trigger by timer */
 	INTEL_GVT_REQUEST_SCHED = 1,
+
+	/* Scheduling trigger by event */
+	INTEL_GVT_REQUEST_EVENT_SCHED = 2,
 };
 
 static inline void intel_gvt_request_service(struct intel_gvt *gvt,
@@ -473,6 +477,7 @@ enum {
 	GVT_FAILSAFE_INSUFFICIENT_RESOURCE,
 };
 
+#include "trace.h"
 #include "mpt.h"
 
 #endif

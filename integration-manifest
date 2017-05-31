@@ -1,26 +1,12 @@
-drm-intel drm-intel-fixes 9bd9590997b92fbd79fd028f704f6c584b4439d7
-	drm/i915: Stop pretending to mask/unmask LPE audio interrupts
-drm-upstream drm-fixes 5ed02dbb497422bf225783f46e6eadd237d23d6b
-	Linux 4.12-rc3
-drm-intel drm-intel-next-fixes 88326ef05b262f681d837ecf65db10a7edb609f1
-	drm/i915: Confirm the request is still active before adding it to the await
-drm-intel drm-intel-next-queued 7f1ea2ac30171d9a6aad2916a73e41fa68c8f137
-	drm/i915/guc: Fix doorbell id selection
-drm-upstream drm-next 2a1720376adda5ecf8e636fbfb05339c7dad1c55
-	Backmerge tag 'v4.12-rc3' into drm-next
-sound-upstream for-next 7421a1671abe5bc07cc7a09f5a1be45acc403db7
-	ALSA: pcm: include pcm_local.h and remove some extraneous tabs
-sound-upstream for-linus 1fc2e41f7af4572b07190f9dec28396b418e9a36
-	ALSA: hda - apply STAC_9200_DELL_M22 quirk for Dell Latitude D430
-drm-intel topic/core-for-CI a572a3ec0cb5e623ba88e0ff2a695e57ff5b3ccf
-	perf/core: Avoid removing shared pmu_context on unregister
-drm-misc drm-misc-next e7cc23de3e4e9222ae4fd24a00583aa5d2ed7610
-	drm/pl111: select DRM_PANEL
-drm-misc drm-misc-next-fixes e345da82bd6bdfa8492f80b3ce4370acfd868d95
-	drm/edid: Add 10 bpc quirk for LGD 764 panel in HP zBook 17 G2
-drm-misc drm-misc-fixes efd11cc8fa1a6d8aba16bd6aaa774ecc3d02145f
-	drm/rockchip: Correct vop out_mode configure
-drm-intel topic/dp-quirks b31e85eda38c58cae986162ae2c462b53b0a2065
-	drm/i915: Detect USB-C specific dongles before reducing M and N
-drm-intel topic/e1000e-fix 4e5684f930587bd22565f404eb3c5e417a994ccc
-	e1000e: Undo e1000e_pm_freeze if __e1000_shutdown fails
+drm-tip/drm-tip d6dcb2fc7dc2ca874a0f0063f21fcca6a3e61fac
+	drm-tip: 2017y-05m-31d-07h-35m-12s UTC integration manifest
+vfio-upstream/for-linus 39da7c509acff13fc8cb12ec1bb20337c988ed36
+	Linux 4.11-rc6
+vfio-upstream/next 7cb671e7a34d73b29df77d0b53492277744e57e7
+	vfio/type1: Reduce repetitive calls in vfio_pin_pages_remote()
+origin/gvt-fixes 6671bb4e17df6530c1cc3a3f9fec706d04a08200
+	drm/i915/gvt: Refine virtual reset function
+origin/gvt-next c360aaa070b5529dcdb41be5b3fa7aa8836de2e5
+	drm/i915/gvt: remove redundant -Wall
+origin/gvt-next-fixes 627c845c0907894a1e5cd2d90ff4fc86c9e4458e
+	drm/i915/gvt: change some gvt_err to gvt_dbg_cmd

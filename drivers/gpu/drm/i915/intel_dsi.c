@@ -320,10 +320,10 @@ static bool intel_dsi_compute_config(struct intel_encoder *encoder,
 
 		if (HAS_GMCH_DISPLAY(dev_priv))
 			intel_gmch_panel_fitting(crtc, pipe_config,
-						 intel_connector->panel.fitting_mode);
+						 conn_state->scaling_mode);
 		else
 			intel_pch_panel_fitting(crtc, pipe_config,
-						intel_connector->panel.fitting_mode);
+						conn_state->scaling_mode);
 	}
 
 	/* DSI uses short packets for sync events, so clear mode flags for DSI */
@@ -1587,48 +1587,6 @@ static int intel_dsi_get_modes(struct drm_connector *connector)
 	return 1;
 }
 
-static int intel_dsi_set_property(struct drm_connector *connector,
-				  struct drm_property *property,
-				  uint64_t val)
-{
-	struct drm_device *dev = connector->dev;
-	struct intel_connector *intel_connector = to_intel_connector(connector);
-	struct drm_crtc *crtc;
-	int ret;
-
-	ret = drm_object_property_set_value(&connector->base, property, val);
-	if (ret)
-		return ret;
-
-	if (property == dev->mode_config.scaling_mode_property) {
-		if (val == DRM_MODE_SCALE_NONE) {
-			DRM_DEBUG_KMS("no scaling not supported\n");
-			return -EINVAL;
-		}
-		if (HAS_GMCH_DISPLAY(to_i915(dev)) &&
-		    val == DRM_MODE_SCALE_CENTER) {
-			DRM_DEBUG_KMS("centering not supported\n");
-			return -EINVAL;
-		}
-
-		if (intel_connector->panel.fitting_mode == val)
-			return 0;
-
-		intel_connector->panel.fitting_mode = val;
-	}
-
-	crtc = connector->state->crtc;
-	if (crtc && crtc->state->enable) {
-		/*
-		 * If the CRTC is enabled, the display will be changed
-		 * according to the new panel fitting mode.
-		 */
-		intel_crtc_restore_mode(crtc);
-	}
-
-	return 0;
-}
-
 static void intel_dsi_connector_destroy(struct drm_connector *connector)
 {
 	struct intel_connector *intel_connector = to_intel_connector(connector);
@@ -1657,6 +1615,7 @@ static const struct drm_encoder_funcs intel_dsi_funcs = {
 static const struct drm_connector_helper_funcs intel_dsi_connector_helper_funcs = {
 	.get_modes = intel_dsi_get_modes,
 	.mode_valid = intel_dsi_mode_valid,
+	.atomic_check = intel_digital_connector_atomic_check,
 };
 
 static const struct drm_connector_funcs intel_dsi_connector_funcs = {
@@ -1665,22 +1624,28 @@ static const struct drm_connector_funcs intel_dsi_connector_funcs = {
 	.early_unregister = intel_connector_unregister,
 	.destroy = intel_dsi_connector_destroy,
 	.fill_modes = drm_helper_probe_single_connector_modes,
-	.set_property = intel_dsi_set_property,
-	.atomic_get_property = intel_connector_atomic_get_property,
+	.set_property = drm_atomic_helper_connector_set_property,
+	.atomic_get_property = intel_digital_connector_atomic_get_property,
+	.atomic_set_property = intel_digital_connector_atomic_set_property,
 	.atomic_destroy_state = drm_atomic_helper_connector_destroy_state,
-	.atomic_duplicate_state = drm_atomic_helper_connector_duplicate_state,
+	.atomic_duplicate_state = intel_digital_connector_duplicate_state,
 };
 
 static void intel_dsi_add_properties(struct intel_connector *connector)
 {
-	struct drm_device *dev = connector->base.dev;
+	struct drm_i915_private *dev_priv = to_i915(connector->base.dev);
 
 	if (connector->panel.fixed_mode) {
-		drm_mode_create_scaling_mode_property(dev);
-		drm_object_attach_property(&connector->base.base,
-					   dev->mode_config.scaling_mode_property,
-					   DRM_MODE_SCALE_ASPECT);
-		connector->panel.fitting_mode = DRM_MODE_SCALE_ASPECT;
+		u32 allowed_scalers;
+
+		allowed_scalers = BIT(DRM_MODE_SCALE_ASPECT) | BIT(DRM_MODE_SCALE_FULLSCREEN);
+		if (!HAS_GMCH_DISPLAY(dev_priv))
+			allowed_scalers |= BIT(DRM_MODE_SCALE_CENTER);
+
+		drm_connector_attach_scaling_mode_property(&connector->base,
+								allowed_scalers);
+
+		connector->base.state->scaling_mode = DRM_MODE_SCALE_ASPECT;
 	}
 }
 

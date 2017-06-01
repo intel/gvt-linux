@@ -163,7 +163,6 @@ static int xengt_sysfs_add_instance(struct xengt_hvm_params *vp)
 		ret = -EINVAL;
 	} else {
 		info = (struct xengt_hvm_dev *) vgpu->handle;
-		info->vm_id = vp->vm_id;
 		xengt_priv.vgpus[vgpu->id - 1] = vgpu;
 		gvt_dbg_core("add xengt instance for vm-%d with vgpu-%d.\n",
 			vp->vm_id, vgpu->id);
@@ -1309,6 +1308,7 @@ void xengt_instance_destroy(struct intel_vgpu *vgpu)
 
 out1:
 	xengt_vmem_destroy(vgpu);
+	vgpu->handle = (unsigned long)NULL;
 	kfree(info);
 
 free_vgpu:

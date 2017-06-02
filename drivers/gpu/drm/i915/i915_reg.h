@@ -85,6 +85,14 @@ static inline bool i915_mmio_reg_valid(i915_reg_t reg)
 #define VECS_HW		3
 #define VCS2_HW		4
 
+/* Engine class */
+
+#define RENDER_CLASS		0
+#define VIDEO_DECODE_CLASS	1
+#define VIDEO_ENHANCEMENT_CLASS	2
+#define COPY_ENGINE_CLASS	3
+#define OTHER_CLASS		4
+
 /* PCI config space */
 
 #define MCHBAR_I915 0x44
@@ -2618,9 +2626,10 @@ enum skl_disp_power_wells {
 #define   GMBUS_PIN_DPB		5 /* SDVO, HDMIB */
 #define   GMBUS_PIN_DPD		6 /* HDMID */
 #define   GMBUS_PIN_RESERVED	7 /* 7 reserved */
-#define   GMBUS_PIN_1_BXT	1
+#define   GMBUS_PIN_1_BXT	1 /* BXT+ (atom) and CNP+ (big core) */
 #define   GMBUS_PIN_2_BXT	2
 #define   GMBUS_PIN_3_BXT	3
+#define   GMBUS_PIN_4_CNP	4
 #define   GMBUS_NUM_PINS	7 /* including 0 */
 #define GMBUS1			_MMIO(dev_priv->gpio_mmio_base + 0x5104) /* command/status */
 #define   GMBUS_SW_CLR_INT	(1<<31)
@@ -3366,16 +3375,6 @@ enum skl_disp_power_wells {
 #define GEN7_CXT_VFSTATE_SIZE(ctx_reg)	(((ctx_reg) >> 0) & 0x3f)
 #define GEN7_CXT_TOTAL_SIZE(ctx_reg)	(GEN7_CXT_EXTENDED_SIZE(ctx_reg) + \
 					 GEN7_CXT_VFSTATE_SIZE(ctx_reg))
-/* Haswell does have the CXT_SIZE register however it does not appear to be
- * valid. Now, docs explain in dwords what is in the context object. The full
- * size is 70720 bytes, however, the power context and execlist context will
- * never be saved (power context is stored elsewhere, and execlists don't work
- * on HSW) - so the final size, including the extra state required for the
- * Resource Streamer, is 66944 bytes, which rounds to 17 pages.
- */
-#define HSW_CXT_TOTAL_SIZE		(17 * PAGE_SIZE)
-/* Same as Haswell, but 72064 bytes now. */
-#define GEN8_CXT_TOTAL_SIZE		(18 * PAGE_SIZE)
 
 enum {
 	INTEL_ADVANCED_CONTEXT = 0,
@@ -5441,9 +5440,7 @@ enum {
 #define   CURSOR_MODE_128_ARGB_AX ((1 << 5) | CURSOR_MODE_128_32B_AX)
 #define   CURSOR_MODE_256_ARGB_AX ((1 << 5) | CURSOR_MODE_256_32B_AX)
 #define   CURSOR_MODE_64_ARGB_AX ((1 << 5) | CURSOR_MODE_64_32B_AX)
-#define   MCURSOR_PIPE_SELECT	(1 << 28)
-#define   MCURSOR_PIPE_A	0x00
-#define   MCURSOR_PIPE_B	(1 << 28)
+#define   MCURSOR_PIPE_SELECT(pipe)	((pipe) << 28)
 #define   MCURSOR_GAMMA_ENABLE  (1 << 26)
 #define   CURSOR_ROTATE_180	(1<<15)
 #define   CURSOR_TRICKLE_FEED_DISABLE	(1 << 14)
@@ -5453,7 +5450,9 @@ enum {
 #define   CURSOR_POS_SIGN       0x8000
 #define   CURSOR_X_SHIFT        0
 #define   CURSOR_Y_SHIFT        16
-#define CURSIZE			_MMIO(0x700a0)
+#define CURSIZE			_MMIO(0x700a0) /* 845/865 */
+#define _CUR_FBC_CTL_A		0x700a0 /* ivb+ */
+#define   CUR_FBC_CTL_EN	(1 << 31)
 #define _CURBCNTR		0x700c0
 #define _CURBBASE		0x700c4
 #define _CURBPOS		0x700c8
@@ -5469,6 +5468,7 @@ enum {
 #define CURCNTR(pipe) _CURSOR2(pipe, _CURACNTR)
 #define CURBASE(pipe) _CURSOR2(pipe, _CURABASE)
 #define CURPOS(pipe) _CURSOR2(pipe, _CURAPOS)
+#define CUR_FBC_CTL(pipe) _CURSOR2(pipe, _CUR_FBC_CTL_A)
 
 #define CURSOR_A_OFFSET 0x70080
 #define CURSOR_B_OFFSET 0x700c0
@@ -5501,8 +5501,7 @@ enum {
 #define   DISPPLANE_PIPE_CSC_ENABLE		(1<<24)
 #define   DISPPLANE_SEL_PIPE_SHIFT		24
 #define   DISPPLANE_SEL_PIPE_MASK		(3<<DISPPLANE_SEL_PIPE_SHIFT)
-#define   DISPPLANE_SEL_PIPE_A			0
-#define   DISPPLANE_SEL_PIPE_B			(1<<DISPPLANE_SEL_PIPE_SHIFT)
+#define   DISPPLANE_SEL_PIPE(pipe)		((pipe)<<DISPPLANE_SEL_PIPE_SHIFT)
 #define   DISPPLANE_SRC_KEY_ENABLE		(1<<22)
 #define   DISPPLANE_SRC_KEY_DISABLE		0
 #define   DISPPLANE_LINE_DOUBLE			(1<<20)
@@ -6840,6 +6839,10 @@ enum {
 #define  FDL_TP2_TIMER_SHIFT    10
 #define  FDL_TP2_TIMER_MASK     (3<<10)
 #define  RAWCLK_FREQ_MASK       0x3ff
+#define  CNP_RAWCLK_DIV_MASK	(0x3ff << 16)
+#define  CNP_RAWCLK_DIV(div)	((div) << 16)
+#define  CNP_RAWCLK_FRAC_MASK	(0xf << 26)
+#define  CNP_RAWCLK_FRAC(frac)	((frac) << 26)
 
 #define PCH_DPLL_TMR_CFG        _MMIO(0xc6208)
 
@@ -7794,13 +7797,6 @@ enum {
 #define  SKL_FUSE_PG1_DIST_STATUS              (1<<26)
 #define  SKL_FUSE_PG2_DIST_STATUS              (1<<25)
 
-/* Decoupled MMIO register pair for kernel driver */
-#define GEN9_DECOUPLED_REG0_DW0			_MMIO(0xF00)
-#define GEN9_DECOUPLED_REG0_DW1			_MMIO(0xF04)
-#define GEN9_DECOUPLED_DW1_GO			(1<<31)
-#define GEN9_DECOUPLED_PD_SHIFT			28
-#define GEN9_DECOUPLED_OP_SHIFT			24
-
 /* Per-pipe DDI Function Control */
 #define _TRANS_DDI_FUNC_CTL_A		0x60400
 #define _TRANS_DDI_FUNC_CTL_B		0x61400
@@ -8150,6 +8146,7 @@ enum {
 /* SFUSE_STRAP */
 #define SFUSE_STRAP			_MMIO(0xc2014)
 #define  SFUSE_STRAP_FUSE_LOCK		(1<<13)
+#define  SFUSE_STRAP_RAW_FREQUENCY	(1<<8)
 #define  SFUSE_STRAP_DISPLAY_DISABLED	(1<<7)
 #define  SFUSE_STRAP_CRT_DISABLED	(1<<6)
 #define  SFUSE_STRAP_DDIB_DETECTED	(1<<2)

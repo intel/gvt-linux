@@ -264,7 +264,7 @@ static int hal2_gain_put(struct snd_kcontrol *kcontrol,
 	return old != new;
 }
 
-static struct snd_kcontrol_new hal2_ctrl_headphone = {
+static const struct snd_kcontrol_new hal2_ctrl_headphone = {
 	.iface          = SNDRV_CTL_ELEM_IFACE_MIXER,
 	.name           = "Headphone Playback Volume",
 	.access         = SNDRV_CTL_ELEM_ACCESS_READWRITE,
@@ -274,7 +274,7 @@ static struct snd_kcontrol_new hal2_ctrl_headphone = {
 	.put            = hal2_gain_put,
 };
 
-static struct snd_kcontrol_new hal2_ctrl_mic = {
+static const struct snd_kcontrol_new hal2_ctrl_mic = {
 	.iface          = SNDRV_CTL_ELEM_IFACE_MIXER,
 	.name           = "Mic Capture Volume",
 	.access         = SNDRV_CTL_ELEM_ACCESS_READWRITE,
@@ -616,10 +616,9 @@ static int hal2_playback_ack(struct snd_pcm_substream *substream)
 	struct hal2_codec *dac = &hal2->dac;
 
 	dac->pcm_indirect.hw_queue_size = H2_BUF_SIZE / 2;
-	snd_pcm_indirect_playback_transfer(substream,
-					   &dac->pcm_indirect,
-					   hal2_playback_transfer);
-	return 0;
+	return snd_pcm_indirect_playback_transfer(substream,
+						  &dac->pcm_indirect,
+						  hal2_playback_transfer);
 }
 
 static int hal2_capture_open(struct snd_pcm_substream *substream)
@@ -707,10 +706,9 @@ static int hal2_capture_ack(struct snd_pcm_substream *substream)
 	struct snd_hal2 *hal2 = snd_pcm_substream_chip(substream);
 	struct hal2_codec *adc = &hal2->adc;
 
-	snd_pcm_indirect_capture_transfer(substream,
-					  &adc->pcm_indirect,
-					  hal2_capture_transfer);
-	return 0;
+	return snd_pcm_indirect_capture_transfer(substream,
+						 &adc->pcm_indirect,
+						 hal2_capture_transfer);
 }
 
 static struct snd_pcm_ops hal2_playback_ops = {

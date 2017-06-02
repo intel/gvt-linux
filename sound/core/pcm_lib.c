@@ -33,6 +33,8 @@
 #include <sound/pcm_params.h>
 #include <sound/timer.h>
 
+#include "pcm_local.h"
+
 #ifdef CONFIG_SND_PCM_XRUN_DEBUG
 #define CREATE_TRACE_POINTS
 #include "pcm_trace.h"
@@ -1415,7 +1417,8 @@ static int snd_pcm_hw_rule_msbits(struct snd_pcm_hw_params *params,
 	unsigned int l = (unsigned long) rule->private;
 	int width = l & 0xffff;
 	unsigned int msbits = l >> 16;
-	struct snd_interval *i = hw_param_interval(params, SNDRV_PCM_HW_PARAM_SAMPLE_BITS);
+	const struct snd_interval *i =
+		hw_param_interval_c(params, SNDRV_PCM_HW_PARAM_SAMPLE_BITS);
 
 	if (!snd_interval_single(i))
 		return 0;
@@ -1733,7 +1736,7 @@ EXPORT_SYMBOL(snd_pcm_hw_param_last);
 int snd_pcm_hw_params_choose(struct snd_pcm_substream *pcm,
 			     struct snd_pcm_hw_params *params)
 {
-	static int vars[] = {
+	static const int vars[] = {
 		SNDRV_PCM_HW_PARAM_ACCESS,
 		SNDRV_PCM_HW_PARAM_FORMAT,
 		SNDRV_PCM_HW_PARAM_SUBFORMAT,
@@ -1744,7 +1747,8 @@ int snd_pcm_hw_params_choose(struct snd_pcm_substream *pcm,
 		SNDRV_PCM_HW_PARAM_TICK_TIME,
 		-1
 	};
-	int err, *v;
+	const int *v;
+	int err;
 
 	for (v = vars; *v != -1; v++) {
 		if (*v != SNDRV_PCM_HW_PARAM_BUFFER_SIZE)

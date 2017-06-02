@@ -1,0 +1,26 @@
+drm-intel drm-intel-fixes 9bd9590997b92fbd79fd028f704f6c584b4439d7
+	drm/i915: Stop pretending to mask/unmask LPE audio interrupts
+drm-upstream drm-fixes 28904eeced2c6cf6d315c675e79e1700ef7507ac
+	Merge tag 'topic/dp-quirks-2017-05-31' of git://anongit.freedesktop.org/git/drm-intel into drm-fixes
+drm-intel drm-intel-next-fixes 88326ef05b262f681d837ecf65db10a7edb609f1
+	drm/i915: Confirm the request is still active before adding it to the await
+drm-intel drm-intel-next-queued 938361e7a50619b76a1415c86438eaee41397220
+	drm/i915/cnp: Panel Power sequence changes for CNP PCH.
+drm-upstream drm-next 2a1720376adda5ecf8e636fbfb05339c7dad1c55
+	Backmerge tag 'v4.12-rc3' into drm-next
+sound-upstream for-next 7421a1671abe5bc07cc7a09f5a1be45acc403db7
+	ALSA: pcm: include pcm_local.h and remove some extraneous tabs
+sound-upstream for-linus d2c3b14e1f0dcebdb695617c0c1342a36b914a47
+	ALSA: hda - Fix applying MSI dual-codec mobo quirk
+drm-intel topic/core-for-CI 081d1f1a327affcd9449e92257fc75fa83449832
+	perf/core: Avoid removing shared pmu_context on unregister
+drm-misc drm-misc-next 7f696942a7e52df2a99410bf23da513f9aad04fb
+	drm/vc4: Mark the device as active when enabling runtime PM.
+drm-misc drm-misc-next-fixes 2d7b56378d32b0cf006f8944cbba4046df45dd25
+	drm/rockchip: gem: add the lacks lock and trivial changes
+drm-misc drm-misc-fixes 75fb636324a839c2c31be9f81644034c6142e469
+	drm: Fix oops + Xserver hang when unplugging USB drm devices
+drm-intel topic/dp-quirks b31e85eda38c58cae986162ae2c462b53b0a2065
+	drm/i915: Detect USB-C specific dongles before reducing M and N
+drm-intel topic/e1000e-fix 4e5684f930587bd22565f404eb3c5e417a994ccc
+	e1000e: Undo e1000e_pm_freeze if __e1000_shutdown fails

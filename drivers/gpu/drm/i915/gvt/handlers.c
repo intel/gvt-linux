@@ -209,6 +209,7 @@ static int fence_mmio_read(struct intel_vgpu *vgpu, unsigned int off,
 static int fence_mmio_write(struct intel_vgpu *vgpu, unsigned int off,
 		void *p_data, unsigned int bytes)
 {
+	struct drm_i915_private *dev_priv = vgpu->gvt->dev_priv;
 	unsigned int fence_num = offset_to_fence_num(off);
 	int ret;
 
@@ -217,8 +218,10 @@ static int fence_mmio_write(struct intel_vgpu *vgpu, unsigned int off,
 		return ret;
 	write_vreg(vgpu, off, p_data, bytes);
 
+	mmio_hw_access_pre(dev_priv);
 	intel_vgpu_write_fence(vgpu, fence_num,
 			vgpu_vreg64(vgpu, fence_num_to_offset(fence_num)));
+	mmio_hw_access_post(dev_priv);
 	return 0;
 }
 
@@ -1268,7 +1271,10 @@ static int gen9_trtte_write(struct intel_vgpu *vgpu, unsigned int offset,
 	}
 	write_vreg(vgpu, offset, p_data, bytes);
 	/* TRTTE is not per-context */
+
+	mmio_hw_access_pre(dev_priv);
 	I915_WRITE(_MMIO(offset), vgpu_vreg(vgpu, offset));
+	mmio_hw_access_post(dev_priv);
 
 	return 0;
 }
@@ -1281,7 +1287,9 @@ static int gen9_trtt_chicken_write(struct intel_vgpu *vgpu, unsigned int offset,
 
 	if (val & 1) {
 		/* unblock hw logic */
+		mmio_hw_access_pre(dev_priv);
 		I915_WRITE(_MMIO(offset), val);
+		mmio_hw_access_post(dev_priv);
 	}
 	write_vreg(vgpu, offset, p_data, bytes);
 	return 0;
@@ -1418,7 +1426,20 @@ static int ring_timestamp_mmio_read(struct intel_vgpu *vgpu,
 {
 	struct drm_i915_private *dev_priv = vgpu->gvt->dev_priv;
 
+	mmio_hw_access_pre(dev_priv);
 	vgpu_vreg(vgpu, offset) = I915_READ(_MMIO(offset));
+	mmio_hw_access_post(dev_priv);
+	return intel_vgpu_default_mmio_read(vgpu, offset, p_data, bytes);
+}
+
+static int instdone_mmio_read(struct intel_vgpu *vgpu,
+		unsigned int offset, void *p_data, unsigned int bytes)
+{
+	struct drm_i915_private *dev_priv = vgpu->gvt->dev_priv;
+
+	mmio_hw_access_pre(dev_priv);
+	vgpu_vreg(vgpu, offset) = I915_READ(_MMIO(offset));
+	mmio_hw_access_post(dev_priv);
 	return intel_vgpu_default_mmio_read(vgpu, offset, p_data, bytes);
 }
 
@@ -1437,7 +1458,6 @@ static int elsp_mmio_write(struct intel_vgpu *vgpu, unsigned int offset,
 
 	execlist->elsp_dwords.data[execlist->elsp_dwords.index] = data;
 	if (execlist->elsp_dwords.index == 3) {
-		vgpu->last_ctx_submit_time = ktime_get();
 		ret = intel_vgpu_submit_execlist(vgpu, ring_id);
 		if(ret)
 			gvt_vgpu_err("fail submit workload on ring %d\n",
@@ -1605,6 +1625,12 @@ static int init_generic_mmio_info(struct intel_gvt *gvt)
 #define RING_REG(base) (base + 0x134)
 	MMIO_RING_DFH(RING_REG, D_ALL, F_CMD_ACCESS, NULL, NULL);
 #undef RING_REG
+
+#define RING_REG(base) (base + 0x6c)
+	MMIO_RING_DFH(RING_REG, D_ALL, 0, instdone_mmio_read, NULL);
+	MMIO_DH(RING_REG(GEN8_BSD2_RING_BASE), D_ALL, instdone_mmio_read, NULL);
+#undef RING_REG
+	MMIO_DH(GEN7_SC_INSTDONE, D_BDW_PLUS, instdone_mmio_read, NULL);
 
 	MMIO_GM_RDR(0x2148, D_ALL, NULL, NULL);
 	MMIO_GM_RDR(CCID, D_ALL, NULL, NULL);
@@ -2190,7 +2216,7 @@ static int init_generic_mmio_info(struct intel_gvt *gvt)
 	MMIO_DFH(GTFIFODBG, D_ALL, F_CMD_ACCESS, NULL, NULL);
 	MMIO_DFH(GTFIFOCTL, D_ALL, F_CMD_ACCESS, NULL, NULL);
 	MMIO_DH(FORCEWAKE_MT, D_PRE_SKL, NULL, mul_force_wake_write);
-	MMIO_DH(FORCEWAKE_ACK_HSW, D_HSW | D_BDW, NULL, NULL);
+	MMIO_DH(FORCEWAKE_ACK_HSW, D_BDW, NULL, NULL);
 	MMIO_D(ECOBUS, D_ALL);
 	MMIO_DH(GEN6_RC_CONTROL, D_ALL, NULL, NULL);
 	MMIO_DH(GEN6_RC_STATE, D_ALL, NULL, NULL);
@@ -2222,12 +2248,12 @@ static int init_generic_mmio_info(struct intel_gvt *gvt)
 	MMIO_D(GEN6_RC6p_THRESHOLD, D_ALL);
 	MMIO_D(GEN6_RC6pp_THRESHOLD, D_ALL);
 	MMIO_D(GEN6_PMINTRMSK, D_ALL);
-	MMIO_DH(HSW_PWR_WELL_BIOS, D_HSW | D_BDW, NULL, power_well_ctl_mmio_write);
-	MMIO_DH(HSW_PWR_WELL_DRIVER, D_HSW | D_BDW, NULL, power_well_ctl_mmio_write);
-	MMIO_DH(HSW_PWR_WELL_KVMR, D_HSW | D_BDW, NULL, power_well_ctl_mmio_write);
-	MMIO_DH(HSW_PWR_WELL_DEBUG, D_HSW | D_BDW, NULL, power_well_ctl_mmio_write);
-	MMIO_DH(HSW_PWR_WELL_CTL5, D_HSW | D_BDW, NULL, power_well_ctl_mmio_write);
-	MMIO_DH(HSW_PWR_WELL_CTL6, D_HSW | D_BDW, NULL, power_well_ctl_mmio_write);
+	MMIO_DH(HSW_PWR_WELL_BIOS, D_BDW, NULL, power_well_ctl_mmio_write);
+	MMIO_DH(HSW_PWR_WELL_DRIVER, D_BDW, NULL, power_well_ctl_mmio_write);
+	MMIO_DH(HSW_PWR_WELL_KVMR, D_BDW, NULL, power_well_ctl_mmio_write);
+	MMIO_DH(HSW_PWR_WELL_DEBUG, D_BDW, NULL, power_well_ctl_mmio_write);
+	MMIO_DH(HSW_PWR_WELL_CTL5, D_BDW, NULL, power_well_ctl_mmio_write);
+	MMIO_DH(HSW_PWR_WELL_CTL6, D_BDW, NULL, power_well_ctl_mmio_write);
 
 	MMIO_D(RSTDBYCTL, D_ALL);
 
@@ -2245,7 +2271,6 @@ static int init_generic_mmio_info(struct intel_gvt *gvt)
 
 	MMIO_F(0x4f000, 0x90, 0, 0, 0, D_ALL, NULL, NULL);
 
-	MMIO_D(GEN6_PCODE_MAILBOX, D_PRE_BDW);
 	MMIO_D(GEN6_PCODE_DATA, D_ALL);
 	MMIO_D(0x13812c, D_ALL);
 	MMIO_DH(GEN7_ERR_INT, D_ALL, NULL, NULL);
@@ -2324,14 +2349,13 @@ static int init_generic_mmio_info(struct intel_gvt *gvt)
 	MMIO_D(0x1a054, D_ALL);
 
 	MMIO_D(0x44070, D_ALL);
-	MMIO_DFH(0x215c, D_HSW_PLUS, F_CMD_ACCESS, NULL, NULL);
+	MMIO_DFH(0x215c, D_BDW_PLUS, F_CMD_ACCESS, NULL, NULL);
 	MMIO_DFH(0x2178, D_ALL, F_CMD_ACCESS, NULL, NULL);
 	MMIO_DFH(0x217c, D_ALL, F_CMD_ACCESS, NULL, NULL);
 	MMIO_DFH(0x12178, D_ALL, F_CMD_ACCESS, NULL, NULL);
 	MMIO_DFH(0x1217c, D_ALL, F_CMD_ACCESS, NULL, NULL);
 
-	MMIO_F(0x2290, 8, F_CMD_ACCESS, 0, 0, D_HSW_PLUS, NULL, NULL);
-	MMIO_DFH(GEN7_OACONTROL, D_HSW, F_CMD_ACCESS, NULL, NULL);
+	MMIO_F(0x2290, 8, F_CMD_ACCESS, 0, 0, D_BDW_PLUS, NULL, NULL);
 	MMIO_D(0x2b00, D_BDW_PLUS);
 	MMIO_D(0x2360, D_BDW_PLUS);
 	MMIO_F(0x5200, 32, F_CMD_ACCESS, 0, 0, D_ALL, NULL, NULL);

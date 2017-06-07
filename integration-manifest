@@ -1,0 +1,26 @@
+drm-intel drm-intel-fixes d86b18a06cf361e12ccdf61ae240d432182d8d6b
+	drm/i915: Serialize GTT/Aperture accesses on BXT
+drm-upstream drm-fixes e5b4ab1ffbe2553ee278cb1b6bcb671a31d86518
+	Merge tag 'drm-misc-fixes-2017-06-02' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
+drm-intel drm-intel-next-fixes 88326ef05b262f681d837ecf65db10a7edb609f1
+	drm/i915: Confirm the request is still active before adding it to the await
+drm-intel drm-intel-next-queued 73714c05df97d7527e7eaaa771472ef2ede46fa3
+	drm/i915: Fix 90/270 rotated coordinates for FBC
+drm-upstream drm-next c9f0726ff360cf75aaafd326e439e9234630aee9
+	Merge tag 'exynos-drm-next-for-v4.13' of git://git.kernel.org/pub/scm/linux/kernel/git/daeinki/drm-exynos into drm-next
+sound-upstream for-next c6706de0ce8bc8cd1e336b8cf0acabf1adedba6c
+	ALSA: pcm: obsolete RULES_DEBUG local macro
+sound-upstream for-linus ba3021b2c79b2fa9114f92790a99deb27a65b728
+	ALSA: timer: Fix missing queue indices reset at SNDRV_TIMER_IOCTL_SELECT
+drm-intel topic/core-for-CI 081d1f1a327affcd9449e92257fc75fa83449832
+	perf/core: Avoid removing shared pmu_context on unregister
+drm-misc drm-misc-next 96160a8071b2d76b5dfe6c2478684207cc758553
+	drm/atmel-hlcdc: Replace the panel usage with drm_panel_bridge.
+drm-misc drm-misc-next-fixes 2d7b56378d32b0cf006f8944cbba4046df45dd25
+	drm/rockchip: gem: add the lacks lock and trivial changes
+drm-misc drm-misc-fixes b2cc3c8071bee6e3defa54b701671d310cb94f3c
+	drm: kirin: Fix drm_of_find_panel_or_bridge conversion
+drm-intel topic/dp-quirks b31e85eda38c58cae986162ae2c462b53b0a2065
+	drm/i915: Detect USB-C specific dongles before reducing M and N
+drm-intel topic/e1000e-fix 4e5684f930587bd22565f404eb3c5e417a994ccc
+	e1000e: Undo e1000e_pm_freeze if __e1000_shutdown fails

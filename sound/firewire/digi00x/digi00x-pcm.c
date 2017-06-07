@@ -88,8 +88,7 @@ static int pcm_init_hw_params(struct snd_dg00x *dg00x,
 		substream->runtime->hw.formats = SNDRV_PCM_FMTBIT_S32;
 		s = &dg00x->tx_stream;
 	} else {
-		substream->runtime->hw.formats = SNDRV_PCM_FMTBIT_S16 |
-						 SNDRV_PCM_FMTBIT_S32;
+		substream->runtime->hw.formats = SNDRV_PCM_FMTBIT_S32;
 		s = &dg00x->rx_stream;
 	}
 
@@ -184,8 +183,6 @@ static int pcm_capture_hw_params(struct snd_pcm_substream *substream,
 		mutex_unlock(&dg00x->mutex);
 	}
 
-	amdtp_dot_set_pcm_format(&dg00x->tx_stream, params_format(hw_params));
-
 	return 0;
 }
 
@@ -205,8 +202,6 @@ static int pcm_playback_hw_params(struct snd_pcm_substream *substream,
 		dg00x->substreams_counter++;
 		mutex_unlock(&dg00x->mutex);
 	}
-
-	amdtp_dot_set_pcm_format(&dg00x->rx_stream, params_format(hw_params));
 
 	return 0;
 }
@@ -329,6 +324,20 @@ static snd_pcm_uframes_t pcm_playback_pointer(struct snd_pcm_substream *sbstrm)
 	return amdtp_stream_pcm_pointer(&dg00x->rx_stream);
 }
 
+static int pcm_capture_ack(struct snd_pcm_substream *substream)
+{
+	struct snd_dg00x *dg00x = substream->private_data;
+
+	return amdtp_stream_pcm_ack(&dg00x->tx_stream);
+}
+
+static int pcm_playback_ack(struct snd_pcm_substream *substream)
+{
+	struct snd_dg00x *dg00x = substream->private_data;
+
+	return amdtp_stream_pcm_ack(&dg00x->rx_stream);
+}
+
 int snd_dg00x_create_pcm_devices(struct snd_dg00x *dg00x)
 {
 	static const struct snd_pcm_ops capture_ops = {
@@ -340,6 +349,7 @@ int snd_dg00x_create_pcm_devices(struct snd_dg00x *dg00x)
 		.prepare	= pcm_capture_prepare,
 		.trigger	= pcm_capture_trigger,
 		.pointer	= pcm_capture_pointer,
+		.ack		= pcm_capture_ack,
 		.page		= snd_pcm_lib_get_vmalloc_page,
 	};
 	static const struct snd_pcm_ops playback_ops = {
@@ -351,6 +361,7 @@ int snd_dg00x_create_pcm_devices(struct snd_dg00x *dg00x)
 		.prepare	= pcm_playback_prepare,
 		.trigger	= pcm_playback_trigger,
 		.pointer	= pcm_playback_pointer,
+		.ack		= pcm_playback_ack,
 		.page		= snd_pcm_lib_get_vmalloc_page,
 		.mmap		= snd_pcm_lib_mmap_vmalloc,
 	};

@@ -146,7 +146,6 @@ static int capture_hw_params(struct snd_pcm_substream *substream,
 			     struct snd_pcm_hw_params *hw_params)
 {
 	struct snd_dice *dice = substream->private_data;
-	struct amdtp_stream *stream = &dice->tx_stream[substream->pcm->device];
 	int err;
 
 	err = snd_pcm_lib_alloc_vmalloc_buffer(substream,
@@ -159,8 +158,6 @@ static int capture_hw_params(struct snd_pcm_substream *substream,
 		dice->substreams_counter++;
 		mutex_unlock(&dice->mutex);
 	}
-
-	amdtp_am824_set_pcm_format(stream, params_format(hw_params));
 
 	return 0;
 }
@@ -168,7 +165,6 @@ static int playback_hw_params(struct snd_pcm_substream *substream,
 			      struct snd_pcm_hw_params *hw_params)
 {
 	struct snd_dice *dice = substream->private_data;
-	struct amdtp_stream *stream = &dice->rx_stream[substream->pcm->device];
 	int err;
 
 	err = snd_pcm_lib_alloc_vmalloc_buffer(substream,
@@ -181,8 +177,6 @@ static int playback_hw_params(struct snd_pcm_substream *substream,
 		dice->substreams_counter++;
 		mutex_unlock(&dice->mutex);
 	}
-
-	amdtp_am824_set_pcm_format(stream, params_format(hw_params));
 
 	return 0;
 }
@@ -300,6 +294,22 @@ static snd_pcm_uframes_t playback_pointer(struct snd_pcm_substream *substream)
 	return amdtp_stream_pcm_pointer(stream);
 }
 
+static int capture_ack(struct snd_pcm_substream *substream)
+{
+	struct snd_dice *dice = substream->private_data;
+	struct amdtp_stream *stream = &dice->tx_stream[substream->pcm->device];
+
+	return amdtp_stream_pcm_ack(stream);
+}
+
+static int playback_ack(struct snd_pcm_substream *substream)
+{
+	struct snd_dice *dice = substream->private_data;
+	struct amdtp_stream *stream = &dice->rx_stream[substream->pcm->device];
+
+	return amdtp_stream_pcm_ack(stream);
+}
+
 int snd_dice_create_pcm(struct snd_dice *dice)
 {
 	static const struct snd_pcm_ops capture_ops = {
@@ -311,6 +321,7 @@ int snd_dice_create_pcm(struct snd_dice *dice)
 		.prepare   = capture_prepare,
 		.trigger   = capture_trigger,
 		.pointer   = capture_pointer,
+		.ack       = capture_ack,
 		.page      = snd_pcm_lib_get_vmalloc_page,
 		.mmap      = snd_pcm_lib_mmap_vmalloc,
 	};
@@ -323,6 +334,7 @@ int snd_dice_create_pcm(struct snd_dice *dice)
 		.prepare   = playback_prepare,
 		.trigger   = playback_trigger,
 		.pointer   = playback_pointer,
+		.ack       = playback_ack,
 		.page      = snd_pcm_lib_get_vmalloc_page,
 		.mmap      = snd_pcm_lib_mmap_vmalloc,
 	};

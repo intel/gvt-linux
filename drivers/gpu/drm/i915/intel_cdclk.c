@@ -1071,9 +1071,15 @@ static int bxt_calc_cdclk(int max_pixclk)
 
 static int glk_calc_cdclk(int max_pixclk)
 {
-	if (max_pixclk > 2 * 158400)
+	/*
+	 * FIXME: Avoid using a pixel clock that is more than 99% of the cdclk
+	 * as a temporary workaround. Use a higher cdclk instead. (Note that
+	 * intel_compute_max_dotclk() limits the max pixel clock to 99% of max
+	 * cdclk.)
+	 */
+	if (max_pixclk > DIV_ROUND_UP(2 * 158400 * 99, 100))
 		return 316800;
-	else if (max_pixclk > 2 * 79200)
+	else if (max_pixclk > DIV_ROUND_UP(2 * 79200 * 99, 100))
 		return 158400;
 	else
 		return 79200;
@@ -1664,7 +1670,11 @@ static int intel_compute_max_dotclk(struct drm_i915_private *dev_priv)
 	int max_cdclk_freq = dev_priv->max_cdclk_freq;
 
 	if (IS_GEMINILAKE(dev_priv))
-		return 2 * max_cdclk_freq;
+		/*
+		 * FIXME: Limiting to 99% as a temporary workaround. See
+		 * glk_calc_cdclk() for details.
+		 */
+		return 2 * max_cdclk_freq * 99 / 100;
 	else if (INTEL_INFO(dev_priv)->gen >= 9 ||
 		 IS_HASWELL(dev_priv) || IS_BROADWELL(dev_priv))
 		return max_cdclk_freq;
@@ -1770,6 +1780,30 @@ void intel_update_cdclk(struct drm_i915_private *dev_priv)
 			   DIV_ROUND_UP(dev_priv->cdclk.hw.cdclk, 1000));
 }
 
+static int cnp_rawclk(struct drm_i915_private *dev_priv)
+{
+	u32 rawclk;
+	int divider, fraction;
+
+	if (I915_READ(SFUSE_STRAP) & SFUSE_STRAP_RAW_FREQUENCY) {
+		/* 24 MHz */
+		divider = 24000;
+		fraction = 0;
+	} else {
+		/* 19.2 MHz */
+		divider = 19000;
+		fraction = 200;
+	}
+
+	rawclk = CNP_RAWCLK_DIV((divider / 1000) - 1);
+	if (fraction)
+		rawclk |= CNP_RAWCLK_FRAC(DIV_ROUND_CLOSEST(1000,
+							    fraction) - 1);
+
+	I915_WRITE(PCH_RAWCLK_FREQ, rawclk);
+	return divider + fraction;
+}
+
 static int pch_rawclk(struct drm_i915_private *dev_priv)
 {
 	return (I915_READ(PCH_RAWCLK_FREQ) & RAWCLK_FREQ_MASK) * 1000;
@@ -1817,7 +1851,10 @@ static int g4x_hrawclk(struct drm_i915_private *dev_priv)
  */
 void intel_update_rawclk(struct drm_i915_private *dev_priv)
 {
-	if (HAS_PCH_SPLIT(dev_priv))
+
+	if (HAS_PCH_CNP(dev_priv))
+		dev_priv->rawclk_freq = cnp_rawclk(dev_priv);
+	else if (HAS_PCH_SPLIT(dev_priv))
 		dev_priv->rawclk_freq = pch_rawclk(dev_priv);
 	else if (IS_VALLEYVIEW(dev_priv) || IS_CHERRYVIEW(dev_priv))
 		dev_priv->rawclk_freq = vlv_hrawclk(dev_priv);

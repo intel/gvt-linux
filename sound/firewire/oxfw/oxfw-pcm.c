@@ -244,8 +244,6 @@ static int pcm_capture_hw_params(struct snd_pcm_substream *substream,
 		mutex_unlock(&oxfw->mutex);
 	}
 
-	amdtp_am824_set_pcm_format(&oxfw->tx_stream, params_format(hw_params));
-
 	return 0;
 }
 static int pcm_playback_hw_params(struct snd_pcm_substream *substream,
@@ -264,8 +262,6 @@ static int pcm_playback_hw_params(struct snd_pcm_substream *substream,
 		oxfw->playback_substreams++;
 		mutex_unlock(&oxfw->mutex);
 	}
-
-	amdtp_am824_set_pcm_format(&oxfw->rx_stream, params_format(hw_params));
 
 	return 0;
 }
@@ -386,6 +382,20 @@ static snd_pcm_uframes_t pcm_playback_pointer(struct snd_pcm_substream *sbstm)
 	return amdtp_stream_pcm_pointer(&oxfw->rx_stream);
 }
 
+static int pcm_capture_ack(struct snd_pcm_substream *substream)
+{
+	struct snd_oxfw *oxfw = substream->private_data;
+
+	return amdtp_stream_pcm_ack(&oxfw->tx_stream);
+}
+
+static int pcm_playback_ack(struct snd_pcm_substream *substream)
+{
+	struct snd_oxfw *oxfw = substream->private_data;
+
+	return amdtp_stream_pcm_ack(&oxfw->rx_stream);
+}
+
 int snd_oxfw_create_pcm(struct snd_oxfw *oxfw)
 {
 	static const struct snd_pcm_ops capture_ops = {
@@ -397,6 +407,7 @@ int snd_oxfw_create_pcm(struct snd_oxfw *oxfw)
 		.prepare   = pcm_capture_prepare,
 		.trigger   = pcm_capture_trigger,
 		.pointer   = pcm_capture_pointer,
+		.ack       = pcm_capture_ack,
 		.page      = snd_pcm_lib_get_vmalloc_page,
 		.mmap      = snd_pcm_lib_mmap_vmalloc,
 	};
@@ -409,6 +420,7 @@ int snd_oxfw_create_pcm(struct snd_oxfw *oxfw)
 		.prepare   = pcm_playback_prepare,
 		.trigger   = pcm_playback_trigger,
 		.pointer   = pcm_playback_pointer,
+		.ack       = pcm_playback_ack,
 		.page      = snd_pcm_lib_get_vmalloc_page,
 		.mmap      = snd_pcm_lib_mmap_vmalloc,
 	};

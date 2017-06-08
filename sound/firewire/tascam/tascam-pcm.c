@@ -48,8 +48,7 @@ static int pcm_init_hw_params(struct snd_tscm *tscm,
 		stream = &tscm->tx_stream;
 		pcm_channels = tscm->spec->pcm_capture_analog_channels;
 	} else {
-		runtime->hw.formats =
-				SNDRV_PCM_FMTBIT_S16 | SNDRV_PCM_FMTBIT_S32;
+		runtime->hw.formats = SNDRV_PCM_FMTBIT_S32;
 		stream = &tscm->rx_stream;
 		pcm_channels = tscm->spec->pcm_playback_analog_channels;
 	}
@@ -125,8 +124,6 @@ static int pcm_capture_hw_params(struct snd_pcm_substream *substream,
 		mutex_unlock(&tscm->mutex);
 	}
 
-	amdtp_tscm_set_pcm_format(&tscm->tx_stream, params_format(hw_params));
-
 	return 0;
 }
 
@@ -146,8 +143,6 @@ static int pcm_playback_hw_params(struct snd_pcm_substream *substream,
 		tscm->substreams_counter++;
 		mutex_unlock(&tscm->mutex);
 	}
-
-	amdtp_tscm_set_pcm_format(&tscm->rx_stream, params_format(hw_params));
 
 	return 0;
 }
@@ -268,6 +263,20 @@ static snd_pcm_uframes_t pcm_playback_pointer(struct snd_pcm_substream *sbstrm)
 	return amdtp_stream_pcm_pointer(&tscm->rx_stream);
 }
 
+static int pcm_capture_ack(struct snd_pcm_substream *substream)
+{
+	struct snd_tscm *tscm = substream->private_data;
+
+	return amdtp_stream_pcm_ack(&tscm->tx_stream);
+}
+
+static int pcm_playback_ack(struct snd_pcm_substream *substream)
+{
+	struct snd_tscm *tscm = substream->private_data;
+
+	return amdtp_stream_pcm_ack(&tscm->rx_stream);
+}
+
 int snd_tscm_create_pcm_devices(struct snd_tscm *tscm)
 {
 	static const struct snd_pcm_ops capture_ops = {
@@ -279,6 +288,7 @@ int snd_tscm_create_pcm_devices(struct snd_tscm *tscm)
 		.prepare	= pcm_capture_prepare,
 		.trigger	= pcm_capture_trigger,
 		.pointer	= pcm_capture_pointer,
+		.ack		= pcm_capture_ack,
 		.page		= snd_pcm_lib_get_vmalloc_page,
 	};
 	static const struct snd_pcm_ops playback_ops = {
@@ -290,6 +300,7 @@ int snd_tscm_create_pcm_devices(struct snd_tscm *tscm)
 		.prepare	= pcm_playback_prepare,
 		.trigger	= pcm_playback_trigger,
 		.pointer	= pcm_playback_pointer,
+		.ack		= pcm_playback_ack,
 		.page		= snd_pcm_lib_get_vmalloc_page,
 		.mmap		= snd_pcm_lib_mmap_vmalloc,
 	};

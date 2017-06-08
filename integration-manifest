@@ -1,26 +1,12 @@
-drm-intel drm-intel-fixes 1065467ed8e2601bf2d7018cf47c557ccbea3769
-	drm/i915: Fix 90/270 rotated coordinates for FBC
-drm-upstream drm-fixes e5b4ab1ffbe2553ee278cb1b6bcb671a31d86518
-	Merge tag 'drm-misc-fixes-2017-06-02' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
-drm-intel drm-intel-next-fixes 88326ef05b262f681d837ecf65db10a7edb609f1
-	drm/i915: Confirm the request is still active before adding it to the await
-drm-intel drm-intel-next-queued c4a8952612f6c1c28bab200c45d773e08dfd24d5
-	drm/i915/guc: Clear enable_guc_loading in case of init failure
-drm-upstream drm-next c9f0726ff360cf75aaafd326e439e9234630aee9
-	Merge tag 'exynos-drm-next-for-v4.13' of git://git.kernel.org/pub/scm/linux/kernel/git/daeinki/drm-exynos into drm-next
-sound-upstream for-next c6706de0ce8bc8cd1e336b8cf0acabf1adedba6c
-	ALSA: pcm: obsolete RULES_DEBUG local macro
-sound-upstream for-linus ba3021b2c79b2fa9114f92790a99deb27a65b728
-	ALSA: timer: Fix missing queue indices reset at SNDRV_TIMER_IOCTL_SELECT
-drm-intel topic/core-for-CI 081d1f1a327affcd9449e92257fc75fa83449832
-	perf/core: Avoid removing shared pmu_context on unregister
-drm-misc drm-misc-next 2af168e171f75c783366164c7c810e8ee1440405
-	drm/pl111: Fix offset calculation for the primary plane.
-drm-misc drm-misc-next-fixes 2d7b56378d32b0cf006f8944cbba4046df45dd25
-	drm/rockchip: gem: add the lacks lock and trivial changes
-drm-misc drm-misc-fixes 8604889f83381cac42b849acc6c420af6df9b35b
-	drm/meson: Fix driver bind when only CVBS is available
-drm-intel topic/dp-quirks b31e85eda38c58cae986162ae2c462b53b0a2065
-	drm/i915: Detect USB-C specific dongles before reducing M and N
-drm-intel topic/e1000e-fix 4e5684f930587bd22565f404eb3c5e417a994ccc
-	e1000e: Undo e1000e_pm_freeze if __e1000_shutdown fails
+drm-tip/drm-tip 24db004734623b21acb25f58084e5b8eadc4f908
+	drm-tip: 2017y-06m-08d-09h-22m-33s UTC integration manifest
+vfio-upstream/for-linus 39da7c509acff13fc8cb12ec1bb20337c988ed36
+	Linux 4.11-rc6
+vfio-upstream/next 7cb671e7a34d73b29df77d0b53492277744e57e7
+	vfio/type1: Reduce repetitive calls in vfio_pin_pages_remote()
+origin/gvt-fixes e274086e473c0cbea18051ae0a78a05f8d658f47
+	drm/i915/gvt: clean up unsubmited workloads before destroying kmem cache
+origin/gvt-next 615c16a9d8649b9894592d11bc393e684b11e2ea
+	drm/i915/gvt: Refine virtual reset function
+origin/gvt-next-fixes 627c845c0907894a1e5cd2d90ff4fc86c9e4458e
+	drm/i915/gvt: change some gvt_err to gvt_dbg_cmd

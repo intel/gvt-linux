@@ -1,0 +1,26 @@
+drm-intel drm-intel-fixes ef6c4d75e35345f8f362d6754bcd9a28292a897c
+	drm/i915: fix warning for unused variable
+drm-upstream drm-fixes e5b4ab1ffbe2553ee278cb1b6bcb671a31d86518
+	Merge tag 'drm-misc-fixes-2017-06-02' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
+drm-intel drm-intel-next-fixes 88326ef05b262f681d837ecf65db10a7edb609f1
+	drm/i915: Confirm the request is still active before adding it to the await
+drm-intel drm-intel-next-queued 82525c17dedca6316b07c20c62627c83800caa31
+	drm/i915/cfl: Introduce Display workarounds for Coffee Lake.
+drm-upstream drm-next c9f0726ff360cf75aaafd326e439e9234630aee9
+	Merge tag 'exynos-drm-next-for-v4.13' of git://git.kernel.org/pub/scm/linux/kernel/git/daeinki/drm-exynos into drm-next
+sound-upstream for-next 55799c5ab99e8762e58c387e39f9fa36e8f14158
+	ALSA: firewire: arrange common PCM info/constraints for AMDTP engine applications
+sound-upstream for-linus ba3021b2c79b2fa9114f92790a99deb27a65b728
+	ALSA: timer: Fix missing queue indices reset at SNDRV_TIMER_IOCTL_SELECT
+drm-intel topic/core-for-CI 081d1f1a327affcd9449e92257fc75fa83449832
+	perf/core: Avoid removing shared pmu_context on unregister
+drm-misc drm-misc-next dc629141c3336ae4b03c5fef5fb7bf1058752aed
+	drm: Add const to name field declaration in struct drm_prop_enum_list
+drm-misc drm-misc-next-fixes 2d7b56378d32b0cf006f8944cbba4046df45dd25
+	drm/rockchip: gem: add the lacks lock and trivial changes
+drm-misc drm-misc-fixes 8604889f83381cac42b849acc6c420af6df9b35b
+	drm/meson: Fix driver bind when only CVBS is available
+drm-intel topic/dp-quirks b31e85eda38c58cae986162ae2c462b53b0a2065
+	drm/i915: Detect USB-C specific dongles before reducing M and N
+drm-intel topic/e1000e-fix 4e5684f930587bd22565f404eb3c5e417a994ccc
+	e1000e: Undo e1000e_pm_freeze if __e1000_shutdown fails

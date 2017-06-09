@@ -14,7 +14,9 @@ snd-seq-midi-event-objs := seq_midi_event.o
 snd-seq-dummy-objs := seq_dummy.o
 snd-seq-virmidi-objs := seq_virmidi.o
 
-obj-$(CONFIG_SND_SEQUENCER) += snd-seq.o snd-seq-device.o
+
+obj-$(CONFIG_SND_SEQUENCER) += snd-seq.o
+obj-$(CONFIG_SND_SEQ_DEVICE) += snd-seq-device.o
 obj-$(CONFIG_SND_SEQUENCER_OSS) += oss/
 
 obj-$(CONFIG_SND_SEQ_DUMMY) += snd-seq-dummy.o

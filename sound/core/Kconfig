@@ -20,6 +20,7 @@ config SND_HWDEP
 
 config SND_RAWMIDI
 	tristate
+	select SND_SEQ_DEVICE if SND_SEQUENCER
 
 config SND_COMPRESS_OFFLOAD
 	tristate

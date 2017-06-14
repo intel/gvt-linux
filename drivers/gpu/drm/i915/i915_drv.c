@@ -139,6 +139,9 @@ static enum intel_pch intel_virt_detect_pch(struct drm_i915_private *dev_priv)
 	} else if (IS_SKYLAKE(dev_priv) || IS_KABYLAKE(dev_priv)) {
 		ret = PCH_SPT;
 		DRM_DEBUG_KMS("Assuming SunrisePoint PCH\n");
+	} else if (IS_COFFEELAKE(dev_priv) || IS_CANNONLAKE(dev_priv)) {
+		ret = PCH_CNP;
+		DRM_DEBUG_KMS("Assuming CannonPoint PCH\n");
 	}
 
 	return ret;
@@ -170,6 +173,9 @@ static void intel_detect_pch(struct drm_i915_private *dev_priv)
 	while ((pch = pci_get_class(PCI_CLASS_BRIDGE_ISA << 8, pch))) {
 		if (pch->vendor == PCI_VENDOR_ID_INTEL) {
 			unsigned short id = pch->device & INTEL_PCH_DEVICE_ID_MASK;
+			unsigned short id_ext = pch->device &
+				INTEL_PCH_DEVICE_ID_MASK_EXT;
+
 			dev_priv->pch_id = id;
 
 			if (id == INTEL_PCH_IBX_DEVICE_ID_TYPE) {
@@ -206,7 +212,7 @@ static void intel_detect_pch(struct drm_i915_private *dev_priv)
 				DRM_DEBUG_KMS("Found SunrisePoint PCH\n");
 				WARN_ON(!IS_SKYLAKE(dev_priv) &&
 					!IS_KABYLAKE(dev_priv));
-			} else if (id == INTEL_PCH_SPT_LP_DEVICE_ID_TYPE) {
+			} else if (id_ext == INTEL_PCH_SPT_LP_DEVICE_ID_TYPE) {
 				dev_priv->pch_type = PCH_SPT;
 				DRM_DEBUG_KMS("Found SunrisePoint LP PCH\n");
 				WARN_ON(!IS_SKYLAKE(dev_priv) &&
@@ -216,6 +222,16 @@ static void intel_detect_pch(struct drm_i915_private *dev_priv)
 				DRM_DEBUG_KMS("Found KabyPoint PCH\n");
 				WARN_ON(!IS_SKYLAKE(dev_priv) &&
 					!IS_KABYLAKE(dev_priv));
+			} else if (id == INTEL_PCH_CNP_DEVICE_ID_TYPE) {
+				dev_priv->pch_type = PCH_CNP;
+				DRM_DEBUG_KMS("Found CannonPoint PCH\n");
+				WARN_ON(!IS_CANNONLAKE(dev_priv) &&
+					!IS_COFFEELAKE(dev_priv));
+			} else if (id_ext == INTEL_PCH_CNP_LP_DEVICE_ID_TYPE) {
+				dev_priv->pch_type = PCH_CNP;
+				DRM_DEBUG_KMS("Found CannonPoint LP PCH\n");
+				WARN_ON(!IS_CANNONLAKE(dev_priv) &&
+					!IS_COFFEELAKE(dev_priv));
 			} else if ((id == INTEL_PCH_P2X_DEVICE_ID_TYPE) ||
 				   (id == INTEL_PCH_P3X_DEVICE_ID_TYPE) ||
 				   ((id == INTEL_PCH_QEMU_DEVICE_ID_TYPE) &&
@@ -350,12 +366,23 @@ static int i915_getparam(struct drm_device *dev, void *data,
 	case I915_PARAM_HAS_EXEC_SOFTPIN:
 	case I915_PARAM_HAS_EXEC_ASYNC:
 	case I915_PARAM_HAS_EXEC_FENCE:
+	case I915_PARAM_HAS_EXEC_CAPTURE:
 		/* For the time being all of these are always true;
 		 * if some supported hardware does not have one of these
 		 * features this value needs to be provided from
 		 * INTEL_INFO(), a feature macro, or similar.
 		 */
 		value = 1;
+		break;
+	case I915_PARAM_SLICE_MASK:
+		value = INTEL_INFO(dev_priv)->sseu.slice_mask;
+		if (!value)
+			return -ENODEV;
+		break;
+	case I915_PARAM_SUBSLICE_MASK:
+		value = INTEL_INFO(dev_priv)->sseu.subslice_mask;
+		if (!value)
+			return -ENODEV;
 		break;
 	default:
 		DRM_DEBUG("Unknown parameter %d\n", param->param);
@@ -834,10 +861,6 @@ static int i915_driver_init_early(struct drm_i915_private *dev_priv,
 	intel_uc_init_early(dev_priv);
 	i915_memcpy_init_early(dev_priv);
 
-	ret = intel_engines_init_early(dev_priv);
-	if (ret)
-		return ret;
-
 	ret = i915_workqueues_init(dev_priv);
 	if (ret < 0)
 		goto err_engines;
@@ -855,7 +878,7 @@ static int i915_driver_init_early(struct drm_i915_private *dev_priv,
 	intel_init_audio_hooks(dev_priv);
 	ret = i915_gem_load_init(dev_priv);
 	if (ret < 0)
-		goto err_workqueues;
+		goto err_irq;
 
 	intel_display_crc_init(dev_priv);
 
@@ -867,7 +890,8 @@ static int i915_driver_init_early(struct drm_i915_private *dev_priv,
 
 	return 0;
 
-err_workqueues:
+err_irq:
+	intel_irq_fini(dev_priv);
 	i915_workqueues_cleanup(dev_priv);
 err_engines:
 	i915_engines_cleanup(dev_priv);
@@ -882,6 +906,7 @@ static void i915_driver_cleanup_early(struct drm_i915_private *dev_priv)
 {
 	i915_perf_fini(dev_priv);
 	i915_gem_load_cleanup(dev_priv);
+	intel_irq_fini(dev_priv);
 	i915_workqueues_cleanup(dev_priv);
 	i915_engines_cleanup(dev_priv);
 }
@@ -947,14 +972,21 @@ static int i915_driver_init_mmio(struct drm_i915_private *dev_priv)
 
 	ret = i915_mmio_setup(dev_priv);
 	if (ret < 0)
-		goto put_bridge;
+		goto err_bridge;
 
 	intel_uncore_init(dev_priv);
+
+	ret = intel_engines_init_mmio(dev_priv);
+	if (ret)
+		goto err_uncore;
+
 	i915_gem_init_mmio(dev_priv);
 
 	return 0;
 
-put_bridge:
+err_uncore:
+	intel_uncore_fini(dev_priv);
+err_bridge:
 	pci_dev_put(dev_priv->bridge_dev);
 
 	return ret;
@@ -991,6 +1023,8 @@ static void intel_sanitize_options(struct drm_i915_private *dev_priv)
 	DRM_DEBUG_DRIVER("use GPU semaphores? %s\n", yesno(i915.semaphores));
 
 	intel_uc_sanitize_options(dev_priv);
+
+	intel_gvt_sanitize_options(dev_priv);
 }
 
 /**
@@ -1213,9 +1247,8 @@ int i915_driver_load(struct pci_dev *pdev, const struct pci_device_id *ent)
 	struct drm_i915_private *dev_priv;
 	int ret;
 
-	/* Enable nuclear pageflip on ILK+, except vlv/chv */
-	if (!i915.nuclear_pageflip &&
-	    (match_info->gen < 5 || match_info->has_gmch_display))
+	/* Enable nuclear pageflip on ILK+ */
+	if (!i915.nuclear_pageflip && match_info->gen < 5)
 		driver.driver_features &= ~DRIVER_ATOMIC;
 
 	ret = -ENOMEM;
@@ -2453,9 +2486,6 @@ static int intel_runtime_resume(struct device *kdev)
 		DRM_DEBUG_DRIVER("Unclaimed access during suspend, bios?\n");
 
 	intel_guc_resume(dev_priv);
-
-	if (IS_GEN6(dev_priv))
-		intel_init_pch_refclk(dev_priv);
 
 	if (IS_GEN9_LP(dev_priv)) {
 		bxt_disable_dc9(dev_priv);

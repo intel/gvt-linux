@@ -11439,6 +11439,7 @@ static bool check_digital_port_conflicts(struct drm_atomic_state *state)
 {
 	struct drm_device *dev = state->dev;
 	struct drm_connector *connector;
+	struct drm_connector_list_iter conn_iter;
 	unsigned int used_ports = 0;
 	unsigned int used_mst_ports = 0;
 
@@ -11447,7 +11448,8 @@ static bool check_digital_port_conflicts(struct drm_atomic_state *state)
 	 * list to detect the problem on ddi platforms
 	 * where there's just one encoder per digital port.
 	 */
-	drm_for_each_connector(connector, dev) {
+	drm_connector_list_iter_begin(dev, &conn_iter);
+	drm_for_each_connector_iter(connector, &conn_iter) {
 		struct drm_connector_state *connector_state;
 		struct intel_encoder *encoder;
 
@@ -11486,6 +11488,7 @@ static bool check_digital_port_conflicts(struct drm_atomic_state *state)
 			break;
 		}
 	}
+	drm_connector_list_iter_end(&conn_iter);
 
 	/* can't mix MST and SST/HDMI on the same port */
 	if (used_ports & used_mst_ports)

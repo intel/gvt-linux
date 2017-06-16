@@ -628,6 +628,16 @@ i915_gem_execbuffer_relocate_entry(struct drm_i915_gem_object *obj,
 		return -EINVAL;
 	}
 
+	/*
+	 * If we write into the object, we need to force the synchronisation
+	 * barrier, either with an asynchronous clflush or if we executed the
+	 * patching using the GPU (though that should be serialised by the
+	 * timeline). To be completely sure, and since we are required to
+	 * do relocations we are already stalling, disable the user's opt
+	 * of our synchronisation.
+	 */
+	target_vma->exec_entry->flags &= ~EXEC_OBJECT_ASYNC;
+
 	ret = relocate_entry(obj, reloc, cache, target_offset);
 	if (ret)
 		return ret;

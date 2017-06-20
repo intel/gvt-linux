@@ -1,0 +1,26 @@
+drm-intel drm-intel-fixes a8ae0a773d38b4b1d4566b0edcb6bb63f4a9d22f
+	drm/i915: Don't enable backlight at setup time.
+drm-upstream drm-fixes 7119dbdf7c52042acb1b02f116fa3257e97659ea
+	Merge tag 'drm-intel-fixes-2017-06-15' of git://anongit.freedesktop.org/git/drm-intel into drm-fixes
+drm-intel drm-intel-next-fixes 88326ef05b262f681d837ecf65db10a7edb609f1
+	drm/i915: Confirm the request is still active before adding it to the await
+drm-intel drm-intel-next-queued 1f588aeb60b4412019546ce596f179635abc2ac3
+	drm/i915/cnl: Fix RMW on ddi vswing sequence.
+drm-upstream drm-next 8c52f36413063bedbb3d31a65048a61ea2f1e169
+	Merge branch 'drm-next-4.13' of git://people.freedesktop.org/~agd5f/linux into drm-next
+sound-upstream for-next aa30db060121f688d01f74f8d3fe603f7c4c731c
+	ALSA: pcm: Fix possible inconsistent appl_ptr update via mmap
+sound-upstream for-linus c7ecb9068e6772c43941ce609f08bc53f36e1dce
+	ALSA: hda - Apply quirks to Broxton-T, too
+drm-intel topic/core-for-CI 15c4ed42333629cd6bc34da168a72453bf364512
+	NOTFORUPSTREAM sound/hda: add debug information in call_hp_automute
+drm-misc drm-misc-next ca814b25538a5b2c0a8de6665191725f41608f2c
+	drm/vblank: Consistent drm_crtc_ prefix
+drm-misc drm-misc-next-fixes d4e0045c4ed300781d2d4cbab57d05ed5e665a37
+	Merge remote-tracking branch 'origin/master' into drm-misc-next-fixes
+drm-misc drm-misc-fixes 0f933328f018c118ded2035f12068bbdfdef399d
+	drm: mxsfb_crtc: Reset the eLCDIF controller
+drm-intel topic/dp-quirks b31e85eda38c58cae986162ae2c462b53b0a2065
+	drm/i915: Detect USB-C specific dongles before reducing M and N
+drm-intel topic/e1000e-fix 4e5684f930587bd22565f404eb3c5e417a994ccc
+	e1000e: Undo e1000e_pm_freeze if __e1000_shutdown fails

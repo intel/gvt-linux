@@ -4471,7 +4471,15 @@ EXPORT_SYMBOL_GPL(snd_hda_gen_mic_autoswitch);
 static void call_hp_automute(struct hda_codec *codec,
 			     struct hda_jack_callback *jack)
 {
-	struct hda_gen_spec *spec = codec->spec;
+	struct hda_gen_spec *spec;
+
+	if (WARN(!codec, "call_hp_automute called with codec == NULL"))
+		return;
+
+	spec = codec->spec;
+	if (WARN(!spec, "call_hp_automute called with codec->spec == NULL"))
+		return;
+
 	if (spec->hp_automute_hook)
 		spec->hp_automute_hook(codec, jack);
 	else

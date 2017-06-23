@@ -30,6 +30,7 @@
 #include "mock_gem_device.h"
 #include "mock_gem_object.h"
 #include "mock_gtt.h"
+#include "mock_uncore.h"
 
 void mock_device_flush(struct drm_i915_private *i915)
 {
@@ -56,11 +57,12 @@ static void mock_device_release(struct drm_device *dev)
 
 	cancel_delayed_work_sync(&i915->gt.retire_work);
 	cancel_delayed_work_sync(&i915->gt.idle_work);
+	flush_workqueue(i915->wq);
 
 	mutex_lock(&i915->drm.struct_mutex);
 	for_each_engine(engine, i915, id)
 		mock_engine_free(engine);
-	i915_gem_context_fini(i915);
+	i915_gem_contexts_fini(i915);
 	mutex_unlock(&i915->drm.struct_mutex);
 
 	drain_workqueue(i915->wq);
@@ -73,6 +75,7 @@ static void mock_device_release(struct drm_device *dev)
 
 	destroy_workqueue(i915->wq);
 
+	kmem_cache_destroy(i915->priorities);
 	kmem_cache_destroy(i915->dependencies);
 	kmem_cache_destroy(i915->requests);
 	kmem_cache_destroy(i915->vmas);
@@ -119,6 +122,7 @@ struct drm_i915_private *mock_gem_device(void)
 		goto err;
 
 	device_initialize(&pdev->dev);
+	pdev->class = PCI_BASE_CLASS_DISPLAY << 16;
 	pdev->dev.release = release_dev;
 	dev_set_name(&pdev->dev, "mock");
 	dma_coerce_mask_and_coherent(&pdev->dev, DMA_BIT_MASK(32));
@@ -143,6 +147,7 @@ struct drm_i915_private *mock_gem_device(void)
 	mkwrite_device_info(i915)->gen = -1;
 
 	spin_lock_init(&i915->mm.object_stat_lock);
+	mock_uncore_init(i915);
 
 	init_waitqueue_head(&i915->gpu_error.wait_queue);
 	init_waitqueue_head(&i915->gpu_error.reset_queue);
@@ -156,7 +161,7 @@ struct drm_i915_private *mock_gem_device(void)
 	INIT_LIST_HEAD(&i915->mm.unbound_list);
 	INIT_LIST_HEAD(&i915->mm.bound_list);
 
-	ida_init(&i915->context_hw_ida);
+	mock_init_contexts(i915);
 
 	INIT_DELAYED_WORK(&i915->gt.retire_work, mock_retire_work_handler);
 	INIT_DELAYED_WORK(&i915->gt.idle_work, mock_idle_work_handler);
@@ -184,12 +189,16 @@ struct drm_i915_private *mock_gem_device(void)
 	if (!i915->dependencies)
 		goto err_requests;
 
+	i915->priorities = KMEM_CACHE(i915_priolist, SLAB_HWCACHE_ALIGN);
+	if (!i915->priorities)
+		goto err_dependencies;
+
 	mutex_lock(&i915->drm.struct_mutex);
 	INIT_LIST_HEAD(&i915->gt.timelines);
 	err = i915_gem_timeline_init__global(i915);
 	if (err) {
 		mutex_unlock(&i915->drm.struct_mutex);
-		goto err_dependencies;
+		goto err_priorities;
 	}
 
 	mock_init_ggtt(i915);
@@ -209,6 +218,8 @@ struct drm_i915_private *mock_gem_device(void)
 err_engine:
 	for_each_engine(engine, i915, id)
 		mock_engine_free(engine);
+err_priorities:
+	kmem_cache_destroy(i915->priorities);
 err_dependencies:
 	kmem_cache_destroy(i915->dependencies);
 err_requests:

@@ -1,26 +1,12 @@
-drm-intel drm-intel-fixes a8ae0a773d38b4b1d4566b0edcb6bb63f4a9d22f
-	drm/i915: Don't enable backlight at setup time.
-drm-upstream drm-fixes 33ce7563a4858430fdf38bb867513d3fbc3dda65
-	Merge tag 'drm-misc-fixes-2017-06-22' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
-drm-intel drm-intel-next-fixes 88326ef05b262f681d837ecf65db10a7edb609f1
-	drm/i915: Confirm the request is still active before adding it to the await
-drm-intel drm-intel-next-queued c5e855d07834d67f30fab07e7d7316b090b8073f
-	drm/i915: Always use 9 bits of the LPC bridge device ID for PCH detection
-drm-upstream drm-next 047b8e21e3bfa9faa4ed9a0c337fe0c687710251
-	Merge tag 'drm-misc-next-2017-06-19_0' of git://anongit.freedesktop.org/git/drm-misc into drm-next
-sound-upstream for-next c2d6af53a43fd8bb528eac8f31ffb666e9c74cf7
-	ALSA: hda/realtek - Add default procedure for suspend and resume state
-sound-upstream for-linus c7ecb9068e6772c43941ce609f08bc53f36e1dce
-	ALSA: hda - Apply quirks to Broxton-T, too
-drm-intel topic/core-for-CI 15c4ed42333629cd6bc34da168a72453bf364512
-	NOTFORUPSTREAM sound/hda: add debug information in call_hp_automute
-drm-misc drm-misc-next 8f6ece97da008f05fb01ab6964f58dedf860877e
-	drm/mxsfb: Drop drm_vblank_cleanup
-drm-misc drm-misc-next-fixes e6f0acb2f0da89625aefc84b448f457b9161436b
-	bridge: Fix panel-bridge error return on !panel.
-drm-misc drm-misc-fixes e94ac3510b6a0f696f2c442c4fc4051c8101ef12
-	drm: Fix GETCONNECTOR regression
-drm-intel topic/dp-quirks b31e85eda38c58cae986162ae2c462b53b0a2065
-	drm/i915: Detect USB-C specific dongles before reducing M and N
-drm-intel topic/e1000e-fix 4e5684f930587bd22565f404eb3c5e417a994ccc
-	e1000e: Undo e1000e_pm_freeze if __e1000_shutdown fails
+drm-tip/drm-tip 002f95dc374297a5bc2607cdb0a356d84c599c73
+	drm-tip: 2017y-06m-23d-09h-09m-45s UTC integration manifest
+vfio-upstream/for-linus 39da7c509acff13fc8cb12ec1bb20337c988ed36
+	Linux 4.11-rc6
+vfio-upstream/next 7b3a10df1d4bd8a83934897442370221b4cd631b
+	vfio: Use ERR_CAST() instead of open coding it
+origin/gvt-fixes e274086e473c0cbea18051ae0a78a05f8d658f47
+	drm/i915/gvt: clean up unsubmited workloads before destroying kmem cache
+origin/gvt-next 74358c28d3efb925ce5886816d3028ef6107a356
+	drm/i915/gvt: Optimize ring siwtch 2x faster again by light weight mmio access wrapper
+origin/gvt-next-fixes 627c845c0907894a1e5cd2d90ff4fc86c9e4458e
+	drm/i915/gvt: change some gvt_err to gvt_dbg_cmd

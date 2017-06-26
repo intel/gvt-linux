@@ -1,26 +1,12 @@
-drm-intel drm-intel-fixes 5d6ee3e5c93edaacda0f87c3c1ce522e2ea776e3
-	drm/i915: Disable EXEC_OBJECT_ASYNC when doing relocations
-drm-upstream drm-fixes 33ce7563a4858430fdf38bb867513d3fbc3dda65
-	Merge tag 'drm-misc-fixes-2017-06-22' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
-drm-intel drm-intel-next-fixes 047b8e21e3bfa9faa4ed9a0c337fe0c687710251
-	Merge tag 'drm-misc-next-2017-06-19_0' of git://anongit.freedesktop.org/git/drm-misc into drm-next
-drm-intel drm-intel-next-queued 36703e79a982c8ce5a8e43833291f2719e92d0d1
-	drm/i915: Break modeset deadlocks on reset
-drm-upstream drm-next 047b8e21e3bfa9faa4ed9a0c337fe0c687710251
-	Merge tag 'drm-misc-next-2017-06-19_0' of git://anongit.freedesktop.org/git/drm-misc into drm-next
-sound-upstream for-next 42f945970af9df6216e3d771b4df371d02d8742c
-	ALSA: pcm: Add the explicit appl_ptr sync support
-sound-upstream for-linus c7ecb9068e6772c43941ce609f08bc53f36e1dce
-	ALSA: hda - Apply quirks to Broxton-T, too
-drm-intel topic/core-for-CI 15c4ed42333629cd6bc34da168a72453bf364512
-	NOTFORUPSTREAM sound/hda: add debug information in call_hp_automute
-drm-misc drm-misc-next 71bb23c707c141b176bc084179ca5ee58d5fd26a
-	drm/vgem: Pin our pages for dmabuf exports
-drm-misc drm-misc-next-fixes e6f0acb2f0da89625aefc84b448f457b9161436b
-	bridge: Fix panel-bridge error return on !panel.
-drm-misc drm-misc-fixes e94ac3510b6a0f696f2c442c4fc4051c8101ef12
-	drm: Fix GETCONNECTOR regression
-drm-intel topic/dp-quirks b31e85eda38c58cae986162ae2c462b53b0a2065
-	drm/i915: Detect USB-C specific dongles before reducing M and N
-drm-intel topic/e1000e-fix 4e5684f930587bd22565f404eb3c5e417a994ccc
-	e1000e: Undo e1000e_pm_freeze if __e1000_shutdown fails
+drm-tip/drm-tip 3cb860ebfcde9efac07fbfa7d75b4c3d24efcfa0
+	drm-tip: 2017y-06m-26d-08h-29m-27s UTC integration manifest
+vfio-upstream/for-linus 39da7c509acff13fc8cb12ec1bb20337c988ed36
+	Linux 4.11-rc6
+vfio-upstream/next 7b3a10df1d4bd8a83934897442370221b4cd631b
+	vfio: Use ERR_CAST() instead of open coding it
+origin/gvt-fixes f16bd3dda2c8bf6699e808cd9cc540cfab10e60e
+	drm/i915/gvt: Fix inconsistent locks holding sequence
+origin/gvt-next 74358c28d3efb925ce5886816d3028ef6107a356
+	drm/i915/gvt: Optimize ring siwtch 2x faster again by light weight mmio access wrapper
+origin/gvt-next-fixes 627c845c0907894a1e5cd2d90ff4fc86c9e4458e
+	drm/i915/gvt: change some gvt_err to gvt_dbg_cmd

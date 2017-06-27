@@ -753,6 +753,7 @@ struct intel_csr {
 	func(has_csr); \
 	func(has_ddi); \
 	func(has_dp_mst); \
+	func(has_reset_engine); \
 	func(has_fbc); \
 	func(has_fpga_dbg); \
 	func(has_full_ppgtt); \
@@ -917,6 +918,7 @@ struct i915_gpu_state {
 		enum intel_engine_hangcheck_action hangcheck_action;
 		struct i915_address_space *vm;
 		int num_requests;
+		u32 reset_count;
 
 		/* position of active request inside the ring */
 		u32 rq_head, rq_post, rq_tail;
@@ -1149,8 +1151,8 @@ struct i915_psr {
 enum intel_pch {
 	PCH_NONE = 0,	/* No PCH present */
 	PCH_IBX,	/* Ibexpeak PCH */
-	PCH_CPT,	/* Cougarpoint PCH */
-	PCH_LPT,	/* Lynxpoint PCH */
+	PCH_CPT,	/* Cougarpoint/Pantherpoint PCH */
+	PCH_LPT,	/* Lynxpoint/Wildcatpoint PCH */
 	PCH_SPT,        /* Sunrisepoint PCH */
 	PCH_KBP,        /* Kabypoint PCH */
 	PCH_CNP,        /* Cannonpoint PCH */
@@ -1550,6 +1552,12 @@ struct i915_gpu_error {
 	 * inspect the bit and do the reset directly, otherwise the worker
 	 * waits for the struct_mutex.
 	 *
+	 * #I915_RESET_ENGINE[num_engines] - Since the driver doesn't need to
+	 * acquire the struct_mutex to reset an engine, we need an explicit
+	 * flag to prevent two concurrent reset attempts in the same engine.
+	 * As the number of engines continues to grow, allocate the flags from
+	 * the most significant bits.
+	 *
 	 * #I915_WEDGED - If reset fails and we can no longer use the GPU,
 	 * we set the #I915_WEDGED bit. Prior to command submission, e.g.
 	 * i915_gem_request_alloc(), this bit is checked and the sequence
@@ -1559,6 +1567,10 @@ struct i915_gpu_error {
 #define I915_RESET_BACKOFF	0
 #define I915_RESET_HANDOFF	1
 #define I915_WEDGED		(BITS_PER_LONG - 1)
+#define I915_RESET_ENGINE	(I915_WEDGED - I915_NUM_ENGINES)
+
+	/** Number of times an engine has been reset */
+	u32 reset_engine_count[I915_NUM_ENGINES];
 
 	/**
 	 * Waitqueue to signal when a hang is detected. Used to for waiters
@@ -2236,13 +2248,6 @@ struct drm_i915_private {
 	DECLARE_HASHTABLE(mm_structs, 7);
 	struct mutex mm_lock;
 
-	/* The hw wants to have a stable context identifier for the lifetime
-	 * of the context (for OA, PASID, faults, etc). This is limited
-	 * in execlists to 21 bits.
-	 */
-	struct ida context_hw_ida;
-#define MAX_CONTEXT_HW_ID (1<<21) /* exclusive */
-
 	/* Kernel Modesetting */
 
 	struct intel_crtc *plane_to_crtc_mapping[I915_MAX_PIPES];
@@ -2321,7 +2326,18 @@ struct drm_i915_private {
 	 */
 	struct mutex av_mutex;
 
-	struct list_head context_list;
+	struct {
+		struct list_head list;
+		struct llist_head free_list;
+		struct work_struct free_work;
+
+		/* The hw wants to have a stable context identifier for the
+		 * lifetime of the context (for OA, PASID, faults, etc).
+		 * This is limited in execlists to 21 bits.
+		 */
+		struct ida hw_ida;
+#define MAX_CONTEXT_HW_ID (1<<21) /* exclusive */
+	} contexts;
 
 	u32 fdi_rx_config;
 
@@ -2996,16 +3012,17 @@ intel_info(const struct drm_i915_private *dev_priv)
 
 #define HAS_POOLED_EU(dev_priv)	((dev_priv)->info.has_pooled_eu)
 
-#define INTEL_PCH_DEVICE_ID_MASK		0xff00
-#define INTEL_PCH_DEVICE_ID_MASK_EXT		0xff80
+#define INTEL_PCH_DEVICE_ID_MASK		0xff80
 #define INTEL_PCH_IBX_DEVICE_ID_TYPE		0x3b00
 #define INTEL_PCH_CPT_DEVICE_ID_TYPE		0x1c00
 #define INTEL_PCH_PPT_DEVICE_ID_TYPE		0x1e00
 #define INTEL_PCH_LPT_DEVICE_ID_TYPE		0x8c00
 #define INTEL_PCH_LPT_LP_DEVICE_ID_TYPE		0x9c00
+#define INTEL_PCH_WPT_DEVICE_ID_TYPE		0x8c80
+#define INTEL_PCH_WPT_LP_DEVICE_ID_TYPE		0x9c80
 #define INTEL_PCH_SPT_DEVICE_ID_TYPE		0xA100
 #define INTEL_PCH_SPT_LP_DEVICE_ID_TYPE		0x9D00
-#define INTEL_PCH_KBP_DEVICE_ID_TYPE		0xA200
+#define INTEL_PCH_KBP_DEVICE_ID_TYPE		0xA280
 #define INTEL_PCH_CNP_DEVICE_ID_TYPE		0xA300
 #define INTEL_PCH_CNP_LP_DEVICE_ID_TYPE		0x9D80
 #define INTEL_PCH_P2X_DEVICE_ID_TYPE		0x7100
@@ -3020,9 +3037,11 @@ intel_info(const struct drm_i915_private *dev_priv)
 #define HAS_PCH_SPT(dev_priv) (INTEL_PCH_TYPE(dev_priv) == PCH_SPT)
 #define HAS_PCH_LPT(dev_priv) (INTEL_PCH_TYPE(dev_priv) == PCH_LPT)
 #define HAS_PCH_LPT_LP(dev_priv) \
-	((dev_priv)->pch_id == INTEL_PCH_LPT_LP_DEVICE_ID_TYPE)
+	((dev_priv)->pch_id == INTEL_PCH_LPT_LP_DEVICE_ID_TYPE || \
+	 (dev_priv)->pch_id == INTEL_PCH_WPT_LP_DEVICE_ID_TYPE)
 #define HAS_PCH_LPT_H(dev_priv) \
-	((dev_priv)->pch_id == INTEL_PCH_LPT_DEVICE_ID_TYPE)
+	((dev_priv)->pch_id == INTEL_PCH_LPT_DEVICE_ID_TYPE || \
+	 (dev_priv)->pch_id == INTEL_PCH_WPT_DEVICE_ID_TYPE)
 #define HAS_PCH_CPT(dev_priv) (INTEL_PCH_TYPE(dev_priv) == PCH_CPT)
 #define HAS_PCH_IBX(dev_priv) (INTEL_PCH_TYPE(dev_priv) == PCH_IBX)
 #define HAS_PCH_NOP(dev_priv) (INTEL_PCH_TYPE(dev_priv) == PCH_NOP)
@@ -3089,6 +3108,8 @@ extern void i915_driver_unload(struct drm_device *dev);
 extern int intel_gpu_reset(struct drm_i915_private *dev_priv, u32 engine_mask);
 extern bool intel_has_gpu_reset(struct drm_i915_private *dev_priv);
 extern void i915_reset(struct drm_i915_private *dev_priv);
+extern int i915_reset_engine(struct intel_engine_cs *engine);
+extern bool intel_has_reset_engine(struct drm_i915_private *dev_priv);
 extern int intel_guc_reset(struct drm_i915_private *dev_priv);
 extern void intel_engine_init_hangcheck(struct intel_engine_cs *engine);
 extern void intel_hangcheck_init(struct drm_i915_private *dev_priv);
@@ -3461,11 +3482,22 @@ static inline u32 i915_reset_count(struct i915_gpu_error *error)
 	return READ_ONCE(error->reset_count);
 }
 
+static inline u32 i915_reset_engine_count(struct i915_gpu_error *error,
+					  struct intel_engine_cs *engine)
+{
+	return READ_ONCE(error->reset_engine_count[engine->id]);
+}
+
+struct drm_i915_gem_request *
+i915_gem_reset_prepare_engine(struct intel_engine_cs *engine);
 int i915_gem_reset_prepare(struct drm_i915_private *dev_priv);
 void i915_gem_reset(struct drm_i915_private *dev_priv);
+void i915_gem_reset_finish_engine(struct intel_engine_cs *engine);
 void i915_gem_reset_finish(struct drm_i915_private *dev_priv);
 void i915_gem_set_wedged(struct drm_i915_private *dev_priv);
 bool i915_gem_unset_wedged(struct drm_i915_private *dev_priv);
+void i915_gem_reset_engine(struct intel_engine_cs *engine,
+			   struct drm_i915_gem_request *request);
 
 void i915_gem_init_mmio(struct drm_i915_private *i915);
 int __must_check i915_gem_init(struct drm_i915_private *dev_priv);
@@ -3499,7 +3531,7 @@ i915_gem_object_pin_to_display_plane(struct drm_i915_gem_object *obj,
 void i915_gem_object_unpin_from_display_plane(struct i915_vma *vma);
 int i915_gem_object_attach_phys(struct drm_i915_gem_object *obj,
 				int align);
-int i915_gem_open(struct drm_device *dev, struct drm_file *file);
+int i915_gem_open(struct drm_i915_private *i915, struct drm_file *file);
 void i915_gem_release(struct drm_device *dev, struct drm_file *file);
 
 int i915_gem_object_set_cache_level(struct drm_i915_gem_object *obj,
@@ -3531,38 +3563,23 @@ void i915_gem_object_save_bit_17_swizzle(struct drm_i915_gem_object *obj,
 					 struct sg_table *pages);
 
 static inline struct i915_gem_context *
+__i915_gem_context_lookup_rcu(struct drm_i915_file_private *file_priv, u32 id)
+{
+	return idr_find(&file_priv->context_idr, id);
+}
+
+static inline struct i915_gem_context *
 i915_gem_context_lookup(struct drm_i915_file_private *file_priv, u32 id)
 {
 	struct i915_gem_context *ctx;
 
-	lockdep_assert_held(&file_priv->dev_priv->drm.struct_mutex);
-
-	ctx = idr_find(&file_priv->context_idr, id);
-	if (!ctx)
-		return ERR_PTR(-ENOENT);
+	rcu_read_lock();
+	ctx = __i915_gem_context_lookup_rcu(file_priv, id);
+	if (ctx && !kref_get_unless_zero(&ctx->ref))
+		ctx = NULL;
+	rcu_read_unlock();
 
 	return ctx;
-}
-
-static inline struct i915_gem_context *
-i915_gem_context_get(struct i915_gem_context *ctx)
-{
-	kref_get(&ctx->ref);
-	return ctx;
-}
-
-static inline void i915_gem_context_put(struct i915_gem_context *ctx)
-{
-	lockdep_assert_held(&ctx->i915->drm.struct_mutex);
-	kref_put(&ctx->ref, i915_gem_context_free);
-}
-
-static inline void i915_gem_context_put_unlocked(struct i915_gem_context *ctx)
-{
-	struct mutex *lock = &ctx->i915->drm.struct_mutex;
-
-	if (kref_put_mutex(&ctx->ref, i915_gem_context_free, lock))
-		mutex_unlock(lock);
 }
 
 static inline struct intel_timeline *

@@ -3956,6 +3956,7 @@ int skl_check_pipe_max_pixel_rate(struct intel_crtc *intel_crtc,
 		DRM_DEBUG_KMS("Max supported pixel clock with scaling exceeded\n");
 		return -EINVAL;
 	}
+
 	return 0;
 }
 

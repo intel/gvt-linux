@@ -1,0 +1,26 @@
+drm-intel drm-intel-fixes 611cdf3695a307fdca3ff3779a1e6cca935e2d31
+	drm/i915: Disable EXEC_OBJECT_ASYNC when doing relocations
+drm-upstream drm-fixes 33ce7563a4858430fdf38bb867513d3fbc3dda65
+	Merge tag 'drm-misc-fixes-2017-06-22' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
+drm-intel drm-intel-next-fixes bdbbf7d619d1fd2f1fa9eb529b7817e4faf73f5e
+	drm/i915: Clear execbuf's vma backpointer upon release
+drm-intel drm-intel-next-queued 36703e79a982c8ce5a8e43833291f2719e92d0d1
+	drm/i915: Break modeset deadlocks on reset
+drm-upstream drm-next 6d61e70ccc21606ffb8a0a03bd3aba24f659502b
+	Backmerge tag 'v4.12-rc7' into drm-next
+sound-upstream for-next 42f945970af9df6216e3d771b4df371d02d8742c
+	ALSA: pcm: Add the explicit appl_ptr sync support
+sound-upstream for-linus c7ecb9068e6772c43941ce609f08bc53f36e1dce
+	ALSA: hda - Apply quirks to Broxton-T, too
+drm-intel topic/core-for-CI 15c4ed42333629cd6bc34da168a72453bf364512
+	NOTFORUPSTREAM sound/hda: add debug information in call_hp_automute
+drm-misc drm-misc-next 5f58e9742df3f1cdf1034a26569649f5f4fd776b
+	drm/vmwgfx: Drop drm_vblank_cleanup
+drm-misc drm-misc-next-fixes 38cb266ad1a24e037220dc563ab46364595b17b6
+	DRM: Fix an incorrectly formatted table
+drm-misc drm-misc-fixes e94ac3510b6a0f696f2c442c4fc4051c8101ef12
+	drm: Fix GETCONNECTOR regression
+drm-intel topic/dp-quirks b31e85eda38c58cae986162ae2c462b53b0a2065
+	drm/i915: Detect USB-C specific dongles before reducing M and N
+drm-intel topic/e1000e-fix 4e5684f930587bd22565f404eb3c5e417a994ccc
+	e1000e: Undo e1000e_pm_freeze if __e1000_shutdown fails

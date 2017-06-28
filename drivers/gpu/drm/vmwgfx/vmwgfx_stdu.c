@@ -412,7 +412,7 @@ static void vmw_stdu_crtc_helper_prepare(struct drm_crtc *crtc)
 }
 
 
-static void vmw_stdu_crtc_helper_commit(struct drm_crtc *crtc)
+static void vmw_stdu_crtc_helper_enable(struct drm_crtc *crtc)
 {
 	struct vmw_private *dev_priv;
 	struct vmw_screen_target_display_unit *stdu;
@@ -1415,7 +1415,7 @@ drm_plane_helper_funcs vmw_stdu_primary_plane_helper_funcs = {
 
 static const struct drm_crtc_helper_funcs vmw_stdu_crtc_helper_funcs = {
 	.prepare = vmw_stdu_crtc_helper_prepare,
-	.commit = vmw_stdu_crtc_helper_commit,
+	.enable = vmw_stdu_crtc_helper_enable,
 	.disable = vmw_stdu_crtc_helper_disable,
 	.mode_set_nofb = vmw_stdu_crtc_mode_set_nofb,
 	.atomic_check = vmw_du_crtc_atomic_check,
@@ -1651,36 +1651,11 @@ int vmw_kms_stdu_init_display(struct vmw_private *dev_priv)
 
 		if (unlikely(ret != 0)) {
 			DRM_ERROR("Failed to initialize STDU %d", i);
-			goto err_vblank_cleanup;
+			return ret;
 		}
 	}
 
 	DRM_INFO("Screen Target Display device initialized\n");
-
-	return 0;
-
-err_vblank_cleanup:
-	drm_vblank_cleanup(dev);
-	return ret;
-}
-
-
-
-/**
- * vmw_kms_stdu_close_display - Cleans up after vmw_kms_stdu_init_display
- *
- * @dev_priv: VMW DRM device
- *
- * Frees up any resources allocated by vmw_kms_stdu_init_display
- *
- * RETURNS:
- * 0 on success
- */
-int vmw_kms_stdu_close_display(struct vmw_private *dev_priv)
-{
-	struct drm_device *dev = dev_priv->dev;
-
-	drm_vblank_cleanup(dev);
 
 	return 0;
 }

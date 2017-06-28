@@ -270,13 +270,13 @@ static void vmw_sou_crtc_helper_prepare(struct drm_crtc *crtc)
 }
 
 /**
- * vmw_sou_crtc_helper_commit - Noop
+ * vmw_sou_crtc_helper_enable - Noop
  *
  * @crtc: CRTC associated with the new screen
  *
  * This is called after a mode set has been completed.
  */
-static void vmw_sou_crtc_helper_commit(struct drm_crtc *crtc)
+static void vmw_sou_crtc_helper_enable(struct drm_crtc *crtc)
 {
 }
 
@@ -573,7 +573,7 @@ drm_plane_helper_funcs vmw_sou_primary_plane_helper_funcs = {
 
 static const struct drm_crtc_helper_funcs vmw_sou_crtc_helper_funcs = {
 	.prepare = vmw_sou_crtc_helper_prepare,
-	.commit = vmw_sou_crtc_helper_commit,
+	.enable = vmw_sou_crtc_helper_enable,
 	.disable = vmw_sou_crtc_helper_disable,
 	.mode_set_nofb = vmw_sou_crtc_mode_set_nofb,
 	.atomic_check = vmw_du_crtc_atomic_check,
@@ -742,15 +742,6 @@ int vmw_kms_sou_init_display(struct vmw_private *dev_priv)
 	dev_priv->active_display_unit = vmw_du_screen_object;
 
 	DRM_INFO("Screen Objects Display Unit initialized\n");
-
-	return 0;
-}
-
-int vmw_kms_sou_close_display(struct vmw_private *dev_priv)
-{
-	struct drm_device *dev = dev_priv->dev;
-
-	drm_vblank_cleanup(dev);
 
 	return 0;
 }

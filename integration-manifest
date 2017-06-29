@@ -1,26 +1,12 @@
-drm-intel drm-intel-fixes 611cdf3695a307fdca3ff3779a1e6cca935e2d31
-	drm/i915: Disable EXEC_OBJECT_ASYNC when doing relocations
-drm-upstream drm-fixes 9ff1beb1d19ffe2b26bf9cd2d33e6073d4f4b5fe
-	Merge tag 'drm-intel-fixes-2017-06-27' of git://anongit.freedesktop.org/git/drm-intel into drm-fixes
-drm-intel drm-intel-next-fixes bdbbf7d619d1fd2f1fa9eb529b7817e4faf73f5e
-	drm/i915: Clear execbuf's vma backpointer upon release
-drm-intel drm-intel-next-queued 7b92c1bd0540b64f54d98331d67e57266f9343c4
-	drm/i915: Avoid keeping waitboost active for signaling threads
-drm-upstream drm-next 12d016626f99f48edbf5b006625b4e8c0de1eec7
-	Merge tag 'drm-amdkfd-next-2017-06-25' of git://people.freedesktop.org/~gabbayo/linux into drm-next
-sound-upstream for-next f03293d8fc97f07dbe4c54ce495c8dac172dc6e1
-	ALSA: Fix forgotten dependency fix for tristate OSS sequencer kconfig
-sound-upstream for-linus a8f20fd25bdce81a8e41767c39f456d346b63427
-	ALSA: hda - set input_path bitmap to zero after moving it to new place
-drm-intel topic/core-for-CI 754bc3dac34ed801370c5174cd9981206e1a6dd2
-	perf/core: Avoid removing shared pmu_context on unregister
-drm-misc drm-misc-next 4177b51e1949468c74a54dde99c775f5746fa11e
-	drm: vmwgfx: Replace CRTC .commit() helper operation with .enable()
-drm-misc drm-misc-next-fixes c048c984de38d906bb0df56ec2ae90eafc123d0a
-	Merge remote-tracking branch 'airlied/drm-next' into drm-misc-next-fixes
-drm-misc drm-misc-fixes e94ac3510b6a0f696f2c442c4fc4051c8101ef12
-	drm: Fix GETCONNECTOR regression
-drm-intel topic/dp-quirks b31e85eda38c58cae986162ae2c462b53b0a2065
-	drm/i915: Detect USB-C specific dongles before reducing M and N
-drm-intel topic/e1000e-fix 4e5684f930587bd22565f404eb3c5e417a994ccc
-	e1000e: Undo e1000e_pm_freeze if __e1000_shutdown fails
+drm-tip/drm-tip 85a692e2c6a7cf93082044d776e838cb9e9b2146
+	drm-tip: 2017y-06m-28d-14h-24m-59s UTC integration manifest
+vfio-upstream/for-linus 39da7c509acff13fc8cb12ec1bb20337c988ed36
+	Linux 4.11-rc6
+vfio-upstream/next 5d6dee80a1e94cc284d03e06d930e60e8d3ecf7d
+	vfio: New external user group/file match
+origin/gvt-fixes 75e64ff2c2f5ce1ae5b47b2f372fe5b9dc99f5a9
+	drm/i915/gvt: Don't read ADPA_CRT_HOTPLUG_MONITOR from host
+origin/gvt-next 74358c28d3efb925ce5886816d3028ef6107a356
+	drm/i915/gvt: Optimize ring siwtch 2x faster again by light weight mmio access wrapper
+origin/gvt-next-fixes 627c845c0907894a1e5cd2d90ff4fc86c9e4458e
+	drm/i915/gvt: change some gvt_err to gvt_dbg_cmd

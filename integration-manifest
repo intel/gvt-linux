@@ -1,0 +1,26 @@
+drm-intel drm-intel-fixes 611cdf3695a307fdca3ff3779a1e6cca935e2d31
+	drm/i915: Disable EXEC_OBJECT_ASYNC when doing relocations
+drm-upstream drm-fixes 9ff1beb1d19ffe2b26bf9cd2d33e6073d4f4b5fe
+	Merge tag 'drm-intel-fixes-2017-06-27' of git://anongit.freedesktop.org/git/drm-intel into drm-fixes
+drm-intel drm-intel-next-fixes bdbbf7d619d1fd2f1fa9eb529b7817e4faf73f5e
+	drm/i915: Clear execbuf's vma backpointer upon release
+drm-intel drm-intel-next-queued 98eed3d1ade53596e1c8785e049f03da4480a820
+	drm/i915/cfl: Fix Workarounds.
+drm-upstream drm-next 12d016626f99f48edbf5b006625b4e8c0de1eec7
+	Merge tag 'drm-amdkfd-next-2017-06-25' of git://people.freedesktop.org/~gabbayo/linux into drm-next
+sound-upstream for-next a5a041b6b50bcaf96f96e5db4850d11006d61d26
+	ALSA: hda: constify attribute_group structures.
+sound-upstream for-linus d94815f917da770d42c377786dc428f542e38f71
+	ALSA: hda - Fix endless loop of codec configure
+drm-intel topic/core-for-CI 754bc3dac34ed801370c5174cd9981206e1a6dd2
+	perf/core: Avoid removing shared pmu_context on unregister
+drm-misc drm-misc-next faa8b0b7534aabdc8095eb05310f04eff4024b36
+	drm/gma500: remove an unneeded NULL check
+drm-misc drm-misc-next-fixes 138b87fa43b629ed14429e2e056fe4d5ef132921
+	drm: vblank: Fix vblank timestamp update
+drm-misc drm-misc-fixes e94ac3510b6a0f696f2c442c4fc4051c8101ef12
+	drm: Fix GETCONNECTOR regression
+drm-intel topic/dp-quirks b31e85eda38c58cae986162ae2c462b53b0a2065
+	drm/i915: Detect USB-C specific dongles before reducing M and N
+drm-intel topic/e1000e-fix 4e5684f930587bd22565f404eb3c5e417a994ccc
+	e1000e: Undo e1000e_pm_freeze if __e1000_shutdown fails

@@ -203,19 +203,7 @@ static void vmw_ldu_crtc_mode_set_nofb(struct drm_crtc *crtc)
 }
 
 /**
- * vmw_ldu_crtc_helper_prepare - Noop
- *
- * @crtc: CRTC associated with the new screen
- *
- * Prepares the CRTC for a mode set, but we don't need to do anything here.
- *
- */
-static void vmw_ldu_crtc_helper_prepare(struct drm_crtc *crtc)
-{
-}
-
-/**
- * vmw_ldu_crtc_helper_commit - Noop
+ * vmw_ldu_crtc_helper_enable - Noop
  *
  * @crtc: CRTC associated with the new screen
  *
@@ -224,7 +212,7 @@ static void vmw_ldu_crtc_helper_prepare(struct drm_crtc *crtc)
  * but since for LDU the display plane is closely tied to the
  * CRTC, it makes more sense to do those at plane update time.
  */
-static void vmw_ldu_crtc_helper_commit(struct drm_crtc *crtc)
+static void vmw_ldu_crtc_helper_enable(struct drm_crtc *crtc)
 {
 }
 
@@ -388,8 +376,7 @@ drm_plane_helper_funcs vmw_ldu_primary_plane_helper_funcs = {
 };
 
 static const struct drm_crtc_helper_funcs vmw_ldu_crtc_helper_funcs = {
-	.prepare = vmw_ldu_crtc_helper_prepare,
-	.commit = vmw_ldu_crtc_helper_commit,
+	.enable = vmw_ldu_crtc_helper_enable,
 	.disable = vmw_ldu_crtc_helper_disable,
 	.mode_set_nofb = vmw_ldu_crtc_mode_set_nofb,
 	.atomic_check = vmw_du_crtc_atomic_check,
@@ -582,12 +569,8 @@ err_free:
 
 int vmw_kms_ldu_close_display(struct vmw_private *dev_priv)
 {
-	struct drm_device *dev = dev_priv->dev;
-
 	if (!dev_priv->ldu_priv)
 		return -ENOSYS;
-
-	drm_vblank_cleanup(dev);
 
 	BUG_ON(!list_empty(&dev_priv->ldu_priv->active));
 

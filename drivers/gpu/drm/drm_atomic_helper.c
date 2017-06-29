@@ -1191,9 +1191,13 @@ EXPORT_SYMBOL(drm_atomic_helper_wait_for_fences);
  *
  * Helper to, after atomic commit, wait for vblanks on all effected
  * crtcs (ie. before cleaning up old framebuffers using
- * drm_atomic_helper_cleanup_planes()). It will only wait on crtcs where the
+ * drm_atomic_helper_cleanup_planes()). It will only wait on CRTCs where the
  * framebuffers have actually changed to optimize for the legacy cursor and
  * plane update use-case.
+ *
+ * Drivers using the nonblocking commit tracking support initialized by calling
+ * drm_atomic_helper_setup_commit() should look at
+ * drm_atomic_helper_wait_for_flip_done() as an alternative.
  */
 void
 drm_atomic_helper_wait_for_vblanks(struct drm_device *dev,
@@ -1239,6 +1243,43 @@ drm_atomic_helper_wait_for_vblanks(struct drm_device *dev,
 	}
 }
 EXPORT_SYMBOL(drm_atomic_helper_wait_for_vblanks);
+
+/**
+ * drm_atomic_helper_wait_for_flip_done - wait for all page flips to be done
+ * @dev: DRM device
+ * @old_state: atomic state object with old state structures
+ *
+ * Helper to, after atomic commit, wait for page flips on all effected
+ * crtcs (ie. before cleaning up old framebuffers using
+ * drm_atomic_helper_cleanup_planes()). Compared to
+ * drm_atomic_helper_wait_for_vblanks() this waits for the completion of on all
+ * CRTCs, assuming that cursors-only updates are signalling their completion
+ * immediately (or using a different path).
+ *
+ * This requires that drivers use the nonblocking commit tracking support
+ * initialized using drm_atomic_helper_setup_commit().
+ */
+void drm_atomic_helper_wait_for_flip_done(struct drm_device *dev,
+					  struct drm_atomic_state *old_state)
+{
+	struct drm_crtc_state *crtc_state;
+	struct drm_crtc *crtc;
+	int i;
+
+	for_each_crtc_in_state(old_state, crtc, crtc_state, i) {
+		struct drm_crtc_commit *commit = old_state->crtcs[i].commit;
+		int ret;
+
+		if (!commit)
+			continue;
+
+		ret = wait_for_completion_timeout(&commit->flip_done, 10 * HZ);
+		if (ret == 0)
+			DRM_ERROR("[CRTC:%d:%s] flip_done timed out\n",
+				  crtc->base.id, crtc->name);
+	}
+}
+EXPORT_SYMBOL(drm_atomic_helper_wait_for_flip_done);
 
 /**
  * drm_atomic_helper_commit_tail - commit atomic update to hardware
@@ -1680,9 +1721,7 @@ void drm_atomic_helper_commit_hw_done(struct drm_atomic_state *old_state)
 
 		/* backend must have consumed any event by now */
 		WARN_ON(new_crtc_state->event);
-		spin_lock(&crtc->commit_lock);
 		complete_all(&commit->hw_done);
-		spin_unlock(&crtc->commit_lock);
 	}
 }
 EXPORT_SYMBOL(drm_atomic_helper_commit_hw_done);
@@ -1711,7 +1750,6 @@ void drm_atomic_helper_commit_cleanup_done(struct drm_atomic_state *old_state)
 		if (WARN_ON(!commit))
 			continue;
 
-		spin_lock(&crtc->commit_lock);
 		complete_all(&commit->cleanup_done);
 		WARN_ON(!try_wait_for_completion(&commit->hw_done));
 
@@ -1720,8 +1758,6 @@ void drm_atomic_helper_commit_cleanup_done(struct drm_atomic_state *old_state)
 		 * completed, otherwise subsequent commits won't stall properly. */
 		if (try_wait_for_completion(&commit->flip_done))
 			goto del_commit;
-
-		spin_unlock(&crtc->commit_lock);
 
 		/* We must wait for the vblank event to signal our completion
 		 * before releasing our reference, since the vblank work does
@@ -1732,8 +1768,8 @@ void drm_atomic_helper_commit_cleanup_done(struct drm_atomic_state *old_state)
 			DRM_ERROR("[CRTC:%d:%s] flip_done timed out\n",
 				  crtc->base.id, crtc->name);
 
-		spin_lock(&crtc->commit_lock);
 del_commit:
+		spin_lock(&crtc->commit_lock);
 		list_del(&commit->commit_entry);
 		spin_unlock(&crtc->commit_lock);
 	}

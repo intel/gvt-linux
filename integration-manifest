@@ -1,0 +1,26 @@
+drm-intel drm-intel-fixes 611cdf3695a307fdca3ff3779a1e6cca935e2d31
+	drm/i915: Disable EXEC_OBJECT_ASYNC when doing relocations
+drm-upstream drm-fixes 9ff1beb1d19ffe2b26bf9cd2d33e6073d4f4b5fe
+	Merge tag 'drm-intel-fixes-2017-06-27' of git://anongit.freedesktop.org/git/drm-intel into drm-fixes
+drm-intel drm-intel-next-fixes 04941829b0049d2446c7042ab9686dd057d809a6
+	drm/i915: Hold RPM wakelock while initializing OA buffer
+drm-intel drm-intel-next-queued a874b6a3fb22c8c30f36b1f6ba5430a4c2278a6a
+	drm/i915: Prevent kernel panic when reading/writing compliance debugfs files, v2.
+drm-upstream drm-next 12d016626f99f48edbf5b006625b4e8c0de1eec7
+	Merge tag 'drm-amdkfd-next-2017-06-25' of git://people.freedesktop.org/~gabbayo/linux into drm-next
+sound-upstream for-next 818a23e3882b1bf65d1719e407be04716e69a4d5
+	Merge tag 'asoc-v4.13' of git://git.kernel.org/pub/scm/linux/kernel/git/broonie/sound into for-linus
+sound-upstream for-linus 818a23e3882b1bf65d1719e407be04716e69a4d5
+	Merge tag 'asoc-v4.13' of git://git.kernel.org/pub/scm/linux/kernel/git/broonie/sound into for-linus
+drm-intel topic/core-for-CI 754bc3dac34ed801370c5174cd9981206e1a6dd2
+	perf/core: Avoid removing shared pmu_context on unregister
+drm-misc drm-misc-next 7114d2e22fadd9060fd8c38b1dbc3ceeac7c536b
+	drm/fb-helper: Remove drm_mode_config_fb.
+drm-misc drm-misc-next-fixes 4086d90cffb8f48400d51fbab575fe50458512e3
+	drm/atomic: Add missing drm_atomic_state_clear to atomic_remove_fb
+drm-misc drm-misc-fixes e94ac3510b6a0f696f2c442c4fc4051c8101ef12
+	drm: Fix GETCONNECTOR regression
+drm-intel topic/dp-quirks b31e85eda38c58cae986162ae2c462b53b0a2065
+	drm/i915: Detect USB-C specific dongles before reducing M and N
+drm-intel topic/e1000e-fix 4e5684f930587bd22565f404eb3c5e417a994ccc
+	e1000e: Undo e1000e_pm_freeze if __e1000_shutdown fails

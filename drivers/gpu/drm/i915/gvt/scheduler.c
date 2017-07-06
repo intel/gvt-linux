@@ -174,15 +174,6 @@ static int shadow_context_status_change(struct notifier_block *nb,
 		atomic_set(&workload->shadow_ctx_active, 1);
 		break;
 	case INTEL_CONTEXT_SCHEDULE_OUT:
-		/* If the status is -EINPROGRESS means this workload
-		 * doesn't meet any issue during dispatching so when
-		 * get the SCHEDULE_OUT set the status to be zero for
-		 * good. If the status is NOT -EINPROGRESS means there
-		 * is something wrong happened during dispatching and
-		 * the status should not be set to zero
-		 */
-		if (workload->status == -EINPROGRESS)
-			workload->status = 0;
 		atomic_set(&workload->shadow_ctx_active, 0);
 		break;
 	default:
@@ -193,41 +184,31 @@ static int shadow_context_status_change(struct notifier_block *nb,
 	return NOTIFY_OK;
 }
 
-static int dispatch_workload(struct intel_vgpu_workload *workload)
+/**
+ * intel_gvt_scan_and_shadow_workload - audit the workload by scanning and
+ * shadow it as well, include ringbuffer,wa_ctx and ctx.
+ * @workload: an abstract entity for each execlist submission.
+ *
+ * This function is called before the workload submitting to i915, to make
+ * sure the content of the workload is valid.
+ */
+int intel_gvt_scan_and_shadow_workload(struct intel_vgpu_workload *workload)
 {
 	int ring_id = workload->ring_id;
 	struct i915_gem_context *shadow_ctx = workload->vgpu->shadow_ctx;
 	struct drm_i915_private *dev_priv = workload->vgpu->gvt->dev_priv;
-	struct intel_engine_cs *engine = dev_priv->engine[ring_id];
 	struct drm_i915_gem_request *rq;
 	struct intel_vgpu *vgpu = workload->vgpu;
-	struct intel_ring *ring;
 	int ret;
 
-	gvt_dbg_sched("ring id %d prepare to dispatch workload %p\n",
-		ring_id, workload);
+	lockdep_assert_held(&dev_priv->drm.struct_mutex);
+
+	if (workload->shadowed)
+		return 0;
 
 	shadow_ctx->desc_template &= ~(0x3 << GEN8_CTX_ADDRESSING_MODE_SHIFT);
 	shadow_ctx->desc_template |= workload->ctx_desc.addressing_mode <<
 				    GEN8_CTX_ADDRESSING_MODE_SHIFT;
-
-	mutex_lock(&dev_priv->drm.struct_mutex);
-
-	/* pin shadow context by gvt even the shadow context will be pinned
-	 * when i915 alloc request. That is because gvt will update the guest
-	 * context from shadow context when workload is completed, and at that
-	 * moment, i915 may already unpined the shadow context to make the
-	 * shadow_ctx pages invalid. So gvt need to pin itself. After update
-	 * the guest context, gvt can unpin the shadow_ctx safely.
-	 */
-	ring = engine->context_pin(engine, shadow_ctx);
-	if (IS_ERR(ring)) {
-		ret = PTR_ERR(ring);
-		gvt_vgpu_err("fail to pin shadow context\n");
-		workload->status = ret;
-		mutex_unlock(&dev_priv->drm.struct_mutex);
-		return ret;
-	}
 
 	rq = i915_gem_request_alloc(dev_priv->engine[ring_id], shadow_ctx);
 	if (IS_ERR(rq)) {
@@ -240,7 +221,7 @@ static int dispatch_workload(struct intel_vgpu_workload *workload)
 
 	workload->req = i915_gem_request_get(rq);
 
-	ret = intel_gvt_scan_and_shadow_workload(workload);
+	ret = intel_gvt_scan_and_shadow_ringbuffer(workload);
 	if (ret)
 		goto out;
 
@@ -255,25 +236,61 @@ static int dispatch_workload(struct intel_vgpu_workload *workload)
 	if (ret)
 		goto out;
 
+	workload->shadowed = true;
+
+out:
+	return ret;
+}
+
+static int dispatch_workload(struct intel_vgpu_workload *workload)
+{
+	int ring_id = workload->ring_id;
+	struct i915_gem_context *shadow_ctx = workload->vgpu->shadow_ctx;
+	struct drm_i915_private *dev_priv = workload->vgpu->gvt->dev_priv;
+	struct intel_engine_cs *engine = dev_priv->engine[ring_id];
+	struct intel_vgpu *vgpu = workload->vgpu;
+	struct intel_ring *ring;
+	int ret = 0;
+
+	gvt_dbg_sched("ring id %d prepare to dispatch workload %p\n",
+		ring_id, workload);
+
+	mutex_lock(&dev_priv->drm.struct_mutex);
+
+	ret = intel_gvt_scan_and_shadow_workload(workload);
+	if (ret)
+		goto out;
+
 	if (workload->prepare) {
 		ret = workload->prepare(workload);
 		if (ret)
 			goto out;
 	}
 
-	gvt_dbg_sched("ring id %d submit workload to i915 %p\n",
-			ring_id, workload->req);
+	/* pin shadow context by gvt even the shadow context will be pinned
+	 * when i915 alloc request. That is because gvt will update the guest
+	 * context from shadow context when workload is completed, and at that
+	 * moment, i915 may already unpined the shadow context to make the
+	 * shadow_ctx pages invalid. So gvt need to pin itself. After update
+	 * the guest context, gvt can unpin the shadow_ctx safely.
+	 */
+	ring = engine->context_pin(engine, shadow_ctx);
+	if (IS_ERR(ring)) {
+		ret = PTR_ERR(ring);
+		gvt_vgpu_err("fail to pin shadow context\n");
+		goto out;
+	}
 
-	ret = 0;
-	workload->dispatched = true;
 out:
 	if (ret)
 		workload->status = ret;
 
-	if (!IS_ERR_OR_NULL(rq))
-		i915_add_request(rq);
-	else
-		engine->context_unpin(engine, shadow_ctx);
+	if (!IS_ERR_OR_NULL(workload->req)) {
+		gvt_dbg_sched("ring id %d submit workload to i915 %p\n",
+				ring_id, workload->req);
+		i915_add_request(workload->req);
+		workload->dispatched = true;
+	}
 
 	mutex_unlock(&dev_priv->drm.struct_mutex);
 	return ret;
@@ -427,6 +444,18 @@ static void complete_current_workload(struct intel_gvt *gvt, int ring_id)
 		wait_event(workload->shadow_ctx_status_wq,
 			   !atomic_read(&workload->shadow_ctx_active));
 
+		/* If this request caused GPU hang, req->fence.error will
+		 * be set to -EIO. Use -EIO to set workload status so
+		 * that when this request caused GPU hang, didn't trigger
+		 * context switch interrupt to guest.
+		 */
+		if (likely(workload->status == -EINPROGRESS)) {
+			if (workload->req->fence.error == -EIO)
+				workload->status = -EIO;
+			else
+				workload->status = 0;
+		}
+
 		i915_gem_request_put(fetch_and_zero(&workload->req));
 
 		if (!workload->status && !vgpu->resetting) {
@@ -464,8 +493,6 @@ struct workload_thread_param {
 	int ring_id;
 };
 
-static DEFINE_MUTEX(scheduler_mutex);
-
 static int workload_thread(void *priv)
 {
 	struct workload_thread_param *p = (struct workload_thread_param *)priv;
@@ -496,8 +523,6 @@ static int workload_thread(void *priv)
 
 		if (!workload)
 			break;
-
-		mutex_lock(&scheduler_mutex);
 
 		gvt_dbg_sched("ring id %d next workload %p vgpu %d\n",
 				workload->ring_id, workload,
@@ -537,9 +562,6 @@ complete:
 					FORCEWAKE_ALL);
 
 		intel_runtime_pm_put(gvt->dev_priv);
-
-		mutex_unlock(&scheduler_mutex);
-
 	}
 	return 0;
 }

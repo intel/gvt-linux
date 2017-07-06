@@ -1,26 +1,12 @@
-drm-intel drm-intel-fixes 611cdf3695a307fdca3ff3779a1e6cca935e2d31
-	drm/i915: Disable EXEC_OBJECT_ASYNC when doing relocations
-drm-upstream drm-fixes 9ff1beb1d19ffe2b26bf9cd2d33e6073d4f4b5fe
-	Merge tag 'drm-intel-fixes-2017-06-27' of git://anongit.freedesktop.org/git/drm-intel into drm-fixes
-drm-intel drm-intel-next-fixes 04941829b0049d2446c7042ab9686dd057d809a6
-	drm/i915: Hold RPM wakelock while initializing OA buffer
-drm-intel drm-intel-next-queued c99a259b4b5192ba30d37fe25f09632d4c52f5d7
-	drm/i915/edp: Add a T12 panel delay quirk to fix DP AUX CH timeouts
-drm-upstream drm-next 12d016626f99f48edbf5b006625b4e8c0de1eec7
-	Merge tag 'drm-amdkfd-next-2017-06-25' of git://people.freedesktop.org/~gabbayo/linux into drm-next
-sound-upstream for-next fc18282cdcba984ab89c74d7e844c10114ae0795
-	ALSA: hda - Fix unbalance of i915 module refcount
-sound-upstream for-linus fc18282cdcba984ab89c74d7e844c10114ae0795
-	ALSA: hda - Fix unbalance of i915 module refcount
-drm-intel topic/core-for-CI 754bc3dac34ed801370c5174cd9981206e1a6dd2
-	perf/core: Avoid removing shared pmu_context on unregister
-drm-misc drm-misc-next e6090cc9be15f8e3a5e736d427186e39fea7cceb
-	drm: Remove pending_read_domains and pending_write_domain
-drm-misc drm-misc-next-fixes 4086d90cffb8f48400d51fbab575fe50458512e3
-	drm/atomic: Add missing drm_atomic_state_clear to atomic_remove_fb
-drm-misc drm-misc-fixes e94ac3510b6a0f696f2c442c4fc4051c8101ef12
-	drm: Fix GETCONNECTOR regression
-drm-intel topic/dp-quirks b31e85eda38c58cae986162ae2c462b53b0a2065
-	drm/i915: Detect USB-C specific dongles before reducing M and N
-drm-intel topic/e1000e-fix 4e5684f930587bd22565f404eb3c5e417a994ccc
-	e1000e: Undo e1000e_pm_freeze if __e1000_shutdown fails
+drm-tip/drm-tip cefc82aab8bb8ec201e922cf23d227c47845094c
+	drm-tip: 2017y-07m-05d-20h-21m-17s UTC integration manifest
+vfio-upstream/for-linus 39da7c509acff13fc8cb12ec1bb20337c988ed36
+	Linux 4.11-rc6
+vfio-upstream/next 5d6dee80a1e94cc284d03e06d930e60e8d3ecf7d
+	vfio: New external user group/file match
+origin/gvt-fixes 6c091970fa0e655aa1d450cd89e50dec544ca9ed
+	drm/i915/gvt: Audit the command buffer address
+origin/gvt-next 7c9850b04879512d6509c8e474886690a3390412
+	drm/i915/gvt: Replace duplicated code with exist function
+origin/gvt-next-fixes 627c845c0907894a1e5cd2d90ff4fc86c9e4458e
+	drm/i915/gvt: change some gvt_err to gvt_dbg_cmd

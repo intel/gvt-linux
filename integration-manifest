@@ -1,0 +1,26 @@
+drm-intel drm-intel-fixes 611cdf3695a307fdca3ff3779a1e6cca935e2d31
+	drm/i915: Disable EXEC_OBJECT_ASYNC when doing relocations
+drm-upstream drm-fixes 9ff1beb1d19ffe2b26bf9cd2d33e6073d4f4b5fe
+	Merge tag 'drm-intel-fixes-2017-06-27' of git://anongit.freedesktop.org/git/drm-intel into drm-fixes
+drm-intel drm-intel-next-fixes 7581d5ca2bb269cfc2ce2d0cb489aac513167f6b
+	drm/i915/fbdev: Check for existence of ifbdev->vma before operations
+drm-intel drm-intel-next-queued 953152253e9cbd4f358d4b4ca56d48072af3846d
+	Merge tag 'drm-for-v4.13' into drm-intel-next-queued
+drm-upstream drm-next 00fc2c26bc46a64545cdf95a1511461ea9acecb4
+	drm: Remove unused drm_file parameter to drm_syncobj_replace_fence()
+sound-upstream for-next 85dc0f8554fa024b02eb50dcca71fa9881a45ea5
+	ALSA: pcm: Simplify check for dma_mmap_coherent() availability
+sound-upstream for-linus 85dc0f8554fa024b02eb50dcca71fa9881a45ea5
+	ALSA: pcm: Simplify check for dma_mmap_coherent() availability
+drm-intel topic/core-for-CI 754bc3dac34ed801370c5174cd9981206e1a6dd2
+	perf/core: Avoid removing shared pmu_context on unregister
+drm-misc drm-misc-next f74c527591b02a296e34d94c181b423587523f9e
+	drm/bridge: ti-tfp410: clean up drm_bridge_add call
+drm-misc drm-misc-next-fixes 6f6e0b217a93011f8e11b9a2d5521a08fcf36990
+	drm/rockchip: fix NULL check on devm_kzalloc() return value
+drm-misc drm-misc-fixes e94ac3510b6a0f696f2c442c4fc4051c8101ef12
+	drm: Fix GETCONNECTOR regression
+drm-intel topic/dp-quirks b31e85eda38c58cae986162ae2c462b53b0a2065
+	drm/i915: Detect USB-C specific dongles before reducing M and N
+drm-intel topic/e1000e-fix 4e5684f930587bd22565f404eb3c5e417a994ccc
+	e1000e: Undo e1000e_pm_freeze if __e1000_shutdown fails

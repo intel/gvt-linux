@@ -3956,6 +3956,7 @@ int skl_check_pipe_max_pixel_rate(struct intel_crtc *intel_crtc,
 		DRM_DEBUG_KMS("Max supported pixel clock with scaling exceeded\n");
 		return -EINVAL;
 	}
+
 	return 0;
 }
 
@@ -5851,7 +5852,7 @@ static u32 intel_rps_limits(struct drm_i915_private *dev_priv, u8 val)
 	 * the hw runs at the minimal clock before selecting the desired
 	 * frequency, if the down threshold expires in that window we will not
 	 * receive a down interrupt. */
-	if (IS_GEN9(dev_priv)) {
+	if (INTEL_GEN(dev_priv) >= 9) {
 		limits = (dev_priv->rps.max_freq_softlimit) << 23;
 		if (val <= dev_priv->rps.min_freq_softlimit)
 			limits |= (dev_priv->rps.min_freq_softlimit) << 14;
@@ -5993,7 +5994,7 @@ static int gen6_set_rps(struct drm_i915_private *dev_priv, u8 val)
 	if (val != dev_priv->rps.cur_freq) {
 		gen6_set_rps_thresholds(dev_priv, val);
 
-		if (IS_GEN9(dev_priv))
+		if (INTEL_GEN(dev_priv) >= 9)
 			I915_WRITE(GEN6_RPNSWREQ,
 				   GEN9_FREQUENCY(val));
 		else if (IS_HASWELL(dev_priv) || IS_BROADWELL(dev_priv))
@@ -6125,47 +6126,35 @@ void gen6_rps_idle(struct drm_i915_private *dev_priv)
 			   gen6_sanitize_rps_pm_mask(dev_priv, ~0));
 	}
 	mutex_unlock(&dev_priv->rps.hw_lock);
-
-	spin_lock(&dev_priv->rps.client_lock);
-	while (!list_empty(&dev_priv->rps.clients))
-		list_del_init(dev_priv->rps.clients.next);
-	spin_unlock(&dev_priv->rps.client_lock);
 }
 
-void gen6_rps_boost(struct drm_i915_private *dev_priv,
-		    struct intel_rps_client *rps,
-		    unsigned long submitted)
+void gen6_rps_boost(struct drm_i915_gem_request *rq,
+		    struct intel_rps_client *rps)
 {
+	struct drm_i915_private *i915 = rq->i915;
+	bool boost;
+
 	/* This is intentionally racy! We peek at the state here, then
 	 * validate inside the RPS worker.
 	 */
-	if (!(dev_priv->gt.awake &&
-	      dev_priv->rps.enabled &&
-	      dev_priv->rps.cur_freq < dev_priv->rps.boost_freq))
+	if (!i915->rps.enabled)
 		return;
 
-	/* Force a RPS boost (and don't count it against the client) if
-	 * the GPU is severely congested.
-	 */
-	if (rps && time_after(jiffies, submitted + DRM_I915_THROTTLE_JIFFIES))
-		rps = NULL;
-
-	spin_lock(&dev_priv->rps.client_lock);
-	if (rps == NULL || list_empty(&rps->link)) {
-		spin_lock_irq(&dev_priv->irq_lock);
-		if (dev_priv->rps.interrupts_enabled) {
-			dev_priv->rps.client_boost = true;
-			schedule_work(&dev_priv->rps.work);
-		}
-		spin_unlock_irq(&dev_priv->irq_lock);
-
-		if (rps != NULL) {
-			list_add(&rps->link, &dev_priv->rps.clients);
-			rps->boosts++;
-		} else
-			dev_priv->rps.boosts++;
+	boost = false;
+	spin_lock_irq(&rq->lock);
+	if (!rq->waitboost && !i915_gem_request_completed(rq)) {
+		atomic_inc(&i915->rps.num_waiters);
+		rq->waitboost = true;
+		boost = true;
 	}
-	spin_unlock(&dev_priv->rps.client_lock);
+	spin_unlock_irq(&rq->lock);
+	if (!boost)
+		return;
+
+	if (READ_ONCE(i915->rps.cur_freq) < i915->rps.boost_freq)
+		schedule_work(&i915->rps.work);
+
+	atomic_inc(rps ? &rps->boosts : &i915->rps.boosts);
 }
 
 int intel_set_rps(struct drm_i915_private *dev_priv, u8 val)
@@ -6364,7 +6353,7 @@ static void gen6_init_rps_frequencies(struct drm_i915_private *dev_priv)
 
 	dev_priv->rps.efficient_freq = dev_priv->rps.rp1_freq;
 	if (IS_HASWELL(dev_priv) || IS_BROADWELL(dev_priv) ||
-	    IS_GEN9_BC(dev_priv)) {
+	    IS_GEN9_BC(dev_priv) || IS_CANNONLAKE(dev_priv)) {
 		u32 ddcc_status = 0;
 
 		if (sandybridge_pcode_read(dev_priv,
@@ -6377,7 +6366,7 @@ static void gen6_init_rps_frequencies(struct drm_i915_private *dev_priv)
 					dev_priv->rps.max_freq);
 	}
 
-	if (IS_GEN9_BC(dev_priv)) {
+	if (IS_GEN9_BC(dev_priv) || IS_CANNONLAKE(dev_priv)) {
 		/* Store the frequency values in 16.66 MHZ units, which is
 		 * the natural hardware unit for SKL
 		 */
@@ -6683,7 +6672,7 @@ static void gen6_update_ring_freq(struct drm_i915_private *dev_priv)
 	/* convert DDR frequency from units of 266.6MHz to bandwidth */
 	min_ring_freq = mult_frac(min_ring_freq, 8, 3);
 
-	if (IS_GEN9_BC(dev_priv)) {
+	if (IS_GEN9_BC(dev_priv) || IS_CANNONLAKE(dev_priv)) {
 		/* Convert GT frequency to 50 HZ units */
 		min_gpu_freq = dev_priv->rps.min_freq / GEN9_FREQ_SCALER;
 		max_gpu_freq = dev_priv->rps.max_freq / GEN9_FREQ_SCALER;
@@ -6701,7 +6690,7 @@ static void gen6_update_ring_freq(struct drm_i915_private *dev_priv)
 		int diff = max_gpu_freq - gpu_freq;
 		unsigned int ia_freq = 0, ring_freq = 0;
 
-		if (IS_GEN9_BC(dev_priv)) {
+		if (IS_GEN9_BC(dev_priv) || IS_CANNONLAKE(dev_priv)) {
 			/*
 			 * ring_freq = 2 * GT. ring_freq is in 100MHz units
 			 * No floor required for ring frequency on SKL.
@@ -7832,7 +7821,7 @@ void intel_enable_gt_powersave(struct drm_i915_private *dev_priv)
 	} else if (INTEL_GEN(dev_priv) >= 9) {
 		gen9_enable_rc6(dev_priv);
 		gen9_enable_rps(dev_priv);
-		if (IS_GEN9_BC(dev_priv))
+		if (IS_GEN9_BC(dev_priv) || IS_CANNONLAKE(dev_priv))
 			gen6_update_ring_freq(dev_priv);
 	} else if (IS_BROADWELL(dev_priv)) {
 		gen8_enable_rps(dev_priv);
@@ -9077,7 +9066,7 @@ static int chv_freq_opcode(struct drm_i915_private *dev_priv, int val)
 
 int intel_gpu_freq(struct drm_i915_private *dev_priv, int val)
 {
-	if (IS_GEN9(dev_priv))
+	if (INTEL_GEN(dev_priv) >= 9)
 		return DIV_ROUND_CLOSEST(val * GT_FREQUENCY_MULTIPLIER,
 					 GEN9_FREQ_SCALER);
 	else if (IS_CHERRYVIEW(dev_priv))
@@ -9090,7 +9079,7 @@ int intel_gpu_freq(struct drm_i915_private *dev_priv, int val)
 
 int intel_freq_opcode(struct drm_i915_private *dev_priv, int val)
 {
-	if (IS_GEN9(dev_priv))
+	if (INTEL_GEN(dev_priv) >= 9)
 		return DIV_ROUND_CLOSEST(val * GEN9_FREQ_SCALER,
 					 GT_FREQUENCY_MULTIPLIER);
 	else if (IS_CHERRYVIEW(dev_priv))
@@ -9112,7 +9101,7 @@ static void __intel_rps_boost_work(struct work_struct *work)
 	struct drm_i915_gem_request *req = boost->req;
 
 	if (!i915_gem_request_completed(req))
-		gen6_rps_boost(req->i915, NULL, req->emitted_jiffies);
+		gen6_rps_boost(req, NULL);
 
 	i915_gem_request_put(req);
 	kfree(boost);
@@ -9141,11 +9130,10 @@ void intel_queue_rps_boost_for_request(struct drm_i915_gem_request *req)
 void intel_pm_setup(struct drm_i915_private *dev_priv)
 {
 	mutex_init(&dev_priv->rps.hw_lock);
-	spin_lock_init(&dev_priv->rps.client_lock);
 
 	INIT_DELAYED_WORK(&dev_priv->rps.autoenable_work,
 			  __intel_autoenable_gt_powersave);
-	INIT_LIST_HEAD(&dev_priv->rps.clients);
+	atomic_set(&dev_priv->rps.num_waiters, 0);
 
 	dev_priv->pm.suspended = false;
 	atomic_set(&dev_priv->pm.wakeref_count, 0);

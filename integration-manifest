@@ -1,26 +1,12 @@
-drm-intel drm-intel-fixes 611cdf3695a307fdca3ff3779a1e6cca935e2d31
-	drm/i915: Disable EXEC_OBJECT_ASYNC when doing relocations
-drm-upstream drm-fixes 9ff1beb1d19ffe2b26bf9cd2d33e6073d4f4b5fe
-	Merge tag 'drm-intel-fixes-2017-06-27' of git://anongit.freedesktop.org/git/drm-intel into drm-fixes
-drm-intel drm-intel-next-fixes 04941829b0049d2446c7042ab9686dd057d809a6
-	drm/i915: Hold RPM wakelock while initializing OA buffer
-drm-intel drm-intel-next-queued a9701a897067db118f1a0fcf59ce8391e3612687
-	drm/i915/cnl: Get DDI clock based on PLLs.
-drm-upstream drm-next 00fc2c26bc46a64545cdf95a1511461ea9acecb4
-	drm: Remove unused drm_file parameter to drm_syncobj_replace_fence()
-sound-upstream for-next 20e2b791796bd68816fa115f12be5320de2b8021
-	ALSA: msnd: Optimize / harden DSP and MIDI loops
-sound-upstream for-linus 20e2b791796bd68816fa115f12be5320de2b8021
-	ALSA: msnd: Optimize / harden DSP and MIDI loops
-drm-intel topic/core-for-CI 754bc3dac34ed801370c5174cd9981206e1a6dd2
-	perf/core: Avoid removing shared pmu_context on unregister
-drm-misc drm-misc-next f74c527591b02a296e34d94c181b423587523f9e
-	drm/bridge: ti-tfp410: clean up drm_bridge_add call
-drm-misc drm-misc-next-fixes 4086d90cffb8f48400d51fbab575fe50458512e3
-	drm/atomic: Add missing drm_atomic_state_clear to atomic_remove_fb
-drm-misc drm-misc-fixes e94ac3510b6a0f696f2c442c4fc4051c8101ef12
-	drm: Fix GETCONNECTOR regression
-drm-intel topic/dp-quirks b31e85eda38c58cae986162ae2c462b53b0a2065
-	drm/i915: Detect USB-C specific dongles before reducing M and N
-drm-intel topic/e1000e-fix 4e5684f930587bd22565f404eb3c5e417a994ccc
-	e1000e: Undo e1000e_pm_freeze if __e1000_shutdown fails
+drm-tip/drm-tip edc3bde190ad0559ad1c7c63e0efd8d5b4b24b2c
+	drm-tip: 2017y-07m-07d-17h-12m-03s UTC integration manifest
+vfio-upstream/for-linus 39da7c509acff13fc8cb12ec1bb20337c988ed36
+	Linux 4.11-rc6
+vfio-upstream/next 5d6dee80a1e94cc284d03e06d930e60e8d3ecf7d
+	vfio: New external user group/file match
+origin/gvt-fixes ba15ce44134ae45489e5a44d900eb7c6e5fff2ae
+	drm/i915/gvt: Revert "drm/i915/gvt: Fix possible recursive locking issue"
+origin/gvt-next 7c9850b04879512d6509c8e474886690a3390412
+	drm/i915/gvt: Replace duplicated code with exist function
+origin/gvt-next-fixes 627c845c0907894a1e5cd2d90ff4fc86c9e4458e
+	drm/i915/gvt: change some gvt_err to gvt_dbg_cmd

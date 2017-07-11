@@ -1,26 +1,12 @@
-drm-intel drm-intel-fixes 611cdf3695a307fdca3ff3779a1e6cca935e2d31
-	drm/i915: Disable EXEC_OBJECT_ASYNC when doing relocations
-drm-upstream drm-fixes 9ff1beb1d19ffe2b26bf9cd2d33e6073d4f4b5fe
-	Merge tag 'drm-intel-fixes-2017-06-27' of git://anongit.freedesktop.org/git/drm-intel into drm-fixes
-drm-intel drm-intel-next-fixes 7581d5ca2bb269cfc2ce2d0cb489aac513167f6b
-	drm/i915/fbdev: Check for existence of ifbdev->vma before operations
-drm-intel drm-intel-next-queued 953152253e9cbd4f358d4b4ca56d48072af3846d
-	Merge tag 'drm-for-v4.13' into drm-intel-next-queued
-drm-upstream drm-next 00fc2c26bc46a64545cdf95a1511461ea9acecb4
-	drm: Remove unused drm_file parameter to drm_syncobj_replace_fence()
-sound-upstream for-next 85dc0f8554fa024b02eb50dcca71fa9881a45ea5
-	ALSA: pcm: Simplify check for dma_mmap_coherent() availability
-sound-upstream for-linus 85dc0f8554fa024b02eb50dcca71fa9881a45ea5
-	ALSA: pcm: Simplify check for dma_mmap_coherent() availability
-drm-intel topic/core-for-CI 754bc3dac34ed801370c5174cd9981206e1a6dd2
-	perf/core: Avoid removing shared pmu_context on unregister
-drm-misc drm-misc-next f74c527591b02a296e34d94c181b423587523f9e
-	drm/bridge: ti-tfp410: clean up drm_bridge_add call
-drm-misc drm-misc-next-fixes 6f6e0b217a93011f8e11b9a2d5521a08fcf36990
-	drm/rockchip: fix NULL check on devm_kzalloc() return value
-drm-misc drm-misc-fixes e94ac3510b6a0f696f2c442c4fc4051c8101ef12
-	drm: Fix GETCONNECTOR regression
-drm-intel topic/dp-quirks b31e85eda38c58cae986162ae2c462b53b0a2065
-	drm/i915: Detect USB-C specific dongles before reducing M and N
-drm-intel topic/e1000e-fix 4e5684f930587bd22565f404eb3c5e417a994ccc
-	e1000e: Undo e1000e_pm_freeze if __e1000_shutdown fails
+drm-tip/drm-tip 22f607fdf9632272d3c1938d89c76c7488bc7125
+	drm-tip: 2017y-07m-10d-20h-48m-19s UTC integration manifest
+vfio-upstream/for-linus 39da7c509acff13fc8cb12ec1bb20337c988ed36
+	Linux 4.11-rc6
+vfio-upstream/next 7f56c30bd0a232822aca38d288da475613bdff9b
+	vfio: Remove unnecessary uses of vfio_container.group_lock
+origin/gvt-fixes 0cf5ec41839d82ee7f8fbb47f137b7afc562b9f1
+	drm/i915/gvt: Use fence error from GVT request for workload status
+origin/gvt-next 81bf4364ab001012ece61ac6deef175ce9ecd224
+	drm/i915/gvt: take runtime pm when do early scan and shadow
+origin/gvt-next-fixes 627c845c0907894a1e5cd2d90ff4fc86c9e4458e
+	drm/i915/gvt: change some gvt_err to gvt_dbg_cmd

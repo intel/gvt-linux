@@ -1,0 +1,26 @@
+drm-intel drm-intel-fixes 611cdf3695a307fdca3ff3779a1e6cca935e2d31
+	drm/i915: Disable EXEC_OBJECT_ASYNC when doing relocations
+drm-upstream drm-fixes 9ff1beb1d19ffe2b26bf9cd2d33e6073d4f4b5fe
+	Merge tag 'drm-intel-fixes-2017-06-27' of git://anongit.freedesktop.org/git/drm-intel into drm-fixes
+drm-intel drm-intel-next-fixes eafbc20701243d21989c9c9aff5e5d9488e1890a
+	Merge tag 'gvt-fixes-2017-07-11' of https://github.com/01org/gvt-linux into drm-intel-next-fixes
+drm-intel drm-intel-next-queued b064be0784530d2a98b589b40793e3d421fb93ba
+	drm/i915/skl+: unify cpp value in WM calculation
+drm-upstream drm-next 6419ec78c6726aa54ff103aceffbf19d546d3d1b
+	Merge branch 'drm-next-4.13' of git://people.freedesktop.org/~agd5f/linux into drm-next
+sound-upstream for-next b9091b1c654953cc9615f282704a6df8e31549cf
+	ALSA: hda - Add hdmi id for a Geminilake variant
+sound-upstream for-linus b9091b1c654953cc9615f282704a6df8e31549cf
+	ALSA: hda - Add hdmi id for a Geminilake variant
+drm-intel topic/core-for-CI 754bc3dac34ed801370c5174cd9981206e1a6dd2
+	perf/core: Avoid removing shared pmu_context on unregister
+drm-misc drm-misc-next e38e12895022d7148220fc35782b5bd6461f1736
+	drm/dp/mst: Use memchr_inv() instead of memcmp() against a zeroed array
+drm-misc drm-misc-next-fixes 6f6e0b217a93011f8e11b9a2d5521a08fcf36990
+	drm/rockchip: fix NULL check on devm_kzalloc() return value
+drm-misc drm-misc-fixes e94ac3510b6a0f696f2c442c4fc4051c8101ef12
+	drm: Fix GETCONNECTOR regression
+drm-intel topic/dp-quirks b31e85eda38c58cae986162ae2c462b53b0a2065
+	drm/i915: Detect USB-C specific dongles before reducing M and N
+drm-intel topic/e1000e-fix 4e5684f930587bd22565f404eb3c5e417a994ccc
+	e1000e: Undo e1000e_pm_freeze if __e1000_shutdown fails

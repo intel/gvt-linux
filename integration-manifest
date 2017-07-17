@@ -1,0 +1,26 @@
+drm-intel drm-intel-fixes 611cdf3695a307fdca3ff3779a1e6cca935e2d31
+	drm/i915: Disable EXEC_OBJECT_ASYNC when doing relocations
+drm-upstream drm-fixes 9ff1beb1d19ffe2b26bf9cd2d33e6073d4f4b5fe
+	Merge tag 'drm-intel-fixes-2017-06-27' of git://anongit.freedesktop.org/git/drm-intel into drm-fixes
+drm-intel drm-intel-next-fixes eafbc20701243d21989c9c9aff5e5d9488e1890a
+	Merge tag 'gvt-fixes-2017-07-11' of https://github.com/01org/gvt-linux into drm-intel-next-fixes
+drm-intel drm-intel-next-queued 58947144af34a08eee3388c1f039f199e80c0c6f
+	drm/i915: Update DRIVER_DATE to 20170717
+drm-upstream drm-next 6419ec78c6726aa54ff103aceffbf19d546d3d1b
+	Merge branch 'drm-next-4.13' of git://people.freedesktop.org/~agd5f/linux into drm-next
+sound-upstream for-next 74ec118152ea494a25ebb677cbc83a75c982ac5f
+	ALSA: hda - Add missing NVIDIA GPU codec IDs to patch table
+sound-upstream for-linus 74ec118152ea494a25ebb677cbc83a75c982ac5f
+	ALSA: hda - Add missing NVIDIA GPU codec IDs to patch table
+drm-intel topic/core-for-CI 754bc3dac34ed801370c5174cd9981206e1a6dd2
+	perf/core: Avoid removing shared pmu_context on unregister
+drm-misc drm-misc-next ec878c0756a0c202e86256dca1de307ab1189ab8
+	drm/vc4: Fix misleading name of the continuous flag.
+drm-misc drm-misc-next-fixes 1ed134e6526b1b513a14fba938f6d96aa1c7f3dd
+	drm/vc4: Fix VBLANK handling in crtc->enable() path
+drm-misc drm-misc-fixes 76250f2b743b72cb685cc51ac0cdabb32957180b
+	dma-buf/fence: Avoid use of uninitialised timestamp
+drm-intel topic/dp-quirks b31e85eda38c58cae986162ae2c462b53b0a2065
+	drm/i915: Detect USB-C specific dongles before reducing M and N
+drm-intel topic/e1000e-fix 4e5684f930587bd22565f404eb3c5e417a994ccc
+	e1000e: Undo e1000e_pm_freeze if __e1000_shutdown fails

@@ -1381,6 +1381,11 @@ enum drm_i915_perf_property_id {
 	 */
 	DRM_I915_PERF_PROP_OA_EXPONENT,
 
+	/**
+	 * The value specifies ctx with hw_id
+	 */
+	DRM_I915_PERF_PROP_CTX_HW_ID,
+
 	DRM_I915_PERF_PROP_MAX /* non-ABI */
 };
 

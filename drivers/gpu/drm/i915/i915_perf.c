@@ -334,7 +334,9 @@ static struct i915_oa_format gen8_plus_oa_formats[I915_OA_FORMAT_MAX] = {
  * struct perf_open_properties - for validated properties given to open a stream
  * @sample_flags: `DRM_I915_PERF_PROP_SAMPLE_*` properties are tracked as flags
  * @single_context: Whether a single or all gpu contexts should be monitored
+ * @single_context_hw: Set for special context with hw id e.g vGPU
  * @ctx_handle: A gem ctx handle for use with @single_context
+ * @ctx_hw_id: A ctx hw id for use with @single_context_hw
  * @metrics_set: An ID for an OA unit metric set advertised via sysfs
  * @oa_format: An OA unit HW report format
  * @oa_periodic: Whether to enable periodic OA unit sampling
@@ -348,7 +350,9 @@ struct perf_open_properties {
 	u32 sample_flags;
 
 	u64 single_context:1;
+	u64 single_context_hw:1;
 	u64 ctx_handle;
+	u64 ctx_hw_id;
 
 	/* OA sampling state */
 	int metrics_set;
@@ -2482,6 +2486,29 @@ static const struct file_operations fops = {
 	.unlocked_ioctl	= i915_perf_ioctl,
 };
 
+static struct i915_gem_context *
+lookup_context_hw_id(struct drm_i915_private *dev_priv, unsigned int hw_id)
+{
+	struct i915_gem_context *ctx;
+	int ret;
+
+	ret = i915_mutex_lock_interruptible(&dev_priv->drm);
+	if (ret)
+		return ERR_PTR(ret);
+
+	list_for_each_entry(ctx, &dev_priv->contexts.list, link) {
+		if (!i915_gem_context_is_default(ctx))
+			continue;
+
+		if (ctx->hw_id == hw_id) {
+			ret = 1;
+			i915_gem_context_get(ctx);
+			break;
+		}
+	}
+	mutex_unlock(&dev_priv->drm.struct_mutex);
+	return ret ? ctx : NULL;
+}
 
 /**
  * i915_perf_open_ioctl_locked - DRM ioctl() for userspace to open a stream FD
@@ -2531,24 +2558,35 @@ i915_perf_open_ioctl_locked(struct drm_i915_private *dev_priv,
 			ret = -ENOENT;
 			goto err;
 		}
+
+		/*
+		 * On Haswell the OA unit supports clock gating off for a specific
+		 * context and in this mode there's no visibility of metrics for the
+		 * rest of the system, which we consider acceptable for a
+		 * non-privileged client.
+		 *
+		 * For Gen8+ the OA unit no longer supports clock gating off for a
+		 * specific context and the kernel can't securely stop the counters
+		 * from updating as system-wide / global values. Even though we can
+		 * filter reports based on the included context ID we can't block
+		 * clients from seeing the raw / global counter values via
+		 * MI_REPORT_PERF_COUNT commands and so consider it a privileged op to
+		 * enable the OA unit by default.
+		 */
+		if (IS_HASWELL(dev_priv) && specific_ctx)
+			privileged_op = false;
 	}
 
-	/*
-	 * On Haswell the OA unit supports clock gating off for a specific
-	 * context and in this mode there's no visibility of metrics for the
-	 * rest of the system, which we consider acceptable for a
-	 * non-privileged client.
-	 *
-	 * For Gen8+ the OA unit no longer supports clock gating off for a
-	 * specific context and the kernel can't securely stop the counters
-	 * from updating as system-wide / global values. Even though we can
-	 * filter reports based on the included context ID we can't block
-	 * clients from seeing the raw / global counter values via
-	 * MI_REPORT_PERF_COUNT commands and so consider it a privileged op to
-	 * enable the OA unit by default.
-	 */
-	if (IS_HASWELL(dev_priv) && specific_ctx)
-		privileged_op = false;
+	if (props->single_context_hw) {
+		unsigned int hw_id = props->ctx_hw_id;
+
+		specific_ctx = lookup_context_hw_id(dev_priv, hw_id);
+		if (IS_ERR_OR_NULL(specific_ctx)) {
+			DRM_DEBUG("Failed to look up HW context id.\n");
+			ret = -ENOENT;
+			goto err;
+		}
+	}
 
 	/* Similar to perf's kernel.perf_paranoid_cpu sysctl option
 	 * we check a dev.i915.perf_stream_paranoid sysctl option
@@ -2686,6 +2724,14 @@ static int read_properties_unlocked(struct drm_i915_private *dev_priv,
 			props->single_context = 1;
 			props->ctx_handle = value;
 			break;
+		case DRM_I915_PERF_PROP_CTX_HW_ID:
+			if (value >= MAX_CONTEXT_HW_ID) {
+				DRM_DEBUG("Invalid OA HW context ID\n");
+				return -EINVAL;
+			}
+			props->single_context_hw = 1;
+			props->ctx_hw_id = value;
+			break;
 		case DRM_I915_PERF_PROP_SAMPLE_OA:
 			props->sample_flags |= SAMPLE_OA_REPORT;
 			break;
@@ -2755,6 +2801,11 @@ static int read_properties_unlocked(struct drm_i915_private *dev_priv,
 		}
 
 		uprop += 2;
+	}
+
+	if (props->single_context && props->single_context_hw) {
+		DRM_DEBUG("Assign context handler and HW id simultaneously\n");
+		return -EINVAL;
 	}
 
 	return 0;

@@ -1,0 +1,22 @@
+drm-intel drm-intel-fixes 5771a8c08880cdca3bfb4a3fc6d309d6bba20877
+	Linux v4.13-rc1
+drm-upstream drm-fixes 9ff1beb1d19ffe2b26bf9cd2d33e6073d4f4b5fe
+	Merge tag 'drm-intel-fixes-2017-06-27' of git://anongit.freedesktop.org/git/drm-intel into drm-fixes
+drm-intel drm-intel-next-fixes 5771a8c08880cdca3bfb4a3fc6d309d6bba20877
+	Linux v4.13-rc1
+drm-intel drm-intel-next-queued 99a59512a6fd7241f244fa162789e2f80ec91a5d
+	drm/i915: Explicit the connector name for DP link training result
+drm-upstream drm-next 6419ec78c6726aa54ff103aceffbf19d546d3d1b
+	Merge branch 'drm-next-4.13' of git://people.freedesktop.org/~agd5f/linux into drm-next
+sound-upstream for-next 6c5a266029cc9b036643d08c2f9340d09ee03708
+	ALSA: hda: constify pci_device_id.
+sound-upstream for-linus 610e1ae9b533be82b3aa118b907e0a703256913d
+	ALSA: fm801: Initialize chip after IRQ handler is registered
+drm-intel topic/core-for-CI 9d72a22aa369bb5fa6c7e795926ee3d47912e5c7
+	net/sch_generic: Shut up noise
+drm-misc drm-misc-next e62658c77316ac4d17004bd51f02baaf4729d027
+	drm/<drivers>: Drop fbdev info flags
+drm-misc drm-misc-next-fixes 1ed134e6526b1b513a14fba938f6d96aa1c7f3dd
+	drm/vc4: Fix VBLANK handling in crtc->enable() path
+drm-misc drm-misc-fixes ef434a0c2ce765ad33026375db7d23aebd5e9532
+	Merge branch 'drm-misc-next-fixes' into drm-misc-fixes

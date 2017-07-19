@@ -1,22 +1,12 @@
-drm-intel drm-intel-fixes 5771a8c08880cdca3bfb4a3fc6d309d6bba20877
-	Linux v4.13-rc1
-drm-upstream drm-fixes 9ff1beb1d19ffe2b26bf9cd2d33e6073d4f4b5fe
-	Merge tag 'drm-intel-fixes-2017-06-27' of git://anongit.freedesktop.org/git/drm-intel into drm-fixes
-drm-intel drm-intel-next-fixes 5771a8c08880cdca3bfb4a3fc6d309d6bba20877
-	Linux v4.13-rc1
-drm-intel drm-intel-next-queued 99a59512a6fd7241f244fa162789e2f80ec91a5d
-	drm/i915: Explicit the connector name for DP link training result
-drm-upstream drm-next 6419ec78c6726aa54ff103aceffbf19d546d3d1b
-	Merge branch 'drm-next-4.13' of git://people.freedesktop.org/~agd5f/linux into drm-next
-sound-upstream for-next 6c5a266029cc9b036643d08c2f9340d09ee03708
-	ALSA: hda: constify pci_device_id.
-sound-upstream for-linus 610e1ae9b533be82b3aa118b907e0a703256913d
-	ALSA: fm801: Initialize chip after IRQ handler is registered
-drm-intel topic/core-for-CI 9d72a22aa369bb5fa6c7e795926ee3d47912e5c7
-	net/sch_generic: Shut up noise
-drm-misc drm-misc-next e62658c77316ac4d17004bd51f02baaf4729d027
-	drm/<drivers>: Drop fbdev info flags
-drm-misc drm-misc-next-fixes 1ed134e6526b1b513a14fba938f6d96aa1c7f3dd
-	drm/vc4: Fix VBLANK handling in crtc->enable() path
-drm-misc drm-misc-fixes ef434a0c2ce765ad33026375db7d23aebd5e9532
-	Merge branch 'drm-misc-next-fixes' into drm-misc-fixes
+drm-tip/drm-tip c100f42bac8d898a86f5170b3f9ebb5786250f41
+	drm-tip: 2017y-07m-19d-09h-16m-13s UTC integration manifest
+vfio-upstream/for-linus 39da7c509acff13fc8cb12ec1bb20337c988ed36
+	Linux 4.11-rc6
+vfio-upstream/next 7f56c30bd0a232822aca38d288da475613bdff9b
+	vfio: Remove unnecessary uses of vfio_container.group_lock
+origin/gvt-fixes f43aa31fe7dc43b808ec619b0d407180cd3725c0
+	drm/i915/gvt: Fix the vblank timer close issue after shutdown VMs in reverse
+origin/gvt-next 51530ffa4cde0a11395a13cb4b97134c754d84f1
+	drm/i915/gvt: Extend KBL platform support in GVT-g
+origin/gvt-next-fixes 627c845c0907894a1e5cd2d90ff4fc86c9e4458e
+	drm/i915/gvt: change some gvt_err to gvt_dbg_cmd

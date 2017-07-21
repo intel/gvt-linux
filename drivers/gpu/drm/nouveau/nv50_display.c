@@ -2762,7 +2762,8 @@ nv50_hdmi_enable(struct drm_encoder *encoder, struct drm_display_mode *mode)
 	if (!drm_detect_hdmi_monitor(nv_connector->edid))
 		return;
 
-	ret = drm_hdmi_avi_infoframe_from_display_mode(&avi_frame.avi, mode);
+	ret = drm_hdmi_avi_infoframe_from_display_mode(&avi_frame.avi, mode,
+						       false);
 	if (!ret) {
 		/* We have an AVI InfoFrame, populate it to the display */
 		args.pwr.avi_infoframe_length
@@ -4067,7 +4068,7 @@ nv50_disp_atomic_commit_tail(struct drm_atomic_state *state)
 		if (crtc->state->event) {
 			unsigned long flags;
 			/* Get correct count/ts if racing with vblank irq */
-			drm_accurate_vblank_count(crtc);
+			drm_crtc_accurate_vblank_count(crtc);
 			spin_lock_irqsave(&crtc->dev->event_lock, flags);
 			drm_crtc_send_vblank_event(crtc, crtc->state->event);
 			spin_unlock_irqrestore(&crtc->dev->event_lock, flags);

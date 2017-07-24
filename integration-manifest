@@ -1,22 +1,12 @@
-drm-intel drm-intel-fixes 9cc5bb18bd0a9b26cf016879579581b88750f892
-	drm/i915: Fix bad comparison in skl_compute_plane_wm.
-drm-upstream drm-fixes 5896ec77d70d33dd38a455b0aa5f3154aeecea09
-	Merge tag 'imx-drm-fixes-2017-07-18' of git://git.pengutronix.de/git/pza/linux into drm-fixes
-drm-intel drm-intel-next-fixes 5771a8c08880cdca3bfb4a3fc6d309d6bba20877
-	Linux v4.13-rc1
-drm-intel drm-intel-next-queued b1abdc2033671c15b04d0dc1d9b7e3ec42e29749
-	drm/i915: Simplify scaler init during CRTC HW readout
-drm-upstream drm-next a26307ced13c6f1ad82593964e303b053586b064
-	Merge tag 'drm-misc-next-2017-07-18' of git://anongit.freedesktop.org/git/drm-misc into drm-next
-sound-upstream for-next 6c5a266029cc9b036643d08c2f9340d09ee03708
-	ALSA: hda: constify pci_device_id.
-sound-upstream for-linus e674ac9a470547ae6b9714e6bbe4960b60d148c6
-	ALSA: hda/realtek - No loopback on ALC225/ALC295 codec
-drm-intel topic/core-for-CI 9d72a22aa369bb5fa6c7e795926ee3d47912e5c7
-	net/sch_generic: Shut up noise
-drm-misc drm-misc-next 5be37168d3bbde5d61014e2feaa9c521661b3803
-	drm: Improve kerneldoc for drm_modeset_lock
-drm-misc drm-misc-next-fixes 1ed134e6526b1b513a14fba938f6d96aa1c7f3dd
-	drm/vc4: Fix VBLANK handling in crtc->enable() path
-drm-misc drm-misc-fixes 967003bb2cae121d345fd807eb757d9422229713
-	drm/dp: Don't trust drm_dp_downstream_id()
+drm-tip/drm-tip 2a4f73050a961e1a176d35561e39386da9ea9c67
+	drm-tip: 2017y-07m-21d-15h-30m-47s UTC integration manifest
+vfio-upstream/for-linus 39da7c509acff13fc8cb12ec1bb20337c988ed36
+	Linux 4.11-rc6
+vfio-upstream/next 7f56c30bd0a232822aca38d288da475613bdff9b
+	vfio: Remove unnecessary uses of vfio_container.group_lock
+origin/gvt-fixes f43aa31fe7dc43b808ec619b0d407180cd3725c0
+	drm/i915/gvt: Fix the vblank timer close issue after shutdown VMs in reverse
+origin/gvt-next 51530ffa4cde0a11395a13cb4b97134c754d84f1
+	drm/i915/gvt: Extend KBL platform support in GVT-g
+origin/gvt-next-fixes 627c845c0907894a1e5cd2d90ff4fc86c9e4458e
+	drm/i915/gvt: change some gvt_err to gvt_dbg_cmd

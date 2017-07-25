@@ -1290,23 +1290,13 @@ EXPORT_SYMBOL(drm_atomic_helper_wait_for_flip_done);
  * @old_state: atomic state object with old state structures
  *
  * This is the default implementation for the
- * &drm_mode_config_helper_funcs.atomic_commit_tail hook.
+ * &drm_mode_config_helper_funcs.atomic_commit_tail hook, for drivers
+ * that do not support runtime_pm or do not need the CRTC to be
+ * enabled to perform a commit. Otherwise, see
+ * drm_atomic_helper_commit_tail_rpm().
  *
  * Note that the default ordering of how the various stages are called is to
- * match the legacy modeset helper library closest. One peculiarity of that is
- * that it doesn't mesh well with runtime PM at all.
- *
- * For drivers supporting runtime PM the recommended sequence is instead ::
- *
- *     drm_atomic_helper_commit_modeset_disables(dev, old_state);
- *
- *     drm_atomic_helper_commit_modeset_enables(dev, old_state);
- *
- *     drm_atomic_helper_commit_planes(dev, old_state,
- *                                     DRM_PLANE_COMMIT_ACTIVE_ONLY);
- *
- * for committing the atomic update to hardware.  See the kerneldoc entries for
- * these three functions for more details.
+ * match the legacy modeset helper library closest.
  */
 void drm_atomic_helper_commit_tail(struct drm_atomic_state *old_state)
 {
@@ -1325,6 +1315,35 @@ void drm_atomic_helper_commit_tail(struct drm_atomic_state *old_state)
 	drm_atomic_helper_cleanup_planes(dev, old_state);
 }
 EXPORT_SYMBOL(drm_atomic_helper_commit_tail);
+
+/**
+ * drm_atomic_helper_commit_tail_rpm - commit atomic update to hardware
+ * @old_state: new modeset state to be committed
+ *
+ * This is an alternative implementation for the
+ * &drm_mode_config_helper_funcs.atomic_commit_tail hook, for drivers
+ * that support runtime_pm or need the CRTC to be enabled to perform a
+ * commit. Otherwise, one should use the default implementation
+ * drm_atomic_helper_commit_tail().
+ */
+void drm_atomic_helper_commit_tail_rpm(struct drm_atomic_state *old_state)
+{
+	struct drm_device *dev = old_state->dev;
+
+	drm_atomic_helper_commit_modeset_disables(dev, old_state);
+
+	drm_atomic_helper_commit_modeset_enables(dev, old_state);
+
+	drm_atomic_helper_commit_planes(dev, old_state,
+					DRM_PLANE_COMMIT_ACTIVE_ONLY);
+
+	drm_atomic_helper_commit_hw_done(old_state);
+
+	drm_atomic_helper_wait_for_vblanks(dev, old_state);
+
+	drm_atomic_helper_cleanup_planes(dev, old_state);
+}
+EXPORT_SYMBOL(drm_atomic_helper_commit_tail_rpm);
 
 static void commit_tail(struct drm_atomic_state *old_state)
 {
@@ -1510,10 +1529,8 @@ int drm_atomic_helper_commit(struct drm_device *dev,
 
 	if (!nonblock) {
 		ret = drm_atomic_helper_wait_for_fences(dev, state, true);
-		if (ret) {
-			drm_atomic_helper_cleanup_planes(dev, state);
-			return ret;
-		}
+		if (ret)
+			goto err;
 	}
 
 	/*
@@ -1522,7 +1539,9 @@ int drm_atomic_helper_commit(struct drm_device *dev,
 	 * the software side now.
 	 */
 
-	drm_atomic_helper_swap_state(state, true);
+	ret = drm_atomic_helper_swap_state(state, true);
+	if (ret)
+		goto err;
 
 	/*
 	 * Everything below can be run asynchronously without the need to grab
@@ -1551,6 +1570,10 @@ int drm_atomic_helper_commit(struct drm_device *dev,
 		commit_tail(state);
 
 	return 0;
+
+err:
+	drm_atomic_helper_cleanup_planes(dev, state);
+	return ret;
 }
 EXPORT_SYMBOL(drm_atomic_helper_commit);
 
@@ -2228,14 +2251,14 @@ EXPORT_SYMBOL(drm_atomic_helper_cleanup_planes);
 /**
  * drm_atomic_helper_swap_state - store atomic state into current sw state
  * @state: atomic state
- * @stall: stall for proceeding commits
+ * @stall: stall for preceeding commits
  *
  * This function stores the atomic state into the current state pointers in all
  * driver objects. It should be called after all failing steps have been done
  * and succeeded, but before the actual hardware state is committed.
  *
  * For cleanup and error recovery the current state for all changed objects will
- * be swaped into @state.
+ * be swapped into @state.
  *
  * With that sequence it fits perfectly into the plane prepare/cleanup sequence:
  *
@@ -2254,12 +2277,16 @@ EXPORT_SYMBOL(drm_atomic_helper_cleanup_planes);
  * the &drm_plane.state, &drm_crtc.state or &drm_connector.state pointer. With
  * the current atomic helpers this is almost always the case, since the helpers
  * don't pass the right state structures to the callbacks.
+ *
+ * Returns:
+ *
+ * Returns 0 on success. Can return -ERESTARTSYS when @stall is true and the
+ * waiting for the previous commits has been interrupted.
  */
-void drm_atomic_helper_swap_state(struct drm_atomic_state *state,
+int drm_atomic_helper_swap_state(struct drm_atomic_state *state,
 				  bool stall)
 {
-	int i;
-	long ret;
+	int i, ret;
 	struct drm_connector *connector;
 	struct drm_connector_state *old_conn_state, *new_conn_state;
 	struct drm_crtc *crtc;
@@ -2282,12 +2309,11 @@ void drm_atomic_helper_swap_state(struct drm_atomic_state *state,
 			if (!commit)
 				continue;
 
-			ret = wait_for_completion_timeout(&commit->hw_done,
-							  10*HZ);
-			if (ret == 0)
-				DRM_ERROR("[CRTC:%d:%s] hw_done timed out\n",
-					  crtc->base.id, crtc->name);
+			ret = wait_for_completion_interruptible(&commit->hw_done);
 			drm_crtc_commit_put(commit);
+
+			if (ret)
+				return ret;
 		}
 	}
 
@@ -2339,6 +2365,8 @@ void drm_atomic_helper_swap_state(struct drm_atomic_state *state,
 		state->private_objs[i].state = old_obj_state;
 		obj->state = new_obj_state;
 	}
+
+	return 0;
 }
 EXPORT_SYMBOL(drm_atomic_helper_swap_state);
 

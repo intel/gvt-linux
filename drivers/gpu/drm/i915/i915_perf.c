@@ -1746,7 +1746,7 @@ static int gen8_configure_all_contexts(struct drm_i915_private *dev_priv,
 		goto out;
 
 	/* Update all contexts now that we've stalled the submission. */
-	list_for_each_entry(ctx, &dev_priv->context_list, link) {
+	list_for_each_entry(ctx, &dev_priv->contexts.list, link) {
 		struct intel_context *ce = &ctx->engine[RCS];
 		u32 *regs;
 
@@ -2444,7 +2444,7 @@ static void i915_perf_destroy_locked(struct i915_perf_stream *stream)
 	list_del(&stream->link);
 
 	if (stream->ctx)
-		i915_gem_context_put_unlocked(stream->ctx);
+		i915_gem_context_put(stream->ctx);
 
 	kfree(stream);
 }
@@ -2482,27 +2482,6 @@ static const struct file_operations fops = {
 	.unlocked_ioctl	= i915_perf_ioctl,
 };
 
-
-static struct i915_gem_context *
-lookup_context(struct drm_i915_private *dev_priv,
-	       struct drm_i915_file_private *file_priv,
-	       u32 ctx_user_handle)
-{
-	struct i915_gem_context *ctx;
-	int ret;
-
-	ret = i915_mutex_lock_interruptible(&dev_priv->drm);
-	if (ret)
-		return ERR_PTR(ret);
-
-	ctx = i915_gem_context_lookup(file_priv, ctx_user_handle);
-	if (!IS_ERR(ctx))
-		i915_gem_context_get(ctx);
-
-	mutex_unlock(&dev_priv->drm.struct_mutex);
-
-	return ctx;
-}
 
 /**
  * i915_perf_open_ioctl_locked - DRM ioctl() for userspace to open a stream FD
@@ -2545,12 +2524,11 @@ i915_perf_open_ioctl_locked(struct drm_i915_private *dev_priv,
 		u32 ctx_handle = props->ctx_handle;
 		struct drm_i915_file_private *file_priv = file->driver_priv;
 
-		specific_ctx = lookup_context(dev_priv, file_priv, ctx_handle);
-		if (IS_ERR(specific_ctx)) {
-			ret = PTR_ERR(specific_ctx);
-			if (ret != -EINTR)
-				DRM_DEBUG("Failed to look up context with ID %u for opening perf stream\n",
-					  ctx_handle);
+		specific_ctx = i915_gem_context_lookup(file_priv, ctx_handle);
+		if (!specific_ctx) {
+			DRM_DEBUG("Failed to look up context with ID %u for opening perf stream\n",
+				  ctx_handle);
+			ret = -ENOENT;
 			goto err;
 		}
 	}
@@ -2633,7 +2611,7 @@ err_alloc:
 	kfree(stream);
 err_ctx:
 	if (specific_ctx)
-		i915_gem_context_put_unlocked(specific_ctx);
+		i915_gem_context_put(specific_ctx);
 err:
 	return ret;
 }

@@ -176,19 +176,13 @@ void intel_pipe_update_start(struct intel_crtc *crtc)
  * re-enables interrupts and verifies the update was actually completed
  * before a vblank using the value of @start_vbl_count.
  */
-void intel_pipe_update_end(struct intel_crtc *crtc, struct intel_flip_work *work)
+void intel_pipe_update_end(struct intel_crtc *crtc)
 {
 	enum pipe pipe = crtc->pipe;
 	int scanline_end = intel_get_crtc_scanline(crtc);
 	u32 end_vbl_count = intel_crtc_get_vblank_counter(crtc);
 	ktime_t end_vbl_time = ktime_get();
 	struct drm_i915_private *dev_priv = to_i915(crtc->base.dev);
-
-	if (work) {
-		work->flip_queued_vblank = end_vbl_count;
-		smp_mb__before_atomic();
-		atomic_set(&work->pending, 1);
-	}
 
 	trace_i915_pipe_update_end(crtc, end_vbl_count, scanline_end);
 
@@ -262,7 +256,7 @@ skl_update_plane(struct intel_plane *plane,
 
 	spin_lock_irqsave(&dev_priv->uncore.lock, irqflags);
 
-	if (IS_GEMINILAKE(dev_priv)) {
+	if (IS_GEMINILAKE(dev_priv) || IS_CANNONLAKE(dev_priv)) {
 		I915_WRITE_FW(PLANE_COLOR_CTL(pipe, plane_id),
 			      PLANE_COLOR_PIPE_GAMMA_ENABLE |
 			      PLANE_COLOR_PIPE_CSC_ENABLE |

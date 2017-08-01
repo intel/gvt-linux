@@ -232,7 +232,6 @@ static int intelfb_create(struct drm_fb_helper *helper,
 
 	strcpy(info->fix.id, "inteldrmfb");
 
-	info->flags = FBINFO_DEFAULT | FBINFO_CAN_FORCE_OUTPUT;
 	info->fbops = &intelfb_ops;
 
 	/* setup aperture base/size for vesafb takeover */
@@ -352,13 +351,19 @@ static bool intel_fb_initial_config(struct drm_fb_helper *fb_helper,
 	unsigned int count = min(fb_helper->connector_count, BITS_PER_LONG);
 	int i, j;
 	bool *save_enabled;
-	bool fallback = true;
+	bool fallback = true, ret = true;
 	int num_connectors_enabled = 0;
 	int num_connectors_detected = 0;
+	struct drm_modeset_acquire_ctx ctx;
 
 	save_enabled = kcalloc(count, sizeof(bool), GFP_KERNEL);
 	if (!save_enabled)
 		return false;
+
+	drm_modeset_acquire_init(&ctx, 0);
+
+	while (drm_modeset_lock_all_ctx(fb_helper->dev, &ctx) != 0)
+		drm_modeset_backoff(&ctx);
 
 	memcpy(save_enabled, enabled, count);
 	mask = GENMASK(count - 1, 0);
@@ -509,12 +514,14 @@ retry:
 bail:
 		DRM_DEBUG_KMS("Not using firmware configuration\n");
 		memcpy(enabled, save_enabled, count);
-		kfree(save_enabled);
-		return false;
+		ret = false;
 	}
 
+	drm_modeset_drop_locks(&ctx);
+	drm_modeset_acquire_fini(&ctx);
+
 	kfree(save_enabled);
-	return true;
+	return ret;
 }
 
 static const struct drm_fb_helper_funcs intel_fb_helper_funcs = {
@@ -530,8 +537,6 @@ static void intel_fbdev_destroy(struct intel_fbdev *ifbdev)
 	 * the info->screen_base mmaping. Leaking the VMA is simpler than
 	 * trying to rectify all the possible error paths leading here.
 	 */
-
-	drm_fb_helper_unregister_fbi(&ifbdev->helper);
 
 	drm_fb_helper_fini(&ifbdev->helper);
 
@@ -720,8 +725,10 @@ static void intel_fbdev_initial_config(void *data, async_cookie_t cookie)
 
 	/* Due to peculiar init order wrt to hpd handling this is separate. */
 	if (drm_fb_helper_initial_config(&ifbdev->helper,
-					 ifbdev->preferred_bpp))
-		intel_fbdev_fini(ifbdev->helper.dev);
+					 ifbdev->preferred_bpp)) {
+		intel_fbdev_unregister(to_i915(ifbdev->helper.dev));
+		intel_fbdev_fini(to_i915(ifbdev->helper.dev));
+	}
 }
 
 void intel_fbdev_initial_config_async(struct drm_device *dev)
@@ -744,9 +751,8 @@ static void intel_fbdev_sync(struct intel_fbdev *ifbdev)
 	ifbdev->cookie = 0;
 }
 
-void intel_fbdev_fini(struct drm_device *dev)
+void intel_fbdev_unregister(struct drm_i915_private *dev_priv)
 {
-	struct drm_i915_private *dev_priv = to_i915(dev);
 	struct intel_fbdev *ifbdev = dev_priv->fbdev;
 
 	if (!ifbdev)
@@ -756,8 +762,17 @@ void intel_fbdev_fini(struct drm_device *dev)
 	if (!current_is_async())
 		intel_fbdev_sync(ifbdev);
 
+	drm_fb_helper_unregister_fbi(&ifbdev->helper);
+}
+
+void intel_fbdev_fini(struct drm_i915_private *dev_priv)
+{
+	struct intel_fbdev *ifbdev = fetch_and_zero(&dev_priv->fbdev);
+
+	if (!ifbdev)
+		return;
+
 	intel_fbdev_destroy(ifbdev);
-	dev_priv->fbdev = NULL;
 }
 
 void intel_fbdev_set_suspend(struct drm_device *dev, int state, bool synchronous)
@@ -813,7 +828,7 @@ void intel_fbdev_output_poll_changed(struct drm_device *dev)
 {
 	struct intel_fbdev *ifbdev = to_i915(dev)->fbdev;
 
-	if (ifbdev && ifbdev->vma)
+	if (ifbdev)
 		drm_fb_helper_hotplug_event(&ifbdev->helper);
 }
 

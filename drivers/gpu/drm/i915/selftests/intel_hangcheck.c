@@ -22,7 +22,12 @@
  *
  */
 
+#include <linux/kthread.h>
+
 #include "../i915_selftest.h"
+
+#include "mock_context.h"
+#include "mock_drm.h"
 
 struct hang {
 	struct drm_i915_private *i915;
@@ -292,6 +297,37 @@ unlock:
 	return err;
 }
 
+static void global_reset_lock(struct drm_i915_private *i915)
+{
+	struct intel_engine_cs *engine;
+	enum intel_engine_id id;
+
+	while (test_and_set_bit(I915_RESET_BACKOFF, &i915->gpu_error.flags))
+		wait_event(i915->gpu_error.reset_queue,
+			   !test_bit(I915_RESET_BACKOFF,
+				     &i915->gpu_error.flags));
+
+	for_each_engine(engine, i915, id) {
+		while (test_and_set_bit(I915_RESET_ENGINE + id,
+					&i915->gpu_error.flags))
+			wait_on_bit(&i915->gpu_error.flags,
+				    I915_RESET_ENGINE + id,
+				    TASK_UNINTERRUPTIBLE);
+	}
+}
+
+static void global_reset_unlock(struct drm_i915_private *i915)
+{
+	struct intel_engine_cs *engine;
+	enum intel_engine_id id;
+
+	for_each_engine(engine, i915, id)
+		clear_bit(I915_RESET_ENGINE + id, &i915->gpu_error.flags);
+
+	clear_bit(I915_RESET_BACKOFF, &i915->gpu_error.flags);
+	wake_up_all(&i915->gpu_error.reset_queue);
+}
+
 static int igt_global_reset(void *arg)
 {
 	struct drm_i915_private *i915 = arg;
@@ -300,13 +336,13 @@ static int igt_global_reset(void *arg)
 
 	/* Check that we can issue a global GPU reset */
 
-	set_bit(I915_RESET_BACKOFF, &i915->gpu_error.flags);
+	global_reset_lock(i915);
 	set_bit(I915_RESET_HANDOFF, &i915->gpu_error.flags);
 
 	mutex_lock(&i915->drm.struct_mutex);
 	reset_count = i915_reset_count(&i915->gpu_error);
 
-	i915_reset(i915);
+	i915_reset(i915, I915_RESET_QUIET);
 
 	if (i915_reset_count(&i915->gpu_error) == reset_count) {
 		pr_err("No GPU reset recorded!\n");
@@ -315,7 +351,214 @@ static int igt_global_reset(void *arg)
 	mutex_unlock(&i915->drm.struct_mutex);
 
 	GEM_BUG_ON(test_bit(I915_RESET_HANDOFF, &i915->gpu_error.flags));
-	clear_bit(I915_RESET_BACKOFF, &i915->gpu_error.flags);
+	global_reset_unlock(i915);
+
+	if (i915_terminally_wedged(&i915->gpu_error))
+		err = -EIO;
+
+	return err;
+}
+
+static int igt_reset_engine(void *arg)
+{
+	struct drm_i915_private *i915 = arg;
+	struct intel_engine_cs *engine;
+	enum intel_engine_id id;
+	unsigned int reset_count, reset_engine_count;
+	int err = 0;
+
+	/* Check that we can issue a global GPU and engine reset */
+
+	if (!intel_has_reset_engine(i915))
+		return 0;
+
+	for_each_engine(engine, i915, id) {
+		set_bit(I915_RESET_ENGINE + engine->id, &i915->gpu_error.flags);
+		reset_count = i915_reset_count(&i915->gpu_error);
+		reset_engine_count = i915_reset_engine_count(&i915->gpu_error,
+							     engine);
+
+		err = i915_reset_engine(engine, I915_RESET_QUIET);
+		if (err) {
+			pr_err("i915_reset_engine failed\n");
+			break;
+		}
+
+		if (i915_reset_count(&i915->gpu_error) != reset_count) {
+			pr_err("Full GPU reset recorded! (engine reset expected)\n");
+			err = -EINVAL;
+			break;
+		}
+
+		if (i915_reset_engine_count(&i915->gpu_error, engine) ==
+		    reset_engine_count) {
+			pr_err("No %s engine reset recorded!\n", engine->name);
+			err = -EINVAL;
+			break;
+		}
+
+		clear_bit(I915_RESET_ENGINE + engine->id,
+			  &i915->gpu_error.flags);
+	}
+
+	if (i915_terminally_wedged(&i915->gpu_error))
+		err = -EIO;
+
+	return err;
+}
+
+static int active_engine(void *data)
+{
+	struct intel_engine_cs *engine = data;
+	struct drm_i915_gem_request *rq[2] = {};
+	struct i915_gem_context *ctx[2];
+	struct drm_file *file;
+	unsigned long count = 0;
+	int err = 0;
+
+	file = mock_file(engine->i915);
+	if (IS_ERR(file))
+		return PTR_ERR(file);
+
+	mutex_lock(&engine->i915->drm.struct_mutex);
+	ctx[0] = live_context(engine->i915, file);
+	mutex_unlock(&engine->i915->drm.struct_mutex);
+	if (IS_ERR(ctx[0])) {
+		err = PTR_ERR(ctx[0]);
+		goto err_file;
+	}
+
+	mutex_lock(&engine->i915->drm.struct_mutex);
+	ctx[1] = live_context(engine->i915, file);
+	mutex_unlock(&engine->i915->drm.struct_mutex);
+	if (IS_ERR(ctx[1])) {
+		err = PTR_ERR(ctx[1]);
+		i915_gem_context_put(ctx[0]);
+		goto err_file;
+	}
+
+	while (!kthread_should_stop()) {
+		unsigned int idx = count++ & 1;
+		struct drm_i915_gem_request *old = rq[idx];
+		struct drm_i915_gem_request *new;
+
+		mutex_lock(&engine->i915->drm.struct_mutex);
+		new = i915_gem_request_alloc(engine, ctx[idx]);
+		if (IS_ERR(new)) {
+			mutex_unlock(&engine->i915->drm.struct_mutex);
+			err = PTR_ERR(new);
+			break;
+		}
+
+		rq[idx] = i915_gem_request_get(new);
+		i915_add_request(new);
+		mutex_unlock(&engine->i915->drm.struct_mutex);
+
+		if (old) {
+			i915_wait_request(old, 0, MAX_SCHEDULE_TIMEOUT);
+			i915_gem_request_put(old);
+		}
+	}
+
+	for (count = 0; count < ARRAY_SIZE(rq); count++)
+		i915_gem_request_put(rq[count]);
+
+err_file:
+	mock_file_free(engine->i915, file);
+	return err;
+}
+
+static int igt_reset_active_engines(void *arg)
+{
+	struct drm_i915_private *i915 = arg;
+	struct intel_engine_cs *engine, *active;
+	enum intel_engine_id id, tmp;
+	int err = 0;
+
+	/* Check that issuing a reset on one engine does not interfere
+	 * with any other engine.
+	 */
+
+	if (!intel_has_reset_engine(i915))
+		return 0;
+
+	for_each_engine(engine, i915, id) {
+		struct task_struct *threads[I915_NUM_ENGINES];
+		unsigned long resets[I915_NUM_ENGINES];
+		unsigned long global = i915_reset_count(&i915->gpu_error);
+		IGT_TIMEOUT(end_time);
+
+		memset(threads, 0, sizeof(threads));
+		for_each_engine(active, i915, tmp) {
+			struct task_struct *tsk;
+
+			if (active == engine)
+				continue;
+
+			resets[tmp] = i915_reset_engine_count(&i915->gpu_error,
+							      active);
+
+			tsk = kthread_run(active_engine, active,
+					  "igt/%s", active->name);
+			if (IS_ERR(tsk)) {
+				err = PTR_ERR(tsk);
+				goto unwind;
+			}
+
+			threads[tmp] = tsk;
+			get_task_struct(tsk);
+		}
+
+		set_bit(I915_RESET_ENGINE + engine->id, &i915->gpu_error.flags);
+		do {
+			err = i915_reset_engine(engine, I915_RESET_QUIET);
+			if (err) {
+				pr_err("i915_reset_engine(%s) failed, err=%d\n",
+				       engine->name, err);
+				break;
+			}
+		} while (time_before(jiffies, end_time));
+		clear_bit(I915_RESET_ENGINE + engine->id,
+			  &i915->gpu_error.flags);
+
+unwind:
+		for_each_engine(active, i915, tmp) {
+			int ret;
+
+			if (!threads[tmp])
+				continue;
+
+			ret = kthread_stop(threads[tmp]);
+			if (ret) {
+				pr_err("kthread for active engine %s failed, err=%d\n",
+				       active->name, ret);
+				if (!err)
+					err = ret;
+			}
+			put_task_struct(threads[tmp]);
+
+			if (resets[tmp] != i915_reset_engine_count(&i915->gpu_error,
+								   active)) {
+				pr_err("Innocent engine %s was reset (count=%ld)\n",
+				       active->name,
+				       i915_reset_engine_count(&i915->gpu_error,
+							       active) - resets[tmp]);
+				err = -EIO;
+			}
+		}
+
+		if (global != i915_reset_count(&i915->gpu_error)) {
+			pr_err("Global reset (count=%ld)!\n",
+			       i915_reset_count(&i915->gpu_error) - global);
+			err = -EIO;
+		}
+
+		if (err)
+			break;
+
+		cond_resched();
+	}
+
 	if (i915_terminally_wedged(&i915->gpu_error))
 		err = -EIO;
 
@@ -358,7 +601,7 @@ static int igt_wait_reset(void *arg)
 
 	/* Check that we detect a stuck waiter and issue a reset */
 
-	set_bit(I915_RESET_BACKOFF, &i915->gpu_error.flags);
+	global_reset_lock(i915);
 
 	mutex_lock(&i915->drm.struct_mutex);
 	err = hang_init(&h, i915);
@@ -403,7 +646,7 @@ fini:
 	hang_fini(&h);
 unlock:
 	mutex_unlock(&i915->drm.struct_mutex);
-	clear_bit(I915_RESET_BACKOFF, &i915->gpu_error.flags);
+	global_reset_unlock(i915);
 
 	if (i915_terminally_wedged(&i915->gpu_error))
 		return -EIO;
@@ -424,7 +667,8 @@ static int igt_reset_queue(void *arg)
 	if (!igt_can_mi_store_dword_imm(i915))
 		return 0;
 
-	set_bit(I915_RESET_BACKOFF, &i915->gpu_error.flags);
+	global_reset_lock(i915);
+
 	mutex_lock(&i915->drm.struct_mutex);
 	err = hang_init(&h, i915);
 	if (err)
@@ -471,7 +715,7 @@ static int igt_reset_queue(void *arg)
 
 			reset_count = fake_hangcheck(prev);
 
-			i915_reset(i915);
+			i915_reset(i915, I915_RESET_QUIET);
 
 			GEM_BUG_ON(test_bit(I915_RESET_HANDOFF,
 					    &i915->gpu_error.flags));
@@ -518,7 +762,7 @@ fini:
 	hang_fini(&h);
 unlock:
 	mutex_unlock(&i915->drm.struct_mutex);
-	clear_bit(I915_RESET_BACKOFF, &i915->gpu_error.flags);
+	global_reset_unlock(i915);
 
 	if (i915_terminally_wedged(&i915->gpu_error))
 		return -EIO;
@@ -526,13 +770,120 @@ unlock:
 	return err;
 }
 
+static int igt_render_engine_reset_fallback(void *arg)
+{
+	struct drm_i915_private *i915 = arg;
+	struct intel_engine_cs *engine = i915->engine[RCS];
+	struct hang h;
+	struct drm_i915_gem_request *rq;
+	unsigned int reset_count, reset_engine_count;
+	int err = 0;
+
+	/* Check that we can issue a global GPU and engine reset */
+
+	if (!intel_has_reset_engine(i915))
+		return 0;
+
+	global_reset_lock(i915);
+
+	mutex_lock(&i915->drm.struct_mutex);
+
+	err = hang_init(&h, i915);
+	if (err)
+		goto err_unlock;
+
+	rq = hang_create_request(&h, engine, i915->kernel_context);
+	if (IS_ERR(rq)) {
+		err = PTR_ERR(rq);
+		goto err_fini;
+	}
+
+	i915_gem_request_get(rq);
+	__i915_add_request(rq, true);
+
+	/* make reset engine fail */
+	rq->fence.error = -EIO;
+
+	if (!wait_for_hang(&h, rq)) {
+		pr_err("Failed to start request %x\n", rq->fence.seqno);
+		err = -EIO;
+		goto err_request;
+	}
+
+	reset_engine_count = i915_reset_engine_count(&i915->gpu_error, engine);
+	reset_count = fake_hangcheck(rq);
+
+	/* unlock since we'll call handle_error */
+	mutex_unlock(&i915->drm.struct_mutex);
+	global_reset_unlock(i915);
+
+	i915_handle_error(i915, intel_engine_flag(engine), "live test");
+
+	if (i915_reset_engine_count(&i915->gpu_error, engine) !=
+	    reset_engine_count) {
+		pr_err("render engine reset recorded! (full reset expected)\n");
+		err = -EINVAL;
+		goto out_rq;
+	}
+
+	if (i915_reset_count(&i915->gpu_error) == reset_count) {
+		pr_err("No full GPU reset recorded!\n");
+		err = -EINVAL;
+		goto out_rq;
+	}
+
+	/*
+	 * by using fence.error = -EIO, full reset sets the wedged flag, do one
+	 * more full reset to re-enable the hw.
+	 */
+	if (i915_terminally_wedged(&i915->gpu_error)) {
+		global_reset_lock(i915);
+		rq->fence.error = 0;
+
+		mutex_lock(&i915->drm.struct_mutex);
+		set_bit(I915_RESET_HANDOFF, &i915->gpu_error.flags);
+		i915_reset(i915, I915_RESET_QUIET);
+		GEM_BUG_ON(test_bit(I915_RESET_HANDOFF,
+				    &i915->gpu_error.flags));
+		mutex_unlock(&i915->drm.struct_mutex);
+
+		if (i915_reset_count(&i915->gpu_error) == reset_count) {
+			pr_err("No full GPU reset recorded!\n");
+			err = -EINVAL;
+			goto out_rq;
+		}
+	}
+
+out_rq:
+	i915_gem_request_put(rq);
+	hang_fini(&h);
+out_backoff:
+	global_reset_unlock(i915);
+
+	if (i915_terminally_wedged(&i915->gpu_error))
+		return -EIO;
+
+	return err;
+
+err_request:
+	i915_gem_request_put(rq);
+err_fini:
+	hang_fini(&h);
+err_unlock:
+	mutex_unlock(&i915->drm.struct_mutex);
+	goto out_backoff;
+}
+
 int intel_hangcheck_live_selftests(struct drm_i915_private *i915)
 {
 	static const struct i915_subtest tests[] = {
 		SUBTEST(igt_hang_sanitycheck),
 		SUBTEST(igt_global_reset),
+		SUBTEST(igt_reset_engine),
+		SUBTEST(igt_reset_active_engines),
 		SUBTEST(igt_wait_reset),
 		SUBTEST(igt_reset_queue),
+		SUBTEST(igt_render_engine_reset_fallback),
 	};
 
 	if (!intel_has_gpu_reset(i915))

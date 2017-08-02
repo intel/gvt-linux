@@ -1,22 +1,12 @@
-drm-intel drm-intel-fixes 16f73eb02d7e1765ccab3d2018e0bd98eb93d973
-	Linux 4.13-rc3
-drm-upstream drm-fixes 20806588f015921ef0704de36a4750f828f399ea
-	Merge tag 'exynos-drm-fixes-for-v4.13-rc3' of git://git.kernel.org/pub/scm/linux/kernel/git/daeinki/drm-exynos into drm-fixes
-drm-intel drm-intel-next-fixes 04941829b0049d2446c7042ab9686dd057d809a6
-	drm/i915: Hold RPM wakelock while initializing OA buffer
-drm-intel drm-intel-next-queued d0604a24d4e47a0196552fe8147792ab68e55f0e
-	drm/i915: Update DRIVER_DATE to 20170731
-drm-upstream drm-next e6742e1021a5cec55fab50a0b115c65217488eda
-	drm: linux-next: build failure after merge of the drm-misc tree
-sound-upstream for-next 6c5a266029cc9b036643d08c2f9340d09ee03708
-	ALSA: hda: constify pci_device_id.
-sound-upstream for-linus ba92b1142879731f80377770f4710e5f0a953aad
-	ALSA: hda - Add mute led support for HP ProBook 440 G4
-drm-intel topic/core-for-CI 4b1cd3afb1c7e918c3e0748dfd4ecb6e43a41573
-	x86/hpet: Cure interface abuse in the resume path
-drm-misc drm-misc-next db1689aa61bd1efb5ce9b896e7aa860a85b7f1b6
-	drm: Create a format/modifier blob
-drm-misc drm-misc-next-fixes 1ed134e6526b1b513a14fba938f6d96aa1c7f3dd
-	drm/vc4: Fix VBLANK handling in crtc->enable() path
-drm-misc drm-misc-fixes 99f828436788f0155798145853607ca8f0e6de93
-	dma-buf/sync_file: Allow multiple sync_files to wrap a single dma-fence
+drm-tip/drm-tip fcb630a80579faf6d12ee62cb49bd7a4acff41e6
+	drm-tip: 2017y-08m-01d-17h-14m-57s UTC integration manifest
+vfio-upstream/for-linus 796b755066dd6254bfb6388fec901631e868d1c7
+	vfio/pci: Fix handling of RC integrated endpoint PCIe capability size
+vfio-upstream/next 7f56c30bd0a232822aca38d288da475613bdff9b
+	vfio: Remove unnecessary uses of vfio_container.group_lock
+origin/gvt-fixes f2e2c00adcdc59b9fe86c82259abdaf32d0ee6ea
+	drm/i915/gvt: clean workload queue if error happened
+origin/gvt-next 51530ffa4cde0a11395a13cb4b97134c754d84f1
+	drm/i915/gvt: Extend KBL platform support in GVT-g
+origin/gvt-next-fixes 627c845c0907894a1e5cd2d90ff4fc86c9e4458e
+	drm/i915/gvt: change some gvt_err to gvt_dbg_cmd

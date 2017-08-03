@@ -213,6 +213,10 @@ static int reset_all_global_seqno(struct drm_i915_private *i915, u32 seqno)
 				cond_resched();
 		}
 
+		/* Check we are idle before we fiddle with hw state! */
+		GEM_BUG_ON(!intel_engine_is_idle(engine));
+		GEM_BUG_ON(i915_gem_active_isset(&engine->timeline->last_request));
+
 		/* Finally reset hw state */
 		intel_engine_init_global_seqno(engine, seqno);
 		tl->seqno = seqno;
@@ -370,8 +374,7 @@ static void i915_gem_request_retire(struct drm_i915_gem_request *request)
 	i915_gem_request_remove_from_client(request);
 
 	/* Retirement decays the ban score as it is a sign of ctx progress */
-	if (request->ctx->ban_score > 0)
-		request->ctx->ban_score--;
+	atomic_dec_if_positive(&request->ctx->ban_score);
 
 	/* The backing object for the context is done after switching to the
 	 * *next* context. Therefore we cannot retire the previous context until
@@ -384,7 +387,11 @@ static void i915_gem_request_retire(struct drm_i915_gem_request *request)
 		engine->context_unpin(engine, engine->last_retired_context);
 	engine->last_retired_context = request->ctx;
 
-	dma_fence_signal(&request->fence);
+	spin_lock_irq(&request->lock);
+	if (request->waitboost)
+		atomic_dec(&request->i915->rps.num_waiters);
+	dma_fence_signal_locked(&request->fence);
+	spin_unlock_irq(&request->lock);
 
 	i915_priotree_fini(request->i915, &request->priotree);
 	i915_gem_request_put(request);
@@ -639,6 +646,7 @@ i915_gem_request_alloc(struct intel_engine_cs *engine,
 	req->file_priv = NULL;
 	req->batch = NULL;
 	req->capture_list = NULL;
+	req->waitboost = false;
 
 	/*
 	 * Reserve space in the ring buffer for all the commands required to
@@ -1063,7 +1071,7 @@ static bool __i915_wait_request_check_and_reset(struct drm_i915_gem_request *req
 		return false;
 
 	__set_current_state(TASK_RUNNING);
-	i915_reset(request->i915);
+	i915_reset(request->i915, 0);
 	return true;
 }
 

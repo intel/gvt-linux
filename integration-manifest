@@ -1,22 +1,12 @@
-drm-intel drm-intel-fixes 16f73eb02d7e1765ccab3d2018e0bd98eb93d973
-	Linux 4.13-rc3
-drm-upstream drm-fixes 5669b9989eaa664cacbad6a85631550bccdad963
-	Merge branch 'drm-fixes-4.13' of git://people.freedesktop.org/~agd5f/linux into drm-fixes
-drm-intel drm-intel-next-fixes 04941829b0049d2446c7042ab9686dd057d809a6
-	drm/i915: Hold RPM wakelock while initializing OA buffer
-drm-intel drm-intel-next-queued 41533940a96296acb4595a1a58db70f8ea8f14da
-	drm/i915/selftests: Retarget igt_render_engine_reset_fallback()
-drm-upstream drm-next c27668ba9ab0e77bc6beffc8ffcf8bbcd5a49c73
-	Merge branch 'topic-arcpgu-updates' of https://github.com/foss-for-synopsys-dwc-arc-processors/linux into drm-next
-sound-upstream for-next 5e463d6d292a259bd1b50c56d9b2a547fc907afd
-	ALSA: usbusx2y: constify usb_device_id.
-sound-upstream for-linus 5ef26e966d3fd105ad9a7e8e8f6d12c7fbd4c03d
-	Merge tag 'asoc-fix-v4.13-rc3' of git://git.kernel.org/pub/scm/linux/kernel/git/broonie/sound into for-linus
-drm-intel topic/core-for-CI 4b1cd3afb1c7e918c3e0748dfd4ecb6e43a41573
-	x86/hpet: Cure interface abuse in the resume path
-drm-misc drm-misc-next 81aa368cd147e14252183576e301fc74659435d1
-	drm: dw-hdmi-i2s: add missing company name on Copyright
-drm-misc drm-misc-next-fixes 1ed134e6526b1b513a14fba938f6d96aa1c7f3dd
-	drm/vc4: Fix VBLANK handling in crtc->enable() path
-drm-misc drm-misc-fixes 80c471ea040ad9006ebff6d64221a04e8fa1b7f6
-	drm/rockchip: vop: report error when check resource error
+drm-tip/drm-tip bc57cbc0145939e030723e406d77008f5857ba70
+	drm-tip: 2017y-08m-07d-07h-44m-29s UTC integration manifest
+vfio-upstream/for-linus 796b755066dd6254bfb6388fec901631e868d1c7
+	vfio/pci: Fix handling of RC integrated endpoint PCIe capability size
+vfio-upstream/next 7f56c30bd0a232822aca38d288da475613bdff9b
+	vfio: Remove unnecessary uses of vfio_container.group_lock
+origin/gvt-fixes d6086598d34e1cf9091c7be201f5b2041dc6203e
+	drm/i915/gvt: Change the max length of mmio_reg_rw from 4 to 8
+origin/gvt-next e798490981c073388156f4fcb665d8b3a9951114
+	drm/i915/gvt: Refine the intel_vgpu_reset_gtt reset function
+origin/gvt-next-fixes 627c845c0907894a1e5cd2d90ff4fc86c9e4458e
+	drm/i915/gvt: change some gvt_err to gvt_dbg_cmd

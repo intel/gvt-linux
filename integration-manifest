@@ -1,22 +1,12 @@
-drm-intel drm-intel-fixes 1e2ba788787c86f527eca6ffd9adb97d691a810e
-	drm/i915: fix backlight invert for non-zero minimum brightness
-drm-upstream drm-fixes 5669b9989eaa664cacbad6a85631550bccdad963
-	Merge branch 'drm-fixes-4.13' of git://people.freedesktop.org/~agd5f/linux into drm-fixes
-drm-intel drm-intel-next-fixes 04941829b0049d2446c7042ab9686dd057d809a6
-	drm/i915: Hold RPM wakelock while initializing OA buffer
-drm-intel drm-intel-next-queued ea46708f079d031f9e356b71a493940fd13fc2cf
-	drm/i915/cnl: Removing missing DDI_E bits from CNL.
-drm-upstream drm-next c27668ba9ab0e77bc6beffc8ffcf8bbcd5a49c73
-	Merge branch 'topic-arcpgu-updates' of https://github.com/foss-for-synopsys-dwc-arc-processors/linux into drm-next
-sound-upstream for-next 5e463d6d292a259bd1b50c56d9b2a547fc907afd
-	ALSA: usbusx2y: constify usb_device_id.
-sound-upstream for-linus 5ef26e966d3fd105ad9a7e8e8f6d12c7fbd4c03d
-	Merge tag 'asoc-fix-v4.13-rc3' of git://git.kernel.org/pub/scm/linux/kernel/git/broonie/sound into for-linus
-drm-intel topic/core-for-CI 4b1cd3afb1c7e918c3e0748dfd4ecb6e43a41573
-	x86/hpet: Cure interface abuse in the resume path
-drm-misc drm-misc-next 3be8eddd9d58a925b461b582fa5aa422a9c145ee
-	drm/vc4: Add exec flags to allow forcing a specific X/Y tile walk order.
-drm-misc drm-misc-next-fixes 1ed134e6526b1b513a14fba938f6d96aa1c7f3dd
-	drm/vc4: Fix VBLANK handling in crtc->enable() path
-drm-misc drm-misc-fixes 80c471ea040ad9006ebff6d64221a04e8fa1b7f6
-	drm/rockchip: vop: report error when check resource error
+drm-tip/drm-tip e2586470ba9f468a2f72b1619d79aa1d510c45a7
+	drm-tip: 2017y-08m-08d-20h-39m-09s UTC integration manifest
+vfio-upstream/for-linus 796b755066dd6254bfb6388fec901631e868d1c7
+	vfio/pci: Fix handling of RC integrated endpoint PCIe capability size
+vfio-upstream/next 7f56c30bd0a232822aca38d288da475613bdff9b
+	vfio: Remove unnecessary uses of vfio_container.group_lock
+origin/gvt-fixes d6086598d34e1cf9091c7be201f5b2041dc6203e
+	drm/i915/gvt: Change the max length of mmio_reg_rw from 4 to 8
+origin/gvt-next 1031ba3b6f09b60106a37961005e11ba432dde20
+	drm/i915/gvt: expose vGPU context hw id
+origin/gvt-next-fixes 627c845c0907894a1e5cd2d90ff4fc86c9e4458e
+	drm/i915/gvt: change some gvt_err to gvt_dbg_cmd

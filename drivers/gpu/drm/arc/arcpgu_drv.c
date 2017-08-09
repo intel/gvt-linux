@@ -31,7 +31,7 @@ static void arcpgu_fb_output_poll_changed(struct drm_device *dev)
 	drm_fbdev_cma_hotplug_event(arcpgu->fbdev);
 }
 
-static struct drm_mode_config_funcs arcpgu_drm_modecfg_funcs = {
+static const struct drm_mode_config_funcs arcpgu_drm_modecfg_funcs = {
 	.fb_create  = drm_fb_cma_create,
 	.output_poll_changed = arcpgu_fb_output_poll_changed,
 	.atomic_check = drm_atomic_helper_check,
@@ -176,8 +176,6 @@ static struct drm_driver arcpgu_drm_driver = {
 	.patchlevel = 0,
 	.fops = &arcpgu_drm_ops,
 	.dumb_create = drm_gem_cma_dumb_create,
-	.dumb_map_offset = drm_gem_cma_dumb_map_offset,
-	.dumb_destroy = drm_gem_dumb_destroy,
 	.prime_handle_to_fd = drm_gem_prime_handle_to_fd,
 	.prime_fd_to_handle = drm_gem_prime_fd_to_handle,
 	.gem_free_object_unlocked = drm_gem_cma_free_object,

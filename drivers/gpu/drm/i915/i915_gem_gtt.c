@@ -141,13 +141,18 @@ int intel_sanitize_enable_ppgtt(struct drm_i915_private *dev_priv,
 
 	has_aliasing_ppgtt = dev_priv->info.has_aliasing_ppgtt;
 	has_full_ppgtt = dev_priv->info.has_full_ppgtt;
-	has_full_48bit_ppgtt = dev_priv->info.has_full_48bit_ppgtt;
 
 	if (intel_vgpu_active(dev_priv)) {
-		/* emulation is too hard */
-		has_full_ppgtt = false;
-		has_full_48bit_ppgtt = false;
+		has_full_ppgtt = intel_vgpu_has_full_ppgtt(dev_priv);
+		/* GVT-g has no support for 32bit ppgtt */
+		if (enable_ppgtt == 2 && has_full_ppgtt) {
+			DRM_DEBUG_DRIVER("Force 48bit ppgtt for vGPU\n");
+			enable_ppgtt = 3;
+		}
 	}
+
+	has_full_48bit_ppgtt = has_full_ppgtt &&
+		dev_priv->info.has_full_48bit_ppgtt;
 
 	if (!has_aliasing_ppgtt)
 		return 0;

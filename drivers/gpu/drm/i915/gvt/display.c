@@ -412,12 +412,13 @@ void intel_gvt_emulate_vblank(struct intel_gvt *gvt)
  */
 void intel_vgpu_clean_display(struct intel_vgpu *vgpu)
 {
-	struct drm_i915_private *dev_priv = vgpu->gvt->dev_priv;
+	enum port port;
 
-	if (IS_SKYLAKE(dev_priv) || IS_KABYLAKE(dev_priv))
-		clean_virtual_dp_monitor(vgpu, PORT_D);
-	else
-		clean_virtual_dp_monitor(vgpu, PORT_B);
+	for (port = PORT_B; port < PORT_E; port++) {
+		if (intel_vgpu_has_monitor_on_port(vgpu, port) &&
+		    intel_vgpu_port_is_dp(vgpu, port))
+			clean_virtual_dp_monitor(vgpu, port);
+	}
 }
 
 /**
@@ -433,15 +434,33 @@ void intel_vgpu_clean_display(struct intel_vgpu *vgpu)
 int intel_vgpu_init_display(struct intel_vgpu *vgpu, u64 resolution)
 {
 	struct drm_i915_private *dev_priv = vgpu->gvt->dev_priv;
+	enum port port;
+	enum intel_vgpu_port_type type;
 
 	intel_vgpu_init_i2c_edid(vgpu);
 
-	if (IS_SKYLAKE(dev_priv) || IS_KABYLAKE(dev_priv))
-		return setup_virtual_dp_monitor(vgpu, PORT_D, GVT_DP_D,
-						resolution);
-	else
-		return setup_virtual_dp_monitor(vgpu, PORT_B, GVT_DP_B,
-						resolution);
+	for (port = PORT_B; port < PORT_E; port++) {
+		if (!dev_priv->vbt.ddi_port_info[port].supports_dp)
+			continue;
+
+		switch (port) {
+		case PORT_B:
+			type = GVT_DP_B;
+			break;
+		case PORT_C:
+			type = GVT_DP_C;
+			break;
+		case PORT_D:
+			type = GVT_DP_D;
+			break;
+		default:
+			BUG();
+		}
+
+		return setup_virtual_dp_monitor(vgpu, port, type, resolution);
+	}
+
+	return -EINVAL;
 }
 
 /**

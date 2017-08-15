@@ -1,0 +1,22 @@
+drm-intel drm-intel-fixes 781cc76e0c2469cb7ac12ba238a4ea006978e321
+	drm/i915: Avoid the gpu reset vs. modeset deadlock
+drm-upstream drm-fixes 46828dc77961d9286e55671c4dd3b6c9effadf1a
+	Merge branch 'linux-4.13' of git://github.com/skeggsb/linux into drm-fixes
+drm-intel drm-intel-next-fixes 04941829b0049d2446c7042ab9686dd057d809a6
+	drm/i915: Hold RPM wakelock while initializing OA buffer
+drm-intel drm-intel-next-queued 4e34935fcf691b2f553fdc34502d649bf979a06f
+	drm/i915/cnl: Setup PAT Index.
+drm-upstream drm-next 0c697fafc66830ca7d5dc19123a1d0641deaa1f6
+	Backmerge tag 'v4.13-rc5' into drm-next
+sound-upstream for-next c9480d055e306a855f8a8d2b3b097773cd0d5ad0
+	sound: emu8000: constify emu8000_ops
+sound-upstream for-linus a8e800fe0f68bc28ce309914f47e432742b865ed
+	ALSA: usb-audio: Apply sample rate quirk to Sennheiser headset
+drm-intel topic/core-for-CI 01cbe29aa8f8d7ffca23cf6e147a17529fae680e
+	e1000e: fix buffer overrun while the I219 is processing DMA transactions
+drm-misc drm-misc-next b9c55b6e2cc4369b0688961fa5de0e057f3ec0c4
+	drm/vc4: Continue the switch to drm_*_put() helpers
+drm-misc drm-misc-next-fixes 1ed134e6526b1b513a14fba938f6d96aa1c7f3dd
+	drm/vc4: Fix VBLANK handling in crtc->enable() path
+drm-misc drm-misc-fixes a0ffc51e20e90e0c1c2491de2b4b03f48b6caaba
+	drm/atomic: If the atomic check fails, return its value first

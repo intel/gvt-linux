@@ -1537,7 +1537,6 @@ static void exynos_dsi_connector_destroy(struct drm_connector *connector)
 }
 
 static const struct drm_connector_funcs exynos_dsi_connector_funcs = {
-	.dpms = drm_atomic_helper_connector_dpms,
 	.detect = exynos_dsi_detect,
 	.fill_modes = drm_helper_probe_single_connector_modes,
 	.destroy = exynos_dsi_connector_destroy,
@@ -1618,8 +1617,7 @@ static int exynos_dsi_of_read_u32(const struct device_node *np,
 	int ret = of_property_read_u32(np, propname, out_value);
 
 	if (ret < 0)
-		pr_err("%s: failed to get '%s' property\n", np->full_name,
-		       propname);
+		pr_err("%pOF: failed to get '%s' property\n", np, propname);
 
 	return ret;
 }

@@ -1340,7 +1340,6 @@ tegra_sor_connector_duplicate_state(struct drm_connector *connector)
 }
 
 static const struct drm_connector_funcs tegra_sor_connector_funcs = {
-	.dpms = drm_atomic_helper_connector_dpms,
 	.reset = tegra_sor_connector_reset,
 	.detect = tegra_sor_connector_detect,
 	.fill_modes = drm_helper_probe_single_connector_modes,
@@ -1904,7 +1903,7 @@ tegra_sor_hdmi_setup_avi_infoframe(struct tegra_sor *sor,
 	value &= ~INFOFRAME_CTRL_ENABLE;
 	tegra_sor_writel(sor, value, SOR_HDMI_AVI_INFOFRAME_CTRL);
 
-	err = drm_hdmi_avi_infoframe_from_display_mode(&frame, mode);
+	err = drm_hdmi_avi_infoframe_from_display_mode(&frame, mode, false);
 	if (err < 0) {
 		dev_err(sor->dev, "failed to setup AVI infoframe: %d\n", err);
 		return err;

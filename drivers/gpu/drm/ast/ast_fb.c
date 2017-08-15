@@ -231,7 +231,6 @@ static int astfb_create(struct drm_fb_helper *helper,
 
 	strcpy(info->fix.id, "astdrmfb");
 
-	info->flags = FBINFO_DEFAULT | FBINFO_CAN_FORCE_OUTPUT;
 	info->fbops = &astfb_ops;
 
 	info->apertures->ranges[0].base = pci_resource_start(dev->pdev, 0);
@@ -255,27 +254,7 @@ out:
 	return ret;
 }
 
-static void ast_fb_gamma_set(struct drm_crtc *crtc, u16 red, u16 green,
-			       u16 blue, int regno)
-{
-	struct ast_crtc *ast_crtc = to_ast_crtc(crtc);
-	ast_crtc->lut_r[regno] = red >> 8;
-	ast_crtc->lut_g[regno] = green >> 8;
-	ast_crtc->lut_b[regno] = blue >> 8;
-}
-
-static void ast_fb_gamma_get(struct drm_crtc *crtc, u16 *red, u16 *green,
-			       u16 *blue, int regno)
-{
-	struct ast_crtc *ast_crtc = to_ast_crtc(crtc);
-	*red = ast_crtc->lut_r[regno] << 8;
-	*green = ast_crtc->lut_g[regno] << 8;
-	*blue = ast_crtc->lut_b[regno] << 8;
-}
-
 static const struct drm_fb_helper_funcs ast_fb_helper_funcs = {
-	.gamma_set = ast_fb_gamma_set,
-	.gamma_get = ast_fb_gamma_get,
 	.fb_probe = astfb_create,
 };
 

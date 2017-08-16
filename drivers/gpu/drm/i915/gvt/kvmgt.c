@@ -678,6 +678,7 @@ static ssize_t intel_vgpu_rw(struct mdev_device *mdev, char *buf,
 		ret = intel_vgpu_bar_rw(vgpu, PCI_BASE_ADDRESS_0, pos,
 					buf, count, is_write);
 		break;
+	case VFIO_PCI_BAR1_REGION_INDEX:
 	case VFIO_PCI_BAR2_REGION_INDEX:
 		ret = intel_vgpu_bar_rw(vgpu, PCI_BASE_ADDRESS_2, pos,
 					buf, count, is_write);

@@ -52,6 +52,8 @@ static struct pixel_format bdw_pixel_formats[] = {
 
 	{DRM_FORMAT_XRGB2101010, 32, "32-bit BGRX (2:10:10:10 MSB-X:R:G:B)"},
 	{DRM_FORMAT_XBGR8888, 32, "32-bit RGBX (8:8:8:8 MSB-X:B:G:R)"},
+	{DRM_FORMAT_XRGB161616F, 64,
+		"64-bit XRGB Floating Point (16:16:16:16 MSB-X:R:G:B)"},
 
 	/* non-supported format has bpp default to 0 */
 	{0, 0, NULL},
@@ -73,13 +75,18 @@ static struct pixel_format skl_pixel_formats[] = {
 	{DRM_FORMAT_XBGR2101010, 32, "32-bit RGBX (2:10:10:10 MSB-X:B:G:R)"},
 	{DRM_FORMAT_XRGB2101010, 32, "32-bit BGRX (2:10:10:10 MSB-X:R:G:B)"},
 
+	{DRM_FORMAT_XRGB161616F, 64,
+		"64-bit XRGB Floating Point (16:16:16:16 MSB-X:R:G:B)"},
+	{DRM_FORMAT_XBGR161616F, 64,
+		"64-bit XBGR Floating Point (16:16:16:16 MSB-X:B:G:R)"},
+
 	/* non-supported format has bpp default to 0 */
 	{0, 0, NULL},
 };
 
 static int bdw_format_to_drm(int format)
 {
-	int bdw_pixel_formats_index = 6;
+	int bdw_pixel_formats_index = 7;
 
 	switch (format) {
 	case DISPPLANE_8BPP:
@@ -100,7 +107,9 @@ static int bdw_format_to_drm(int format)
 	case DISPPLANE_RGBX888:
 		bdw_pixel_formats_index = 5;
 		break;
-
+	case DISPPLANE_RGBX161616:
+		bdw_pixel_formats_index = 6;
+		break;
 	default:
 		break;
 	}
@@ -111,7 +120,7 @@ static int bdw_format_to_drm(int format)
 static int skl_format_to_drm(int format, bool rgb_order, bool alpha,
 	int yuv_order)
 {
-	int skl_pixel_formats_index = 12;
+	int skl_pixel_formats_index = 14;
 
 	switch (format) {
 	case PLANE_CTL_FORMAT_INDEXED:
@@ -128,6 +137,9 @@ static int skl_format_to_drm(int format, bool rgb_order, bool alpha,
 		break;
 	case PLANE_CTL_FORMAT_XRGB_2101010:
 		skl_pixel_formats_index = rgb_order ? 10 : 11;
+		break;
+	case PLANE_CTL_FORMAT_XRGB_16161616F:
+		skl_pixel_formats_index = rgb_order ? 12 : 13;
 		break;
 	case PLANE_CTL_FORMAT_YUV422:
 		skl_pixel_formats_index = yuv_order >> 16;
@@ -389,11 +401,13 @@ int intel_vgpu_decode_cursor_plane(struct intel_vgpu *vgpu,
 #define SPRITE_FORMAT_NUM	(1 << 3)
 
 static struct pixel_format sprite_pixel_formats[SPRITE_FORMAT_NUM] = {
-	[0x0] = {DRM_FORMAT_YUV422, 16, "YUV 16-bit 4:2:2 packed"},
-	[0x1] = {DRM_FORMAT_XRGB2101010, 32, "RGB 32-bit 2:10:10:10"},
-	[0x2] = {DRM_FORMAT_XRGB8888, 32, "RGB 32-bit 8:8:8:8"},
+	[0x0] = {DRM_FORMAT_YUV422, 16, "16-bit YUV 4:2:2 packed"},
+	[0x1] = {DRM_FORMAT_XRGB2101010, 32, "32-bit BGRX (2:10:10:10 MSB-X:R:G:B)"},
+	[0x2] = {DRM_FORMAT_XRGB8888, 32, "32-bit RGBX (8:8:8:8 MSB-X:B:G:R)"},
+	[0x3]  = {DRM_FORMAT_XRGB161616F, 64,
+		    "64-bit XRGB Floating Point (16:16:16:16 MSB-X:R:G:B)"},
 	[0x4] = {DRM_FORMAT_AYUV, 32,
-		"YUV 32-bit 4:4:4 packed (8:8:8:8 MSB-X:Y:U:V)"},
+		"32-bit YUV 4:4:4 packed (8:8:8:8 MSB-X:Y:U:V)"},
 };
 
 /**

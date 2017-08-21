@@ -1,22 +1,12 @@
-drm-intel drm-intel-fixes 31c1a7b8f966470ce136710a95afcf5822fecef8
-	drm/i915/cnl: Fix LSPCON support.
-drm-upstream drm-fixes 28eb46287916f7f3ceec874959693e3fc49a294a
-	Merge branch 'drm-fixes-4.13' of git://people.freedesktop.org/~agd5f/linux into drm-fixes
-drm-intel drm-intel-next-fixes 04941829b0049d2446c7042ab9686dd057d809a6
-	drm/i915: Hold RPM wakelock while initializing OA buffer
-drm-intel drm-intel-next-queued 1853a9daa19e150c32d0082e4f006391a7c6a997
-	drm/i915/dp: make is_edp non-static and rename to intel_dp_is_edp
-drm-upstream drm-next 3aadb888b1b62ba04798414cae431d3c3bd5f452
-	Merge tag 'drm/tegra/for-4.14-rc1' of git://anongit.freedesktop.org/tegra/linux into drm-next
-sound-upstream for-next 5bbb1ab5bd0b01c4f0b19ae03fdfec487f839517
-	ALSA: control: use counting semaphore as write lock for ELEM_WRITE operation
-sound-upstream for-linus dbd7396b4f24e0c3284fcc05f5def24f52c09884
-	ALSA: firewire-motu: destroy stream data surely at failure of card initialization
-drm-intel topic/core-for-CI 01cbe29aa8f8d7ffca23cf6e147a17529fae680e
-	e1000e: fix buffer overrun while the I219 is processing DMA transactions
-drm-misc drm-misc-next 9928688492aea161eeeaad7af34f372794cb2f53
-	drm/bridge: change return type of drm_bridge_add function
-drm-misc drm-misc-next-fixes 0e8841ec7ee5b1ffe416c3be7743985b1896ec00
-	Merge airlied/drm-next into drm-misc-next
-drm-misc drm-misc-fixes a0ffc51e20e90e0c1c2491de2b4b03f48b6caaba
-	drm/atomic: If the atomic check fails, return its value first
+drm-tip/drm-tip dbfb2f62576e1c3550d10398b097589959356db3
+	drm-tip: 2017y-08m-21d-08h-13m-34s UTC integration manifest
+vfio-upstream/for-linus 796b755066dd6254bfb6388fec901631e868d1c7
+	vfio/pci: Fix handling of RC integrated endpoint PCIe capability size
+vfio-upstream/next f203f7f1dbb298e1ed68f6c2f53715d13d5f3a0f
+	vfio/type1: Give hardware MSI regions precedence
+origin/gvt-fixes e754d813a7c85a8640e3a66b60baf6cd2c970942
+	drm/i915/gvt: Fix the kernel null pointer error
+origin/gvt-next c392e08e1b084e3eb7241c2d1fa0a6831c6fdac4
+	drm/i915/gvt: Add emulation for BAR2 (aperture) with normal file RW approach
+origin/gvt-next-fixes 627c845c0907894a1e5cd2d90ff4fc86c9e4458e
+	drm/i915/gvt: change some gvt_err to gvt_dbg_cmd

@@ -235,18 +235,31 @@ struct xen_dm_op_set_pci_link_route {
  * XEN_DMOP_modified_memory: Notify that a set of pages were modified by
  *                           an emulator.
  *
- * NOTE: In the event of a continuation, the @first_pfn is set to the
- *       value of the pfn of the remaining set of pages and @nr reduced
- *       to the size of the remaining set.
+ * DMOP buf 1 contains an array of xen_dm_op_modified_memory_extent with
+ * @nr_extents entries.
+ *
+ * On error, @nr_extents will contain the index+1 of the extent that
+ * had the error.  It is not defined if or which pages may have been
+ * marked as dirty, in this event.
  */
 #define XEN_DMOP_modified_memory 11
 
 struct xen_dm_op_modified_memory {
-	/* IN - number of contiguous pages modified */
-	uint32_t nr;
-	uint32_t pad;
-	/* IN - first pfn modified */
-	uint64_aligned_t first_pfn;
+    /*
+     * IN - Number of extents to be processed
+     * OUT -returns n+1 for failing extent
+     */
+    uint32_t nr_extents;
+    /* IN/OUT - Must be set to 0 */
+    uint32_t opaque;
+};
+
+struct xen_dm_op_modified_memory_extent {
+    /* IN - number of contiguous pages modified */
+    uint32_t nr;
+    uint32_t pad;
+    /* IN - first pfn modified */
+    uint64_aligned_t first_pfn;
 };
 
 /*
@@ -373,17 +386,17 @@ DEFINE_GUEST_HANDLE_STRUCT(xen_dm_op_buf_t);
 
 /* ` enum neg_errnoval
  * ` HYPERVISOR_dm_op(domid_t domid,
- * `                  xen_dm_op_buf_t bufs[],
- * `                  unsigned int nr_bufs)
+ * `                  unsigned int nr_bufs,
+ * `                  xen_dm_op_buf_t bufs[])
  * `
  *
  * @domid is the domain the hypercall operates on.
+ * @nr_bufs is the number of buffers in the @bufs array.
  * @bufs points to an array of buffers where @bufs[0] contains a struct
  * xen_dm_op, describing the specific device model operation and its
  * parameters.
  * @bufs[1..] may be referenced in the parameters for the purposes of
  * passing extra information to or from the domain.
- * @nr_bufs is the number of buffers in the @bufs array.
  */
 
 #endif /* __XEN_PUBLIC_HVM_DM_OP_H__ */

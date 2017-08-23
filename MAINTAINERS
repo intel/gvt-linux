@@ -4300,6 +4300,12 @@ T:	git git://anongit.freedesktop.org/drm/drm-misc
 S:	Maintained
 F:	drivers/gpu/drm/bochs/
 
+DRM DRIVER FOR FARADAY TVE200 TV ENCODER
+M:	Linus Walleij <linus.walleij@linaro.org>
+T:	git git://anongit.freedesktop.org/drm/drm-misc
+S:	Maintained
+F:	drivers/gpu/drm/tve200/
+
 DRM DRIVER FOR INTEL I810 VIDEO CARDS
 S:	Orphan / Obsolete
 F:	drivers/gpu/drm/i810/
@@ -4627,7 +4633,7 @@ T:	git git://anongit.freedesktop.org/drm/drm-misc
 DRM PANEL DRIVERS
 M:	Thierry Reding <thierry.reding@gmail.com>
 L:	dri-devel@lists.freedesktop.org
-T:	git git://anongit.freedesktop.org/tegra/linux.git
+T:	git git://anongit.freedesktop.org/drm/drm-misc
 S:	Maintained
 F:	drivers/gpu/drm/drm_panel.c
 F:	drivers/gpu/drm/panel/

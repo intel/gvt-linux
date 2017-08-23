@@ -1,22 +1,12 @@
-drm-intel drm-intel-fixes 31c1a7b8f966470ce136710a95afcf5822fecef8
-	drm/i915/cnl: Fix LSPCON support.
-drm-upstream drm-fixes b313f780ded9ead1f72df9c8b45f7ea00585a2e5
-	Merge tag 'drm-misc-fixes-2017-08-18' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
-drm-intel drm-intel-next-fixes 04941829b0049d2446c7042ab9686dd057d809a6
-	drm/i915: Hold RPM wakelock while initializing OA buffer
-drm-intel drm-intel-next-queued 66df1014efbadbdd2a550c6c67a815db9b4d05bd
-	drm/i915: Keep a small stash of preallocated WC pages
-drm-upstream drm-next 6b9dfb5991a3fda1ced9062f6c86d8798416ea31
-	Merge tag 'imx-drm-next-2017-07-18' of git://git.pengutronix.de/git/pza/linux into drm-next
-sound-upstream for-next e17a85eccfa0b7d0089af218b0c468d4b8a3c3c2
-	ALSA: cmipci: Use common error handling code in snd_cmipci_probe()
-sound-upstream for-linus 88c54cdf61f508ebcf8da2d819f5dfc03e954d1d
-	ALSA: core: Fix unexpected error at replacing user TLV
-drm-intel topic/core-for-CI 01cbe29aa8f8d7ffca23cf6e147a17529fae680e
-	e1000e: fix buffer overrun while the I219 is processing DMA transactions
-drm-misc drm-misc-next 25a8ef26fd47e4b60cfae094a43ad9bfc49e676b
-	drm/dp: Add defines for DP SDP types
-drm-misc drm-misc-next-fixes 0e8841ec7ee5b1ffe416c3be7743985b1896ec00
-	Merge airlied/drm-next into drm-misc-next
-drm-misc drm-misc-fixes fe4600a548f2763dec91b3b27a1245c370ceee2a
-	drm: Release driver tracking before making the object available again
+drm-tip/drm-tip 489147dfdcc735baf773a6ec3698cf85a01d7008
+	drm-tip: 2017y-08m-22d-18h-44m-32s UTC integration manifest
+vfio-upstream/for-linus 796b755066dd6254bfb6388fec901631e868d1c7
+	vfio/pci: Fix handling of RC integrated endpoint PCIe capability size
+vfio-upstream/next f203f7f1dbb298e1ed68f6c2f53715d13d5f3a0f
+	vfio/type1: Give hardware MSI regions precedence
+origin/gvt-fixes ffeaf9aaf97b4bdaf114d6df52f800d71918768c
+	drm/i915/gvt: Fix the kernel null pointer error
+origin/gvt-next 95cab1d8ede0429340e049fa8c445878404f3cfe
+	drm/i915/gvt: Refine error handling for perform_bb_shadow
+origin/gvt-next-fixes e463453cbe1f2dc0a6ac2ef5c523b66c0a739586
+	drm/i915/gvt: Fix incorrect PCI BARs reporting

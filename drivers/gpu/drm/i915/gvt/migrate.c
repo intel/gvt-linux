@@ -171,7 +171,7 @@ static struct gvt_migration_obj_t gvt_device_objs[] = {
 			image_header_ops),
 	MIGRATION_UNIT(struct intel_vgpu,
 			GVT_MIGRATION_CFG_SPACE,
-			INTEL_GVT_MAX_CFG_SPACE_SZ,
+			PCI_CFG_SPACE_EXP_SIZE,
 			vcfg_space_ops),
 	MIGRATION_UNIT(struct intel_vgpu,
 			GVT_MIGRATION_SREG,

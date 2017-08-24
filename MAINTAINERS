@@ -4359,6 +4359,12 @@ S:	Maintained
 F:	drivers/gpu/drm/qxl/
 F:	include/uapi/drm/qxl_drm.h
 
+DRM DRIVER FOR PERVASIVE DISPLAYS REPAPER PANELS
+M:	Noralf Trønnes <noralf@tronnes.org>
+S:	Maintained
+F:	drivers/gpu/drm/tinydrm/repaper.c
+F:	Documentation/devicetree/bindings/display/repaper.txt
+
 DRM DRIVER FOR RAGE 128 VIDEO CARDS
 S:	Orphan / Obsolete
 F:	drivers/gpu/drm/r128/
@@ -6744,8 +6750,9 @@ S:	Supported
 F:	drivers/scsi/isci/
 
 INTEL DRM DRIVERS (excluding Poulsbo, Moorestown and derivative chipsets)
-M:	Daniel Vetter <daniel.vetter@intel.com>
 M:	Jani Nikula <jani.nikula@linux.intel.com>
+M:	Joonas Lahtinen <joonas.lahtinen@linux.intel.com>
+M:	Rodrigo Vivi <rodrigo.vivi@intel.com>
 L:	intel-gfx@lists.freedesktop.org
 W:	https://01.org/linuxgraphics/
 B:	https://01.org/linuxgraphics/documentation/how-report-bugs

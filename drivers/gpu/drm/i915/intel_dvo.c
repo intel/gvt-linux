@@ -175,8 +175,8 @@ static void intel_dvo_get_config(struct intel_encoder *encoder,
 }
 
 static void intel_disable_dvo(struct intel_encoder *encoder,
-			      struct intel_crtc_state *old_crtc_state,
-			      struct drm_connector_state *old_conn_state)
+			      const struct intel_crtc_state *old_crtc_state,
+			      const struct drm_connector_state *old_conn_state)
 {
 	struct drm_i915_private *dev_priv = to_i915(encoder->base.dev);
 	struct intel_dvo *intel_dvo = enc_to_dvo(encoder);
@@ -189,8 +189,8 @@ static void intel_disable_dvo(struct intel_encoder *encoder,
 }
 
 static void intel_enable_dvo(struct intel_encoder *encoder,
-			     struct intel_crtc_state *pipe_config,
-			     struct drm_connector_state *conn_state)
+			     const struct intel_crtc_state *pipe_config,
+			     const struct drm_connector_state *conn_state)
 {
 	struct drm_i915_private *dev_priv = to_i915(encoder->base.dev);
 	struct intel_dvo *intel_dvo = enc_to_dvo(encoder);
@@ -258,8 +258,8 @@ static bool intel_dvo_compute_config(struct intel_encoder *encoder,
 }
 
 static void intel_dvo_pre_enable(struct intel_encoder *encoder,
-				 struct intel_crtc_state *pipe_config,
-				 struct drm_connector_state *conn_state)
+				 const struct intel_crtc_state *pipe_config,
+				 const struct drm_connector_state *conn_state)
 {
 	struct drm_i915_private *dev_priv = to_i915(encoder->base.dev);
 	struct intel_crtc *crtc = to_intel_crtc(pipe_config->base.crtc);
@@ -344,13 +344,11 @@ static void intel_dvo_destroy(struct drm_connector *connector)
 }
 
 static const struct drm_connector_funcs intel_dvo_connector_funcs = {
-	.dpms = drm_atomic_helper_connector_dpms,
 	.detect = intel_dvo_detect,
 	.late_register = intel_connector_register,
 	.early_unregister = intel_connector_unregister,
 	.destroy = intel_dvo_destroy,
 	.fill_modes = drm_helper_probe_single_connector_modes,
-	.set_property = drm_atomic_helper_connector_set_property,
 	.atomic_destroy_state = drm_atomic_helper_connector_destroy_state,
 	.atomic_duplicate_state = drm_atomic_helper_connector_duplicate_state,
 };
@@ -554,7 +552,7 @@ void intel_dvo_init(struct drm_i915_private *dev_priv)
 			 */
 			intel_panel_init(&intel_connector->panel,
 					 intel_dvo_get_current_mode(connector),
-					 NULL);
+					 NULL, NULL);
 			intel_dvo->panel_wants_dither = true;
 		}
 

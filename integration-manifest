@@ -1,22 +1,12 @@
-drm-intel drm-intel-fixes e7c50e1156b6418004187104b1135e88921efa50
-	Merge tag 'gvt-fixes-2017-08-23' of https://github.com/01org/gvt-linux into drm-intel-fixes
-drm-upstream drm-fixes b313f780ded9ead1f72df9c8b45f7ea00585a2e5
-	Merge tag 'drm-misc-fixes-2017-08-18' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
-drm-intel drm-intel-next-fixes 04941829b0049d2446c7042ab9686dd057d809a6
-	drm/i915: Hold RPM wakelock while initializing OA buffer
-drm-intel drm-intel-next-queued acfb5554c769ad7e09b9e4e42b572cc297a728e9
-	drm/i915/cnl: WaForceContextSaveRestoreNonCoherent
-drm-upstream drm-next 7c0059dd832cc686bf0febefdcf8295cdd93007f
-	Merge branch 'linux-4.14' of git://github.com/skeggsb/linux into drm-next
-sound-upstream for-next faa119099e4942152fd2ff823ae9961ad00db475
-	ALSA: ctxfi: make hw structures const
-sound-upstream for-linus bbba6f9d3da357bbabc6fda81e99ff5584500e76
-	ALSA: hda - Add stereo mic quirk for Lenovo G50-70 (17aa:3978)
-drm-intel topic/core-for-CI 01cbe29aa8f8d7ffca23cf6e147a17529fae680e
-	e1000e: fix buffer overrun while the I219 is processing DMA transactions
-drm-misc drm-misc-next 179c02fe90a4104d32e92a46b9ff4ecc32bf3647
-	drm/tve200: Add new driver for TVE200
-drm-misc drm-misc-next-fixes 0e8841ec7ee5b1ffe416c3be7743985b1896ec00
-	Merge airlied/drm-next into drm-misc-next
-drm-misc drm-misc-fixes fe4600a548f2763dec91b3b27a1245c370ceee2a
-	drm: Release driver tracking before making the object available again
+drm-tip/drm-tip 3adc9e3cacefe82619fc56ec78a0ca3a67a4b00c
+	drm-tip: 2017y-08m-23d-21h-35m-35s UTC integration manifest
+vfio-upstream/for-linus 796b755066dd6254bfb6388fec901631e868d1c7
+	vfio/pci: Fix handling of RC integrated endpoint PCIe capability size
+vfio-upstream/next f203f7f1dbb298e1ed68f6c2f53715d13d5f3a0f
+	vfio/type1: Give hardware MSI regions precedence
+origin/gvt-fixes ffeaf9aaf97b4bdaf114d6df52f800d71918768c
+	drm/i915/gvt: Fix the kernel null pointer error
+origin/gvt-next b3a5c1c31605c79d9eab5979039638ff13317a1c
+	drm/i915/gvt: Add support for PCIe extended configuration space
+origin/gvt-next-fixes 1521402177137b09ac6a2cd28b59dcd6668efab3
+	drm/i915/gvt: Remove one duplicated MMIO

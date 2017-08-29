@@ -2491,6 +2491,7 @@ enum i915_power_well_id {
 # define _3D_CHICKEN2_WM_READ_PIPELINED			(1 << 14)
 #define _3D_CHICKEN3	_MMIO(0x2090)
 #define  _3D_CHICKEN_SF_DISABLE_OBJEND_CULL		(1 << 10)
+#define  _3D_CHICKEN3_AA_LINE_QUALITY_FIX_ENABLE	(1 << 5)
 #define  _3D_CHICKEN3_SF_DISABLE_FASTCLIP_CULL		(1 << 5)
 #define  _3D_CHICKEN_SDE_LIMIT_FIFO_POLY_DEPTH(x)	((x)<<1) /* gen8+ */
 #define  _3D_CHICKEN3_SF_DISABLE_PIPELINED_ATTR_FETCH	(1 << 1) /* gen6 */
@@ -3805,6 +3806,12 @@ enum {
 #define GEN9_CLKGATE_DIS_0		_MMIO(0x46530)
 #define   PWM2_GATING_DIS		(1 << 14)
 #define   PWM1_GATING_DIS		(1 << 13)
+
+/*
+ * GEN10 clock gating regs
+ */
+#define SLICE_UNIT_LEVEL_CLKGATE	_MMIO(0x94d4)
+#define  SARBUNIT_CLKGATE_DIS		(1 << 5)
 
 /*
  * Display engine regs
@@ -6916,6 +6923,10 @@ enum {
 #define  GLK_CL1_PWR_DOWN	(1 << 11)
 #define  GLK_CL0_PWR_DOWN	(1 << 10)
 
+#define CHICKEN_MISC_4		_MMIO(0x4208c)
+#define   FBC_STRIDE_OVERRIDE	(1 << 13)
+#define   FBC_STRIDE_MASK	0x1FFF
+
 #define _CHICKEN_PIPESL_1_A	0x420b0
 #define _CHICKEN_PIPESL_1_B	0x420b4
 #define  HSW_FBCQ_DIS			(1 << 22)
@@ -7017,6 +7028,7 @@ enum {
 
 /* GEN8 chicken */
 #define HDC_CHICKEN0				_MMIO(0x7300)
+#define CNL_HDC_CHICKEN0			_MMIO(0xE5F0)
 #define  HDC_FORCE_CSR_NON_COHERENT_OVR_DISABLE	(1<<15)
 #define  HDC_FENCE_DEST_SLM_DISABLE		(1<<14)
 #define  HDC_DONOT_FETCH_MEM_WHEN_MASKED	(1<<11)
@@ -8048,6 +8060,7 @@ enum {
 #define GEN7_ROW_CHICKEN2		_MMIO(0xe4f4)
 #define GEN7_ROW_CHICKEN2_GT2		_MMIO(0xf4f4)
 #define   DOP_CLOCK_GATING_DISABLE	(1<<0)
+#define   PUSH_CONSTANT_DEREF_DISABLE	(1<<8)
 
 #define HSW_ROW_CHICKEN3		_MMIO(0xe49c)
 #define  HSW_ROW_CHICKEN3_L3_GLOBAL_ATOMICS_DISABLE    (1 << 6)

@@ -3253,12 +3253,18 @@ void i915_gem_close_object(struct drm_gem_object *gem, struct drm_file *file)
 		struct i915_gem_context *ctx = lut->ctx;
 		struct i915_vma *vma;
 
+		GEM_BUG_ON(ctx->file_priv == ERR_PTR(-EBADF));
 		if (ctx->file_priv != fpriv)
 			continue;
 
 		vma = radix_tree_delete(&ctx->handles_vma, lut->handle);
+		GEM_BUG_ON(vma->obj != obj);
 
-		if (!i915_vma_is_ggtt(vma))
+		/* We allow the process to have multiple handles to the same
+		 * vma, in the same fd namespace, by virtue of flink/open.
+		 */
+		GEM_BUG_ON(!vma->open_count);
+		if (!--vma->open_count && !i915_vma_is_ggtt(vma))
 			i915_vma_close(vma);
 
 		list_del(&lut->obj_link);
@@ -4416,6 +4422,7 @@ static void __i915_gem_free_objects(struct drm_i915_private *i915,
 	llist_for_each_entry_safe(obj, on, freed, freed) {
 		GEM_BUG_ON(obj->bind_count);
 		GEM_BUG_ON(atomic_read(&obj->frontbuffer_bits));
+		GEM_BUG_ON(!list_empty(&obj->lut_list));
 
 		if (obj->ops->release)
 			obj->ops->release(obj);

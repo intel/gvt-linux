@@ -220,23 +220,23 @@ struct intel_encoder {
 			       struct intel_crtc_state *,
 			       struct drm_connector_state *);
 	void (*pre_pll_enable)(struct intel_encoder *,
-			       struct intel_crtc_state *,
-			       struct drm_connector_state *);
+			       const struct intel_crtc_state *,
+			       const struct drm_connector_state *);
 	void (*pre_enable)(struct intel_encoder *,
-			   struct intel_crtc_state *,
-			   struct drm_connector_state *);
+			   const struct intel_crtc_state *,
+			   const struct drm_connector_state *);
 	void (*enable)(struct intel_encoder *,
-		       struct intel_crtc_state *,
-		       struct drm_connector_state *);
+		       const struct intel_crtc_state *,
+		       const struct drm_connector_state *);
 	void (*disable)(struct intel_encoder *,
-			struct intel_crtc_state *,
-			struct drm_connector_state *);
+			const struct intel_crtc_state *,
+			const struct drm_connector_state *);
 	void (*post_disable)(struct intel_encoder *,
-			     struct intel_crtc_state *,
-			     struct drm_connector_state *);
+			     const struct intel_crtc_state *,
+			     const struct drm_connector_state *);
 	void (*post_pll_disable)(struct intel_encoder *,
-				 struct intel_crtc_state *,
-				 struct drm_connector_state *);
+				 const struct intel_crtc_state *,
+				 const struct drm_connector_state *);
 	/* Read out the current hw state of this connector, returning true if
 	 * the encoder is active. If the encoder is enabled it also set the pipe
 	 * it is connected to in the pipe parameter. */
@@ -753,6 +753,7 @@ struct intel_crtc_state {
 	struct intel_link_m_n fdi_m_n;
 
 	bool ips_enabled;
+	bool ips_force_disable;
 
 	bool enable_fbc;
 
@@ -909,16 +910,6 @@ struct intel_hdmi {
 	bool has_audio;
 	bool rgb_quant_range_selectable;
 	struct intel_connector *attached_connector;
-	void (*write_infoframe)(struct drm_encoder *encoder,
-				const struct intel_crtc_state *crtc_state,
-				enum hdmi_infoframe_type type,
-				const void *frame, ssize_t len);
-	void (*set_infoframes)(struct drm_encoder *encoder,
-			       bool enable,
-			       const struct intel_crtc_state *crtc_state,
-			       const struct drm_connector_state *conn_state);
-	bool (*infoframe_enabled)(struct drm_encoder *encoder,
-				  const struct intel_crtc_state *pipe_config);
 };
 
 struct intel_dp_mst_encoder;
@@ -1069,6 +1060,17 @@ struct intel_digital_port {
 	bool release_cl2_override;
 	uint8_t max_lanes;
 	enum intel_display_power_domain ddi_io_power_domain;
+
+	void (*write_infoframe)(struct drm_encoder *encoder,
+				const struct intel_crtc_state *crtc_state,
+				enum hdmi_infoframe_type type,
+				const void *frame, ssize_t len);
+	void (*set_infoframes)(struct drm_encoder *encoder,
+			       bool enable,
+			       const struct intel_crtc_state *crtc_state,
+			       const struct drm_connector_state *conn_state);
+	bool (*infoframe_enabled)(struct drm_encoder *encoder,
+				  const struct intel_crtc_state *pipe_config);
 };
 
 struct intel_dp_mst_encoder {
@@ -1205,11 +1207,8 @@ void intel_check_pch_fifo_underruns(struct drm_i915_private *dev_priv);
 /* i915_irq.c */
 void gen5_enable_gt_irq(struct drm_i915_private *dev_priv, uint32_t mask);
 void gen5_disable_gt_irq(struct drm_i915_private *dev_priv, uint32_t mask);
-void gen6_reset_pm_iir(struct drm_i915_private *dev_priv, u32 mask);
 void gen6_mask_pm_irq(struct drm_i915_private *dev_priv, u32 mask);
 void gen6_unmask_pm_irq(struct drm_i915_private *dev_priv, u32 mask);
-void gen6_enable_pm_irq(struct drm_i915_private *dev_priv, uint32_t mask);
-void gen6_disable_pm_irq(struct drm_i915_private *dev_priv, uint32_t mask);
 void gen6_reset_rps_interrupts(struct drm_i915_private *dev_priv);
 void gen6_enable_rps_interrupts(struct drm_i915_private *dev_priv);
 void gen6_disable_rps_interrupts(struct drm_i915_private *dev_priv);
@@ -1246,8 +1245,8 @@ void intel_crt_reset(struct drm_encoder *encoder);
 
 /* intel_ddi.c */
 void intel_ddi_fdi_post_disable(struct intel_encoder *intel_encoder,
-				struct intel_crtc_state *old_crtc_state,
-				struct drm_connector_state *old_conn_state);
+				const struct intel_crtc_state *old_crtc_state,
+				const struct drm_connector_state *old_conn_state);
 void hsw_fdi_link_train(struct intel_crtc *crtc,
 			const struct intel_crtc_state *crtc_state);
 void intel_ddi_init(struct drm_i915_private *dev_priv, enum port port);
@@ -1499,7 +1498,8 @@ int intel_dp_sink_crc(struct intel_dp *intel_dp, u8 *crc);
 bool intel_dp_compute_config(struct intel_encoder *encoder,
 			     struct intel_crtc_state *pipe_config,
 			     struct drm_connector_state *conn_state);
-bool intel_dp_is_edp(struct drm_i915_private *dev_priv, enum port port);
+bool intel_dp_is_edp(struct intel_dp *intel_dp);
+bool intel_dp_is_port_edp(struct drm_i915_private *dev_priv, enum port port);
 enum irqreturn intel_dp_hpd_pulse(struct intel_digital_port *intel_dig_port,
 				  bool long_hpd);
 void intel_edp_backlight_on(const struct intel_crtc_state *crtc_state,
@@ -1518,9 +1518,9 @@ void intel_power_sequencer_reset(struct drm_i915_private *dev_priv);
 uint32_t intel_dp_pack_aux(const uint8_t *src, int src_bytes);
 void intel_plane_destroy(struct drm_plane *plane);
 void intel_edp_drrs_enable(struct intel_dp *intel_dp,
-			   struct intel_crtc_state *crtc_state);
+			   const struct intel_crtc_state *crtc_state);
 void intel_edp_drrs_disable(struct intel_dp *intel_dp,
-			   struct intel_crtc_state *crtc_state);
+			    const struct intel_crtc_state *crtc_state);
 void intel_edp_drrs_invalidate(struct drm_i915_private *dev_priv,
 			       unsigned int frontbuffer_bits);
 void intel_edp_drrs_flush(struct drm_i915_private *dev_priv,
@@ -1648,6 +1648,7 @@ void intel_hdmi_handle_sink_scrambling(struct intel_encoder *intel_encoder,
 				       bool high_tmds_clock_ratio,
 				       bool scrambling);
 void intel_dp_dual_mode_set_tmds_output(struct intel_hdmi *hdmi, bool enable);
+void intel_infoframe_init(struct intel_digital_port *intel_dig_port);
 
 
 /* intel_lvds.c */
@@ -1719,8 +1720,10 @@ static inline void intel_backlight_device_unregister(struct intel_connector *con
 
 
 /* intel_psr.c */
-void intel_psr_enable(struct intel_dp *intel_dp);
-void intel_psr_disable(struct intel_dp *intel_dp);
+void intel_psr_enable(struct intel_dp *intel_dp,
+		      const struct intel_crtc_state *crtc_state);
+void intel_psr_disable(struct intel_dp *intel_dp,
+		      const struct intel_crtc_state *old_crtc_state);
 void intel_psr_invalidate(struct drm_i915_private *dev_priv,
 			  unsigned frontbuffer_bits);
 void intel_psr_flush(struct drm_i915_private *dev_priv,
@@ -1844,7 +1847,6 @@ void gen6_rps_reset_ei(struct drm_i915_private *dev_priv);
 void gen6_rps_idle(struct drm_i915_private *dev_priv);
 void gen6_rps_boost(struct drm_i915_gem_request *rq,
 		    struct intel_rps_client *rps);
-void intel_queue_rps_boost_for_request(struct drm_i915_gem_request *req);
 void g4x_wm_get_hw_state(struct drm_device *dev);
 void vlv_wm_get_hw_state(struct drm_device *dev);
 void ilk_wm_get_hw_state(struct drm_device *dev);

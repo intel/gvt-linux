@@ -6263,6 +6263,9 @@ retry:
 static bool pipe_config_supports_ips(struct drm_i915_private *dev_priv,
 				     struct intel_crtc_state *pipe_config)
 {
+	if (pipe_config->ips_force_disable)
+		return false;
+
 	if (pipe_config->pipe_bpp > 24)
 		return false;
 
@@ -9019,7 +9022,7 @@ static void cannonlake_get_ddi_pll(struct drm_i915_private *dev_priv,
 	u32 temp;
 
 	temp = I915_READ(DPCLKA_CFGCR0) & DPCLKA_CFGCR0_DDI_CLK_SEL_MASK(port);
-	id = temp >> (port * 2);
+	id = temp >> DPCLKA_CFGCR0_DDI_CLK_SEL_SHIFT(port);
 
 	if (WARN_ON(id < SKL_DPLL0 || id > SKL_DPLL2))
 		return;
@@ -10830,7 +10833,7 @@ clear_intel_crtc_state(struct intel_crtc_state *crtc_state)
 	struct intel_dpll_hw_state dpll_hw_state;
 	struct intel_shared_dpll *shared_dpll;
 	struct intel_crtc_wm_state wm_state;
-	bool force_thru;
+	bool force_thru, ips_force_disable;
 
 	/* FIXME: before the switch to atomic started, a new pipe_config was
 	 * kzalloc'd. Code that depends on any field being zero should be
@@ -10841,6 +10844,7 @@ clear_intel_crtc_state(struct intel_crtc_state *crtc_state)
 	shared_dpll = crtc_state->shared_dpll;
 	dpll_hw_state = crtc_state->dpll_hw_state;
 	force_thru = crtc_state->pch_pfit.force_thru;
+	ips_force_disable = crtc_state->ips_force_disable;
 	if (IS_G4X(dev_priv) ||
 	    IS_VALLEYVIEW(dev_priv) || IS_CHERRYVIEW(dev_priv))
 		wm_state = crtc_state->wm;
@@ -10854,6 +10858,7 @@ clear_intel_crtc_state(struct intel_crtc_state *crtc_state)
 	crtc_state->shared_dpll = shared_dpll;
 	crtc_state->dpll_hw_state = dpll_hw_state;
 	crtc_state->pch_pfit.force_thru = force_thru;
+	crtc_state->ips_force_disable = ips_force_disable;
 	if (IS_G4X(dev_priv) ||
 	    IS_VALLEYVIEW(dev_priv) || IS_CHERRYVIEW(dev_priv))
 		crtc_state->wm = wm_state;
@@ -12636,6 +12641,58 @@ static const struct drm_crtc_funcs intel_crtc_funcs = {
 	.set_crc_source = intel_crtc_set_crc_source,
 };
 
+struct wait_rps_boost {
+	struct wait_queue_entry wait;
+
+	struct drm_crtc *crtc;
+	struct drm_i915_gem_request *request;
+};
+
+static int do_rps_boost(struct wait_queue_entry *_wait,
+			unsigned mode, int sync, void *key)
+{
+	struct wait_rps_boost *wait = container_of(_wait, typeof(*wait), wait);
+	struct drm_i915_gem_request *rq = wait->request;
+
+	gen6_rps_boost(rq, NULL);
+	i915_gem_request_put(rq);
+
+	drm_crtc_vblank_put(wait->crtc);
+
+	list_del(&wait->wait.entry);
+	kfree(wait);
+	return 1;
+}
+
+static void add_rps_boost_after_vblank(struct drm_crtc *crtc,
+				       struct dma_fence *fence)
+{
+	struct wait_rps_boost *wait;
+
+	if (!dma_fence_is_i915(fence))
+		return;
+
+	if (INTEL_GEN(to_i915(crtc->dev)) < 6)
+		return;
+
+	if (drm_crtc_vblank_get(crtc))
+		return;
+
+	wait = kmalloc(sizeof(*wait), GFP_KERNEL);
+	if (!wait) {
+		drm_crtc_vblank_put(crtc);
+		return;
+	}
+
+	wait->request = to_request(dma_fence_get(fence));
+	wait->crtc = crtc;
+
+	wait->wait.func = do_rps_boost;
+	wait->wait.flags = 0;
+
+	add_wait_queue(drm_crtc_vblank_waitqueue(crtc), &wait->wait);
+}
+
 /**
  * intel_prepare_plane_fb - Prepare fb for usage on plane
  * @plane: drm plane to prepare for
@@ -12733,12 +12790,22 @@ intel_prepare_plane_fb(struct drm_plane *plane,
 		return ret;
 
 	if (!new_state->fence) { /* implicit fencing */
+		struct dma_fence *fence;
+
 		ret = i915_sw_fence_await_reservation(&intel_state->commit_ready,
 						      obj->resv, NULL,
 						      false, I915_FENCE_TIMEOUT,
 						      GFP_KERNEL);
 		if (ret < 0)
 			return ret;
+
+		fence = reservation_object_get_excl_rcu(obj->resv);
+		if (fence) {
+			add_rps_boost_after_vblank(new_state->crtc, fence);
+			dma_fence_put(fence);
+		}
+	} else {
+		add_rps_boost_after_vblank(new_state->crtc, new_state->fence);
 	}
 
 	return 0;
@@ -13643,7 +13710,7 @@ static void intel_setup_outputs(struct drm_i915_private *dev_priv)
 
 	} else if (HAS_PCH_SPLIT(dev_priv)) {
 		int found;
-		dpd_is_edp = intel_dp_is_edp(dev_priv, PORT_D);
+		dpd_is_edp = intel_dp_is_port_edp(dev_priv, PORT_D);
 
 		if (has_edp_a(dev_priv))
 			intel_dp_init(dev_priv, DP_A, PORT_A);
@@ -13686,14 +13753,14 @@ static void intel_setup_outputs(struct drm_i915_private *dev_priv)
 		 * trust the port type the VBT declares as we've seen at least
 		 * HDMI ports that the VBT claim are DP or eDP.
 		 */
-		has_edp = intel_dp_is_edp(dev_priv, PORT_B);
+		has_edp = intel_dp_is_port_edp(dev_priv, PORT_B);
 		has_port = intel_bios_is_port_present(dev_priv, PORT_B);
 		if (I915_READ(VLV_DP_B) & DP_DETECTED || has_port)
 			has_edp &= intel_dp_init(dev_priv, VLV_DP_B, PORT_B);
 		if ((I915_READ(VLV_HDMIB) & SDVO_DETECTED || has_port) && !has_edp)
 			intel_hdmi_init(dev_priv, VLV_HDMIB, PORT_B);
 
-		has_edp = intel_dp_is_edp(dev_priv, PORT_C);
+		has_edp = intel_dp_is_port_edp(dev_priv, PORT_C);
 		has_port = intel_bios_is_port_present(dev_priv, PORT_C);
 		if (I915_READ(VLV_DP_C) & DP_DETECTED || has_port)
 			has_edp &= intel_dp_init(dev_priv, VLV_DP_C, PORT_C);

@@ -43,7 +43,6 @@ struct xengt_hvm_dev {
 	struct vm_struct **vmem_vma;
 	/* for >1MB memory of HVM: each vm_struct means 4KB */
 	struct vm_struct **vmem_vma_4k;
-	unsigned long low_mem_max_gpfn;
 	void *dev_state;
 };
 

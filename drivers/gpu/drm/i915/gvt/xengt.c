@@ -976,8 +976,8 @@ static int xengt_hvm_vmem_init(struct intel_vgpu *vgpu)
 
 		/* for <4G GPFNs: skip the hole after low_mem_max_gpfn */
 		if (gpfn < (1 << (32 - PAGE_SHIFT)) &&
-			info->low_mem_max_gpfn != 0 &&
-			gpfn > info->low_mem_max_gpfn)
+			vgpu->low_mem_max_gpfn != 0 &&
+			gpfn > vgpu->low_mem_max_gpfn)
 			continue;
 
 		for (j = gpfn;
@@ -1182,12 +1182,11 @@ static bool xengt_write_cfg_space(struct intel_vgpu *vgpu,
 {
 	/* Low 32 bit of addr is real address, high 32 bit is bdf */
 	unsigned int port = addr & 0xffffffff;
-	struct xengt_hvm_dev *info = (struct xengt_hvm_dev *)vgpu->handle;
 
 	if (port == PCI_VENDOR_ID) {
 		/* Low 20 bit of val are valid low mem gpfn. */
 		val &= 0xfffff;
-		info->low_mem_max_gpfn = val;
+		vgpu->low_mem_max_gpfn = val;
 		return true;
 	}
 	if (intel_gvt_ops->emulate_cfg_write(vgpu, port, &val, bytes))
@@ -1525,8 +1524,12 @@ static void *xengt_gpa_to_va(unsigned long handle, unsigned long gpa)
 				(gpa & (PAGE_SIZE-1));
 
 	if (gpa > info->vmem_sz) {
-		gvt_err("vGT try to access invalid gpa=0x%lx\n", gpa);
-		return NULL;
+		if (info->vmem_sz == 0)
+			xengt_hvm_vmem_init(info->vgpu);
+		else {
+			gvt_err("vGT try to access invalid gpa=0x%lx\n", gpa);
+			return NULL;
+		}
 	}
 
 	/* handle the low 1MB memory */
@@ -1546,7 +1549,7 @@ static void *xengt_gpa_to_va(unsigned long handle, unsigned long gpa)
 	if (!info->vmem_vma[buck_index]) {
 		buck_4k_index = gpa >> PAGE_SHIFT;
 		if (!info->vmem_vma_4k[buck_4k_index]) {
-			if (buck_4k_index > info->low_mem_max_gpfn)
+			if (buck_4k_index > info->vgpu->low_mem_max_gpfn)
 				gvt_err("vGT failed to map gpa=0x%lx?\n", gpa);
 			return NULL;
 		}

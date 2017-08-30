@@ -125,6 +125,66 @@ static struct kobj_type xengt_ctrl_ktype = {
 	.default_attrs = xengt_ctrl_attrs,
 };
 
+static ssize_t
+device_state_read(struct file *filp, struct kobject *kobj,
+		struct bin_attribute *bin_attr,
+		char *buf, loff_t off, size_t count)
+{
+	struct xengt_hvm_dev *info = container_of((kobj), struct xengt_hvm_dev, kobj);
+	struct intel_vgpu *vgpu = info->vgpu;
+	void *base = info->dev_state;
+
+	if (!count || off < 0 || (off + count > bin_attr->size) || (off & 0x3))
+		return -EINVAL;
+
+	if (info->dev_state == NULL)
+		return -EINVAL;
+
+	if (intel_gvt_ops->vgpu_save_restore(vgpu,
+			buf, count, base, 0, false) != 0)
+		return -EINVAL;
+
+	memcpy(buf, base + off, count);
+
+	return count;
+}
+
+static ssize_t
+device_state_write(struct file *filp, struct kobject *kobj,
+		struct bin_attribute *bin_attr,
+		char *buf, loff_t off, size_t count)
+{
+	struct xengt_hvm_dev *info = container_of((kobj), struct xengt_hvm_dev, kobj);
+	struct intel_vgpu *vgpu = info->vgpu;
+	void *base = info->dev_state;
+
+	if (!count || off < 0 || (off + count > bin_attr->size) || (off & 0x3))
+		return -EINVAL;
+
+	if (info->dev_state == NULL)
+		return -EINVAL;
+
+	memcpy(base + off, buf, count);
+
+	if ((off + count) == bin_attr->size) {
+		if (intel_gvt_ops->vgpu_save_restore(vgpu,
+				buf, count, base, 0, true) != 0)
+			return -EINVAL;
+	}
+
+	return count;
+}
+
+static struct bin_attribute vgpu_state_attr = {
+	.attr =	{
+		.name = "device_state",
+		.mode = 0660
+	},
+	.size = MIGRATION_IMG_MAX_SIZE,
+	.read = device_state_read,
+	.write = device_state_write,
+};
+
 static struct intel_vgpu_type *xengt_choose_vgpu_type(
 		struct xengt_hvm_params *vp)
 {
@@ -171,6 +231,12 @@ static int xengt_sysfs_add_instance(struct xengt_hvm_params *vp)
 		info->kobj.kset = gvt_kset;
 		/* add kobject, NULL parent indicates using kset as parent */
 		ret = kobject_add(&info->kobj, NULL, "vm%u", info->vm_id);
+		if (ret) {
+			gvt_err("%s: kobject add error: %d\n", __func__, ret);
+			kobject_put(&info->kobj);
+		}
+
+		ret = sysfs_create_bin_file(&info->kobj, &vgpu_state_attr);
 		if (ret) {
 			gvt_err("%s: kobject add error: %d\n", __func__, ret);
 			kobject_put(&info->kobj);
@@ -1306,6 +1372,9 @@ void xengt_instance_destroy(struct intel_vgpu *vgpu)
 
 	kfree(info->evtchn_irq);
 
+	if (info->dev_state)
+		vfree(info->dev_state);
+
 out1:
 	xengt_vmem_destroy(vgpu);
 	vgpu->handle = (unsigned long)NULL;
@@ -1354,6 +1423,12 @@ struct intel_vgpu *xengt_instance_create(domid_t vm_id,
 	}
 	for (vcpu = 0; vcpu < info->nr_vcpu; vcpu++)
 		info->evtchn_irq[vcpu] = -1;
+
+	info->dev_state = vzalloc(MIGRATION_IMG_MAX_SIZE);
+	if (info->dev_state == NULL) {
+		rc = -ENOMEM;
+		goto err;
+	}
 
 	rc = xen_hvm_map_pcidev_to_ioreq_server(info,
 			PCI_BDF2(0, 0x10));//FIXME hack the dev bdf

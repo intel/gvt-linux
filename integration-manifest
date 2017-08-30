@@ -1,22 +1,12 @@
-drm-intel drm-intel-fixes cc4a41fe5541a73019a864883297bd5043aa6d98
-	Linux 4.13-rc7
-drm-upstream drm-fixes e38f5164cacd3281b72c99ec0f5e4705ec1d1a55
-	Merge tag 'drm-misc-fixes-2017-08-28' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
-drm-intel drm-intel-next-fixes 7846b12fe0b5feab5446d892f41b5140c1419109
-	Merge branch 'drm-vmwgfx-next' of git://people.freedesktop.org/~syeh/repos_linux into drm-next
-drm-intel drm-intel-next-queued b69a784f5e2308d6360a76eceae450e96751f3e4
-	drm/i915: Always wake the device to flush the GTT
-drm-upstream drm-next 7846b12fe0b5feab5446d892f41b5140c1419109
-	Merge branch 'drm-vmwgfx-next' of git://people.freedesktop.org/~syeh/repos_linux into drm-next
-sound-upstream for-next 0be04a695b8ca111bc74efcd395b5b82e29753ae
-	ALSA: aoa: Convert to using %pOF instead of full_name
-sound-upstream for-linus 9ce76511b67be8fbcdff36b7e1662e3887bb7377
-	ASoC: rt5677: Reintroduce I2C device IDs
-drm-intel topic/core-for-CI 177776dba04e4e02d46ec46d7927580eaeb106b6
-	time: Fix ktime_get_raw() issues caused by incorrect base accumulation
-drm-misc drm-misc-next b07b9146635e90b72551bc8992eb85ecbaa0e593
-	drm/tve200: Pass NULL format_modifier to drm_simple_display_pipe_init
-drm-misc drm-misc-next-fixes f44d85389e17b2e960620c1c6d89bda978a11f2b
-	drm: rename u32 in __u32 in uapi
-drm-misc drm-misc-fixes 79964dbaf662229253b281c42e82e2675a9d3b80
-	drm/bridge/sii8620: Fix memory corruption
+drm-tip/drm-tip 6a305b78140aedc9008bdb7e78e70417a8413bbf
+	drm-tip: 2017y-08m-30d-08h-12m-34s UTC integration manifest
+vfio-upstream/for-linus 796b755066dd6254bfb6388fec901631e868d1c7
+	vfio/pci: Fix handling of RC integrated endpoint PCIe capability size
+vfio-upstream/next f203f7f1dbb298e1ed68f6c2f53715d13d5f3a0f
+	vfio/type1: Give hardware MSI regions precedence
+origin/gvt-fixes ffeaf9aaf97b4bdaf114d6df52f800d71918768c
+	drm/i915/gvt: Fix the kernel null pointer error
+origin/gvt-next b3a5c1c31605c79d9eab5979039638ff13317a1c
+	drm/i915/gvt: Add support for PCIe extended configuration space
+origin/gvt-next-fixes 1521402177137b09ac6a2cd28b59dcd6668efab3
+	drm/i915/gvt: Remove one duplicated MMIO

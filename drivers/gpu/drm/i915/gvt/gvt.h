@@ -194,6 +194,7 @@ struct intel_vgpu {
 	u32 hws_pga[I915_NUM_ENGINES];
 
 	struct dentry *debugfs;
+	unsigned long low_mem_max_gpfn;
 
 #if IS_ENABLED(CONFIG_DRM_I915_GVT_KVMGT)
 	struct {

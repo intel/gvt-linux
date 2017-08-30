@@ -42,6 +42,7 @@ enum gvt_migration_type_t {
 	GVT_MIGRATION_GTT,
 	GVT_MIGRATION_PPGTT,
 	GVT_MIGRATION_WORKLOAD,
+	GVT_MIGRATION_OPREGION,
 };
 
 struct gvt_ppgtt_entry_t {

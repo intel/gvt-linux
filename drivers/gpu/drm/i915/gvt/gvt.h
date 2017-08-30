@@ -193,6 +193,14 @@ struct intel_vgpu {
 	u32 hws_pga[I915_NUM_ENGINES];
 
 	struct dentry *debugfs;
+	struct intel_vgpu_execlist execlist[I915_NUM_ENGINES];
+	struct list_head workload_q_head[I915_NUM_ENGINES];
+	struct kmem_cache *workloads;
+	atomic_t running_workload_num;
+	ktime_t last_ctx_submit_time;
+	DECLARE_BITMAP(tlb_handle_pending, I915_NUM_ENGINES);
+	struct i915_gem_context *shadow_ctx;
+	unsigned long low_mem_max_gpfn;
 
 #if IS_ENABLED(CONFIG_DRM_I915_GVT_KVMGT)
 	struct {

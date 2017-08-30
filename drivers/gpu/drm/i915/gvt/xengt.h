@@ -75,10 +75,15 @@ static ssize_t xengt_sysfs_instance_manage(struct kobject *kobj,
 	struct kobj_attribute *attr, const char *buf, size_t count);
 static ssize_t xengt_sysfs_vgpu_id(struct kobject *kobj,
 	struct kobj_attribute *attr, char *buf);
+static ssize_t xengt_sysfs_vgpu_schedule(struct kobject *kobj,
+	struct kobj_attribute *attr, const char *buf, size_t count);
 
 struct intel_vgpu *xengt_instance_create(domid_t vm_id,
 		struct intel_vgpu_type *type);
 void xengt_instance_destroy(struct intel_vgpu *vgpu);
+static int hvm_claim_ioreq_server_type(struct xengt_hvm_dev *info,
+		uint32_t set);
+static int xen_hvm_toggle_iorequest_server(struct xengt_hvm_dev *info, bool enable);
 
 
 #endif

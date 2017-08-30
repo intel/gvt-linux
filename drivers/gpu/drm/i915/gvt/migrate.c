@@ -48,7 +48,7 @@
 #define MIGRATION_UNIT(_s, _t, _m, _ops) {		\
 .img		= NULL,					\
 .region.type	= _t,					\
-.region.size	= _m,				\
+.region.size	= _m,					\
 .ops		= &(_ops),				\
 .name		= "["#_s":"#_t"]\0"			\
 }
@@ -75,6 +75,9 @@ static int workload_load(const struct gvt_migration_obj_t *obj, u32 size);
 static int workload_save(const struct gvt_migration_obj_t *obj);
 static int ppgtt_load(const struct gvt_migration_obj_t *obj, u32 size);
 static int ppgtt_save(const struct gvt_migration_obj_t *obj);
+static int opregion_load(const struct gvt_migration_obj_t *obj, u32 size);
+static int opregion_save(const struct gvt_migration_obj_t *obj);
+
 /***********************************************
  * Internal Static Functions
  ***********************************************/
@@ -124,6 +127,13 @@ struct gvt_migration_operation_t ppgtt_ops = {
 	.pre_copy = NULL,
 	.pre_save = ppgtt_save,
 	.pre_load = ppgtt_load,
+	.post_load = NULL,
+};
+
+struct gvt_migration_operation_t opregion_ops = {
+	.pre_copy = NULL,
+	.pre_save = opregion_save,
+	.pre_load = opregion_load,
 	.post_load = NULL,
 };
 
@@ -178,6 +188,9 @@ static struct gvt_migration_obj_t gvt_device_objs[] = {
 	MIGRATION_UNIT(struct intel_vgpu,
 			GVT_MIGRATION_WORKLOAD,
 			0, workload_ops),
+	MIGRATION_UNIT(struct intel_vgpu,
+			GVT_MIGRATION_OPREGION,
+			INTEL_GVT_OPREGION_SIZE, opregion_ops),
 	MIGRATION_END,
 };
 
@@ -215,6 +228,7 @@ static int image_header_save(const struct gvt_migration_obj_t *obj)
 {
 	struct gvt_region_t region;
 	struct gvt_image_header_t header;
+	struct intel_vgpu *vgpu = (struct intel_vgpu *) obj->vgpu;
 
 	region.type = GVT_MIGRATION_HEAD;
 	region.size = sizeof(struct gvt_image_header_t);
@@ -223,6 +237,10 @@ static int image_header_save(const struct gvt_migration_obj_t *obj)
 	header.version = GVT_MIGRATION_VERSION;
 	header.data_size = obj->offset;
 	header.crc_check = 0; /* CRC check skipped for now*/
+
+	if (intel_gvt_host.hypervisor_type == INTEL_GVT_HYPERVISOR_XEN) {
+		header.global_data[0] = vgpu->low_mem_max_gpfn;
+	}
 
 	memcpy(obj->img + sizeof(struct gvt_region_t), &header,
 			sizeof(struct gvt_image_header_t));
@@ -233,6 +251,7 @@ static int image_header_save(const struct gvt_migration_obj_t *obj)
 static int image_header_load(const struct gvt_migration_obj_t *obj, u32 size)
 {
 	struct gvt_image_header_t header;
+	struct intel_vgpu *vgpu = (struct intel_vgpu *) obj->vgpu;
 
 	if (unlikely(size != sizeof(struct gvt_image_header_t))) {
 		gvt_err("migration obj size isn't match between target and image!"
@@ -244,6 +263,10 @@ static int image_header_load(const struct gvt_migration_obj_t *obj, u32 size)
 
 	memcpy(&header, obj->img + obj->offset,
 		sizeof(struct gvt_image_header_t));
+
+	if (intel_gvt_host.hypervisor_type == INTEL_GVT_HYPERVISOR_XEN) {
+		vgpu->low_mem_max_gpfn = header.global_data[0];
+	}
 
 	return header.data_size;
 }
@@ -267,7 +290,7 @@ static int vcfg_space_save(const struct gvt_migration_obj_t *obj)
 static int vcfg_space_load(const struct gvt_migration_obj_t *obj, u32 size)
 {
 	struct intel_vgpu *vgpu = (struct intel_vgpu *) obj->vgpu;
-	void *dest = vgpu->cfg_space.virtual_cfg_space;
+	char *dest = vgpu->cfg_space.virtual_cfg_space;
 	int n_transfer = INV;
 
 	if (unlikely(size != obj->region.size)) {
@@ -281,6 +304,36 @@ static int vcfg_space_load(const struct gvt_migration_obj_t *obj, u32 size)
 		memcpy(dest, obj->img + obj->offset, n_transfer);
 	}
 
+	if (intel_gvt_host.hypervisor_type == INTEL_GVT_HYPERVISOR_XEN) {
+#define MIG_CFG_SPACE_WRITE(off) {					\
+	u32 data;							\
+	data = *((u32 *)(dest + (off)));				\
+	intel_vgpu_emulate_cfg_write(vgpu, (off), &data, sizeof(data));	\
+	}
+
+#define MIG_CFG_SPACE_WRITE_BAR(bar) {					\
+	u32 data = 0x500;						\
+	vgpu_cfg_space(vgpu)[PCI_COMMAND] = 0;				\
+	intel_vgpu_emulate_cfg_write(vgpu, PCI_COMMAND, &data, 2);	\
+	data = *((u32 *)(dest + (bar)));				\
+	intel_vgpu_emulate_cfg_write(vgpu, (bar), &data, sizeof(data));	\
+	data = *((u32 *)(dest + (bar)+4));				\
+	intel_vgpu_emulate_cfg_write(vgpu, (bar)+4, &data, sizeof(data));\
+	data = 0x503;							\
+	intel_vgpu_emulate_cfg_write(vgpu, PCI_COMMAND, &data, 2);	\
+	}
+
+		/* reconfig bar0,1,2 with source VM's base address.
+		 * TargetVM and SourceVM must have same bar base.
+		 */
+		MIG_CFG_SPACE_WRITE_BAR(PCI_BASE_ADDRESS_0);
+		MIG_CFG_SPACE_WRITE_BAR(PCI_BASE_ADDRESS_2);
+		MIG_CFG_SPACE_WRITE_BAR(PCI_BASE_ADDRESS_4);
+
+		/* restore OpRegion */
+		MIG_CFG_SPACE_WRITE(INTEL_GVT_PCI_OPREGION);
+		MIG_CFG_SPACE_WRITE(INTEL_GVT_PCI_SWSCI);
+	}
 	return n_transfer;
 }
 
@@ -315,6 +368,44 @@ static int sreg_load(const struct gvt_migration_obj_t *obj, u32 size)
 	} else {
 		n_transfer = obj->region.size;
 		memcpy(dest, obj->img + obj->offset, n_transfer);
+	}
+
+	return n_transfer;
+}
+
+static int opregion_save(const struct gvt_migration_obj_t *obj)
+{
+	struct intel_vgpu *vgpu = (struct intel_vgpu *) obj->vgpu;
+	int n_transfer = INV;
+	void *src = vgpu->opregion.va;
+	void *des = obj->img + obj->offset;
+
+	memcpy(des, &obj->region, sizeof(struct gvt_region_t));
+
+	des += sizeof(struct gvt_region_t);
+	n_transfer = obj->region.size;
+
+	memcpy(des, src, n_transfer);
+	return sizeof(struct gvt_region_t) + n_transfer;
+}
+
+static int opregion_load(const struct gvt_migration_obj_t *obj, u32 size)
+{
+	struct intel_vgpu *vgpu = (struct intel_vgpu *) obj->vgpu;
+	int n_transfer = INV;
+
+	if (unlikely(size != obj->region.size)) {
+		gvt_err("migration object size is not match between target \
+				and image!!! memsize=%d imgsize=%d\n",
+		obj->region.size,
+		size);
+		return n_transfer;
+	} else {
+		vgpu_opregion(vgpu)->va = (void *)__get_free_pages(GFP_KERNEL |
+			__GFP_ZERO,
+			get_order(INTEL_GVT_OPREGION_SIZE));
+		n_transfer = obj->region.size;
+		memcpy(vgpu_opregion(vgpu)->va, obj->img + obj->offset, n_transfer);
 	}
 
 	return n_transfer;
@@ -660,6 +751,10 @@ static int vgpu_save(const void *img)
 	/* go by obj rules one by one */
 	FOR_EACH_OBJ(node, gvt_device_objs) {
 		int n_img = INV;
+
+		if ((node->region.type == GVT_MIGRATION_OPREGION) &&
+			(intel_gvt_host.hypervisor_type == INTEL_GVT_HYPERVISOR_KVM))
+			continue;
 
 		/* obj will copy data to image file img.offset */
 		update_image_region_start_pos(node, n_img_actual_saved);

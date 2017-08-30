@@ -170,6 +170,8 @@ struct intel_vgpu {
 	struct i915_gem_context *shadow_ctx;
 	DECLARE_BITMAP(shadow_ctx_desc_updated, I915_NUM_ENGINES);
 
+	unsigned long low_mem_max_gpfn;
+
 #if IS_ENABLED(CONFIG_DRM_I915_GVT_KVMGT)
 	struct {
 		struct mdev_device *mdev;

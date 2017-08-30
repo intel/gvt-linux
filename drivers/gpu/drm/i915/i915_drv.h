@@ -1107,6 +1107,7 @@ struct intel_fbc {
 		} fb;
 
 		int cfb_size;
+		unsigned int gen9_wa_cfb_stride;
 	} params;
 
 	struct intel_fbc_work {
@@ -1465,6 +1466,11 @@ struct i915_gem_mm {
 	struct llist_head free_list;
 	struct work_struct free_work;
 
+	/**
+	 * Small stash of WC pages
+	 */
+	struct pagevec wc_stash;
+
 	/** Usable portion of the GTT for GEM */
 	dma_addr_t stolen_base; /* limited to low memory (32-bit) */
 
@@ -1718,7 +1724,7 @@ struct intel_vbt_data {
 	int crt_ddc_pin;
 
 	int child_dev_num;
-	union child_device_config *child_dev;
+	struct child_device_config *child_dev;
 
 	struct ddi_vbt_port_info ddi_port_info[I915_MAX_PORTS];
 	struct sdvo_device_mapping sdvo_mappings[2];
@@ -3479,6 +3485,9 @@ void __i915_gem_object_invalidate(struct drm_i915_gem_object *obj);
 enum i915_map_type {
 	I915_MAP_WB = 0,
 	I915_MAP_WC,
+#define I915_MAP_OVERRIDE BIT(31)
+	I915_MAP_FORCE_WB = I915_MAP_WB | I915_MAP_OVERRIDE,
+	I915_MAP_FORCE_WC = I915_MAP_WC | I915_MAP_OVERRIDE,
 };
 
 /**

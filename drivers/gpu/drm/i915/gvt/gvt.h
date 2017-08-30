@@ -169,6 +169,7 @@ struct intel_vgpu {
 	ktime_t last_ctx_submit_time;
 	DECLARE_BITMAP(tlb_handle_pending, I915_NUM_ENGINES);
 	struct i915_gem_context *shadow_ctx;
+	unsigned long low_mem_max_gpfn;
 
 #if IS_ENABLED(CONFIG_DRM_I915_GVT_KVMGT)
 	struct {

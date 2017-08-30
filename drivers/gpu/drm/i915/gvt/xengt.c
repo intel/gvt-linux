@@ -100,6 +100,9 @@ __ATTR(create_vgt_instance, 0220, NULL, xengt_sysfs_instance_manage);
 static struct kobj_attribute xengt_vm_attr =
 __ATTR(vgpu_id, 0440, xengt_sysfs_vgpu_id, NULL);
 
+static struct kobj_attribute xengt_sch_attr =
+__ATTR(schedule, 0220, NULL, xengt_sysfs_vgpu_schedule);
+
 static struct attribute *xengt_ctrl_attrs[] = {
 	&xengt_instance_attr.attr,
 	NULL,   /* need to NULL terminate the list of attributes */
@@ -107,6 +110,7 @@ static struct attribute *xengt_ctrl_attrs[] = {
 
 static struct attribute *xengt_vm_attrs[] = {
 	&xengt_vm_attr.attr,
+	&xengt_sch_attr.attr,
 	NULL,   /* need to NULL terminate the list of attributes */
 };
 
@@ -345,6 +349,39 @@ static ssize_t xengt_sysfs_instance_manage(struct kobject *kobj,
 		xengt_sysfs_del_instance(&vp);
 
 	return rc < 0 ? rc : count;
+}
+
+static ssize_t xengt_sysfs_vgpu_schedule(struct kobject *kobj,
+		struct kobj_attribute *attr, const char *buf, size_t count)
+{
+	struct xengt_hvm_dev *info =
+		container_of((kobj), struct xengt_hvm_dev, kobj);
+	struct intel_vgpu *vgpu = info->vgpu;
+	int running;
+
+	mutex_lock(&gvt_sysfs_lock);
+	if (sscanf(buf, "%d", &running) != 1) {
+		mutex_unlock(&gvt_sysfs_lock);
+		return -EINVAL;
+	}
+
+	if (running) {
+		if (info->iosrv_id == 0) {
+			hvm_claim_ioreq_server_type(info, 1);
+			xen_hvm_toggle_iorequest_server(info, true);
+		}
+		intel_gvt_ops->vgpu_activate(vgpu);
+	} else {
+		intel_gvt_ops->vgpu_deactivate(vgpu);
+		if (info->iosrv_id != 0) {
+			hvm_claim_ioreq_server_type(info, 0);
+			xen_hvm_toggle_iorequest_server(info, false);
+		}
+	}
+
+	mutex_unlock(&gvt_sysfs_lock);
+
+	return count;
 }
 
 int xengt_sysfs_init(struct intel_gvt *gvt)

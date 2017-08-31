@@ -44,6 +44,8 @@ struct xengt_hvm_dev {
 	/* for >1MB memory of HVM: each vm_struct means 4KB */
 	struct vm_struct **vmem_vma_4k;
 	void *dev_state;
+	struct rb_root logd_list;
+	struct mutex logd_lock;
 };
 
 struct xengt_hvm_params {

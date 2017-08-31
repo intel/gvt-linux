@@ -569,6 +569,24 @@ struct i915_hotplug {
 	     (__i)++) \
 		for_each_if (plane_state)
 
+#define for_each_new_intel_crtc_in_state(__state, crtc, new_crtc_state, __i) \
+	for ((__i) = 0; \
+	     (__i) < (__state)->base.dev->mode_config.num_crtc && \
+		     ((crtc) = to_intel_crtc((__state)->base.crtcs[__i].ptr), \
+		      (new_crtc_state) = to_intel_crtc_state((__state)->base.crtcs[__i].new_state), 1); \
+	     (__i)++) \
+		for_each_if (crtc)
+
+
+#define for_each_oldnew_intel_plane_in_state(__state, plane, old_plane_state, new_plane_state, __i) \
+	for ((__i) = 0; \
+	     (__i) < (__state)->base.dev->mode_config.num_total_plane && \
+		     ((plane) = to_intel_plane((__state)->base.planes[__i].ptr), \
+		      (old_plane_state) = to_intel_plane_state((__state)->base.planes[__i].old_state), \
+		      (new_plane_state) = to_intel_plane_state((__state)->base.planes[__i].new_state), 1); \
+	     (__i)++) \
+		for_each_if (plane)
+
 struct drm_i915_private;
 struct i915_mm_struct;
 struct i915_mmu_object;
@@ -1107,6 +1125,7 @@ struct intel_fbc {
 		} fb;
 
 		int cfb_size;
+		unsigned int gen9_wa_cfb_stride;
 	} params;
 
 	struct intel_fbc_work {
@@ -1465,6 +1484,11 @@ struct i915_gem_mm {
 	struct llist_head free_list;
 	struct work_struct free_work;
 
+	/**
+	 * Small stash of WC pages
+	 */
+	struct pagevec wc_stash;
+
 	/** Usable portion of the GTT for GEM */
 	dma_addr_t stolen_base; /* limited to low memory (32-bit) */
 
@@ -1718,7 +1742,7 @@ struct intel_vbt_data {
 	int crt_ddc_pin;
 
 	int child_dev_num;
-	union child_device_config *child_dev;
+	struct child_device_config *child_dev;
 
 	struct ddi_vbt_port_info ddi_port_info[I915_MAX_PORTS];
 	struct sdvo_device_mapping sdvo_mappings[2];
@@ -2329,7 +2353,8 @@ struct drm_i915_private {
 	struct mutex dpll_lock;
 
 	unsigned int active_crtcs;
-	unsigned int min_pixclk[I915_MAX_PIPES];
+	/* minimum acceptable cdclk for each pipe */
+	int min_cdclk[I915_MAX_PIPES];
 
 	int dpio_phy_iosf_port[I915_NUM_PHYS_VLV];
 

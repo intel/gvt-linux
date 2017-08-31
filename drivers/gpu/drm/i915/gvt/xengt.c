@@ -351,6 +351,49 @@ static ssize_t xengt_sysfs_instance_manage(struct kobject *kobj,
 	return rc < 0 ? rc : count;
 }
 
+static int xengt_hvm_modified_memory(struct xengt_hvm_dev *info, uint64_t start_pfn)
+{
+	xen_dm_op_buf_t dm_buf[2];
+	struct xen_dm_op op;
+	struct xen_dm_op_modified_memory *header;
+	struct xen_dm_op_modified_memory_extent data;
+	int rc;
+
+	memset(&op, 0, sizeof(op));
+	memset(&data, 0, sizeof(data));
+
+	op.op = XEN_DMOP_modified_memory;
+	header = &op.u.modified_memory;
+	header->nr_extents = 1;
+
+	data.nr = 1;
+	data.first_pfn = start_pfn;
+
+	dm_buf[0].h = &op;
+	dm_buf[0].size = sizeof(op);
+
+	dm_buf[1].h = &data;
+	dm_buf[1].size = sizeof(data);
+
+	rc = HYPERVISOR_dm_op(info->vm_id, 2, dm_buf);
+
+	if (rc < 0)
+		gvt_err("Cannot modified memory: %d!\n", rc);
+
+	return rc;
+}
+
+static void xengt_logd_sync(struct xengt_hvm_dev *info)
+{
+	struct gvt_logd_pfn *logd, *next;
+
+	mutex_lock(&info->logd_lock);
+	rbtree_postorder_for_each_entry_safe(logd, next,
+					     &info->logd_list, node)
+		xengt_hvm_modified_memory(info, logd->gfn);
+	mutex_unlock(&info->logd_lock);
+}
+
 static ssize_t xengt_sysfs_vgpu_schedule(struct kobject *kobj,
 		struct kobj_attribute *attr, const char *buf, size_t count)
 {
@@ -377,6 +420,7 @@ static ssize_t xengt_sysfs_vgpu_schedule(struct kobject *kobj,
 			hvm_claim_ioreq_server_type(info, 0);
 			xen_hvm_toggle_iorequest_server(info, false);
 		}
+		xengt_logd_sync(info);
 	}
 
 	mutex_unlock(&gvt_sysfs_lock);
@@ -1372,6 +1416,20 @@ static irqreturn_t xengt_io_req_handler(int irq, void *dev)
 	return IRQ_HANDLED;
 }
 
+static void xengt_logd_destroy(struct xengt_hvm_dev *info)
+{
+	struct gvt_logd_pfn *logd;
+	struct rb_node *node = NULL;
+
+	mutex_lock(&info->logd_lock);
+	while ((node = rb_first(&info->logd_list))) {
+		logd = rb_entry(node, struct gvt_logd_pfn, node);
+		rb_erase(&logd->node, &info->logd_list);
+		kfree(logd);
+	}
+	mutex_unlock(&info->logd_lock);
+}
+
 void xengt_instance_destroy(struct intel_vgpu *vgpu)
 {
 	struct xengt_hvm_dev *info;
@@ -1412,6 +1470,7 @@ void xengt_instance_destroy(struct intel_vgpu *vgpu)
 		vfree(info->dev_state);
 
 out1:
+	xengt_logd_destroy(info);
 	xengt_vmem_destroy(vgpu);
 	vgpu->handle = (unsigned long)NULL;
 	kfree(info);
@@ -1650,14 +1709,77 @@ static int xengt_write_gpa(unsigned long handle, unsigned long gpa,
 	return 0;
 }
 
+static struct gvt_logd_pfn *xengt_find_logd(struct xengt_hvm_dev *info,
+							unsigned long gfn)
+{
+	struct gvt_logd_pfn *logd;
+	struct rb_node *node = info->logd_list.rb_node;
+
+	while (node) {
+		logd = rb_entry(node, struct gvt_logd_pfn, node);
+
+		if (gfn < logd->gfn)
+			node = node->rb_left;
+		else if (gfn > logd->gfn)
+			node = node->rb_right;
+		else
+			return logd;
+	}
+	return NULL;
+}
+
+static void xengt_logd_add(struct xengt_hvm_dev *info, unsigned long gfn)
+{
+	struct gvt_logd_pfn *logd, *itr;
+	struct rb_node **node = &info->logd_list.rb_node, *parent = NULL;
+
+	mutex_lock(&info->logd_lock);
+
+	logd = xengt_find_logd(info, gfn);
+	if (logd) {
+		atomic_inc(&logd->ref_count);
+		mutex_unlock(&info->logd_lock);
+		return;
+	}
+
+	logd = kzalloc(sizeof(struct gvt_logd_pfn), GFP_KERNEL);
+	if (!logd)
+		goto exit;
+
+	logd->gfn = gfn;
+	atomic_set(&logd->ref_count, 1);
+
+	while (*node) {
+		parent = *node;
+		itr = rb_entry(parent, struct gvt_logd_pfn, node);
+
+		if (logd->gfn < itr->gfn)
+			node = &parent->rb_left;
+		else
+			node = &parent->rb_right;
+	}
+	rb_link_node(&logd->node, parent, node);
+	rb_insert_color(&logd->node, &info->logd_list);
+
+exit:
+	mutex_unlock(&info->logd_lock);
+	return;
+}
+
 static unsigned long xengt_gfn_to_pfn(unsigned long handle, unsigned long gfn)
 {
 	struct xengt_hvm_dev *info = (struct xengt_hvm_dev *)handle;
+	unsigned long pfn;
 
 	if (!info)
 		return -EINVAL;
 
-	return xen_g2m_pfn(info->vm_id, gfn);
+	pfn = xen_g2m_pfn(info->vm_id, gfn);
+
+	if (pfn != INTEL_GVT_INVALID_ADDR)
+		xengt_logd_add(info, gfn);
+
+	return pfn;
 }
 
 struct intel_gvt_mpt xengt_mpt = {

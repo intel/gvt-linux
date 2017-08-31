@@ -90,4 +90,10 @@ struct gvt_image_header_t {
 	u64 global_data[64];
 };
 
+struct gvt_logd_pfn {
+	struct rb_node	node;
+	unsigned long	gfn;
+	atomic_t	ref_count;
+};
+
 #endif

@@ -324,6 +324,16 @@ err_scan:
 	return ret;
 }
 
+static int prepare_workload(struct intel_vgpu_workload *workload)
+{
+	int ret = 0;
+
+	if (workload->prepare)
+		ret = workload->prepare(workload);
+
+	return ret;
+}
+
 static int dispatch_workload(struct intel_vgpu_workload *workload)
 {
 	struct intel_vgpu *vgpu = workload->vgpu;
@@ -343,12 +353,10 @@ static int dispatch_workload(struct intel_vgpu_workload *workload)
 	if (ret)
 		goto out;
 
-	if (workload->prepare) {
-		ret = workload->prepare(workload);
-		if (ret) {
-			engine->context_unpin(engine, shadow_ctx);
-			goto out;
-		}
+	ret = prepare_workload(workload);
+	if (ret) {
+		engine->context_unpin(engine, shadow_ctx);
+		goto out;
 	}
 
 out:

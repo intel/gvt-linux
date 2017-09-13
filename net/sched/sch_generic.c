@@ -311,7 +311,12 @@ static void dev_watchdog(unsigned long arg)
 				}
 			}
 
-			if (some_queue_timedout) {
+			/* The noise is pissing off our CI and upstream doesn't
+			 * move on the bug report:
+			 *
+			 * https://bugzilla.kernel.org/show_bug.cgi?id=196399
+			 */
+			if (some_queue_timedout && 0) {
 				WARN_ONCE(1, KERN_INFO "NETDEV WATCHDOG: %s (%s): transmit queue %u timed out\n",
 				       dev->name, netdev_drivername(dev), i);
 				dev->netdev_ops->ndo_tx_timeout(dev);
@@ -785,7 +790,7 @@ static void attach_default_qdiscs(struct net_device *dev)
 	    dev->priv_flags & IFF_NO_QUEUE) {
 		netdev_for_each_tx_queue(dev, attach_one_default_qdisc, NULL);
 		dev->qdisc = txq->qdisc_sleeping;
-		refcount_inc(&dev->qdisc->refcnt);
+		qdisc_refcount_inc(dev->qdisc);
 	} else {
 		qdisc = qdisc_create_dflt(txq, &mq_qdisc_ops, TC_H_ROOT);
 		if (qdisc) {

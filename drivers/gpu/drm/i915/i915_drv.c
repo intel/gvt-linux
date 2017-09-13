@@ -239,7 +239,8 @@ static void intel_detect_pch(struct drm_i915_private *dev_priv)
 				dev_priv->pch_type = PCH_KBP;
 				DRM_DEBUG_KMS("Found Kaby Lake PCH (KBP)\n");
 				WARN_ON(!IS_SKYLAKE(dev_priv) &&
-					!IS_KABYLAKE(dev_priv));
+					!IS_KABYLAKE(dev_priv) &&
+					!IS_COFFEELAKE(dev_priv));
 			} else if (id == INTEL_PCH_CNP_DEVICE_ID_TYPE) {
 				dev_priv->pch_type = PCH_CNP;
 				DRM_DEBUG_KMS("Found Cannon Lake PCH (CNP)\n");
@@ -1340,7 +1341,7 @@ int i915_driver_load(struct pci_dev *pdev, const struct pci_device_id *ent)
 
 	intel_runtime_pm_enable(dev_priv);
 
-	dev_priv->ipc_enabled = false;
+	intel_init_ipc(dev_priv);
 
 	if (IS_ENABLED(CONFIG_DRM_I915_DEBUG))
 		DRM_INFO("DRM_I915_DEBUG enabled\n");
@@ -2607,6 +2608,8 @@ static int intel_runtime_resume(struct device *kdev)
 	 */
 	if (!IS_VALLEYVIEW(dev_priv) && !IS_CHERRYVIEW(dev_priv))
 		intel_hpd_init(dev_priv);
+
+	intel_enable_ipc(dev_priv);
 
 	enable_rpm_wakeref_asserts(dev_priv);
 

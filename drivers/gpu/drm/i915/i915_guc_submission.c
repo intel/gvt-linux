@@ -469,8 +469,9 @@ static void guc_wq_item_append(struct i915_guc_client *client,
 {
 	/* wqi_len is in DWords, and does not include the one-word header */
 	const size_t wqi_size = sizeof(struct guc_wq_item);
-	const u32 wqi_len = wqi_size/sizeof(u32) - 1;
+	const u32 wqi_len = wqi_size / sizeof(u32) - 1;
 	struct intel_engine_cs *engine = rq->engine;
+	struct i915_gem_context *ctx = rq->ctx;
 	struct guc_process_desc *desc = __get_process_desc(client);
 	struct guc_wq_item *wqi;
 	u32 freespace, tail, wq_off;
@@ -479,8 +480,7 @@ static void guc_wq_item_append(struct i915_guc_client *client,
 	freespace = CIRC_SPACE(client->wq_tail, desc->head, client->wq_size);
 	GEM_BUG_ON(freespace < wqi_size);
 
-	/* The GuC firmware wants the tail index in QWords, not bytes */
-	tail = intel_ring_set_tail(rq->ring, rq->tail) >> 3;
+	tail = intel_ring_set_tail(rq->ring, rq->tail) / sizeof(u64);
 	GEM_BUG_ON(tail > WQ_RING_TAIL_MAX);
 
 	/* For now workqueue item is 4 DWs; workqueue buffer is 2 pages. So we
@@ -505,12 +505,11 @@ static void guc_wq_item_append(struct i915_guc_client *client,
 
 	/* Now fill in the 4-word work queue item */
 	wqi->header = WQ_TYPE_INORDER |
-			(wqi_len << WQ_LEN_SHIFT) |
-			(engine->guc_id << WQ_TARGET_SHIFT) |
-			WQ_NO_WCFLUSH_WAIT;
+		      (wqi_len << WQ_LEN_SHIFT) |
+		      (engine->guc_id << WQ_TARGET_SHIFT) |
+		      WQ_NO_WCFLUSH_WAIT;
 
-	/* The GuC wants only the low-order word of the context descriptor */
-	wqi->context_desc = (u32)intel_lr_context_descriptor(rq->ctx, engine);
+	wqi->context_desc = lower_32_bits(intel_lr_context_descriptor(ctx, engine));
 
 	wqi->submit_element_info = tail << WQ_RING_TAIL_SHIFT;
 	wqi->fence_id = rq->global_seqno;
@@ -996,27 +995,38 @@ static void guc_client_free(struct i915_guc_client *client)
 	kfree(client);
 }
 
+static void guc_policy_init(struct guc_policy *policy)
+{
+	policy->execution_quantum = POLICY_DEFAULT_EXECUTION_QUANTUM_US;
+	policy->preemption_time = POLICY_DEFAULT_PREEMPTION_TIME_US;
+	policy->fault_time = POLICY_DEFAULT_FAULT_TIME_US;
+	policy->policy_flags = 0;
+}
+
 static void guc_policies_init(struct guc_policies *policies)
 {
 	struct guc_policy *policy;
 	u32 p, i;
 
-	policies->dpc_promote_time = 500000;
+	policies->dpc_promote_time = POLICY_DEFAULT_DPC_PROMOTE_TIME_US;
 	policies->max_num_work_items = POLICY_MAX_NUM_WI;
 
 	for (p = 0; p < GUC_CLIENT_PRIORITY_NUM; p++) {
 		for (i = GUC_RENDER_ENGINE; i < GUC_MAX_ENGINES_NUM; i++) {
 			policy = &policies->policy[p][i];
 
-			policy->execution_quantum = 1000000;
-			policy->preemption_time = 500000;
-			policy->fault_time = 250000;
-			policy->policy_flags = 0;
+			guc_policy_init(policy);
 		}
 	}
 
 	policies->is_valid = 1;
 }
+
+/*
+ * The first 80 dwords of the register state context, containing the
+ * execlists and ppgtt registers.
+ */
+#define LR_HW_CONTEXT_SIZE	(80 * sizeof(u32))
 
 static int guc_ads_create(struct intel_guc *guc)
 {
@@ -1032,6 +1042,8 @@ static int guc_ads_create(struct intel_guc *guc)
 	} __packed *blob;
 	struct intel_engine_cs *engine;
 	enum intel_engine_id id;
+	const u32 skipped_offset = LRC_HEADER_PAGES * PAGE_SIZE;
+	const u32 skipped_size = LRC_PPHWSP_SZ * PAGE_SIZE + LR_HW_CONTEXT_SIZE;
 	u32 base;
 
 	GEM_BUG_ON(guc->ads_vma);
@@ -1062,13 +1074,20 @@ static int guc_ads_create(struct intel_guc *guc)
 	 * engines after a reset. Here we use the Render ring default
 	 * context, which must already exist and be pinned in the GGTT,
 	 * so its address won't change after we've told the GuC where
-	 * to find it.
+	 * to find it. Note that we have to skip our header (1 page),
+	 * because our GuC shared data is there.
 	 */
 	blob->ads.golden_context_lrca =
-		dev_priv->engine[RCS]->status_page.ggtt_offset;
+		guc_ggtt_offset(dev_priv->kernel_context->engine[RCS].state) + skipped_offset;
 
+	/*
+	 * The GuC expects us to exclude the portion of the context image that
+	 * it skips from the size it is to read. It starts reading from after
+	 * the execlist context (so skipping the first page [PPHWSP] and 80
+	 * dwords). Weird guc is weird.
+	 */
 	for_each_engine(engine, dev_priv, id)
-		blob->ads.eng_state_size[engine->guc_id] = engine->context_size;
+		blob->ads.eng_state_size[engine->guc_id] = engine->context_size - skipped_size;
 
 	base = guc_ggtt_offset(vma);
 	blob->ads.scheduler_policies = base + ptr_offset(blob, policies);
@@ -1310,7 +1329,7 @@ int intel_guc_suspend(struct drm_i915_private *dev_priv)
 	/* any value greater than GUC_POWER_D0 */
 	data[1] = GUC_POWER_D1;
 	/* first page is shared data with GuC */
-	data[2] = guc_ggtt_offset(ctx->engine[RCS].state);
+	data[2] = guc_ggtt_offset(ctx->engine[RCS].state) + LRC_GUCSHR_PN * PAGE_SIZE;
 
 	return intel_guc_send(guc, data, ARRAY_SIZE(data));
 }
@@ -1336,7 +1355,7 @@ int intel_guc_resume(struct drm_i915_private *dev_priv)
 	data[0] = INTEL_GUC_ACTION_EXIT_S_STATE;
 	data[1] = GUC_POWER_D0;
 	/* first page is shared data with GuC */
-	data[2] = guc_ggtt_offset(ctx->engine[RCS].state);
+	data[2] = guc_ggtt_offset(ctx->engine[RCS].state) + LRC_GUCSHR_PN * PAGE_SIZE;
 
 	return intel_guc_send(guc, data, ARRAY_SIZE(data));
 }

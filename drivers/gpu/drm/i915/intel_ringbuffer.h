@@ -391,6 +391,8 @@ struct intel_engine_cs {
 	struct rb_root execlist_queue;
 	struct rb_node *execlist_first;
 	unsigned int fw_domains;
+	unsigned int csb_head;
+	bool csb_use_mmio;
 
 	/* Contexts are pinned whilst they are active on the GPU. The last
 	 * context executed remains active whilst the GPU is idle - the
@@ -495,6 +497,10 @@ intel_write_status_page(struct intel_engine_cs *engine, int reg, u32 value)
 #define I915_GEM_HWS_INDEX_ADDR (I915_GEM_HWS_INDEX << MI_STORE_DWORD_INDEX_SHIFT)
 #define I915_GEM_HWS_SCRATCH_INDEX	0x40
 #define I915_GEM_HWS_SCRATCH_ADDR (I915_GEM_HWS_SCRATCH_INDEX << MI_STORE_DWORD_INDEX_SHIFT)
+
+#define I915_HWS_CSB_BUF0_INDEX		0x10
+#define I915_HWS_CSB_WRITE_INDEX	0x1f
+#define CNL_HWS_CSB_WRITE_INDEX		0x2f
 
 struct intel_ring *
 intel_engine_create_ring(struct intel_engine_cs *engine, int size);
@@ -735,16 +741,6 @@ bool intel_engines_are_idle(struct drm_i915_private *dev_priv);
 void intel_engines_mark_idle(struct drm_i915_private *i915);
 void intel_engines_reset_default_submission(struct drm_i915_private *i915);
 
-static inline bool
-__intel_engine_can_store_dword(unsigned int gen, unsigned int class)
-{
-	if (gen <= 2)
-		return false; /* uses physical not virtual addresses */
-
-	if (gen == 6 && class == VIDEO_DECODE_CLASS)
-		return false; /* b0rked */
-
-	return true;
-}
+bool intel_engine_can_store_dword(struct intel_engine_cs *engine);
 
 #endif /* _INTEL_RINGBUFFER_H_ */

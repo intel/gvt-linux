@@ -279,17 +279,11 @@ intel_lr_context_descriptor_update(struct i915_gem_context *ctx,
 	BUILD_BUG_ON(MAX_CONTEXT_HW_ID > (1<<GEN8_CTX_ID_WIDTH));
 
 	desc = ctx->desc_template;				/* bits  0-11 */
-	desc |= i915_ggtt_offset(ce->state) + LRC_PPHWSP_PN * PAGE_SIZE;
+	desc |= i915_ggtt_offset(ce->state) + LRC_HEADER_PAGES * PAGE_SIZE;
 								/* bits 12-31 */
 	desc |= (u64)ctx->hw_id << GEN8_CTX_ID_SHIFT;		/* bits 32-52 */
 
 	ce->lrc_desc = desc;
-}
-
-uint64_t intel_lr_context_descriptor(struct i915_gem_context *ctx,
-				     struct intel_engine_cs *engine)
-{
-	return ctx->engine[engine->id].lrc_desc;
 }
 
 static inline void
@@ -545,11 +539,17 @@ static void intel_lrc_irq_handler(unsigned long data)
 	 * new request (outside of the context-switch interrupt).
 	 */
 	while (test_bit(ENGINE_IRQ_EXECLIST, &engine->irq_posted)) {
-		u32 __iomem *csb_mmio =
-			dev_priv->regs + i915_mmio_reg_offset(RING_CONTEXT_STATUS_PTR(engine));
-		u32 __iomem *buf =
-			dev_priv->regs + i915_mmio_reg_offset(RING_CONTEXT_STATUS_BUF_LO(engine, 0));
+		/* The HWSP contains a (cacheable) mirror of the CSB */
+		const u32 *buf =
+			&engine->status_page.page_addr[I915_HWS_CSB_BUF0_INDEX];
 		unsigned int head, tail;
+
+		/* However GVT emulation depends upon intercepting CSB mmio */
+		if (unlikely(engine->csb_use_mmio)) {
+			buf = (u32 * __force)
+				(dev_priv->regs + i915_mmio_reg_offset(RING_CONTEXT_STATUS_BUF_LO(engine, 0)));
+			engine->csb_head = -1; /* force mmio read of CSB ptrs */
+		}
 
 		/* The write will be ordered by the uncached read (itself
 		 * a memory barrier), so we do not need another in the form
@@ -562,9 +562,19 @@ static void intel_lrc_irq_handler(unsigned long data)
 		 * is set and we do a new loop.
 		 */
 		__clear_bit(ENGINE_IRQ_EXECLIST, &engine->irq_posted);
-		head = readl(csb_mmio);
-		tail = GEN8_CSB_WRITE_PTR(head);
-		head = GEN8_CSB_READ_PTR(head);
+		if (unlikely(engine->csb_head == -1)) { /* following a reset */
+			head = readl(dev_priv->regs + i915_mmio_reg_offset(RING_CONTEXT_STATUS_PTR(engine)));
+			tail = GEN8_CSB_WRITE_PTR(head);
+			head = GEN8_CSB_READ_PTR(head);
+			engine->csb_head = head;
+		} else {
+			const int write_idx =
+				intel_hws_csb_write_index(dev_priv) -
+				I915_HWS_CSB_BUF0_INDEX;
+
+			head = engine->csb_head;
+			tail = READ_ONCE(buf[write_idx]);
+		}
 		while (head != tail) {
 			struct drm_i915_gem_request *rq;
 			unsigned int status;
@@ -590,13 +600,12 @@ static void intel_lrc_irq_handler(unsigned long data)
 			 * status notifier.
 			 */
 
-			status = readl(buf + 2 * head);
+			status = READ_ONCE(buf[2 * head]); /* maybe mmio! */
 			if (!(status & GEN8_CTX_STATUS_COMPLETED_MASK))
 				continue;
 
 			/* Check the context/desc id for this event matches */
-			GEM_DEBUG_BUG_ON(readl(buf + 2 * head + 1) !=
-					 port->context_id);
+			GEM_DEBUG_BUG_ON(buf[2 * head + 1] != port->context_id);
 
 			rq = port_unpack(port, &count);
 			GEM_BUG_ON(count == 0);
@@ -619,8 +628,11 @@ static void intel_lrc_irq_handler(unsigned long data)
 				   !(status & GEN8_CTX_STATUS_ACTIVE_IDLE));
 		}
 
-		writel(_MASKED_FIELD(GEN8_CSB_READ_PTR_MASK, head << 8),
-		       csb_mmio);
+		if (head != engine->csb_head) {
+			engine->csb_head = head;
+			writel(_MASKED_FIELD(GEN8_CSB_READ_PTR_MASK, head << 8),
+			       dev_priv->regs + i915_mmio_reg_offset(RING_CONTEXT_STATUS_PTR(engine)));
+		}
 	}
 
 	if (execlists_elsp_ready(engine))
@@ -1175,6 +1187,8 @@ static int intel_init_workaround_bb(struct intel_engine_cs *engine)
 		return -EINVAL;
 
 	switch (INTEL_GEN(engine->i915)) {
+	case 10:
+		return 0;
 	case 9:
 		wa_bb_fn[0] = gen9_init_indirectctx_bb;
 		wa_bb_fn[1] = gen9_init_perctx_bb;
@@ -1267,6 +1281,7 @@ static int gen8_init_common_ring(struct intel_engine_cs *engine)
 	I915_WRITE(GEN8_GT_IIR(gtiir[engine->id]),
 		   GT_CONTEXT_SWITCH_INTERRUPT << engine->irq_shift);
 	clear_bit(ENGINE_IRQ_EXECLIST, &engine->irq_posted);
+	engine->csb_head = -1;
 
 	/* After a GPU reset, we may have requests to replay */
 	submit = false;
@@ -1678,11 +1693,6 @@ void intel_logical_ring_cleanup(struct intel_engine_cs *engine)
 	if (engine->cleanup)
 		engine->cleanup(engine);
 
-	if (engine->status_page.vma) {
-		i915_gem_object_unpin_map(engine->status_page.vma->obj);
-		engine->status_page.vma = NULL;
-	}
-
 	intel_engine_cleanup_common(engine);
 
 	lrc_destroy_wa_ctx(engine);
@@ -1729,22 +1739,21 @@ logical_ring_default_irqs(struct intel_engine_cs *engine)
 	engine->irq_keep_mask = GT_CONTEXT_SWITCH_INTERRUPT << shift;
 }
 
-static int
-lrc_setup_hws(struct intel_engine_cs *engine, struct i915_vma *vma)
+static bool irq_handler_force_mmio(struct drm_i915_private *i915)
 {
-	const int hws_offset = LRC_PPHWSP_PN * PAGE_SIZE;
-	void *hws;
+	/* GVT emulation depends upon intercepting CSB mmio */
+	if (intel_vgpu_active(i915))
+		return true;
 
-	/* The HWSP is part of the default context object in LRC mode. */
-	hws = i915_gem_object_pin_map(vma->obj, I915_MAP_WB);
-	if (IS_ERR(hws))
-		return PTR_ERR(hws);
+	/*
+	 * IOMMU adds unpredictable latency causing the CSB write (from the
+	 * GPU into the HWSP) to only be visible some time after the interrupt
+	 * (missed breadcrumb syndrome).
+	 */
+	if (intel_vtd_active())
+		return true;
 
-	engine->status_page.page_addr = hws + hws_offset;
-	engine->status_page.ggtt_offset = i915_ggtt_offset(vma) + hws_offset;
-	engine->status_page.vma = vma;
-
-	return 0;
+	return false;
 }
 
 static void
@@ -1757,6 +1766,8 @@ logical_ring_setup(struct intel_engine_cs *engine)
 
 	/* Intentionally left blank. */
 	engine->buffer = NULL;
+
+	engine->csb_use_mmio = irq_handler_force_mmio(dev_priv);
 
 	fw_domains = intel_uncore_forcewake_for_reg(dev_priv,
 						    RING_ELSP(engine),
@@ -1779,22 +1790,13 @@ logical_ring_setup(struct intel_engine_cs *engine)
 	logical_ring_default_irqs(engine);
 }
 
-static int
-logical_ring_init(struct intel_engine_cs *engine)
+static int logical_ring_init(struct intel_engine_cs *engine)
 {
-	struct i915_gem_context *dctx = engine->i915->kernel_context;
 	int ret;
 
 	ret = intel_engine_init_common(engine);
 	if (ret)
 		goto error;
-
-	/* And setup the hardware status page. */
-	ret = lrc_setup_hws(engine, dctx->engine[engine->id].state);
-	if (ret) {
-		DRM_ERROR("Failed to set up hws %s: %d\n", engine->name, ret);
-		goto error;
-	}
 
 	return 0;
 
@@ -2052,8 +2054,11 @@ static int execlists_context_deferred_alloc(struct i915_gem_context *ctx,
 
 	context_size = round_up(engine->context_size, I915_GTT_PAGE_SIZE);
 
-	/* One extra page as the sharing data between driver and GuC */
-	context_size += PAGE_SIZE * LRC_PPHWSP_PN;
+	/*
+	 * Before the actual start of the context image, we insert a few pages
+	 * for our own use and for sharing with the GuC.
+	 */
+	context_size += LRC_HEADER_PAGES * PAGE_SIZE;
 
 	ctx_obj = i915_gem_object_create(ctx->i915, context_size);
 	if (IS_ERR(ctx_obj)) {

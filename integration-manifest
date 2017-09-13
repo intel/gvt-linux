@@ -1,0 +1,22 @@
+drm-intel drm-intel-fixes cc4a41fe5541a73019a864883297bd5043aa6d98
+	Linux 4.13-rc7
+drm-upstream drm-fixes 58aec872658b7beab6919073d3f629e18f0df7bd
+	Merge branch 'drm-vmwgfx-fixes' of git://people.freedesktop.org/~syeh/repos_linux into drm-fixes
+drm-intel drm-intel-next-fixes 426ca2cb69cda59f32c251d1f3e111aee8c42814
+	Merge tag 'gvt-fixes-2017-09-06' of https://github.com/01org/gvt-linux into drm-intel-next-fixes
+drm-intel drm-intel-next-queued 0d0c279405ec8eb1171c5de1bc4256bb803df77f
+	drm/i915: Refresh VLV/CHV PSR comments on HW PSR_state machine.
+drm-upstream drm-next 7846b12fe0b5feab5446d892f41b5140c1419109
+	Merge branch 'drm-vmwgfx-next' of git://people.freedesktop.org/~syeh/repos_linux into drm-next
+sound-upstream for-next fc27fe7e8deef2f37cba3f2be2d52b6ca5eb9d57
+	ALSA: seq: Cancel pending autoload work at unbinding device
+sound-upstream for-linus fc27fe7e8deef2f37cba3f2be2d52b6ca5eb9d57
+	ALSA: seq: Cancel pending autoload work at unbinding device
+drm-intel topic/core-for-CI 5743745cfc7068b873b5d02e493119cbfaa3b5b6
+	ALSA: hda: parse bus capablities after reset
+drm-misc drm-misc-next 3fa6a073542fec11f388d687a4db5c64e1e347a4
+	drm/crtc: Convert setcrtc ioctl locking to interruptible.
+drm-misc drm-misc-next-fixes f44d85389e17b2e960620c1c6d89bda978a11f2b
+	drm: rename u32 in __u32 in uapi
+drm-misc drm-misc-fixes b0e07da3f5c8d069d186a7983ff64eaebf2ea230
+	qxl: fix primary surface handling

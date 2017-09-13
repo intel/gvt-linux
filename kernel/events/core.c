@@ -7906,16 +7906,15 @@ void perf_trace_run_bpf_submit(void *raw_data, int size, int rctx,
 		}
 	}
 	perf_tp_event(call->event.type, count, raw_data, size, regs, head,
-		      rctx, task);
+		      rctx, task, NULL);
 }
 EXPORT_SYMBOL_GPL(perf_trace_run_bpf_submit);
 
 void perf_tp_event(u16 event_type, u64 count, void *record, int entry_size,
 		   struct pt_regs *regs, struct hlist_head *head, int rctx,
-		   struct task_struct *task)
+		   struct task_struct *task, struct perf_event *event)
 {
 	struct perf_sample_data data;
-	struct perf_event *event;
 
 	struct perf_raw_record raw = {
 		.frag = {
@@ -7929,9 +7928,15 @@ void perf_tp_event(u16 event_type, u64 count, void *record, int entry_size,
 
 	perf_trace_buf_update(record, event_type);
 
-	hlist_for_each_entry_rcu(event, head, hlist_entry) {
+	/* Use the given event instead of the hlist */
+	if (event) {
 		if (perf_tp_event_match(event, &data, regs))
 			perf_swevent_event(event, count, &data, regs);
+	} else {
+		hlist_for_each_entry_rcu(event, head, hlist_entry) {
+			if (perf_tp_event_match(event, &data, regs))
+				perf_swevent_event(event, count, &data, regs);
+		}
 	}
 
 	/*
@@ -9158,10 +9163,12 @@ EXPORT_SYMBOL_GPL(perf_pmu_register);
 void perf_pmu_unregister(struct pmu *pmu)
 {
 	int remove_device;
+	int remove_context;
 
 	mutex_lock(&pmus_lock);
 	remove_device = pmu_bus_running;
 	list_del_rcu(&pmu->entry);
+	remove_context = !find_pmu_context(pmu->task_ctx_nr);
 	mutex_unlock(&pmus_lock);
 
 	/*
@@ -9180,7 +9187,8 @@ void perf_pmu_unregister(struct pmu *pmu)
 		device_del(pmu->dev);
 		put_device(pmu->dev);
 	}
-	free_pmu_context(pmu);
+	if (remove_context)
+		free_pmu_context(pmu);
 }
 EXPORT_SYMBOL_GPL(perf_pmu_unregister);
 
@@ -9610,6 +9618,8 @@ static int perf_copy_attr(struct perf_event_attr __user *uattr,
 	ret = copy_from_user(attr, uattr, size);
 	if (ret)
 		return -EFAULT;
+
+	attr->size = size;
 
 	if (attr->__reserved_1)
 		return -EINVAL;

@@ -1,22 +1,12 @@
-drm-intel drm-intel-fixes cc4a41fe5541a73019a864883297bd5043aa6d98
-	Linux 4.13-rc7
-drm-upstream drm-fixes 134dd2e616b9cd8300c08cd1b38987ded74f662f
-	Merge tag 'drm-amdkfd-next-2017-09-02' of git://people.freedesktop.org/~gabbayo/linux into drm-fixes
-drm-intel drm-intel-next-fixes 426ca2cb69cda59f32c251d1f3e111aee8c42814
-	Merge tag 'gvt-fixes-2017-09-06' of https://github.com/01org/gvt-linux into drm-intel-next-fixes
-drm-intel drm-intel-next-queued da83ef85f5356b4bdf534add20fb34dcc6b53fc1
-	drm/i915: Do not enable DRRS when PSR is enabled
-drm-upstream drm-next 47e0cd6b1dbbbff7591fe7eecc20bac5ca674351
-	Merge branch 'drm-next-4.14' of git://people.freedesktop.org/~agd5f/linux into drm-next
-sound-upstream for-next 621c51be8ed17b2d56847a09aa651087ca1d218a
-	ALSA: oxygen: Xonar DG(X): make model_xonar_dg const
-sound-upstream for-linus a931b9ce93841a5b66b709ba5a244276e345e63b
-	ALSA: compress: Remove unused variable
-drm-intel topic/core-for-CI 177f84426265be8335ea52718145448aed74275b
-	ALSA: hda: parse bus capablities after reset
-drm-misc drm-misc-next c673fe7f0cd525629db9a87a77610fca137951e0
-	drm/dp: DPCD register defines for link status within ESI field
-drm-misc drm-misc-next-fixes f44d85389e17b2e960620c1c6d89bda978a11f2b
-	drm: rename u32 in __u32 in uapi
-drm-misc drm-misc-fixes b0e07da3f5c8d069d186a7983ff64eaebf2ea230
-	qxl: fix primary surface handling
+drm-tip/drm-tip 2c8716b8c746b721cb12ea7302999fa0bcb978cd
+	drm-tip: 2017y-09m-18d-19h-38m-05s UTC integration manifest
+vfio-upstream/for-linus 796b755066dd6254bfb6388fec901631e868d1c7
+	vfio/pci: Fix handling of RC integrated endpoint PCIe capability size
+vfio-upstream/next 417fb50d5516e8526769c16ff5b92de47adbe727
+	vfio: platform: constify amba_id
+origin/gvt-fixes ffeaf9aaf97b4bdaf114d6df52f800d71918768c
+	drm/i915/gvt: Fix the kernel null pointer error
+origin/gvt-next 061de71028aace8095f421cbf6456001a8595716
+	drm/i915/gvt: Do not allocate initial ring scan buffer
+origin/gvt-next-fixes d02fd5f7709f1296bad5d92e7e8515ef1a05dec4
+	drm/i915/gvt: Remove one duplicated MMIO

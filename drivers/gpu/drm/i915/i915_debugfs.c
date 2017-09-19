@@ -1422,6 +1422,9 @@ static int i915_forcewake_domains(struct seq_file *m, void *data)
 	struct intel_uncore_forcewake_domain *fw_domain;
 	unsigned int tmp;
 
+	seq_printf(m, "user.bypass_count = %u\n",
+		   i915->uncore.user_forcewake.count);
+
 	for_each_fw_domain(fw_domain, i915, tmp)
 		seq_printf(m, "%s.wake_count = %u\n",
 			   intel_uncore_forcewake_domain_to_str(fw_domain->id),
@@ -2443,12 +2446,8 @@ static void i915_guc_client_info(struct seq_file *m,
 
 	seq_printf(m, "\tPriority %d, GuC stage index: %u, PD offset 0x%x\n",
 		client->priority, client->stage_id, client->proc_desc_offset);
-	seq_printf(m, "\tDoorbell id %d, offset: 0x%lx, cookie 0x%x\n",
-		client->doorbell_id, client->doorbell_offset, client->doorbell_cookie);
-	seq_printf(m, "\tWQ size %d, offset: 0x%x, tail %d\n",
-		client->wq_size, client->wq_offset, client->wq_tail);
-
-	seq_printf(m, "\tWork queue full: %u\n", client->no_wq_space);
+	seq_printf(m, "\tDoorbell id %d, offset: 0x%lx\n",
+		client->doorbell_id, client->doorbell_offset);
 
 	for_each_engine(engine, dev_priv, id) {
 		u64 submissions = client->submissions[id];
@@ -3313,6 +3312,7 @@ static int i915_engine_info(struct seq_file *m, void *unused)
 			   upper_32_bits(addr), lower_32_bits(addr));
 
 		if (i915.enable_execlists) {
+			const u32 *hws = &engine->status_page.page_addr[I915_HWS_CSB_BUF0_INDEX];
 			u32 ptr, read, write;
 			unsigned int idx;
 
@@ -3323,8 +3323,10 @@ static int i915_engine_info(struct seq_file *m, void *unused)
 			ptr = I915_READ(RING_CONTEXT_STATUS_PTR(engine));
 			read = GEN8_CSB_READ_PTR(ptr);
 			write = GEN8_CSB_WRITE_PTR(ptr);
-			seq_printf(m, "\tExeclist CSB read %d, write %d, interrupt posted? %s\n",
-				   read, write,
+			seq_printf(m, "\tExeclist CSB read %d [%d cached], write %d [%d from hws], interrupt posted? %s\n",
+				   read, engine->csb_head,
+				   write,
+				   intel_read_status_page(engine, intel_hws_csb_write_index(engine->i915)),
 				   yesno(test_bit(ENGINE_IRQ_EXECLIST,
 						  &engine->irq_posted)));
 			if (read >= GEN8_CSB_ENTRIES)
@@ -3335,10 +3337,12 @@ static int i915_engine_info(struct seq_file *m, void *unused)
 				write += GEN8_CSB_ENTRIES;
 			while (read < write) {
 				idx = ++read % GEN8_CSB_ENTRIES;
-				seq_printf(m, "\tExeclist CSB[%d]: 0x%08x, context: %d\n",
+				seq_printf(m, "\tExeclist CSB[%d]: 0x%08x [0x%08x in hwsp], context: %d [%d in hwsp]\n",
 					   idx,
 					   I915_READ(RING_CONTEXT_STATUS_BUF_LO(engine, idx)),
-					   I915_READ(RING_CONTEXT_STATUS_BUF_HI(engine, idx)));
+					   hws[idx * 2],
+					   I915_READ(RING_CONTEXT_STATUS_BUF_HI(engine, idx)),
+					   hws[idx * 2 + 1]);
 			}
 
 			rcu_read_lock();
@@ -3522,6 +3526,57 @@ static int i915_wa_registers(struct seq_file *m, void *unused)
 
 	return 0;
 }
+
+static int i915_ipc_status_show(struct seq_file *m, void *data)
+{
+	struct drm_i915_private *dev_priv = m->private;
+
+	seq_printf(m, "Isochronous Priority Control: %s\n",
+			yesno(dev_priv->ipc_enabled));
+	return 0;
+}
+
+static int i915_ipc_status_open(struct inode *inode, struct file *file)
+{
+	struct drm_i915_private *dev_priv = inode->i_private;
+
+	if (!HAS_IPC(dev_priv))
+		return -ENODEV;
+
+	return single_open(file, i915_ipc_status_show, dev_priv);
+}
+
+static ssize_t i915_ipc_status_write(struct file *file, const char __user *ubuf,
+				     size_t len, loff_t *offp)
+{
+	struct seq_file *m = file->private_data;
+	struct drm_i915_private *dev_priv = m->private;
+	int ret;
+	bool enable;
+
+	ret = kstrtobool_from_user(ubuf, len, &enable);
+	if (ret < 0)
+		return ret;
+
+	intel_runtime_pm_get(dev_priv);
+	if (!dev_priv->ipc_enabled && enable)
+		DRM_INFO("Enabling IPC: WM will be proper only after next commit\n");
+	dev_priv->wm.distrust_bios_wm = true;
+	dev_priv->ipc_enabled = enable;
+	intel_enable_ipc(dev_priv);
+	intel_runtime_pm_put(dev_priv);
+
+	return len;
+}
+
+static const struct file_operations i915_ipc_status_fops = {
+	.owner = THIS_MODULE,
+	.open = i915_ipc_status_open,
+	.read = seq_read,
+	.llseek = seq_lseek,
+	.release = single_release,
+	.write = i915_ipc_status_write
+};
 
 static int i915_ddb_info(struct seq_file *m, void *unused)
 {
@@ -4674,26 +4729,26 @@ static int i915_sseu_status(struct seq_file *m, void *unused)
 
 static int i915_forcewake_open(struct inode *inode, struct file *file)
 {
-	struct drm_i915_private *dev_priv = inode->i_private;
+	struct drm_i915_private *i915 = inode->i_private;
 
-	if (INTEL_GEN(dev_priv) < 6)
+	if (INTEL_GEN(i915) < 6)
 		return 0;
 
-	intel_runtime_pm_get(dev_priv);
-	intel_uncore_forcewake_get(dev_priv, FORCEWAKE_ALL);
+	intel_runtime_pm_get(i915);
+	intel_uncore_forcewake_user_get(i915);
 
 	return 0;
 }
 
 static int i915_forcewake_release(struct inode *inode, struct file *file)
 {
-	struct drm_i915_private *dev_priv = inode->i_private;
+	struct drm_i915_private *i915 = inode->i_private;
 
-	if (INTEL_GEN(dev_priv) < 6)
+	if (INTEL_GEN(i915) < 6)
 		return 0;
 
-	intel_uncore_forcewake_put(dev_priv, FORCEWAKE_ALL);
-	intel_runtime_pm_put(dev_priv);
+	intel_uncore_forcewake_user_put(i915);
+	intel_runtime_pm_put(i915);
 
 	return 0;
 }
@@ -4859,7 +4914,8 @@ static const struct i915_debugfs_files {
 	{"i915_dp_test_type", &i915_displayport_test_type_fops},
 	{"i915_dp_test_active", &i915_displayport_test_active_fops},
 	{"i915_guc_log_control", &i915_guc_log_control_fops},
-	{"i915_hpd_storm_ctl", &i915_hpd_storm_ctl_fops}
+	{"i915_hpd_storm_ctl", &i915_hpd_storm_ctl_fops},
+	{"i915_ipc_status", &i915_ipc_status_fops}
 };
 
 int i915_debugfs_register(struct drm_i915_private *dev_priv)

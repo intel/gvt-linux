@@ -1,0 +1,22 @@
+drm-intel drm-intel-fixes 99df13b6ea811a63eeacb278d05a5b914ce28073
+	drm/i915: Remove unused 'in_vbl' from i915_get_crtc_scanoutpos()
+drm-upstream drm-fixes 134dd2e616b9cd8300c08cd1b38987ded74f662f
+	Merge tag 'drm-amdkfd-next-2017-09-02' of git://people.freedesktop.org/~gabbayo/linux into drm-fixes
+drm-intel drm-intel-next-fixes 426ca2cb69cda59f32c251d1f3e111aee8c42814
+	Merge tag 'gvt-fixes-2017-09-06' of https://github.com/01org/gvt-linux into drm-intel-next-fixes
+drm-intel drm-intel-next-queued fb5f4e96fdf9cb7ec5e6a590e1c3fdc3b6fd1e01
+	drm/i915: Shrink cnl_ddi_buf_trans
+drm-upstream drm-next 47e0cd6b1dbbbff7591fe7eecc20bac5ca674351
+	Merge branch 'drm-next-4.14' of git://people.freedesktop.org/~agd5f/linux into drm-next
+sound-upstream for-next 621c51be8ed17b2d56847a09aa651087ca1d218a
+	ALSA: oxygen: Xonar DG(X): make model_xonar_dg const
+sound-upstream for-linus a931b9ce93841a5b66b709ba5a244276e345e63b
+	ALSA: compress: Remove unused variable
+drm-intel topic/core-for-CI 177f84426265be8335ea52718145448aed74275b
+	ALSA: hda: parse bus capablities after reset
+drm-misc drm-misc-next ac6c35a4d8c77083525044a192cb1a8711381e94
+	drm: add backwards compatibility support for drm_kms_helper.edid_firmware
+drm-misc drm-misc-next-fixes f44d85389e17b2e960620c1c6d89bda978a11f2b
+	drm: rename u32 in __u32 in uapi
+drm-misc drm-misc-fixes b0e07da3f5c8d069d186a7983ff64eaebf2ea230
+	qxl: fix primary surface handling

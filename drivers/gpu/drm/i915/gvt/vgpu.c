@@ -226,7 +226,7 @@ void intel_gvt_deactivate_vgpu(struct intel_vgpu *vgpu)
 
 	vgpu->active = false;
 
-	if (atomic_read(&vgpu->running_workload_num)) {
+	if (atomic_read(&vgpu->submission.running_workload_num)) {
 		mutex_unlock(&gvt->lock);
 		intel_gvt_wait_vgpu_idle(vgpu);
 		mutex_lock(&gvt->lock);
@@ -254,7 +254,7 @@ void intel_gvt_destroy_vgpu(struct intel_vgpu *vgpu)
 
 	idr_remove(&gvt->vgpu_idr, vgpu->id);
 	intel_vgpu_clean_sched_policy(vgpu);
-	intel_vgpu_clean_gvt_context(vgpu);
+	intel_vgpu_clean_submission(vgpu);
 	intel_vgpu_clean_execlist(vgpu);
 	intel_vgpu_clean_display(vgpu);
 	intel_vgpu_clean_opregion(vgpu);
@@ -293,7 +293,7 @@ struct intel_vgpu *intel_gvt_create_idle_vgpu(struct intel_gvt *gvt)
 	vgpu->gvt = gvt;
 
 	for (i = 0; i < I915_NUM_ENGINES; i++)
-		INIT_LIST_HEAD(&vgpu->workload_q_head[i]);
+		INIT_LIST_HEAD(&vgpu->submission.workload_q_head[i]);
 
 	ret = intel_vgpu_init_sched_policy(vgpu);
 	if (ret)
@@ -346,7 +346,6 @@ static struct intel_vgpu *__intel_gvt_create_vgpu(struct intel_gvt *gvt,
 	vgpu->handle = param->handle;
 	vgpu->gvt = gvt;
 	vgpu->sched_ctl.weight = param->weight;
-	bitmap_zero(vgpu->tlb_handle_pending, I915_NUM_ENGINES);
 
 	intel_vgpu_init_cfg_space(vgpu, param->primary);
 
@@ -376,7 +375,7 @@ static struct intel_vgpu *__intel_gvt_create_vgpu(struct intel_gvt *gvt,
 	if (ret)
 		goto out_clean_display;
 
-	ret = intel_vgpu_init_gvt_context(vgpu);
+	ret = intel_vgpu_setup_submission(vgpu);
 	if (ret)
 		goto out_clean_execlist;
 
@@ -389,7 +388,7 @@ static struct intel_vgpu *__intel_gvt_create_vgpu(struct intel_gvt *gvt,
 	return vgpu;
 
 out_clean_shadow_ctx:
-	intel_vgpu_clean_gvt_context(vgpu);
+	intel_vgpu_clean_submission(vgpu);
 out_clean_execlist:
 	intel_vgpu_clean_execlist(vgpu);
 out_clean_display:

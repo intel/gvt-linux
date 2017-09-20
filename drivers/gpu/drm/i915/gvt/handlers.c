@@ -157,7 +157,7 @@ static int render_mmio_to_ring_id(struct intel_gvt *gvt, unsigned int reg)
 	(num * 8 + i915_mmio_reg_offset(FENCE_REG_GEN6_LO(0)))
 
 
-static void enter_failsafe_mode(struct intel_vgpu *vgpu, int reason)
+void enter_failsafe_mode(struct intel_vgpu *vgpu, int reason)
 {
 	switch (reason) {
 	case GVT_FAILSAFE_UNSUPPORTED_GUEST:
@@ -165,6 +165,8 @@ static void enter_failsafe_mode(struct intel_vgpu *vgpu, int reason)
 		break;
 	case GVT_FAILSAFE_INSUFFICIENT_RESOURCE:
 		pr_err("Graphics resource is not enough for the guest\n");
+	case GVT_FAILSAFE_GUEST_ERR:
+		pr_err("GVT Internal error  for the guest\n");
 	default:
 		break;
 	}
@@ -1462,9 +1464,9 @@ static int elsp_mmio_write(struct intel_vgpu *vgpu, unsigned int offset,
 	if (WARN_ON(ring_id < 0 || ring_id > I915_NUM_ENGINES - 1))
 		return -EINVAL;
 
-	execlist = &vgpu->execlist[ring_id];
+	execlist = &vgpu->submission.execlist[ring_id];
 
-	execlist->elsp_dwords.data[execlist->elsp_dwords.index] = data;
+	execlist->elsp_dwords.data[3 - execlist->elsp_dwords.index] = data;
 	if (execlist->elsp_dwords.index == 3) {
 		ret = intel_vgpu_submit_execlist(vgpu, ring_id);
 		if(ret)
@@ -1537,7 +1539,7 @@ static int gvt_reg_tlb_control_handler(struct intel_vgpu *vgpu,
 	default:
 		return -EINVAL;
 	}
-	set_bit(id, (void *)vgpu->tlb_handle_pending);
+	set_bit(id, (void *)vgpu->submission.tlb_handle_pending);
 
 	return 0;
 }

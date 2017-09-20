@@ -1544,7 +1544,7 @@ void intel_vgpu_destroy_mm(struct kref *mm_ref)
 	list_del(&mm->list);
 	list_del(&mm->lru_list);
 
-	if (mm->has_shadow_page_table)
+	if (mm->has_shadow_page_table && mm->shadowed)
 		invalidate_mm(mm);
 
 	gtt->mm_free_page_table(mm);
@@ -1733,7 +1733,8 @@ static int reclaim_one_mm(struct intel_gvt *gvt)
 			continue;
 
 		list_del_init(&mm->lru_list);
-		invalidate_mm(mm);
+		if (mm->has_shadow_page_table && mm->shadowed)
+			invalidate_mm(mm);
 		return 1;
 	}
 	return 0;
@@ -2172,6 +2173,21 @@ static void intel_vgpu_free_mm(struct intel_vgpu *vgpu, int type)
 	}
 }
 
+void intel_vgpu_invalidate_ppgtt(struct intel_vgpu *vgpu)
+{
+	struct list_head *pos, *n;
+	struct intel_vgpu_mm *mm;
+
+	list_for_each_safe(pos, n, &vgpu->gtt.mm_list_head) {
+		mm = container_of(pos, struct intel_vgpu_mm, list);
+		if (mm->type == INTEL_GVT_MM_PPGTT) {
+			list_del_init(&mm->lru_list);
+			if (mm->has_shadow_page_table && mm->shadowed)
+				invalidate_mm(mm);
+		}
+	}
+}
+
 /**
  * intel_vgpu_clean_gtt - clean up per-vGPU graphics memory virulization
  * @vgpu: a vGPU
@@ -2472,8 +2488,6 @@ void intel_vgpu_reset_ggtt(struct intel_vgpu *vgpu)
  */
 void intel_vgpu_reset_gtt(struct intel_vgpu *vgpu)
 {
-	ppgtt_free_all_shadow_page(vgpu);
-
 	/* Shadow pages are only created when there is no page
 	 * table tracking data, so remove page tracking data after
 	 * removing the shadow pages.

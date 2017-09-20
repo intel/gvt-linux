@@ -112,9 +112,14 @@ static int populate_shadow_context(struct intel_vgpu_workload *workload)
 		COPY_REG(rcs_indirect_ctx_offset);
 	}
 #undef COPY_REG
-
+	/*
+	 * pin/unpin the shadow mm before using to ensure it has been
+	 * shadowed.
+	 */
+	intel_vgpu_pin_mm(workload->shadow_mm);
 	set_context_pdp_root_pointer(shadow_ring_context,
 				     workload->shadow_mm->shadow_page_table);
+	intel_vgpu_unpin_mm(workload->shadow_mm);
 
 	intel_gvt_hypervisor_read_gpa(vgpu,
 			workload->ring_context_gpa +

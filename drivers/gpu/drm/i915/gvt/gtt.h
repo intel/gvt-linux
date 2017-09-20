@@ -209,6 +209,7 @@ void intel_vgpu_reset_ggtt(struct intel_vgpu *vgpu);
 
 extern int intel_gvt_init_gtt(struct intel_gvt *gvt);
 void intel_vgpu_reset_gtt(struct intel_vgpu *vgpu);
+void intel_vgpu_invalidate_ppgtt(struct intel_vgpu *vgpu);
 extern void intel_gvt_clean_gtt(struct intel_gvt *gvt);
 
 extern struct intel_vgpu_mm *intel_gvt_find_ppgtt_mm(struct intel_vgpu *vgpu,

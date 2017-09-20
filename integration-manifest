@@ -1,0 +1,22 @@
+drm-intel drm-intel-fixes 99df13b6ea811a63eeacb278d05a5b914ce28073
+	drm/i915: Remove unused 'in_vbl' from i915_get_crtc_scanoutpos()
+drm-upstream drm-fixes 134dd2e616b9cd8300c08cd1b38987ded74f662f
+	Merge tag 'drm-amdkfd-next-2017-09-02' of git://people.freedesktop.org/~gabbayo/linux into drm-fixes
+drm-intel drm-intel-next-fixes 426ca2cb69cda59f32c251d1f3e111aee8c42814
+	Merge tag 'gvt-fixes-2017-09-06' of https://github.com/01org/gvt-linux into drm-intel-next-fixes
+drm-intel drm-intel-next-queued 4babc5e27cfda59e2e257d28628b8d853aea5206
+	drm/i915: remove redundant variable hw_check
+drm-upstream drm-next 47e0cd6b1dbbbff7591fe7eecc20bac5ca674351
+	Merge branch 'drm-next-4.14' of git://people.freedesktop.org/~agd5f/linux into drm-next
+sound-upstream for-next 729fbfc92a4563405f3962051e7b25fec3a7bd10
+	ALSA: line6: add support for POD HD DESKTOP
+sound-upstream for-linus e1af344df4e5c8fe90f4a63235a68d5405afc41b
+	ALSA: asihpi: fix a potential double-fetch bug when copying puhm
+drm-intel topic/core-for-CI 177f84426265be8335ea52718145448aed74275b
+	ALSA: hda: parse bus capablities after reset
+drm-misc drm-misc-next 531beb067c6185aceabfdee0965234c6a8fd133b
+	dma-buf: remove redundant initialization of sg_table
+drm-misc drm-misc-next-fixes f44d85389e17b2e960620c1c6d89bda978a11f2b
+	drm: rename u32 in __u32 in uapi
+drm-misc drm-misc-fixes b0e07da3f5c8d069d186a7983ff64eaebf2ea230
+	qxl: fix primary surface handling

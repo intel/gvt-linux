@@ -121,7 +121,7 @@ struct intel_shadow_bb_entry {
 };
 
 #define workload_q_head(vgpu, ring_id) \
-	(&(vgpu->workload_q_head[ring_id]))
+	(&(vgpu->submission.workload_q_head[ring_id]))
 
 #define queue_workload(workload) do { \
 	list_add_tail(&workload->list, \
@@ -136,9 +136,23 @@ void intel_gvt_clean_workload_scheduler(struct intel_gvt *gvt);
 
 void intel_gvt_wait_vgpu_idle(struct intel_vgpu *vgpu);
 
-int intel_vgpu_init_gvt_context(struct intel_vgpu *vgpu);
+int intel_vgpu_setup_submission(struct intel_vgpu *vgpu);
 
-void intel_vgpu_clean_gvt_context(struct intel_vgpu *vgpu);
+void intel_vgpu_reset_submission(struct intel_vgpu *vgpu,
+				 unsigned long engine_mask);
 
-void release_shadow_wa_ctx(struct intel_shadow_wa_ctx *wa_ctx);
+void intel_vgpu_clean_submission(struct intel_vgpu *vgpu);
+
+int intel_vgpu_select_submission_ops(struct intel_vgpu *vgpu,
+				     unsigned int interface);
+
+extern const struct intel_vgpu_submission_ops
+intel_vgpu_execlist_submission_ops;
+
+struct intel_vgpu_workload *
+intel_vgpu_create_workload(struct intel_vgpu *vgpu, int ring_id,
+			   struct execlist_ctx_descriptor_format *desc);
+
+void intel_vgpu_destroy_workload(struct intel_vgpu_workload *workload);
+
 #endif

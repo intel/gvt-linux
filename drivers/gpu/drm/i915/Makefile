@@ -139,7 +139,8 @@ i915-y += i915_perf.o \
 	  i915_oa_bxt.o \
 	  i915_oa_kblgt2.o \
 	  i915_oa_kblgt3.o \
-	  i915_oa_glk.o
+	  i915_oa_glk.o \
+	  i915_oa_cflgt2.o
 
 ifeq ($(CONFIG_DRM_I915_GVT),y)
 i915-y += intel_gvt.o
@@ -150,5 +151,3 @@ endif
 i915-y += intel_lpe_audio.o
 
 obj-$(CONFIG_DRM_I915) += i915.o
-
-CFLAGS_i915_trace_points.o := -I$(src)

@@ -273,48 +273,50 @@ int snd_hdac_bus_parse_capabilities(struct hdac_bus *bus)
 	unsigned int counter = 0;
 
 	offset = snd_hdac_chip_readw(bus, LLCH);
+	pr_err("HDA: LLCH offset is %x\n", offset);
 
 	/* Lets walk the linked capabilities list */
 	do {
 		cur_cap = _snd_hdac_chip_readl(bus, offset);
+		pr_err("HDA: cur_cap: %x for offset %x\n", cur_cap, offset);
 
-		dev_dbg(bus->dev, "Capability version: 0x%x\n",
+		dev_err(bus->dev, "Capability version: 0x%x\n",
 			(cur_cap & AZX_CAP_HDR_VER_MASK) >> AZX_CAP_HDR_VER_OFF);
 
-		dev_dbg(bus->dev, "HDA capability ID: 0x%x\n",
+		dev_err(bus->dev, "HDA capability ID: 0x%x\n",
 			(cur_cap & AZX_CAP_HDR_ID_MASK) >> AZX_CAP_HDR_ID_OFF);
 
 		switch ((cur_cap & AZX_CAP_HDR_ID_MASK) >> AZX_CAP_HDR_ID_OFF) {
 		case AZX_ML_CAP_ID:
-			dev_dbg(bus->dev, "Found ML capability\n");
+			dev_err(bus->dev, "Found ML capability\n");
 			bus->mlcap = bus->remap_addr + offset;
 			break;
 
 		case AZX_GTS_CAP_ID:
-			dev_dbg(bus->dev, "Found GTS capability offset=%x\n", offset);
+			dev_err(bus->dev, "Found GTS capability offset=%x\n", offset);
 			bus->gtscap = bus->remap_addr + offset;
 			break;
 
 		case AZX_PP_CAP_ID:
 			/* PP capability found, the Audio DSP is present */
-			dev_dbg(bus->dev, "Found PP capability offset=%x\n", offset);
+			dev_err(bus->dev, "Found PP capability offset=%x\n", offset);
 			bus->ppcap = bus->remap_addr + offset;
 			break;
 
 		case AZX_SPB_CAP_ID:
 			/* SPIB capability found, handler function */
-			dev_dbg(bus->dev, "Found SPB capability\n");
+			dev_err(bus->dev, "Found SPB capability\n");
 			bus->spbcap = bus->remap_addr + offset;
 			break;
 
 		case AZX_DRSM_CAP_ID:
 			/* DMA resume  capability found, handler function */
-			dev_dbg(bus->dev, "Found DRSM capability\n");
+			dev_err(bus->dev, "Found DRSM capability\n");
 			bus->drsmcap = bus->remap_addr + offset;
 			break;
 
 		default:
-			dev_dbg(bus->dev, "Unknown capability %d\n", cur_cap);
+			dev_err(bus->dev, "Unknown capability %d\n", cur_cap);
 			break;
 		}
 
@@ -327,6 +329,11 @@ int snd_hdac_bus_parse_capabilities(struct hdac_bus *bus)
 
 		/* read the offset of next capability */
 		offset = cur_cap & AZX_CAP_HDR_NXT_PTR_MASK;
+
+		if (cur_cap == 0xffffffff) {
+			pr_err("HDA: we got bad capability so stop processing\n");
+			break;
+		}
 
 	} while (offset);
 

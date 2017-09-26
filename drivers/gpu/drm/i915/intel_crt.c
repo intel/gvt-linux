@@ -143,7 +143,7 @@ static void hsw_crt_get_config(struct intel_encoder *encoder,
 /* Note: The caller is required to filter out dpms modes not supported by the
  * platform. */
 static void intel_crt_set_dpms(struct intel_encoder *encoder,
-			       struct intel_crtc_state *crtc_state,
+			       const struct intel_crtc_state *crtc_state,
 			       int mode)
 {
 	struct drm_i915_private *dev_priv = to_i915(encoder->base.dev);
@@ -194,28 +194,28 @@ static void intel_crt_set_dpms(struct intel_encoder *encoder,
 }
 
 static void intel_disable_crt(struct intel_encoder *encoder,
-			      struct intel_crtc_state *old_crtc_state,
-			      struct drm_connector_state *old_conn_state)
+			      const struct intel_crtc_state *old_crtc_state,
+			      const struct drm_connector_state *old_conn_state)
 {
 	intel_crt_set_dpms(encoder, old_crtc_state, DRM_MODE_DPMS_OFF);
 }
 
 static void pch_disable_crt(struct intel_encoder *encoder,
-			    struct intel_crtc_state *old_crtc_state,
-			    struct drm_connector_state *old_conn_state)
+			    const struct intel_crtc_state *old_crtc_state,
+			    const struct drm_connector_state *old_conn_state)
 {
 }
 
 static void pch_post_disable_crt(struct intel_encoder *encoder,
-				 struct intel_crtc_state *old_crtc_state,
-				 struct drm_connector_state *old_conn_state)
+				 const struct intel_crtc_state *old_crtc_state,
+				 const struct drm_connector_state *old_conn_state)
 {
 	intel_disable_crt(encoder, old_crtc_state, old_conn_state);
 }
 
 static void hsw_post_disable_crt(struct intel_encoder *encoder,
-				 struct intel_crtc_state *old_crtc_state,
-				 struct drm_connector_state *old_conn_state)
+				 const struct intel_crtc_state *old_crtc_state,
+				 const struct drm_connector_state *old_conn_state)
 {
 	struct drm_i915_private *dev_priv = to_i915(encoder->base.dev);
 
@@ -228,8 +228,8 @@ static void hsw_post_disable_crt(struct intel_encoder *encoder,
 }
 
 static void intel_enable_crt(struct intel_encoder *encoder,
-			     struct intel_crtc_state *pipe_config,
-			     struct drm_connector_state *conn_state)
+			     const struct intel_crtc_state *pipe_config,
+			     const struct drm_connector_state *conn_state)
 {
 	intel_crt_set_dpms(encoder, pipe_config, DRM_MODE_DPMS_ON);
 }
@@ -712,7 +712,7 @@ intel_crt_detect(struct drm_connector *connector,
 	 * broken monitor (without edid) to work behind a broken kvm (that fails
 	 * to have the right resistors for HP detection) needs to fix this up.
 	 * For now just bail out. */
-	if (I915_HAS_HOTPLUG(dev_priv) && !i915.load_detect_test) {
+	if (I915_HAS_HOTPLUG(dev_priv) && !i915_modparams.load_detect_test) {
 		status = connector_status_disconnected;
 		goto out;
 	}
@@ -730,7 +730,7 @@ intel_crt_detect(struct drm_connector *connector,
 		else if (INTEL_GEN(dev_priv) < 4)
 			status = intel_crt_load_detect(crt,
 				to_intel_crtc(connector->state->crtc)->pipe);
-		else if (i915.load_detect_test)
+		else if (i915_modparams.load_detect_test)
 			status = connector_status_disconnected;
 		else
 			status = connector_status_unknown;

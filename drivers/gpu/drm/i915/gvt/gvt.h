@@ -175,6 +175,8 @@ struct intel_vgpu {
 
 	unsigned long low_mem_max_gpfn;
 
+	struct dentry *debugfs;
+
 #if IS_ENABLED(CONFIG_DRM_I915_GVT_KVMGT)
 	struct {
 		struct mdev_device *mdev;
@@ -238,7 +240,7 @@ struct intel_gvt_mmio {
 	unsigned int num_mmio_block;
 
 	DECLARE_HASHTABLE(mmio_info_table, INTEL_GVT_MMIO_HASH_BITS);
-	unsigned int num_tracked_mmio;
+	unsigned long num_tracked_mmio;
 };
 
 struct intel_gvt_firmware {
@@ -286,6 +288,8 @@ struct intel_gvt {
 	struct task_struct *service_thread;
 	wait_queue_head_t service_thread_wq;
 	unsigned long service_request;
+
+	struct dentry *debugfs_root;
 };
 
 static inline struct intel_gvt *to_gvt(struct drm_i915_private *i915)
@@ -631,6 +635,12 @@ static inline bool intel_gvt_mmio_has_mode_mask(
 {
 	return gvt->mmio.mmio_attribute[offset >> 2] & F_MODE_MASK;
 }
+
+int intel_gvt_debugfs_add_vgpu(struct intel_vgpu *vgpu);
+void intel_gvt_debugfs_remove_vgpu(struct intel_vgpu *vgpu);
+int intel_gvt_debugfs_init(struct intel_gvt *gvt);
+void intel_gvt_debugfs_clean(struct intel_gvt *gvt);
+
 
 #include "trace.h"
 #include "mpt.h"

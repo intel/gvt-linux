@@ -1,0 +1,22 @@
+drm-intel drm-intel-fixes e365806ac289457263a133bd32df8df49897f612
+	Merge branch 'for-linus' of git://git.kernel.org/pub/scm/linux/kernel/git/viro/vfs
+drm-upstream drm-fixes 56eac98b8a0bbb72132340dbfedc912c68c4bd56
+	Merge tag 'exynos-drm-fixes-for-v4.14-rc1' of git://git.kernel.org/pub/scm/linux/kernel/git/daeinki/drm-exynos into drm-fixes
+drm-intel drm-intel-next-fixes 426ca2cb69cda59f32c251d1f3e111aee8c42814
+	Merge tag 'gvt-fixes-2017-09-06' of https://github.com/01org/gvt-linux into drm-intel-next-fixes
+drm-intel drm-intel-next-queued 3f9e6cd8230a413fdf462aba35ea6b6166fa3631
+	drm/i915/execlists: Microoptimise execlists_cancel_port_request()
+drm-upstream drm-next 47e0cd6b1dbbbff7591fe7eecc20bac5ca674351
+	Merge branch 'drm-next-4.14' of git://people.freedesktop.org/~agd5f/linux into drm-next
+sound-upstream for-next 729fbfc92a4563405f3962051e7b25fec3a7bd10
+	ALSA: line6: add support for POD HD DESKTOP
+sound-upstream for-linus bfc81a8bc18e3c4ba0cbaa7666ff76be2f998991
+	ALSA: usb-audio: Check out-of-bounds access by corrupted buffer descriptor
+drm-intel topic/core-for-CI 5cf9bce1dc6cec2f5e878e11be8a3c8a16989fa1
+	ALSA: hda: parse bus capablities after reset
+drm-misc drm-misc-next 3fbe2e184d2fbc353425efa7b788aba64374119b
+	drm: Remove obsolete "This is gross" comment
+drm-misc drm-misc-next-fixes f44d85389e17b2e960620c1c6d89bda978a11f2b
+	drm: rename u32 in __u32 in uapi
+drm-misc drm-misc-fixes 5f3d862a736398e7068fa67142133f1713fdee8c
+	qxl: fix framebuffer unpinning

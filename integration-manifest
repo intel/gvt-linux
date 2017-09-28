@@ -1,22 +1,12 @@
-drm-intel drm-intel-fixes 2ba7d7e0437127314864238f8bfcb8369d81075c
-	drm/i915/bios: ignore HDMI on port A
-drm-upstream drm-fixes 2726e15e54da3d50925bdaae932152a900a24f95
-	Merge branch 'drm-fixes-4.14' of git://people.freedesktop.org/~agd5f/linux into drm-fixes
-drm-intel drm-intel-next-fixes 426ca2cb69cda59f32c251d1f3e111aee8c42814
-	Merge tag 'gvt-fixes-2017-09-06' of https://github.com/01org/gvt-linux into drm-intel-next-fixes
-drm-intel drm-intel-next-queued bd30ca2d1a98fb9bd1f6ba63438068788b9e396b
-	drm/i915: Avoid using dev_priv->info.gen directly.
-drm-upstream drm-next 754270c7c56292e97d0eff924a5d5d83f92add07
-	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
-sound-upstream for-next 729fbfc92a4563405f3962051e7b25fec3a7bd10
-	ALSA: line6: add support for POD HD DESKTOP
-sound-upstream for-linus bfc81a8bc18e3c4ba0cbaa7666ff76be2f998991
-	ALSA: usb-audio: Check out-of-bounds access by corrupted buffer descriptor
-drm-intel topic/core-for-CI 5cf9bce1dc6cec2f5e878e11be8a3c8a16989fa1
-	ALSA: hda: parse bus capablities after reset
-drm-misc drm-misc-next 7f909d9c74f3894ba8bca426ead8ccbe7282d950
-	drm/rockchip: Rely on the default best_encoder() behavior
-drm-misc drm-misc-next-fixes f44d85389e17b2e960620c1c6d89bda978a11f2b
-	drm: rename u32 in __u32 in uapi
-drm-misc drm-misc-fixes a98c75fcd0ec02623f4f56d824d76e659410a52b
-	drm/tegra: trace: Fix path to include
+drm-tip/drm-tip c1ed501217782b35094792696924a1d22ee83c0f
+	drm-tip: 2017y-09m-28d-04h-52m-47s UTC integration manifest
+vfio-upstream/for-linus 796b755066dd6254bfb6388fec901631e868d1c7
+	vfio/pci: Fix handling of RC integrated endpoint PCIe capability size
+vfio-upstream/next 417fb50d5516e8526769c16ff5b92de47adbe727
+	vfio: platform: constify amba_id
+origin/gvt-fixes 434c8f5dc6a22df38b229ac0e38eb0a4117a9f24
+	drm/i915/gvt: Fix GPU hang after reusing vGPU instance across different guest OS
+origin/gvt-next a8e18bfc854141621a29600a6c13e5f40c6e9f19
+	drm/i915/gvt: Refine shadow batch buffer
+origin/gvt-next-fixes d02fd5f7709f1296bad5d92e7e8515ef1a05dec4
+	drm/i915/gvt: Remove one duplicated MMIO

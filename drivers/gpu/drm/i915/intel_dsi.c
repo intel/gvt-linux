@@ -263,7 +263,7 @@ static int dpi_send_cmd(struct intel_dsi *intel_dsi, u32 cmd, bool hs,
 
 	/* XXX: old code skips write if control unchanged */
 	if (cmd == I915_READ(MIPI_DPI_CONTROL(port)))
-		DRM_ERROR("Same special packet %02x twice in a row.\n", cmd);
+		DRM_DEBUG_KMS("Same special packet %02x twice in a row.\n", cmd);
 
 	I915_WRITE(MIPI_DPI_CONTROL(port), cmd);
 
@@ -330,6 +330,10 @@ static bool intel_dsi_compute_config(struct intel_encoder *encoder,
 	adjusted_mode->flags = 0;
 
 	if (IS_GEN9_LP(dev_priv)) {
+		/* Enable Frame time stamp based scanline reporting */
+		adjusted_mode->private_flags |=
+			I915_MODE_FLAG_GET_SCANLINE_FROM_TIMESTAMP;
+
 		/* Dual link goes to DSI transcoder A. */
 		if (intel_dsi->ports == BIT(PORT_C))
 			pipe_config->cpu_transcoder = TRANSCODER_DSI_C;
@@ -731,7 +735,7 @@ static void intel_dsi_port_disable(struct intel_encoder *encoder)
 }
 
 static void intel_dsi_prepare(struct intel_encoder *intel_encoder,
-			      struct intel_crtc_state *pipe_config);
+			      const struct intel_crtc_state *pipe_config);
 static void intel_dsi_unprepare(struct intel_encoder *encoder);
 
 static void intel_dsi_msleep(struct intel_dsi *intel_dsi, int msec)
@@ -783,8 +787,8 @@ static void intel_dsi_msleep(struct intel_dsi *intel_dsi, int msec)
  */
 
 static void intel_dsi_pre_enable(struct intel_encoder *encoder,
-				 struct intel_crtc_state *pipe_config,
-				 struct drm_connector_state *conn_state)
+				 const struct intel_crtc_state *pipe_config,
+				 const struct drm_connector_state *conn_state)
 {
 	struct drm_i915_private *dev_priv = to_i915(encoder->base.dev);
 	struct intel_dsi *intel_dsi = enc_to_intel_dsi(&encoder->base);
@@ -878,8 +882,8 @@ static void intel_dsi_pre_enable(struct intel_encoder *encoder,
  * the pre_enable hook.
  */
 static void intel_dsi_enable_nop(struct intel_encoder *encoder,
-				 struct intel_crtc_state *pipe_config,
-				 struct drm_connector_state *conn_state)
+				 const struct intel_crtc_state *pipe_config,
+				 const struct drm_connector_state *conn_state)
 {
 	DRM_DEBUG_KMS("\n");
 }
@@ -889,8 +893,8 @@ static void intel_dsi_enable_nop(struct intel_encoder *encoder,
  * the post_disable hook.
  */
 static void intel_dsi_disable(struct intel_encoder *encoder,
-			      struct intel_crtc_state *old_crtc_state,
-			      struct drm_connector_state *old_conn_state)
+			      const struct intel_crtc_state *old_crtc_state,
+			      const struct drm_connector_state *old_conn_state)
 {
 	struct intel_dsi *intel_dsi = enc_to_intel_dsi(&encoder->base);
 	enum port port;
@@ -925,8 +929,8 @@ static void intel_dsi_clear_device_ready(struct intel_encoder *encoder)
 }
 
 static void intel_dsi_post_disable(struct intel_encoder *encoder,
-				   struct intel_crtc_state *pipe_config,
-				   struct drm_connector_state *conn_state)
+				   const struct intel_crtc_state *pipe_config,
+				   const struct drm_connector_state *conn_state)
 {
 	struct drm_i915_private *dev_priv = to_i915(encoder->base.dev);
 	struct intel_dsi *intel_dsi = enc_to_intel_dsi(&encoder->base);
@@ -1066,7 +1070,7 @@ out_put_power:
 }
 
 static void bxt_dsi_get_pipe_config(struct intel_encoder *encoder,
-				 struct intel_crtc_state *pipe_config)
+				    struct intel_crtc_state *pipe_config)
 {
 	struct drm_device *dev = encoder->base.dev;
 	struct drm_i915_private *dev_priv = to_i915(dev);
@@ -1101,6 +1105,10 @@ static void bxt_dsi_get_pipe_config(struct intel_encoder *encoder,
 			mipi_dsi_pixel_format_to_bpp(
 				pixel_format_from_register_bits(fmt));
 	bpp = pipe_config->pipe_bpp;
+
+	/* Enable Frame time stamo based scanline reporting */
+	adjusted_mode->private_flags |=
+			I915_MODE_FLAG_GET_SCANLINE_FROM_TIMESTAMP;
 
 	/* In terms of pixels */
 	adjusted_mode->crtc_hdisplay =
@@ -1370,7 +1378,7 @@ static u32 pixel_format_to_reg(enum mipi_dsi_pixel_format fmt)
 }
 
 static void intel_dsi_prepare(struct intel_encoder *intel_encoder,
-			      struct intel_crtc_state *pipe_config)
+			      const struct intel_crtc_state *pipe_config)
 {
 	struct drm_encoder *encoder = &intel_encoder->base;
 	struct drm_device *dev = encoder->dev;

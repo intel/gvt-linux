@@ -72,6 +72,7 @@ struct i915_priotree {
 #define I915_PRIORITY_MAX 1024
 #define I915_PRIORITY_NORMAL 0
 #define I915_PRIORITY_MIN (-I915_PRIORITY_MAX)
+#define I915_PRIORITY_INVALID INT_MIN
 };
 
 struct i915_gem_capture_list {
@@ -313,26 +314,6 @@ static inline bool i915_seqno_passed(u32 seq1, u32 seq2)
 }
 
 static inline bool
-__i915_gem_request_started(const struct drm_i915_gem_request *req, u32 seqno)
-{
-	GEM_BUG_ON(!seqno);
-	return i915_seqno_passed(intel_engine_get_seqno(req->engine),
-				 seqno - 1);
-}
-
-static inline bool
-i915_gem_request_started(const struct drm_i915_gem_request *req)
-{
-	u32 seqno;
-
-	seqno = i915_gem_request_global_seqno(req);
-	if (!seqno)
-		return false;
-
-	return __i915_gem_request_started(req, seqno);
-}
-
-static inline bool
 __i915_gem_request_completed(const struct drm_i915_gem_request *req, u32 seqno)
 {
 	GEM_BUG_ON(!seqno);
@@ -350,21 +331,6 @@ i915_gem_request_completed(const struct drm_i915_gem_request *req)
 		return false;
 
 	return __i915_gem_request_completed(req, seqno);
-}
-
-bool __i915_spin_request(const struct drm_i915_gem_request *request,
-			 u32 seqno, int state, unsigned long timeout_us);
-static inline bool i915_spin_request(const struct drm_i915_gem_request *request,
-				     int state, unsigned long timeout_us)
-{
-	u32 seqno;
-
-	seqno = i915_gem_request_global_seqno(request);
-	if (!seqno)
-		return 0;
-
-	return (__i915_gem_request_started(request, seqno) &&
-		__i915_spin_request(request, seqno, state, timeout_us));
 }
 
 /* We treat requests as fences. This is not be to confused with our

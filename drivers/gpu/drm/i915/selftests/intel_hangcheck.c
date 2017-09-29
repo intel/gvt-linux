@@ -165,6 +165,7 @@ static int emit_recurse_batch(struct hang *h,
 		*batch++ = lower_32_bits(vma->node.start);
 	}
 	*batch++ = MI_BATCH_BUFFER_END; /* not reached */
+	i915_gem_chipset_flush(h->i915);
 
 	flags = 0;
 	if (INTEL_GEN(vm->i915) <= 5)
@@ -231,7 +232,7 @@ static u32 hws_seqno(const struct hang *h,
 static void hang_fini(struct hang *h)
 {
 	*h->batch = MI_BATCH_BUFFER_END;
-	wmb();
+	i915_gem_chipset_flush(h->i915);
 
 	i915_gem_object_unpin_map(h->obj);
 	i915_gem_object_put(h->obj);
@@ -275,6 +276,8 @@ static int igt_hang_sanitycheck(void *arg)
 		i915_gem_request_get(rq);
 
 		*h.batch = MI_BATCH_BUFFER_END;
+		i915_gem_chipset_flush(i915);
+
 		__i915_add_request(rq, true);
 
 		timeout = i915_wait_request(rq,
@@ -621,7 +624,12 @@ static int igt_wait_reset(void *arg)
 	__i915_add_request(rq, true);
 
 	if (!wait_for_hang(&h, rq)) {
-		pr_err("Failed to start request %x\n", rq->fence.seqno);
+		pr_err("Failed to start request %x, at %x\n",
+		       rq->fence.seqno, hws_seqno(&h, rq));
+
+		i915_reset(i915, 0);
+		i915_gem_set_wedged(i915);
+
 		err = -EIO;
 		goto out_rq;
 	}
@@ -708,10 +716,14 @@ static int igt_reset_queue(void *arg)
 			__i915_add_request(rq, true);
 
 			if (!wait_for_hang(&h, prev)) {
-				pr_err("Failed to start request %x\n",
-				       prev->fence.seqno);
+				pr_err("Failed to start request %x, at %x\n",
+				       prev->fence.seqno, hws_seqno(&h, prev));
 				i915_gem_request_put(rq);
 				i915_gem_request_put(prev);
+
+				i915_reset(i915, 0);
+				i915_gem_set_wedged(i915);
+
 				err = -EIO;
 				goto fini;
 			}
@@ -756,7 +768,7 @@ static int igt_reset_queue(void *arg)
 		pr_info("%s: Completed %d resets\n", engine->name, count);
 
 		*h.batch = MI_BATCH_BUFFER_END;
-		wmb();
+		i915_gem_chipset_flush(i915);
 
 		i915_gem_request_put(prev);
 	}
@@ -806,7 +818,12 @@ static int igt_handle_error(void *arg)
 	__i915_add_request(rq, true);
 
 	if (!wait_for_hang(&h, rq)) {
-		pr_err("Failed to start request %x\n", rq->fence.seqno);
+		pr_err("Failed to start request %x, at %x\n",
+		       rq->fence.seqno, hws_seqno(&h, rq));
+
+		i915_reset(i915, 0);
+		i915_gem_set_wedged(i915);
+
 		err = -EIO;
 		goto err_request;
 	}
@@ -843,8 +860,8 @@ err_unlock:
 int intel_hangcheck_live_selftests(struct drm_i915_private *i915)
 {
 	static const struct i915_subtest tests[] = {
+		SUBTEST(igt_global_reset), /* attempt to recover GPU first */
 		SUBTEST(igt_hang_sanitycheck),
-		SUBTEST(igt_global_reset),
 		SUBTEST(igt_reset_engine),
 		SUBTEST(igt_reset_active_engines),
 		SUBTEST(igt_wait_reset),

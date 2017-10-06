@@ -161,8 +161,7 @@ i915_gem_get_aperture_ioctl(struct drm_device *dev, void *data,
 	return 0;
 }
 
-static struct sg_table *
-i915_gem_object_get_pages_phys(struct drm_i915_gem_object *obj)
+static int i915_gem_object_get_pages_phys(struct drm_i915_gem_object *obj)
 {
 	struct address_space *mapping = obj->base.filp->f_mapping;
 	drm_dma_handle_t *phys;
@@ -170,9 +169,10 @@ i915_gem_object_get_pages_phys(struct drm_i915_gem_object *obj)
 	struct scatterlist *sg;
 	char *vaddr;
 	int i;
+	int err;
 
 	if (WARN_ON(i915_gem_object_needs_bit17_swizzle(obj)))
-		return ERR_PTR(-EINVAL);
+		return -EINVAL;
 
 	/* Always aligning to the object size, allows a single allocation
 	 * to handle all possible callers, and given typical object sizes,
@@ -182,7 +182,7 @@ i915_gem_object_get_pages_phys(struct drm_i915_gem_object *obj)
 			     obj->base.size,
 			     roundup_pow_of_two(obj->base.size));
 	if (!phys)
-		return ERR_PTR(-ENOMEM);
+		return -ENOMEM;
 
 	vaddr = phys->vaddr;
 	for (i = 0; i < obj->base.size / PAGE_SIZE; i++) {
@@ -191,7 +191,7 @@ i915_gem_object_get_pages_phys(struct drm_i915_gem_object *obj)
 
 		page = shmem_read_mapping_page(mapping, i);
 		if (IS_ERR(page)) {
-			st = ERR_CAST(page);
+			err = PTR_ERR(page);
 			goto err_phys;
 		}
 
@@ -208,13 +208,13 @@ i915_gem_object_get_pages_phys(struct drm_i915_gem_object *obj)
 
 	st = kmalloc(sizeof(*st), GFP_KERNEL);
 	if (!st) {
-		st = ERR_PTR(-ENOMEM);
+		err = -ENOMEM;
 		goto err_phys;
 	}
 
 	if (sg_alloc_table(st, 1, GFP_KERNEL)) {
 		kfree(st);
-		st = ERR_PTR(-ENOMEM);
+		err = -ENOMEM;
 		goto err_phys;
 	}
 
@@ -226,11 +226,15 @@ i915_gem_object_get_pages_phys(struct drm_i915_gem_object *obj)
 	sg_dma_len(sg) = obj->base.size;
 
 	obj->phys_handle = phys;
-	return st;
+
+	__i915_gem_object_set_pages(obj, st);
+
+	return 0;
 
 err_phys:
 	drm_pci_free(obj->base.dev, phys);
-	return st;
+
+	return err;
 }
 
 static void __start_cpu_write(struct drm_i915_gem_object *obj)
@@ -2307,8 +2311,7 @@ static bool i915_sg_trim(struct sg_table *orig_st)
 	return true;
 }
 
-static struct sg_table *
-i915_gem_object_get_pages_gtt(struct drm_i915_gem_object *obj)
+static int i915_gem_object_get_pages_gtt(struct drm_i915_gem_object *obj)
 {
 	struct drm_i915_private *dev_priv = to_i915(obj->base.dev);
 	const unsigned long page_count = obj->base.size / PAGE_SIZE;
@@ -2332,12 +2335,12 @@ i915_gem_object_get_pages_gtt(struct drm_i915_gem_object *obj)
 
 	st = kmalloc(sizeof(*st), GFP_KERNEL);
 	if (st == NULL)
-		return ERR_PTR(-ENOMEM);
+		return -ENOMEM;
 
 rebuild_st:
 	if (sg_alloc_table(st, page_count, GFP_KERNEL)) {
 		kfree(st);
-		return ERR_PTR(-ENOMEM);
+		return -ENOMEM;
 	}
 
 	/* Get the list of pages out of our struct file.  They'll be pinned
@@ -2445,7 +2448,9 @@ rebuild_st:
 	if (i915_gem_object_needs_bit17_swizzle(obj))
 		i915_gem_object_do_bit_17_swizzle(obj, st);
 
-	return st;
+	__i915_gem_object_set_pages(obj, st);
+
+	return 0;
 
 err_sg:
 	sg_mark_end(sg);
@@ -2466,7 +2471,7 @@ err_pages:
 	if (ret == -ENOSPC)
 		ret = -ENOMEM;
 
-	return ERR_PTR(ret);
+	return ret;
 }
 
 void __i915_gem_object_set_pages(struct drm_i915_gem_object *obj,
@@ -2489,7 +2494,7 @@ void __i915_gem_object_set_pages(struct drm_i915_gem_object *obj,
 
 static int ____i915_gem_object_get_pages(struct drm_i915_gem_object *obj)
 {
-	struct sg_table *pages;
+	int err;
 
 	GEM_BUG_ON(i915_gem_object_has_pinned_pages(obj));
 
@@ -2498,12 +2503,10 @@ static int ____i915_gem_object_get_pages(struct drm_i915_gem_object *obj)
 		return -EFAULT;
 	}
 
-	pages = obj->ops->get_pages(obj);
-	if (unlikely(IS_ERR(pages)))
-		return PTR_ERR(pages);
+	err = obj->ops->get_pages(obj);
+	GEM_BUG_ON(!err && IS_ERR_OR_NULL(obj->mm.pages));
 
-	__i915_gem_object_set_pages(obj, pages);
-	return 0;
+	return err;
 }
 
 /* Ensure that the associated pages are gathered from the backing storage

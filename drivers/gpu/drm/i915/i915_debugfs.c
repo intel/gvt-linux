@@ -30,6 +30,7 @@
 #include <linux/sort.h>
 #include <linux/sched/mm.h>
 #include "intel_drv.h"
+#include "i915_guc_submission.h"
 
 static inline struct drm_i915_private *node_to_i915(struct drm_info_node *node)
 {
@@ -67,7 +68,7 @@ static int i915_capabilities(struct seq_file *m, void *data)
 #undef PRINT_FLAG
 
 	kernel_param_lock(THIS_MODULE);
-#define PRINT_PARAM(T, x) seq_print_param(m, #x, #T, &i915.x);
+#define PRINT_PARAM(T, x, ...) seq_print_param(m, #x, #T, &i915_modparams.x);
 	I915_PARAMS_FOR_EACH(PRINT_PARAM);
 #undef PRINT_PARAM
 	kernel_param_unlock(THIS_MODULE);
@@ -118,6 +119,36 @@ static u64 i915_gem_obj_total_ggtt_size(struct drm_i915_gem_object *obj)
 	return size;
 }
 
+static const char *
+stringify_page_sizes(unsigned int page_sizes, char *buf, size_t len)
+{
+	size_t x = 0;
+
+	switch (page_sizes) {
+	case 0:
+		return "";
+	case I915_GTT_PAGE_SIZE_4K:
+		return "4K";
+	case I915_GTT_PAGE_SIZE_64K:
+		return "64K";
+	case I915_GTT_PAGE_SIZE_2M:
+		return "2M";
+	default:
+		if (!buf)
+			return "M";
+
+		if (page_sizes & I915_GTT_PAGE_SIZE_2M)
+			x += snprintf(buf + x, len - x, "2M, ");
+		if (page_sizes & I915_GTT_PAGE_SIZE_64K)
+			x += snprintf(buf + x, len - x, "64K, ");
+		if (page_sizes & I915_GTT_PAGE_SIZE_4K)
+			x += snprintf(buf + x, len - x, "4K, ");
+		buf[x-2] = '\0';
+
+		return buf;
+	}
+}
+
 static void
 describe_obj(struct seq_file *m, struct drm_i915_gem_object *obj)
 {
@@ -155,9 +186,10 @@ describe_obj(struct seq_file *m, struct drm_i915_gem_object *obj)
 		if (!drm_mm_node_allocated(&vma->node))
 			continue;
 
-		seq_printf(m, " (%sgtt offset: %08llx, size: %08llx",
+		seq_printf(m, " (%sgtt offset: %08llx, size: %08llx, pages: %s",
 			   i915_vma_is_ggtt(vma) ? "g" : "pp",
-			   vma->node.start, vma->node.size);
+			   vma->node.start, vma->node.size,
+			   stringify_page_sizes(vma->page_sizes.gtt, NULL, 0));
 		if (i915_vma_is_ggtt(vma)) {
 			switch (vma->ggtt_view.type) {
 			case I915_GGTT_VIEW_NORMAL:
@@ -402,10 +434,12 @@ static int i915_gem_object_info(struct seq_file *m, void *data)
 	struct drm_i915_private *dev_priv = node_to_i915(m->private);
 	struct drm_device *dev = &dev_priv->drm;
 	struct i915_ggtt *ggtt = &dev_priv->ggtt;
-	u32 count, mapped_count, purgeable_count, dpy_count;
-	u64 size, mapped_size, purgeable_size, dpy_size;
+	u32 count, mapped_count, purgeable_count, dpy_count, huge_count;
+	u64 size, mapped_size, purgeable_size, dpy_size, huge_size;
 	struct drm_i915_gem_object *obj;
+	unsigned int page_sizes = 0;
 	struct drm_file *file;
+	char buf[80];
 	int ret;
 
 	ret = mutex_lock_interruptible(&dev->struct_mutex);
@@ -419,6 +453,7 @@ static int i915_gem_object_info(struct seq_file *m, void *data)
 	size = count = 0;
 	mapped_size = mapped_count = 0;
 	purgeable_size = purgeable_count = 0;
+	huge_size = huge_count = 0;
 	list_for_each_entry(obj, &dev_priv->mm.unbound_list, global_link) {
 		size += obj->base.size;
 		++count;
@@ -431,6 +466,12 @@ static int i915_gem_object_info(struct seq_file *m, void *data)
 		if (obj->mm.mapping) {
 			mapped_count++;
 			mapped_size += obj->base.size;
+		}
+
+		if (obj->mm.page_sizes.sg > I915_GTT_PAGE_SIZE) {
+			huge_count++;
+			huge_size += obj->base.size;
+			page_sizes |= obj->mm.page_sizes.sg;
 		}
 	}
 	seq_printf(m, "%u unbound objects, %llu bytes\n", count, size);
@@ -454,6 +495,12 @@ static int i915_gem_object_info(struct seq_file *m, void *data)
 			mapped_count++;
 			mapped_size += obj->base.size;
 		}
+
+		if (obj->mm.page_sizes.sg > I915_GTT_PAGE_SIZE) {
+			huge_count++;
+			huge_size += obj->base.size;
+			page_sizes |= obj->mm.page_sizes.sg;
+		}
 	}
 	seq_printf(m, "%u bound objects, %llu bytes\n",
 		   count, size);
@@ -461,11 +508,18 @@ static int i915_gem_object_info(struct seq_file *m, void *data)
 		   purgeable_count, purgeable_size);
 	seq_printf(m, "%u mapped objects, %llu bytes\n",
 		   mapped_count, mapped_size);
+	seq_printf(m, "%u huge-paged objects (%s) %llu bytes\n",
+		   huge_count,
+		   stringify_page_sizes(page_sizes, buf, sizeof(buf)),
+		   huge_size);
 	seq_printf(m, "%u display objects (pinned), %llu bytes\n",
 		   dpy_count, dpy_size);
 
 	seq_printf(m, "%llu [%llu] gtt total\n",
 		   ggtt->base.total, ggtt->mappable_end);
+	seq_printf(m, "Supported page sizes: %s\n",
+		   stringify_page_sizes(INTEL_INFO(dev_priv)->page_sizes,
+					buf, sizeof(buf)));
 
 	seq_putc(m, '\n');
 	print_batch_pool_stats(m, dev_priv);
@@ -1267,7 +1321,7 @@ static int i915_hangcheck_info(struct seq_file *m, void *unused)
 	if (waitqueue_active(&dev_priv->gpu_error.reset_queue))
 		seq_puts(m, "struct_mutex blocked for reset\n");
 
-	if (!i915.enable_hangcheck) {
+	if (!i915_modparams.enable_hangcheck) {
 		seq_puts(m, "Hangcheck disabled\n");
 		return 0;
 	}
@@ -1421,6 +1475,9 @@ static int i915_forcewake_domains(struct seq_file *m, void *data)
 	struct drm_i915_private *i915 = node_to_i915(m->private);
 	struct intel_uncore_forcewake_domain *fw_domain;
 	unsigned int tmp;
+
+	seq_printf(m, "user.bypass_count = %u\n",
+		   i915->uncore.user_forcewake.count);
 
 	for_each_fw_domain(fw_domain, i915, tmp)
 		seq_printf(m, "%s.wake_count = %u\n",
@@ -1699,7 +1756,7 @@ static int i915_ips_status(struct seq_file *m, void *unused)
 	intel_runtime_pm_get(dev_priv);
 
 	seq_printf(m, "Enabled by kernel parameter: %s\n",
-		   yesno(i915.enable_ips));
+		   yesno(i915_modparams.enable_ips));
 
 	if (INTEL_GEN(dev_priv) >= 8) {
 		seq_puts(m, "Currently: unknown\n");
@@ -2014,7 +2071,7 @@ static int i915_dump_lrc(struct seq_file *m, void *unused)
 	enum intel_engine_id id;
 	int ret;
 
-	if (!i915.enable_execlists) {
+	if (!i915_modparams.enable_execlists) {
 		seq_printf(m, "Logical Ring Contexts are disabled\n");
 		return 0;
 	}
@@ -2443,12 +2500,8 @@ static void i915_guc_client_info(struct seq_file *m,
 
 	seq_printf(m, "\tPriority %d, GuC stage index: %u, PD offset 0x%x\n",
 		client->priority, client->stage_id, client->proc_desc_offset);
-	seq_printf(m, "\tDoorbell id %d, offset: 0x%lx, cookie 0x%x\n",
-		client->doorbell_id, client->doorbell_offset, client->doorbell_cookie);
-	seq_printf(m, "\tWQ size %d, offset: 0x%x, tail %d\n",
-		client->wq_size, client->wq_offset, client->wq_tail);
-
-	seq_printf(m, "\tWork queue full: %u\n", client->no_wq_space);
+	seq_printf(m, "\tDoorbell id %d, offset: 0x%lx\n",
+		client->doorbell_id, client->doorbell_offset);
 
 	for_each_engine(engine, dev_priv, id) {
 		u64 submissions = client->submissions[id];
@@ -2594,7 +2647,7 @@ static int i915_guc_log_control_get(void *data, u64 *val)
 	if (!dev_priv->guc.log.vma)
 		return -EINVAL;
 
-	*val = i915.guc_log_level;
+	*val = i915_modparams.guc_log_level;
 
 	return 0;
 }
@@ -3312,7 +3365,9 @@ static int i915_engine_info(struct seq_file *m, void *unused)
 		seq_printf(m, "\tBBADDR: 0x%08x_%08x\n",
 			   upper_32_bits(addr), lower_32_bits(addr));
 
-		if (i915.enable_execlists) {
+		if (i915_modparams.enable_execlists) {
+			const u32 *hws = &engine->status_page.page_addr[I915_HWS_CSB_BUF0_INDEX];
+			struct intel_engine_execlists * const execlists = &engine->execlists;
 			u32 ptr, read, write;
 			unsigned int idx;
 
@@ -3323,8 +3378,10 @@ static int i915_engine_info(struct seq_file *m, void *unused)
 			ptr = I915_READ(RING_CONTEXT_STATUS_PTR(engine));
 			read = GEN8_CSB_READ_PTR(ptr);
 			write = GEN8_CSB_WRITE_PTR(ptr);
-			seq_printf(m, "\tExeclist CSB read %d, write %d, interrupt posted? %s\n",
-				   read, write,
+			seq_printf(m, "\tExeclist CSB read %d [%d cached], write %d [%d from hws], interrupt posted? %s\n",
+				   read, execlists->csb_head,
+				   write,
+				   intel_read_status_page(engine, intel_hws_csb_write_index(engine->i915)),
 				   yesno(test_bit(ENGINE_IRQ_EXECLIST,
 						  &engine->irq_posted)));
 			if (read >= GEN8_CSB_ENTRIES)
@@ -3335,18 +3392,19 @@ static int i915_engine_info(struct seq_file *m, void *unused)
 				write += GEN8_CSB_ENTRIES;
 			while (read < write) {
 				idx = ++read % GEN8_CSB_ENTRIES;
-				seq_printf(m, "\tExeclist CSB[%d]: 0x%08x, context: %d\n",
+				seq_printf(m, "\tExeclist CSB[%d]: 0x%08x [0x%08x in hwsp], context: %d [%d in hwsp]\n",
 					   idx,
 					   I915_READ(RING_CONTEXT_STATUS_BUF_LO(engine, idx)),
-					   I915_READ(RING_CONTEXT_STATUS_BUF_HI(engine, idx)));
+					   hws[idx * 2],
+					   I915_READ(RING_CONTEXT_STATUS_BUF_HI(engine, idx)),
+					   hws[idx * 2 + 1]);
 			}
 
 			rcu_read_lock();
-			for (idx = 0; idx < ARRAY_SIZE(engine->execlist_port); idx++) {
+			for (idx = 0; idx < execlists_num_ports(execlists); idx++) {
 				unsigned int count;
 
-				rq = port_unpack(&engine->execlist_port[idx],
-						 &count);
+				rq = port_unpack(&execlists->port[idx], &count);
 				if (rq) {
 					seq_printf(m, "\t\tELSP[%d] count=%d, ",
 						   idx, count);
@@ -3359,7 +3417,7 @@ static int i915_engine_info(struct seq_file *m, void *unused)
 			rcu_read_unlock();
 
 			spin_lock_irq(&engine->timeline->lock);
-			for (rb = engine->execlist_first; rb; rb = rb_next(rb)){
+			for (rb = execlists->first; rb; rb = rb_next(rb)) {
 				struct i915_priolist *p =
 					rb_entry(rb, typeof(*p), node);
 
@@ -3403,7 +3461,7 @@ static int i915_semaphore_status(struct seq_file *m, void *unused)
 	enum intel_engine_id id;
 	int j, ret;
 
-	if (!i915.semaphores) {
+	if (!i915_modparams.semaphores) {
 		seq_puts(m, "Semaphores are disabled\n");
 		return 0;
 	}
@@ -3522,6 +3580,57 @@ static int i915_wa_registers(struct seq_file *m, void *unused)
 
 	return 0;
 }
+
+static int i915_ipc_status_show(struct seq_file *m, void *data)
+{
+	struct drm_i915_private *dev_priv = m->private;
+
+	seq_printf(m, "Isochronous Priority Control: %s\n",
+			yesno(dev_priv->ipc_enabled));
+	return 0;
+}
+
+static int i915_ipc_status_open(struct inode *inode, struct file *file)
+{
+	struct drm_i915_private *dev_priv = inode->i_private;
+
+	if (!HAS_IPC(dev_priv))
+		return -ENODEV;
+
+	return single_open(file, i915_ipc_status_show, dev_priv);
+}
+
+static ssize_t i915_ipc_status_write(struct file *file, const char __user *ubuf,
+				     size_t len, loff_t *offp)
+{
+	struct seq_file *m = file->private_data;
+	struct drm_i915_private *dev_priv = m->private;
+	int ret;
+	bool enable;
+
+	ret = kstrtobool_from_user(ubuf, len, &enable);
+	if (ret < 0)
+		return ret;
+
+	intel_runtime_pm_get(dev_priv);
+	if (!dev_priv->ipc_enabled && enable)
+		DRM_INFO("Enabling IPC: WM will be proper only after next commit\n");
+	dev_priv->wm.distrust_bios_wm = true;
+	dev_priv->ipc_enabled = enable;
+	intel_enable_ipc(dev_priv);
+	intel_runtime_pm_put(dev_priv);
+
+	return len;
+}
+
+static const struct file_operations i915_ipc_status_fops = {
+	.owner = THIS_MODULE,
+	.open = i915_ipc_status_open,
+	.read = seq_read,
+	.llseek = seq_lseek,
+	.release = single_release,
+	.write = i915_ipc_status_write
+};
 
 static int i915_ddb_info(struct seq_file *m, void *unused)
 {
@@ -4203,8 +4312,7 @@ fault_irq_set(struct drm_i915_private *i915,
 	mutex_unlock(&i915->drm.struct_mutex);
 
 	/* Flush idle worker to disarm irq */
-	while (flush_delayed_work(&i915->gt.idle_work))
-		;
+	drain_delayed_work(&i915->gt.idle_work);
 
 	return 0;
 
@@ -4674,26 +4782,26 @@ static int i915_sseu_status(struct seq_file *m, void *unused)
 
 static int i915_forcewake_open(struct inode *inode, struct file *file)
 {
-	struct drm_i915_private *dev_priv = inode->i_private;
+	struct drm_i915_private *i915 = inode->i_private;
 
-	if (INTEL_GEN(dev_priv) < 6)
+	if (INTEL_GEN(i915) < 6)
 		return 0;
 
-	intel_runtime_pm_get(dev_priv);
-	intel_uncore_forcewake_get(dev_priv, FORCEWAKE_ALL);
+	intel_runtime_pm_get(i915);
+	intel_uncore_forcewake_user_get(i915);
 
 	return 0;
 }
 
 static int i915_forcewake_release(struct inode *inode, struct file *file)
 {
-	struct drm_i915_private *dev_priv = inode->i_private;
+	struct drm_i915_private *i915 = inode->i_private;
 
-	if (INTEL_GEN(dev_priv) < 6)
+	if (INTEL_GEN(i915) < 6)
 		return 0;
 
-	intel_uncore_forcewake_put(dev_priv, FORCEWAKE_ALL);
-	intel_runtime_pm_put(dev_priv);
+	intel_uncore_forcewake_user_put(i915);
+	intel_runtime_pm_put(i915);
 
 	return 0;
 }
@@ -4859,7 +4967,8 @@ static const struct i915_debugfs_files {
 	{"i915_dp_test_type", &i915_displayport_test_type_fops},
 	{"i915_dp_test_active", &i915_displayport_test_active_fops},
 	{"i915_guc_log_control", &i915_guc_log_control_fops},
-	{"i915_hpd_storm_ctl", &i915_hpd_storm_ctl_fops}
+	{"i915_hpd_storm_ctl", &i915_hpd_storm_ctl_fops},
+	{"i915_ipc_status", &i915_ipc_status_fops}
 };
 
 int i915_debugfs_register(struct drm_i915_private *dev_priv)

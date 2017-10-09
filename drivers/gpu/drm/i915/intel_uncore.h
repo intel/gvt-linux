@@ -25,6 +25,12 @@
 #ifndef __INTEL_UNCORE_H__
 #define __INTEL_UNCORE_H__
 
+#include <linux/spinlock.h>
+#include <linux/notifier.h>
+#include <linux/hrtimer.h>
+
+#include "i915_reg.h"
+
 struct drm_i915_private;
 
 enum forcewake_domain_id {
@@ -102,6 +108,13 @@ struct intel_uncore {
 		i915_reg_t reg_ack;
 	} fw_domain[FW_DOMAIN_ID_COUNT];
 
+	struct {
+		unsigned int count;
+
+		int saved_mmio_check;
+		int saved_mmio_debug;
+	} user_forcewake;
+
 	int unclaimed_mmio_check;
 };
 
@@ -143,6 +156,9 @@ void intel_uncore_forcewake_get__locked(struct drm_i915_private *dev_priv,
 					enum forcewake_domains domains);
 void intel_uncore_forcewake_put__locked(struct drm_i915_private *dev_priv,
 					enum forcewake_domains domains);
+
+void intel_uncore_forcewake_user_get(struct drm_i915_private *dev_priv);
+void intel_uncore_forcewake_user_put(struct drm_i915_private *dev_priv);
 
 int intel_wait_for_register(struct drm_i915_private *dev_priv,
 			    i915_reg_t reg,

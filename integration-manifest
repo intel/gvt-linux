@@ -1,0 +1,28 @@
+drm-intel drm-intel-fixes 8a5776a5f49812d29fe4b2d0a2d71675c3facf3f
+	Linux 4.14-rc4
+drm-upstream drm-fixes baf7c1f7e8f28c83f64a8c229a9357da47c0367a
+	Merge tag 'drm-misc-fixes-2017-10-05' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
+drm-intel drm-intel-next-fixes 426ca2cb69cda59f32c251d1f3e111aee8c42814
+	Merge tag 'gvt-fixes-2017-09-06' of https://github.com/01org/gvt-linux into drm-intel-next-fixes
+drm-intel drm-intel-next-queued d0d37254680fb15fdefe03a0986cfc1e22bcbfc4
+	drm/i915: Use intel_get_pipe_timings() and intel_mode_from_pipe_config() in intel_crtc_mode_get()
+drm-upstream drm-next bb7a9c8d712f37385a706a594d6edf6e6d2669d0
+	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
+sound-upstream for-next a6aa6cdcecfc0eb8a6fe634535384b4a63f38258
+	ALSA: usb-audio: Apply vendor ID matching for sample rate quirk
+sound-upstream for-linus c95072b3d88fac4be295815f2b67df366c0c297f
+	ALSA: line6: Fix leftover URB at error-path during probe
+drm-intel topic/core-for-CI feb185ca85d51ac15d7b5e017f5952fa86c17742
+	x86/mm/64: Fix reboot interaction with CR4.PCIDE
+drm-misc drm-misc-next f8e0731db4a02c8c5624e1dce6dc983210a51f64
+	dma-fence: fix dma_fence_get_rcu_safe v2
+drm-misc drm-misc-next-fixes f44d85389e17b2e960620c1c6d89bda978a11f2b
+	drm: rename u32 in __u32 in uapi
+drm-misc drm-misc-fixes 78279127253a6c36ed8829eb2b7bc28ef48d9717
+	drm/atomic: Unref duplicated drm_atomic_state in drm_atomic_helper_resume()
+drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
+	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
+drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
+	Linux 4.14-rc1
+drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
+	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes

@@ -32,6 +32,7 @@ struct xengt_hvm_dev {
 	int nr_vcpu;
 	int *evtchn_irq;
 	ioservid_t iosrv_id;    /* io-request server id */
+	int iosrv_enabled;
 	struct task_struct *emulation_thread;
 	DECLARE_BITMAP(ioreq_pending, MAX_HVM_VCPUS_SUPPORTED);
 	wait_queue_head_t io_event_wq;

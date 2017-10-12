@@ -409,14 +409,14 @@ static ssize_t xengt_sysfs_vgpu_schedule(struct kobject *kobj,
 	}
 
 	if (running) {
-		if (info->iosrv_id == 0) {
+		if (info->iosrv_enabled == 0) {
 			hvm_claim_ioreq_server_type(info, 1);
 			xen_hvm_toggle_iorequest_server(info, true);
 		}
 		intel_gvt_ops->vgpu_activate(vgpu);
 	} else {
 		intel_gvt_ops->vgpu_deactivate(vgpu);
-		if (info->iosrv_id != 0) {
+		if (info->iosrv_enabled != 0) {
 			hvm_claim_ioreq_server_type(info, 0);
 			xen_hvm_toggle_iorequest_server(info, false);
 		}
@@ -667,6 +667,11 @@ static int xen_hvm_toggle_iorequest_server(struct xengt_hvm_dev *info, bool enab
 	struct xen_dm_op op;
 	struct xen_dm_op_set_ioreq_server_state *data;
 	int r;
+
+	if (info->iosrv_enabled == !!enable)
+		return 0;
+
+	info->iosrv_enabled = !!enable;
 
 	memset(&op, 0, sizeof(op));
 
@@ -1448,10 +1453,13 @@ void xengt_instance_destroy(struct intel_vgpu *vgpu)
 	if (!info->nr_vcpu || info->evtchn_irq == NULL)
 		goto out1;
 
-	if (info->iosrv_id != 0) {
+	if (info->iosrv_enabled != 0) {
 		hvm_claim_ioreq_server_type(info, 0);
-		xen_hvm_destroy_iorequest_server(info);
+		xen_hvm_toggle_iorequest_server(info, false);
 	}
+
+	if (info->iosrv_id != 0)
+		xen_hvm_destroy_iorequest_server(info);
 
 	for (vcpu = 0; vcpu < info->nr_vcpu; vcpu++) {
 		if (info->evtchn_irq[vcpu] >= 0)

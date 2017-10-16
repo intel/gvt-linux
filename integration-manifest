@@ -1,0 +1,28 @@
+drm-intel drm-intel-fixes 33d930e59a98fa10a0db9f56c7fa2f21a4aef9b9
+	Linux 4.14-rc5
+drm-upstream drm-fixes a480f30846d19b50106b3243d9d48683d2966249
+	Merge tag 'drm-intel-fixes-2017-10-11' of git://anongit.freedesktop.org/drm/drm-intel into drm-fixes
+drm-intel drm-intel-next-fixes 426ca2cb69cda59f32c251d1f3e111aee8c42814
+	Merge tag 'gvt-fixes-2017-09-06' of https://github.com/01org/gvt-linux into drm-intel-next-fixes
+drm-intel drm-intel-next-queued e4ffc83d3fa7e51390a94303e06356d2d1d5b5ee
+	drm/i915/cnl: WaRsUseTimeoutMode
+drm-upstream drm-next 787e1b74b77d4aa910f40dd5f08edb5da27200bd
+	Merge branch 'etnaviv/next' of https://git.pengutronix.de/git/lst/linux into drm-next
+sound-upstream for-next 0de7d8356241712406973a63572e61fea3233dc2
+	ALSA: hda - silence uninitialized variable warning in activate_amp_in()
+sound-upstream for-linus 99fee508245825765ff60155fed43f970ff83a8f
+	ALSA: caiaq: Fix stray URB at probe error path
+drm-intel topic/core-for-CI feb185ca85d51ac15d7b5e017f5952fa86c17742
+	x86/mm/64: Fix reboot interaction with CR4.PCIDE
+drm-misc drm-misc-next a52ff2a509a77aacdcc464f26181e77d49880da9
+	drm/armada: Replace drm_framebuffer_reference/unreference() with _get/put()
+drm-misc drm-misc-next-fixes f44d85389e17b2e960620c1c6d89bda978a11f2b
+	drm: rename u32 in __u32 in uapi
+drm-misc drm-misc-fixes 33d930e59a98fa10a0db9f56c7fa2f21a4aef9b9
+	Linux 4.14-rc5
+drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
+	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
+drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
+	Linux 4.14-rc1
+drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
+	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes

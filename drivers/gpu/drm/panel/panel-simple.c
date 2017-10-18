@@ -1008,6 +1008,10 @@ static const struct panel_desc hitachi_tx23d38vm0caa = {
 		.width = 195,
 		.height = 117,
 	},
+	.delay = {
+		.enable = 160,
+		.disable = 160,
+	},
 };
 
 static const struct drm_display_mode innolux_at043tn24_mode = {
@@ -1018,8 +1022,8 @@ static const struct drm_display_mode innolux_at043tn24_mode = {
 	.htotal = 480 + 2 + 41 + 2,
 	.vdisplay = 272,
 	.vsync_start = 272 + 2,
-	.vsync_end = 272 + 2 + 11,
-	.vtotal = 272 + 2 + 11 + 2,
+	.vsync_end = 272 + 2 + 10,
+	.vtotal = 272 + 2 + 10 + 2,
 	.vrefresh = 60,
 	.flags = DRM_MODE_FLAG_NHSYNC | DRM_MODE_FLAG_NVSYNC,
 };
@@ -1033,6 +1037,7 @@ static const struct panel_desc innolux_at043tn24 = {
 		.height = 54,
 	},
 	.bus_format = MEDIA_BUS_FMT_RGB888_1X24,
+	.bus_flags = DRM_BUS_FLAG_DE_HIGH | DRM_BUS_FLAG_PIXDATA_POSEDGE,
 };
 
 static const struct drm_display_mode innolux_at070tn92_mode = {

@@ -883,7 +883,7 @@ int ttm_pool_populate(struct ttm_tt *ttm)
 		}
 
 		ret = ttm_mem_global_alloc_page(mem_glob, ttm->pages[i],
-						false, false);
+						PAGE_SIZE);
 		if (unlikely(ret != 0)) {
 			ttm_pool_unpopulate(ttm);
 			return -ENOMEM;
@@ -910,7 +910,7 @@ void ttm_pool_unpopulate(struct ttm_tt *ttm)
 	for (i = 0; i < ttm->num_pages; ++i) {
 		if (ttm->pages[i]) {
 			ttm_mem_global_free_page(ttm->glob->mem_glob,
-						 ttm->pages[i]);
+						 ttm->pages[i], PAGE_SIZE);
 			ttm_put_pages(&ttm->pages[i], 1,
 				      ttm->page_flags,
 				      ttm->caching_state);
@@ -919,6 +919,49 @@ void ttm_pool_unpopulate(struct ttm_tt *ttm)
 	ttm->state = tt_unpopulated;
 }
 EXPORT_SYMBOL(ttm_pool_unpopulate);
+
+#if defined(CONFIG_SWIOTLB) || defined(CONFIG_INTEL_IOMMU)
+int ttm_populate_and_map_pages(struct device *dev, struct ttm_dma_tt *tt)
+{
+	unsigned i;
+	int r;
+
+	r = ttm_pool_populate(&tt->ttm);
+	if (r)
+		return r;
+
+	for (i = 0; i < tt->ttm.num_pages; i++) {
+		tt->dma_address[i] = dma_map_page(dev, tt->ttm.pages[i],
+						  0, PAGE_SIZE,
+						  DMA_BIDIRECTIONAL);
+		if (dma_mapping_error(dev, tt->dma_address[i])) {
+			while (i--) {
+				dma_unmap_page(dev, tt->dma_address[i],
+					       PAGE_SIZE, DMA_BIDIRECTIONAL);
+				tt->dma_address[i] = 0;
+			}
+			ttm_pool_unpopulate(&tt->ttm);
+			return -EFAULT;
+		}
+	}
+	return 0;
+}
+EXPORT_SYMBOL(ttm_populate_and_map_pages);
+
+void ttm_unmap_and_unpopulate_pages(struct device *dev, struct ttm_dma_tt *tt)
+{
+	unsigned i;
+	
+	for (i = 0; i < tt->ttm.num_pages; i++) {
+		if (tt->dma_address[i]) {
+			dma_unmap_page(dev, tt->dma_address[i],
+				       PAGE_SIZE, DMA_BIDIRECTIONAL);
+		}
+	}
+	ttm_pool_unpopulate(&tt->ttm);
+}
+EXPORT_SYMBOL(ttm_unmap_and_unpopulate_pages);
+#endif
 
 int ttm_page_alloc_debugfs(struct seq_file *m, void *data)
 {

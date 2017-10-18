@@ -1,28 +1,12 @@
-drm-intel drm-intel-fixes 038daf5556a486cefc7a239ca4528003a5a4ef00
-	drm/i915/cnl: Fix PLL initialization for HDMI.
-drm-upstream drm-fixes 2de0307323fc42c6395d0eafec9879d55e042c85
-	Merge tag 'exynos-drm-fixes-for-v4.14-rc5' of git://git.kernel.org/pub/scm/linux/kernel/git/daeinki/drm-exynos into drm-fixes
-drm-intel drm-intel-next-fixes 426ca2cb69cda59f32c251d1f3e111aee8c42814
-	Merge tag 'gvt-fixes-2017-09-06' of https://github.com/01org/gvt-linux into drm-intel-next-fixes
-drm-intel drm-intel-next-queued cb8d50dfb341e9615c8d203a3e6513dae9ff901d
-	drm/i915: Fixup userptr mmu notifier registration error handling
-drm-upstream drm-next 40d86701a625eed9e644281b9af228d6a52d8ed9
-	drm/plane: drop num_overlay_planes (v3)
-sound-upstream for-next d368478b2995a1eda156b4fa8b0a9d0850f325ed
-	ALSA: emu10k1: remove redundant assignment to tmp
-sound-upstream for-linus c5ceb189d62daafef3a2ae19c9fc1666964f731f
-	ALSA: hda - Fix incorrect TLV callback check introduced during set_fs() removal
-drm-intel topic/core-for-CI feb185ca85d51ac15d7b5e017f5952fa86c17742
-	x86/mm/64: Fix reboot interaction with CR4.PCIDE
-drm-misc drm-misc-next 84014b0a39eef6df4a26f8afabf2b50bd376d515
-	drm/atomic-helper: check that drivers call drm_crtc_vblank_off
-drm-misc drm-misc-next-fixes f44d85389e17b2e960620c1c6d89bda978a11f2b
-	drm: rename u32 in __u32 in uapi
-drm-misc drm-misc-fixes 33d930e59a98fa10a0db9f56c7fa2f21a4aef9b9
-	Linux 4.14-rc5
-drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
-	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
-drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
-	Linux 4.14-rc1
-drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
-	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
+drm-tip/drm-tip 8b18ad103908e9ccee79db8c0c29bc5a56ff81f8
+	drm-tip: 2017y-10m-18d-08h-27m-31s UTC integration manifest
+vfio-upstream/for-linus 796b755066dd6254bfb6388fec901631e868d1c7
+	vfio/pci: Fix handling of RC integrated endpoint PCIe capability size
+vfio-upstream/next 79d40370e8d31886a9413e2ee115fc426b4ae97e
+	vfio-mdev/samples: make mdev_fops const and static
+origin/gvt-fixes 434c8f5dc6a22df38b229ac0e38eb0a4117a9f24
+	drm/i915/gvt: Fix GPU hang after reusing vGPU instance across different guest OS
+origin/gvt-next 6de0cd289fe4dde077e35edf01c0566eb426d695
+	drm/i915/gvt: Refine broken PPGTT scratch
+origin/gvt-next-fixes d02fd5f7709f1296bad5d92e7e8515ef1a05dec4
+	drm/i915/gvt: Remove one duplicated MMIO

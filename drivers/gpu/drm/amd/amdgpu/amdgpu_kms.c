@@ -825,7 +825,7 @@ int amdgpu_driver_open_kms(struct drm_device *dev, struct drm_file *file_priv)
 	}
 
 	r = amdgpu_vm_init(adev, &fpriv->vm,
-			   AMDGPU_VM_CONTEXT_GFX);
+			   AMDGPU_VM_CONTEXT_GFX, 0);
 	if (r) {
 		kfree(fpriv);
 		goto out_suspend;
@@ -841,8 +841,11 @@ int amdgpu_driver_open_kms(struct drm_device *dev, struct drm_file *file_priv)
 
 	if (amdgpu_sriov_vf(adev)) {
 		r = amdgpu_map_static_csa(adev, &fpriv->vm, &fpriv->csa_va);
-		if (r)
+		if (r) {
+			amdgpu_vm_fini(adev, &fpriv->vm);
+			kfree(fpriv);
 			goto out_suspend;
+		}
 	}
 
 	mutex_init(&fpriv->bo_list_lock);
@@ -1021,6 +1024,7 @@ const struct drm_ioctl_desc amdgpu_ioctls_kms[] = {
 	DRM_IOCTL_DEF_DRV(AMDGPU_CTX, amdgpu_ctx_ioctl, DRM_AUTH|DRM_RENDER_ALLOW),
 	DRM_IOCTL_DEF_DRV(AMDGPU_VM, amdgpu_vm_ioctl, DRM_AUTH|DRM_RENDER_ALLOW),
 	DRM_IOCTL_DEF_DRV(AMDGPU_BO_LIST, amdgpu_bo_list_ioctl, DRM_AUTH|DRM_RENDER_ALLOW),
+	DRM_IOCTL_DEF_DRV(AMDGPU_FENCE_TO_HANDLE, amdgpu_cs_fence_to_handle_ioctl, DRM_AUTH|DRM_RENDER_ALLOW),
 	/* KMS */
 	DRM_IOCTL_DEF_DRV(AMDGPU_GEM_MMAP, amdgpu_gem_mmap_ioctl, DRM_AUTH|DRM_RENDER_ALLOW),
 	DRM_IOCTL_DEF_DRV(AMDGPU_GEM_WAIT_IDLE, amdgpu_gem_wait_idle_ioctl, DRM_AUTH|DRM_RENDER_ALLOW),

@@ -241,9 +241,17 @@ struct intel_engine_execlists {
 	} port[EXECLIST_MAX_PORTS];
 
 	/**
-	 * @preempt: are we currently handling a preempting context switch?
+	 * @active: is the HW active? We consider the HW as active after
+	 * submitting any context for execution and until we have seen the
+	 * last context completion event. After that, we do not expect any
+	 * more events until we submit, and so can park the HW.
+	 *
+	 * As we have a small number of different sources from which we feed
+	 * the HW, we track the state of each inside a single bitfield.
 	 */
-	bool preempt;
+	unsigned int active;
+#define EXECLISTS_ACTIVE_USER 0
+#define EXECLISTS_ACTIVE_PREEMPT 1
 
 	/**
 	 * @port_mask: number of execlist ports - 1
@@ -331,9 +339,9 @@ struct intel_engine_cs {
 		struct timer_list hangcheck; /* detect missed interrupts */
 
 		unsigned int hangcheck_interrupts;
+		unsigned int irq_enabled;
 
 		bool irq_armed : 1;
-		bool irq_enabled : 1;
 		I915_SELFTEST_DECLARE(bool mock : 1);
 	} breadcrumbs;
 
@@ -356,6 +364,9 @@ struct intel_engine_cs {
 	int		(*init_hw)(struct intel_engine_cs *engine);
 	void		(*reset_hw)(struct intel_engine_cs *engine,
 				    struct drm_i915_gem_request *req);
+
+	void		(*park)(struct intel_engine_cs *engine);
+	void		(*unpark)(struct intel_engine_cs *engine);
 
 	void		(*set_default_submission)(struct intel_engine_cs *engine);
 
@@ -525,6 +536,27 @@ struct intel_engine_cs {
 	u32 (*get_cmd_length_mask)(u32 cmd_header);
 };
 
+static inline void
+execlists_set_active(struct intel_engine_execlists *execlists,
+		     unsigned int bit)
+{
+	__set_bit(bit, (unsigned long *)&execlists->active);
+}
+
+static inline void
+execlists_clear_active(struct intel_engine_execlists *execlists,
+		       unsigned int bit)
+{
+	__clear_bit(bit, (unsigned long *)&execlists->active);
+}
+
+static inline bool
+execlists_is_active(const struct intel_engine_execlists *execlists,
+		    unsigned int bit)
+{
+	return test_bit(bit, (unsigned long *)&execlists->active);
+}
+
 static inline unsigned int
 execlists_num_ports(const struct intel_engine_execlists * const execlists)
 {
@@ -538,6 +570,7 @@ execlists_port_complete(struct intel_engine_execlists * const execlists,
 	const unsigned int m = execlists->port_mask;
 
 	GEM_BUG_ON(port_index(port, execlists) != 0);
+	GEM_BUG_ON(!execlists_is_active(execlists, EXECLISTS_ACTIVE_USER));
 
 	memmove(port, port + 1, m * sizeof(struct execlist_port));
 	memset(port + m, 0, sizeof(struct execlist_port));
@@ -815,6 +848,9 @@ unsigned int intel_engine_wakeup(struct intel_engine_cs *engine);
 #define ENGINE_WAKEUP_WAITER BIT(0)
 #define ENGINE_WAKEUP_ASLEEP BIT(1)
 
+void intel_engine_pin_breadcrumbs_irq(struct intel_engine_cs *engine);
+void intel_engine_unpin_breadcrumbs_irq(struct intel_engine_cs *engine);
+
 void __intel_engine_disarm_breadcrumbs(struct intel_engine_cs *engine);
 void intel_engine_disarm_breadcrumbs(struct intel_engine_cs *engine);
 
@@ -836,7 +872,11 @@ static inline u32 *gen8_emit_pipe_control(u32 *batch, u32 flags, u32 offset)
 bool intel_engine_is_idle(struct intel_engine_cs *engine);
 bool intel_engines_are_idle(struct drm_i915_private *dev_priv);
 
-void intel_engines_mark_idle(struct drm_i915_private *i915);
+bool intel_engine_has_kernel_context(const struct intel_engine_cs *engine);
+
+void intel_engines_park(struct drm_i915_private *i915);
+void intel_engines_unpark(struct drm_i915_private *i915);
+
 void intel_engines_reset_default_submission(struct drm_i915_private *i915);
 
 bool intel_engine_can_store_dword(struct intel_engine_cs *engine);

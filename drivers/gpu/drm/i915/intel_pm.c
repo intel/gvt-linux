@@ -3932,6 +3932,7 @@ skl_pipe_downscale_amount(const struct intel_crtc_state *crtc_state)
 int skl_check_pipe_max_pixel_rate(struct intel_crtc *intel_crtc,
 				  struct intel_crtc_state *cstate)
 {
+	struct drm_i915_private *dev_priv = to_i915(intel_crtc->base.dev);
 	struct drm_crtc_state *crtc_state = &cstate->base;
 	struct drm_atomic_state *state = crtc_state->state;
 	struct drm_plane *plane;
@@ -3974,7 +3975,7 @@ int skl_check_pipe_max_pixel_rate(struct intel_crtc *intel_crtc,
 	crtc_clock = crtc_state->adjusted_mode.crtc_clock;
 	dotclk = to_intel_atomic_state(state)->cdclk.logical.cdclk;
 
-	if (IS_GEMINILAKE(to_i915(intel_crtc->base.dev)))
+	if (IS_GEMINILAKE(dev_priv) || INTEL_GEN(dev_priv) >= 10)
 		dotclk *= 2;
 
 	pipe_max_pixel_rate = div_round_up_u32_fixed16(dotclk, pipe_downscale);
@@ -6591,7 +6592,7 @@ static void gen9_enable_rc6(struct drm_i915_private *dev_priv)
 {
 	struct intel_engine_cs *engine;
 	enum intel_engine_id id;
-	uint32_t rc6_mask = 0;
+	u32 rc6_mode, rc6_mask = 0;
 
 	/* 1a: Software RC state - RC0 */
 	I915_WRITE(GEN6_RC_STATE, 0);
@@ -6604,12 +6605,19 @@ static void gen9_enable_rc6(struct drm_i915_private *dev_priv)
 	I915_WRITE(GEN6_RC_CONTROL, 0);
 
 	/* 2b: Program RC6 thresholds.*/
-
-	/* WaRsDoubleRc6WrlWithCoarsePowerGating: Doubling WRL only when CPG is enabled */
-	if (IS_SKYLAKE(dev_priv))
+	if (INTEL_GEN(dev_priv) >= 10) {
+		I915_WRITE(GEN6_RC6_WAKE_RATE_LIMIT, 54 << 16 | 85);
+		I915_WRITE(GEN10_MEDIA_WAKE_RATE_LIMIT, 150);
+	} else if (IS_SKYLAKE(dev_priv)) {
+		/*
+		 * WaRsDoubleRc6WrlWithCoarsePowerGating:skl Doubling WRL only
+		 * when CPG is enabled
+		 */
 		I915_WRITE(GEN6_RC6_WAKE_RATE_LIMIT, 108 << 16);
-	else
+	} else {
 		I915_WRITE(GEN6_RC6_WAKE_RATE_LIMIT, 54 << 16);
+	}
+
 	I915_WRITE(GEN6_RC_EVALUATION_INTERVAL, 125000); /* 12500 * 1280ns */
 	I915_WRITE(GEN6_RC_IDLE_HYSTERSIS, 25); /* 25 * 1280ns */
 	for_each_engine(engine, dev_priv, id)
@@ -6629,8 +6637,15 @@ static void gen9_enable_rc6(struct drm_i915_private *dev_priv)
 		rc6_mask = GEN6_RC_CTL_RC6_ENABLE;
 	DRM_INFO("RC6 %s\n", onoff(rc6_mask & GEN6_RC_CTL_RC6_ENABLE));
 	I915_WRITE(GEN6_RC6_THRESHOLD, 37500); /* 37.5/125ms per EI */
+
+	/* WaRsUseTimeoutMode:cnl (pre-prod) */
+	if (IS_CNL_REVID(dev_priv, CNL_REVID_A0, CNL_REVID_C0))
+		rc6_mode = GEN7_RC_CTL_TO_MODE;
+	else
+		rc6_mode = GEN6_RC_CTL_EI_MODE(1);
+
 	I915_WRITE(GEN6_RC_CONTROL,
-		   GEN6_RC_CTL_HW_ENABLE | GEN6_RC_CTL_EI_MODE(1) | rc6_mask);
+		   GEN6_RC_CTL_HW_ENABLE | rc6_mode | rc6_mask);
 
 	/*
 	 * 3b: Enable Coarse Power Gating only when RC6 is enabled.

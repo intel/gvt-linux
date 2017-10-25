@@ -5242,7 +5242,7 @@ enum {
 #define   DP_AUX_CH_CTL_TIME_OUT_400us	    (0 << 26)
 #define   DP_AUX_CH_CTL_TIME_OUT_600us	    (1 << 26)
 #define   DP_AUX_CH_CTL_TIME_OUT_800us	    (2 << 26)
-#define   DP_AUX_CH_CTL_TIME_OUT_1600us	    (3 << 26)
+#define   DP_AUX_CH_CTL_TIME_OUT_MAX	    (3 << 26) /* Varies per platform */
 #define   DP_AUX_CH_CTL_TIME_OUT_MASK	    (3 << 26)
 #define   DP_AUX_CH_CTL_RECEIVE_ERROR	    (1 << 25)
 #define   DP_AUX_CH_CTL_MESSAGE_SIZE_MASK    (0x1f << 20)
@@ -7905,6 +7905,7 @@ enum {
 #define GEN6_RC1_WAKE_RATE_LIMIT		_MMIO(0xA098)
 #define GEN6_RC6_WAKE_RATE_LIMIT		_MMIO(0xA09C)
 #define GEN6_RC6pp_WAKE_RATE_LIMIT		_MMIO(0xA0A0)
+#define GEN10_MEDIA_WAKE_RATE_LIMIT		_MMIO(0xA0A0)
 #define GEN6_RC_EVALUATION_INTERVAL		_MMIO(0xA0A8)
 #define GEN6_RC_IDLE_HYSTERSIS			_MMIO(0xA0AC)
 #define GEN6_RC_SLEEP				_MMIO(0xA0B0)

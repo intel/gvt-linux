@@ -1,28 +1,12 @@
-drm-upstream drm-fixes 2cb3a34abd035756f9ba3cde12f44f4b3e4c234b
-	Merge tag 'drm-intel-fixes-2017-10-18-1' of git://anongit.freedesktop.org/drm/drm-intel into drm-fixes
-drm-misc drm-misc-fixes 62676d10b483a2ff6e8b08c5e7c7d63a831343f5
-	qxl: alloc & use shadow for dumb buffers
-drm-intel drm-intel-fixes 7277f755048da562eb2489becacd38d0d05e1e06
-	drm/i915/perf: fix perf enable/disable ioctls with 32bits userspace
-drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
-	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
-drm-upstream drm-next 62884cd386b876638720ef88374b31a84ca7ee5f
-	drm: Add four ioctls for managing drm mode object leases [v7]
-drm-misc drm-misc-next-fixes f44d85389e17b2e960620c1c6d89bda978a11f2b
-	drm: rename u32 in __u32 in uapi
-drm-intel drm-intel-next-fixes 426ca2cb69cda59f32c251d1f3e111aee8c42814
-	Merge tag 'gvt-fixes-2017-09-06' of https://github.com/01org/gvt-linux into drm-intel-next-fixes
-drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
-	Linux 4.14-rc1
-drm-misc drm-misc-next b7fa1bdb10359bf4330f30bb9f36ecde91e5e5a5
-	drm/tinydrm: Replace list_for_each with list_for_each_entry
-drm-intel drm-intel-next-queued 9bdc3573a5a2824da7d7e55eac95ca5a014181d8
-	drm/i915/guc: Initialize GuC before restarting engines
-drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
-	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
-sound-upstream for-linus f265788c336979090ac80b9ae173aa817c4fe40d
-	ALSA: hda - fix headset mic problem for Dell machines with alc236
-sound-upstream for-next 20e5f8bfb153bdd43b5be194658f8ad814470a5d
-	ALSA: sb: Minor optimization / fix of timer usage in sb8_midi.c
-drm-intel topic/core-for-CI feb185ca85d51ac15d7b5e017f5952fa86c17742
-	x86/mm/64: Fix reboot interaction with CR4.PCIDE
+drm-tip/drm-tip 2ea0b3d47030274c97624258e09fc7d1ffd0e0f2
+	drm-tip: 2017y-10m-25d-18h-42m-20s UTC integration manifest
+vfio-upstream/for-linus 796b755066dd6254bfb6388fec901631e868d1c7
+	vfio/pci: Fix handling of RC integrated endpoint PCIe capability size
+vfio-upstream/next 537b559a611467ed73c5d864c1d1ea7ce15f92d9
+	Merge branches 'vfio/fixes', 'vfio/platform', 'iommu/arm/smmu' and 'iommu/updates' into next-20171025
+origin/gvt-fixes 434c8f5dc6a22df38b229ac0e38eb0a4117a9f24
+	drm/i915/gvt: Fix GPU hang after reusing vGPU instance across different guest OS
+origin/gvt-next 44b25a6b7bb9258d5616c0363a0c86786d452b5c
+	Merge tag 'drm-intel-next-2017-10-23' into gvt-next
+origin/gvt-next-fixes d02fd5f7709f1296bad5d92e7e8515ef1a05dec4
+	drm/i915/gvt: Remove one duplicated MMIO

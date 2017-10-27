@@ -1341,7 +1341,7 @@ static int gen8_ppgtt_alloc_pd(struct i915_address_space *vm,
 			if (IS_ERR(pt))
 				goto unwind;
 
-			if (count < GEN8_PTES)
+			if (count < GEN8_PTES || intel_vgpu_active(vm->i915))
 				gen8_initialize_pt(vm, pt);
 
 			gen8_ppgtt_set_pde(vm, pd, pt, pde);
@@ -3594,8 +3594,7 @@ void i915_gem_restore_gtt_mappings(struct drm_i915_private *dev_priv)
 	ggtt->base.closed = true; /* skip rewriting PTE on VMA unbind */
 
 	/* clflush objects bound into the GGTT and rebind them. */
-	list_for_each_entry_safe(obj, on,
-				 &dev_priv->mm.bound_list, global_link) {
+	list_for_each_entry_safe(obj, on, &dev_priv->mm.bound_list, mm.link) {
 		bool ggtt_bound = false;
 		struct i915_vma *vma;
 

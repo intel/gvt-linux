@@ -1,28 +1,12 @@
-drm-upstream drm-fixes ce485df43dc286f3ad96f9992b22e3974d051c44
-	Merge tag 'drm-intel-fixes-2017-10-26' of git://anongit.freedesktop.org/drm/drm-intel into drm-fixes
-drm-misc drm-misc-fixes 62676d10b483a2ff6e8b08c5e7c7d63a831343f5
-	qxl: alloc & use shadow for dumb buffers
-drm-intel drm-intel-fixes 894e287b3dcc8bfc8d974f883dab3b5c66344089
+drm-tip/drm-tip 1db1a27d38d789ce2886db512828ae306c998bc3
+	drm-tip: 2017y-10m-27d-07h-23m-09s UTC integration manifest
+vfio-upstream/for-linus 796b755066dd6254bfb6388fec901631e868d1c7
+	vfio/pci: Fix handling of RC integrated endpoint PCIe capability size
+vfio-upstream/next 537b559a611467ed73c5d864c1d1ea7ce15f92d9
+	Merge branches 'vfio/fixes', 'vfio/platform', 'iommu/arm/smmu' and 'iommu/updates' into next-20171025
+origin/gvt-fixes 8474a88db1e08c576a03b52319fae67017aac0f3
 	drm/i915/gvt: Adding ACTHD mmio read handler
-drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
-	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
-drm-upstream drm-next 62884cd386b876638720ef88374b31a84ca7ee5f
-	drm: Add four ioctls for managing drm mode object leases [v7]
-drm-misc drm-misc-next-fixes f44d85389e17b2e960620c1c6d89bda978a11f2b
-	drm: rename u32 in __u32 in uapi
-drm-intel drm-intel-next-fixes 426ca2cb69cda59f32c251d1f3e111aee8c42814
-	Merge tag 'gvt-fixes-2017-09-06' of https://github.com/01org/gvt-linux into drm-intel-next-fixes
-drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
-	Linux 4.14-rc1
-drm-misc drm-misc-next b7fa1bdb10359bf4330f30bb9f36ecde91e5e5a5
-	drm/tinydrm: Replace list_for_each with list_for_each_entry
-drm-intel drm-intel-next-queued b6b178a77210055b153dbc175e4468bd3c7122df
-	drm/i915: Calculate ironlake intermediate watermarks correctly, v2.
-drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
-	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
-sound-upstream for-linus f265788c336979090ac80b9ae173aa817c4fe40d
-	ALSA: hda - fix headset mic problem for Dell machines with alc236
-sound-upstream for-next 7211ec6392c8650ebc804023178c245464417ed2
-	ALSA: Convert timers to use timer_setup()
-drm-intel topic/core-for-CI feb185ca85d51ac15d7b5e017f5952fa86c17742
-	x86/mm/64: Fix reboot interaction with CR4.PCIDE
+origin/gvt-next 6c847fcae76f7fb783c1d1ea0c56538209b587e3
+	MAINTAINERS: Update gvt-linux.git new repo place
+origin/gvt-next-fixes d02fd5f7709f1296bad5d92e7e8515ef1a05dec4
+	drm/i915/gvt: Remove one duplicated MMIO

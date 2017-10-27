@@ -104,6 +104,7 @@ static void lut_close(struct i915_gem_context *ctx)
 		kmem_cache_free(ctx->i915->luts, lut);
 	}
 
+	rcu_read_lock();
 	radix_tree_for_each_slot(slot, &ctx->handles_vma, &iter, 0) {
 		struct i915_vma *vma = rcu_dereference_raw(*slot);
 		struct drm_i915_gem_object *obj = vma->obj;
@@ -115,6 +116,7 @@ static void lut_close(struct i915_gem_context *ctx)
 
 		__i915_gem_object_release_unless_active(obj);
 	}
+	rcu_read_unlock();
 }
 
 static void i915_gem_context_free(struct i915_gem_context *ctx)
@@ -897,7 +899,7 @@ int i915_switch_context(struct drm_i915_gem_request *req)
 	return do_rcs_switch(req);
 }
 
-static bool engine_has_kernel_context(struct intel_engine_cs *engine)
+static bool engine_has_idle_kernel_context(struct intel_engine_cs *engine)
 {
 	struct i915_gem_timeline *timeline;
 
@@ -913,8 +915,7 @@ static bool engine_has_kernel_context(struct intel_engine_cs *engine)
 			return false;
 	}
 
-	return (!engine->last_retired_context ||
-		i915_gem_context_is_kernel(engine->last_retired_context));
+	return intel_engine_has_kernel_context(engine);
 }
 
 int i915_gem_switch_to_kernel_context(struct drm_i915_private *dev_priv)
@@ -931,7 +932,7 @@ int i915_gem_switch_to_kernel_context(struct drm_i915_private *dev_priv)
 		struct drm_i915_gem_request *req;
 		int ret;
 
-		if (engine_has_kernel_context(engine))
+		if (engine_has_idle_kernel_context(engine))
 			continue;
 
 		req = i915_gem_request_alloc(engine, dev_priv->kernel_context);

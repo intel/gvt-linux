@@ -213,6 +213,9 @@ search_again:
 		if (I915_SELFTEST_ONLY(igt_evict_ctl.fail_if_busy))
 			return -EBUSY;
 
+		ret = ggtt_flush(dev_priv);
+		if (ret)
+			return ret;
 
 		cond_resched();
 		goto search_again;

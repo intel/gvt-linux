@@ -26,6 +26,7 @@
 #define _INTEL_GUC_H_
 
 #include "intel_uncore.h"
+#include "intel_guc_fw.h"
 #include "intel_guc_fwif.h"
 #include "intel_guc_ct.h"
 #include "intel_guc_log.h"
@@ -33,6 +34,16 @@
 #include "i915_guc_reg.h"
 #include "i915_vma.h"
 
+struct guc_preempt_work {
+	struct work_struct work;
+	struct intel_engine_cs *engine;
+};
+
+/*
+ * Top level structure of GuC. It handles firmware loading and manages client
+ * pool and doorbells. intel_guc owns a i915_guc_client to replace the legacy
+ * ExecList submission.
+ */
 struct intel_guc {
 	struct intel_uc_fw fw;
 	struct intel_guc_log log;
@@ -48,8 +59,14 @@ struct intel_guc {
 	struct i915_vma *stage_desc_pool;
 	void *stage_desc_pool_vaddr;
 	struct ida stage_ids;
+	struct i915_vma *shared_data;
+	void *shared_data_vaddr;
 
 	struct i915_guc_client *execbuf_client;
+	struct i915_guc_client *preempt_client;
+
+	struct guc_preempt_work preempt_work[I915_NUM_ENGINES];
+	struct workqueue_struct *preempt_wq;
 
 	DECLARE_BITMAP(doorbell_bitmap, GUC_NUM_DOORBELLS);
 	/* Cyclic counter mod pagesize	*/
@@ -83,6 +100,12 @@ static inline void intel_guc_notify(struct intel_guc *guc)
 	guc->notify(guc);
 }
 
+/*
+ * GuC does not allow any gfx GGTT address that falls into range [0, WOPCM_TOP),
+ * which is reserved for Boot ROM, SRAM and WOPCM. Currently this top address is
+ * 512K. In order to exclude 0-512K address space from GGTT, all gfx objects
+ * used by GuC is pinned with PIN_OFFSET_BIAS along with size of WOPCM.
+ */
 static inline u32 guc_ggtt_offset(struct i915_vma *vma)
 {
 	u32 offset = i915_ggtt_offset(vma);
@@ -95,6 +118,7 @@ static inline u32 guc_ggtt_offset(struct i915_vma *vma)
 
 void intel_guc_init_early(struct intel_guc *guc);
 void intel_guc_init_send_regs(struct intel_guc *guc);
+void intel_guc_init_params(struct intel_guc *guc);
 int intel_guc_send_nop(struct intel_guc *guc, const u32 *action, u32 len);
 int intel_guc_send_mmio(struct intel_guc *guc, const u32 *action, u32 len);
 int intel_guc_sample_forcewake(struct intel_guc *guc);
@@ -102,9 +126,6 @@ int intel_guc_auth_huc(struct intel_guc *guc, u32 rsa_offset);
 int intel_guc_suspend(struct drm_i915_private *dev_priv);
 int intel_guc_resume(struct drm_i915_private *dev_priv);
 struct i915_vma *intel_guc_allocate_vma(struct intel_guc *guc, u32 size);
-
-int intel_guc_select_fw(struct intel_guc *guc);
-int intel_guc_init_hw(struct intel_guc *guc);
 u32 intel_guc_wopcm_size(struct drm_i915_private *dev_priv);
 
 #endif

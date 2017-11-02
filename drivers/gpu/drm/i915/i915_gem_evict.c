@@ -33,6 +33,10 @@
 #include "intel_drv.h"
 #include "i915_trace.h"
 
+I915_SELFTEST_DECLARE(static struct igt_evict_ctl {
+	bool fail_if_busy:1;
+} igt_evict_ctl;)
+
 static bool ggtt_is_idle(struct drm_i915_private *i915)
 {
        struct intel_engine_cs *engine;
@@ -42,7 +46,7 @@ static bool ggtt_is_idle(struct drm_i915_private *i915)
 	       return false;
 
        for_each_engine(engine, i915, id) {
-	       if (engine->last_retired_context != i915->kernel_context)
+	       if (!intel_engine_has_kernel_context(engine))
 		       return false;
        }
 
@@ -69,6 +73,7 @@ static int ggtt_flush(struct drm_i915_private *i915)
 	if (err)
 		return err;
 
+	GEM_BUG_ON(!ggtt_is_idle(i915));
 	return 0;
 }
 
@@ -205,10 +210,11 @@ search_again:
 	 * the kernel's there is no more we can evict.
 	 */
 	if (!ggtt_is_idle(dev_priv)) {
-		ret = ggtt_flush(dev_priv);
-		if (ret)
-			return ret;
+		if (I915_SELFTEST_ONLY(igt_evict_ctl.fail_if_busy))
+			return -EBUSY;
 
+
+		cond_resched();
 		goto search_again;
 	}
 

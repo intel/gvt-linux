@@ -80,8 +80,8 @@
 
 #define DRIVER_NAME		"i915"
 #define DRIVER_DESC		"Intel Graphics"
-#define DRIVER_DATE		"20171012"
-#define DRIVER_TIMESTAMP	1507831511
+#define DRIVER_DATE		"20171023"
+#define DRIVER_TIMESTAMP	1508748913
 
 /* Use I915_STATE_WARN(x) and I915_STATE_WARN_ON() (rather than WARN() and
  * WARN_ON()) for hw state sanity checks to check for unexpected conditions
@@ -726,10 +726,12 @@ struct drm_i915_display_funcs {
 	void (*crtc_disable)(struct intel_crtc_state *old_crtc_state,
 			     struct drm_atomic_state *old_state);
 	void (*update_crtcs)(struct drm_atomic_state *state);
-	void (*audio_codec_enable)(struct drm_connector *connector,
-				   struct intel_encoder *encoder,
-				   const struct drm_display_mode *adjusted_mode);
-	void (*audio_codec_disable)(struct intel_encoder *encoder);
+	void (*audio_codec_enable)(struct intel_encoder *encoder,
+				   const struct intel_crtc_state *crtc_state,
+				   const struct drm_connector_state *conn_state);
+	void (*audio_codec_disable)(struct intel_encoder *encoder,
+				    const struct intel_crtc_state *old_crtc_state,
+				    const struct drm_connector_state *old_conn_state);
 	void (*fdi_link_train)(struct intel_crtc *crtc,
 			       const struct intel_crtc_state *crtc_state);
 	void (*init_clock_gating)(struct drm_i915_private *dev_priv);
@@ -785,7 +787,6 @@ struct intel_csr {
 	func(has_logical_ring_contexts); \
 	func(has_logical_ring_preemption); \
 	func(has_overlay); \
-	func(has_pipe_cxsr); \
 	func(has_pooled_eu); \
 	func(has_psr); \
 	func(has_rc6); \
@@ -1108,6 +1109,16 @@ struct intel_fbc {
 			int src_w;
 			int src_h;
 			bool visible;
+			/*
+			 * Display surface base address adjustement for
+			 * pageflips. Note that on gen4+ this only adjusts up
+			 * to a tile, offsets within a tile are handled in
+			 * the hw itself (with the TILEOFF register).
+			 */
+			int adjusted_x;
+			int adjusted_y;
+
+			int y;
 		} plane;
 
 		struct {
@@ -1490,6 +1501,9 @@ struct i915_gem_mm {
 	 * always the inner lock when overlapping with struct_mutex. */
 	struct mutex stolen_lock;
 
+	/* Protects bound_list/unbound_list and #drm_i915_gem_object.mm.link */
+	spinlock_t obj_lock;
+
 	/** List of all objects in gtt_space. Used to restore gtt
 	 * mappings on resume */
 	struct list_head bound_list;
@@ -1510,6 +1524,7 @@ struct i915_gem_mm {
 	 */
 	struct llist_head free_list;
 	struct work_struct free_work;
+	spinlock_t free_lock;
 
 	/**
 	 * Small stash of WC pages
@@ -1685,6 +1700,8 @@ enum modeset_restore {
 #define DDC_PIN_D  0x06
 
 struct ddi_vbt_port_info {
+	int max_tmds_clock;
+
 	/*
 	 * This is an index in the HDMI/DVI DDI buffer translation table.
 	 * The special value HDMI_LEVEL_SHIFT_UNKNOWN means the VBT didn't
@@ -1765,6 +1782,8 @@ struct intel_vbt_data {
 		u16 panel_id;
 		struct mipi_config *config;
 		struct mipi_pps_data *pps;
+		u16 bl_ports;
+		u16 cabc_ports;
 		u8 seq_version;
 		u32 size;
 		u8 *data;
@@ -1960,13 +1979,7 @@ struct i915_wa_reg {
 	u32 mask;
 };
 
-/*
- * RING_MAX_NONPRIV_SLOTS is per-engine but at this point we are only
- * allowing it for RCS as we don't foresee any requirement of having
- * a whitelist for other engines. When it is really required for
- * other engines then the limit need to be increased.
- */
-#define I915_MAX_WA_REGS (16 + RING_MAX_NONPRIV_SLOTS)
+#define I915_MAX_WA_REGS 16
 
 struct i915_workarounds {
 	struct i915_wa_reg reg[I915_MAX_WA_REGS];
@@ -2219,6 +2232,7 @@ struct i915_oa_ops {
 
 struct intel_cdclk_state {
 	unsigned int cdclk, vco, ref;
+	u8 voltage_level;
 };
 
 struct drm_i915_private {
@@ -2406,6 +2420,8 @@ struct drm_i915_private {
 	unsigned int active_crtcs;
 	/* minimum acceptable cdclk for each pipe */
 	int min_cdclk[I915_MAX_PIPES];
+	/* minimum acceptable voltage level for each pipe */
+	u8 min_voltage_level[I915_MAX_PIPES];
 
 	int dpio_phy_iosf_port[I915_NUM_PHYS_VLV];
 
@@ -3077,6 +3093,7 @@ intel_info(const struct drm_i915_private *dev_priv)
 
 #define CNL_REVID_A0		0x0
 #define CNL_REVID_B0		0x1
+#define CNL_REVID_C0		0x2
 
 #define IS_CNL_REVID(p, since, until) \
 	(IS_CANNONLAKE(p) && IS_REVID(p, since, until))
@@ -3127,6 +3144,8 @@ intel_info(const struct drm_i915_private *dev_priv)
 
 #define HAS_LOGICAL_RING_CONTEXTS(dev_priv) \
 		((dev_priv)->info.has_logical_ring_contexts)
+#define HAS_LOGICAL_RING_PREEMPTION(dev_priv) \
+		((dev_priv)->info.has_logical_ring_preemption)
 #define USES_PPGTT(dev_priv)		(i915_modparams.enable_ppgtt)
 #define USES_FULL_PPGTT(dev_priv)	(i915_modparams.enable_ppgtt >= 2)
 #define USES_FULL_48BIT_PPGTT(dev_priv)	(i915_modparams.enable_ppgtt == 3)
@@ -3168,7 +3187,6 @@ intel_info(const struct drm_i915_private *dev_priv)
 #define I915_HAS_HOTPLUG(dev_priv)	((dev_priv)->info.has_hotplug)
 
 #define HAS_FW_BLC(dev_priv) 	(INTEL_GEN(dev_priv) > 2)
-#define HAS_PIPE_CXSR(dev_priv) ((dev_priv)->info.has_pipe_cxsr)
 #define HAS_FBC(dev_priv)	((dev_priv)->info.has_fbc)
 #define HAS_CUR_FBC(dev_priv)	(!HAS_GMCH_DISPLAY(dev_priv) && INTEL_INFO(dev_priv)->gen >= 7)
 
@@ -3306,7 +3324,9 @@ extern int i915_reset_engine(struct intel_engine_cs *engine,
 			     unsigned int flags);
 
 extern bool intel_has_reset_engine(struct drm_i915_private *dev_priv);
-extern int intel_guc_reset(struct drm_i915_private *dev_priv);
+extern int intel_reset_guc(struct drm_i915_private *dev_priv);
+extern int intel_guc_reset_engine(struct intel_guc *guc,
+				  struct intel_engine_cs *engine);
 extern void intel_engine_init_hangcheck(struct intel_engine_cs *engine);
 extern void intel_hangcheck_init(struct drm_i915_private *dev_priv);
 extern unsigned long i915_chipset_val(struct drm_i915_private *dev_priv);
@@ -3565,10 +3585,16 @@ i915_gem_object_pin_pages(struct drm_i915_gem_object *obj)
 	return __i915_gem_object_get_pages(obj);
 }
 
+static inline bool
+i915_gem_object_has_pages(struct drm_i915_gem_object *obj)
+{
+	return !IS_ERR_OR_NULL(READ_ONCE(obj->mm.pages));
+}
+
 static inline void
 __i915_gem_object_pin_pages(struct drm_i915_gem_object *obj)
 {
-	GEM_BUG_ON(!obj->mm.pages);
+	GEM_BUG_ON(!i915_gem_object_has_pages(obj));
 
 	atomic_inc(&obj->mm.pages_pin_count);
 }
@@ -3582,8 +3608,8 @@ i915_gem_object_has_pinned_pages(struct drm_i915_gem_object *obj)
 static inline void
 __i915_gem_object_unpin_pages(struct drm_i915_gem_object *obj)
 {
+	GEM_BUG_ON(!i915_gem_object_has_pages(obj));
 	GEM_BUG_ON(!i915_gem_object_has_pinned_pages(obj));
-	GEM_BUG_ON(!obj->mm.pages);
 
 	atomic_dec(&obj->mm.pages_pin_count);
 }
@@ -4159,8 +4185,7 @@ bool bxt_ddi_phy_is_enabled(struct drm_i915_private *dev_priv,
 			    enum dpio_phy phy);
 bool bxt_ddi_phy_verify_state(struct drm_i915_private *dev_priv,
 			      enum dpio_phy phy);
-uint8_t bxt_ddi_phy_calc_lane_lat_optim_mask(struct intel_encoder *encoder,
-					     uint8_t lane_count);
+uint8_t bxt_ddi_phy_calc_lane_lat_optim_mask(uint8_t lane_count);
 void bxt_ddi_phy_set_lane_optim_mask(struct intel_encoder *encoder,
 				     uint8_t lane_lat_optim_mask);
 uint8_t bxt_ddi_phy_get_lane_lat_optim_mask(struct intel_encoder *encoder);

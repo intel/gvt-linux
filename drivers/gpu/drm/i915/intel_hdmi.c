@@ -70,7 +70,7 @@ static struct intel_hdmi *intel_attached_hdmi(struct drm_connector *connector)
 	return enc_to_intel_hdmi(&intel_attached_encoder(connector)->base);
 }
 
-static u32 g4x_infoframe_index(enum hdmi_infoframe_type type)
+static u32 g4x_infoframe_index(unsigned int type)
 {
 	switch (type) {
 	case HDMI_INFOFRAME_TYPE_AVI:
@@ -85,7 +85,7 @@ static u32 g4x_infoframe_index(enum hdmi_infoframe_type type)
 	}
 }
 
-static u32 g4x_infoframe_enable(enum hdmi_infoframe_type type)
+static u32 g4x_infoframe_enable(unsigned int type)
 {
 	switch (type) {
 	case HDMI_INFOFRAME_TYPE_AVI:
@@ -100,9 +100,11 @@ static u32 g4x_infoframe_enable(enum hdmi_infoframe_type type)
 	}
 }
 
-static u32 hsw_infoframe_enable(enum hdmi_infoframe_type type)
+static u32 hsw_infoframe_enable(unsigned int type)
 {
 	switch (type) {
+	case DP_SDP_VSC:
+		return VIDEO_DIP_ENABLE_VSC_HSW;
 	case HDMI_INFOFRAME_TYPE_AVI:
 		return VIDEO_DIP_ENABLE_AVI_HSW;
 	case HDMI_INFOFRAME_TYPE_SPD:
@@ -118,10 +120,12 @@ static u32 hsw_infoframe_enable(enum hdmi_infoframe_type type)
 static i915_reg_t
 hsw_dip_data_reg(struct drm_i915_private *dev_priv,
 		 enum transcoder cpu_transcoder,
-		 enum hdmi_infoframe_type type,
+		 unsigned int type,
 		 int i)
 {
 	switch (type) {
+	case DP_SDP_VSC:
+		return HSW_TVIDEO_DIP_VSC_DATA(cpu_transcoder, i);
 	case HDMI_INFOFRAME_TYPE_AVI:
 		return HSW_TVIDEO_DIP_AVI_DATA(cpu_transcoder, i);
 	case HDMI_INFOFRAME_TYPE_SPD:
@@ -136,7 +140,7 @@ hsw_dip_data_reg(struct drm_i915_private *dev_priv,
 
 static void g4x_write_infoframe(struct drm_encoder *encoder,
 				const struct intel_crtc_state *crtc_state,
-				enum hdmi_infoframe_type type,
+				unsigned int type,
 				const void *frame, ssize_t len)
 {
 	const uint32_t *data = frame;
@@ -191,7 +195,7 @@ static bool g4x_infoframe_enabled(struct drm_encoder *encoder,
 
 static void ibx_write_infoframe(struct drm_encoder *encoder,
 				const struct intel_crtc_state *crtc_state,
-				enum hdmi_infoframe_type type,
+				unsigned int type,
 				const void *frame, ssize_t len)
 {
 	const uint32_t *data = frame;
@@ -251,7 +255,7 @@ static bool ibx_infoframe_enabled(struct drm_encoder *encoder,
 
 static void cpt_write_infoframe(struct drm_encoder *encoder,
 				const struct intel_crtc_state *crtc_state,
-				enum hdmi_infoframe_type type,
+				unsigned int type,
 				const void *frame, ssize_t len)
 {
 	const uint32_t *data = frame;
@@ -309,7 +313,7 @@ static bool cpt_infoframe_enabled(struct drm_encoder *encoder,
 
 static void vlv_write_infoframe(struct drm_encoder *encoder,
 				const struct intel_crtc_state *crtc_state,
-				enum hdmi_infoframe_type type,
+				unsigned int type,
 				const void *frame, ssize_t len)
 {
 	const uint32_t *data = frame;
@@ -368,7 +372,7 @@ static bool vlv_infoframe_enabled(struct drm_encoder *encoder,
 
 static void hsw_write_infoframe(struct drm_encoder *encoder,
 				const struct intel_crtc_state *crtc_state,
-				enum hdmi_infoframe_type type,
+				unsigned int type,
 				const void *frame, ssize_t len)
 {
 	const uint32_t *data = frame;
@@ -377,6 +381,8 @@ static void hsw_write_infoframe(struct drm_encoder *encoder,
 	enum transcoder cpu_transcoder = crtc_state->cpu_transcoder;
 	i915_reg_t ctl_reg = HSW_TVIDEO_DIP_CTL(cpu_transcoder);
 	i915_reg_t data_reg;
+	int data_size = type == DP_SDP_VSC ?
+		VIDEO_DIP_VSC_DATA_SIZE : VIDEO_DIP_DATA_SIZE;
 	int i;
 	u32 val = I915_READ(ctl_reg);
 
@@ -392,7 +398,7 @@ static void hsw_write_infoframe(struct drm_encoder *encoder,
 		data++;
 	}
 	/* Write every possible data byte to force correct ECC calculation. */
-	for (; i < VIDEO_DIP_DATA_SIZE; i += 4)
+	for (; i < data_size; i += 4)
 		I915_WRITE(hsw_dip_data_reg(dev_priv, cpu_transcoder,
 					    type, i >> 2), 0);
 	mmiowb();
@@ -951,6 +957,8 @@ static void intel_hdmi_get_config(struct intel_encoder *encoder,
 	u32 tmp, flags = 0;
 	int dotclock;
 
+	pipe_config->output_types |= BIT(INTEL_OUTPUT_HDMI);
+
 	tmp = I915_READ(intel_hdmi->hdmi_reg);
 
 	if (tmp & SDVO_HSYNC_ACTIVE_HIGH)
@@ -1198,7 +1206,8 @@ static void g4x_disable_hdmi(struct intel_encoder *encoder,
 			     const struct drm_connector_state *old_conn_state)
 {
 	if (old_crtc_state->has_audio)
-		intel_audio_codec_disable(encoder);
+		intel_audio_codec_disable(encoder,
+					  old_crtc_state, old_conn_state);
 
 	intel_disable_hdmi(encoder, old_crtc_state, old_conn_state);
 }
@@ -1208,7 +1217,8 @@ static void pch_disable_hdmi(struct intel_encoder *encoder,
 			     const struct drm_connector_state *old_conn_state)
 {
 	if (old_crtc_state->has_audio)
-		intel_audio_codec_disable(encoder);
+		intel_audio_codec_disable(encoder,
+					  old_crtc_state, old_conn_state);
 }
 
 static void pch_post_disable_hdmi(struct intel_encoder *encoder,
@@ -1218,24 +1228,34 @@ static void pch_post_disable_hdmi(struct intel_encoder *encoder,
 	intel_disable_hdmi(encoder, old_crtc_state, old_conn_state);
 }
 
-static int intel_hdmi_source_max_tmds_clock(struct drm_i915_private *dev_priv)
+static int intel_hdmi_source_max_tmds_clock(struct intel_encoder *encoder)
 {
-	if (IS_G4X(dev_priv))
-		return 165000;
-	else if (IS_GEMINILAKE(dev_priv))
-		return 594000;
-	else if (IS_HASWELL(dev_priv) || INTEL_INFO(dev_priv)->gen >= 8)
-		return 300000;
+	struct drm_i915_private *dev_priv = to_i915(encoder->base.dev);
+	const struct ddi_vbt_port_info *info =
+		&dev_priv->vbt.ddi_port_info[encoder->port];
+	int max_tmds_clock;
+
+	if (IS_GEMINILAKE(dev_priv))
+		max_tmds_clock = 594000;
+	else if (INTEL_GEN(dev_priv) >= 8 || IS_HASWELL(dev_priv))
+		max_tmds_clock = 300000;
+	else if (INTEL_GEN(dev_priv) >= 5)
+		max_tmds_clock = 225000;
 	else
-		return 225000;
+		max_tmds_clock = 165000;
+
+	if (info->max_tmds_clock)
+		max_tmds_clock = min(max_tmds_clock, info->max_tmds_clock);
+
+	return max_tmds_clock;
 }
 
 static int hdmi_port_clock_limit(struct intel_hdmi *hdmi,
 				 bool respect_downstream_limits,
 				 bool force_dvi)
 {
-	struct drm_device *dev = intel_hdmi_to_dev(hdmi);
-	int max_tmds_clock = intel_hdmi_source_max_tmds_clock(to_i915(dev));
+	struct intel_encoder *encoder = &hdmi_to_dig_port(hdmi)->base;
+	int max_tmds_clock = intel_hdmi_source_max_tmds_clock(encoder);
 
 	if (respect_downstream_limits) {
 		struct intel_connector *connector = hdmi->attached_connector;
@@ -1328,6 +1348,12 @@ static bool hdmi_12bpc_possible(const struct intel_crtc_state *crtc_state)
 	int i;
 
 	if (HAS_GMCH_DISPLAY(dev_priv))
+		return false;
+
+	if (crtc_state->pipe_bpp <= 8*3)
+		return false;
+
+	if (!crtc_state->has_hdmi_sink)
 		return false;
 
 	/*
@@ -1455,9 +1481,8 @@ bool intel_hdmi_compute_config(struct intel_encoder *encoder,
 	 * outputs. We also need to check that the higher clock still fits
 	 * within limits.
 	 */
-	if (pipe_config->pipe_bpp > 8*3 && pipe_config->has_hdmi_sink && !force_dvi &&
-	    hdmi_port_clock_valid(intel_hdmi, clock_12bpc, true, force_dvi) == MODE_OK &&
-	    hdmi_12bpc_possible(pipe_config)) {
+	if (hdmi_12bpc_possible(pipe_config) &&
+	    hdmi_port_clock_valid(intel_hdmi, clock_12bpc, true, force_dvi) == MODE_OK) {
 		DRM_DEBUG_KMS("picking bpc to 12 for HDMI output\n");
 		desired_bpp = 12*3;
 
@@ -1604,12 +1629,9 @@ intel_hdmi_detect(struct drm_connector *connector, bool force)
 
 	intel_hdmi_unset_edid(connector);
 
-	if (intel_hdmi_set_edid(connector)) {
-		struct intel_hdmi *intel_hdmi = intel_attached_hdmi(connector);
-
-		hdmi_to_dig_port(intel_hdmi)->base.type = INTEL_OUTPUT_HDMI;
+	if (intel_hdmi_set_edid(connector))
 		status = connector_status_connected;
-	} else
+	else
 		status = connector_status_disconnected;
 
 	intel_display_power_put(dev_priv, POWER_DOMAIN_GMBUS);
@@ -1620,8 +1642,6 @@ intel_hdmi_detect(struct drm_connector *connector, bool force)
 static void
 intel_hdmi_force(struct drm_connector *connector)
 {
-	struct intel_hdmi *intel_hdmi = intel_attached_hdmi(connector);
-
 	DRM_DEBUG_KMS("[CONNECTOR:%d:%s]\n",
 		      connector->base.id, connector->name);
 
@@ -1631,7 +1651,6 @@ intel_hdmi_force(struct drm_connector *connector)
 		return;
 
 	intel_hdmi_set_edid(connector);
-	hdmi_to_dig_port(intel_hdmi)->base.type = INTEL_OUTPUT_HDMI;
 }
 
 static int intel_hdmi_get_modes(struct drm_connector *connector)

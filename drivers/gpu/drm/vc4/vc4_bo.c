@@ -88,11 +88,11 @@ int vc4_bo_stats_debugfs(struct seq_file *m, void *unused)
 
 	mutex_lock(&vc4->purgeable.lock);
 	if (vc4->purgeable.num)
-		seq_printf(m, "%30s: %6dkb BOs (%d)\n", "userspace BO cache",
+		seq_printf(m, "%30s: %6zdkb BOs (%d)\n", "userspace BO cache",
 			   vc4->purgeable.size / 1024, vc4->purgeable.num);
 
 	if (vc4->purgeable.purged_num)
-		seq_printf(m, "%30s: %6dkb BOs (%d)\n", "total purged BO",
+		seq_printf(m, "%30s: %6zdkb BOs (%d)\n", "total purged BO",
 			   vc4->purgeable.purged_size / 1024,
 			   vc4->purgeable.purged_num);
 	mutex_unlock(&vc4->purgeable.lock);
@@ -674,10 +674,9 @@ void vc4_bo_dec_usecnt(struct vc4_bo *bo)
 	mutex_unlock(&bo->madv_lock);
 }
 
-static void vc4_bo_cache_time_timer(unsigned long data)
+static void vc4_bo_cache_time_timer(struct timer_list *t)
 {
-	struct drm_device *dev = (struct drm_device *)data;
-	struct vc4_dev *vc4 = to_vc4_dev(dev);
+	struct vc4_dev *vc4 = from_timer(vc4, t, bo_cache.time_timer);
 
 	schedule_work(&vc4->bo_cache.time_work);
 }
@@ -1039,9 +1038,7 @@ int vc4_bo_cache_init(struct drm_device *dev)
 	INIT_LIST_HEAD(&vc4->bo_cache.time_list);
 
 	INIT_WORK(&vc4->bo_cache.time_work, vc4_bo_cache_time_work);
-	setup_timer(&vc4->bo_cache.time_timer,
-		    vc4_bo_cache_time_timer,
-		    (unsigned long)dev);
+	timer_setup(&vc4->bo_cache.time_timer, vc4_bo_cache_time_timer, 0);
 
 	return 0;
 }

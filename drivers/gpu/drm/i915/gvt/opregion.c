@@ -312,8 +312,6 @@ void intel_vgpu_clean_opregion(struct intel_vgpu *vgpu)
 
 	if (intel_gvt_host.hypervisor_type == INTEL_GVT_HYPERVISOR_XEN) {
 		map_vgpu_opregion(vgpu, false);
-		free_pages((unsigned long)vgpu_opregion(vgpu)->va,
-				get_order(INTEL_GVT_OPREGION_SIZE));
 
 		vgpu_opregion(vgpu)->va = NULL;
 	}

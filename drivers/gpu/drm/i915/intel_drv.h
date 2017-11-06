@@ -173,7 +173,7 @@ enum intel_output_type {
 	INTEL_OUTPUT_DP = 7,
 	INTEL_OUTPUT_EDP = 8,
 	INTEL_OUTPUT_DSI = 9,
-	INTEL_OUTPUT_UNKNOWN = 10,
+	INTEL_OUTPUT_DDI = 10,
 	INTEL_OUTPUT_DP_MST = 11,
 };
 
@@ -216,6 +216,9 @@ struct intel_encoder {
 	enum port port;
 	unsigned int cloneable;
 	void (*hot_plug)(struct intel_encoder *);
+	enum intel_output_type (*compute_output_type)(struct intel_encoder *,
+						      struct intel_crtc_state *,
+						      struct drm_connector_state *);
 	bool (*compute_config)(struct intel_encoder *,
 			       struct intel_crtc_state *,
 			       struct drm_connector_state *);
@@ -386,6 +389,8 @@ struct intel_atomic_state {
 	unsigned int active_crtcs;
 	/* minimum acceptable cdclk for each pipe */
 	int min_cdclk[I915_MAX_PIPES];
+	/* minimum acceptable voltage level for each pipe */
+	u8 min_voltage_level[I915_MAX_PIPES];
 
 	struct intel_shared_dpll_state shared_dpll[I915_NUM_PLLS];
 
@@ -737,6 +742,9 @@ struct intel_crtc_state {
 	 * latency optimization.
 	 */
 	uint8_t lane_lat_optim_mask;
+
+	/* minimum acceptable voltage level */
+	u8 min_voltage_level;
 
 	/* Panel fitter controls for gen2-gen4 + VLV */
 	struct {
@@ -1147,7 +1155,7 @@ enc_to_dig_port(struct drm_encoder *encoder)
 	struct intel_encoder *intel_encoder = to_intel_encoder(encoder);
 
 	switch (intel_encoder->type) {
-	case INTEL_OUTPUT_UNKNOWN:
+	case INTEL_OUTPUT_DDI:
 		WARN_ON(!HAS_DDI(to_i915(encoder->dev)));
 	case INTEL_OUTPUT_DP:
 	case INTEL_OUTPUT_EDP:
@@ -1271,7 +1279,6 @@ void intel_ddi_fdi_post_disable(struct intel_encoder *intel_encoder,
 void hsw_fdi_link_train(struct intel_crtc *crtc,
 			const struct intel_crtc_state *crtc_state);
 void intel_ddi_init(struct drm_i915_private *dev_priv, enum port port);
-enum port intel_ddi_get_encoder_port(struct intel_encoder *intel_encoder);
 bool intel_ddi_get_hw_state(struct intel_encoder *encoder, enum pipe *pipe);
 void intel_ddi_enable_transcoder_func(const struct intel_crtc_state *crtc_state);
 void intel_ddi_disable_transcoder_func(struct drm_i915_private *dev_priv,
@@ -1288,10 +1295,10 @@ bool intel_ddi_is_audio_enabled(struct drm_i915_private *dev_priv,
 void intel_ddi_get_config(struct intel_encoder *encoder,
 			  struct intel_crtc_state *pipe_config);
 
-void intel_ddi_clock_get(struct intel_encoder *encoder,
-			 struct intel_crtc_state *pipe_config);
 void intel_ddi_set_vc_payload_alloc(const struct intel_crtc_state *crtc_state,
 				    bool state);
+void intel_ddi_compute_min_voltage_level(struct drm_i915_private *dev_priv,
+					 struct intel_crtc_state *crtc_state);
 u32 bxt_signal_levels(struct intel_dp *intel_dp);
 uint32_t ddi_signal_levels(struct intel_dp *intel_dp);
 u8 intel_ddi_dp_voltage_max(struct intel_encoder *encoder);
@@ -1304,7 +1311,9 @@ void intel_init_audio_hooks(struct drm_i915_private *dev_priv);
 void intel_audio_codec_enable(struct intel_encoder *encoder,
 			      const struct intel_crtc_state *crtc_state,
 			      const struct drm_connector_state *conn_state);
-void intel_audio_codec_disable(struct intel_encoder *encoder);
+void intel_audio_codec_disable(struct intel_encoder *encoder,
+			       const struct intel_crtc_state *old_crtc_state,
+			       const struct drm_connector_state *old_conn_state);
 void i915_audio_component_init(struct drm_i915_private *dev_priv);
 void i915_audio_component_cleanup(struct drm_i915_private *dev_priv);
 void intel_audio_init(struct drm_i915_private *dev_priv);
@@ -1322,10 +1331,14 @@ void intel_init_cdclk_hooks(struct drm_i915_private *dev_priv);
 void intel_update_max_cdclk(struct drm_i915_private *dev_priv);
 void intel_update_cdclk(struct drm_i915_private *dev_priv);
 void intel_update_rawclk(struct drm_i915_private *dev_priv);
-bool intel_cdclk_state_compare(const struct intel_cdclk_state *a,
+bool intel_cdclk_needs_modeset(const struct intel_cdclk_state *a,
 			       const struct intel_cdclk_state *b);
+bool intel_cdclk_changed(const struct intel_cdclk_state *a,
+			 const struct intel_cdclk_state *b);
 void intel_set_cdclk(struct drm_i915_private *dev_priv,
 		     const struct intel_cdclk_state *cdclk_state);
+void intel_dump_cdclk_state(const struct intel_cdclk_state *cdclk_state,
+			    const char *context);
 
 /* intel_display.c */
 void i830_enable_pipe(struct drm_i915_private *dev_priv, enum pipe pipe);

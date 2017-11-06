@@ -5938,6 +5938,7 @@ static void intel_crtc_disable_noatomic(struct drm_crtc *crtc,
 
 	dev_priv->active_crtcs &= ~(1 << intel_crtc->pipe);
 	dev_priv->min_cdclk[intel_crtc->pipe] = 0;
+	dev_priv->min_voltage_level[intel_crtc->pipe] = 0;
 }
 
 /*
@@ -8856,7 +8857,9 @@ static void hsw_restore_lcpll(struct drm_i915_private *dev_priv)
 	}
 
 	intel_uncore_forcewake_put(dev_priv, FORCEWAKE_ALL);
+
 	intel_update_cdclk(dev_priv);
+	intel_dump_cdclk_state(&dev_priv->cdclk.hw, "Current CDCLK");
 }
 
 /*
@@ -10576,7 +10579,7 @@ static const char * const output_type_str[] = {
 	OUTPUT_TYPE(DP),
 	OUTPUT_TYPE(EDP),
 	OUTPUT_TYPE(DSI),
-	OUTPUT_TYPE(UNKNOWN),
+	OUTPUT_TYPE(DDI),
 	OUTPUT_TYPE(DP_MST),
 };
 
@@ -10747,7 +10750,7 @@ static bool check_digital_port_conflicts(struct drm_atomic_state *state)
 
 		switch (encoder->type) {
 			unsigned int port_mask;
-		case INTEL_OUTPUT_UNKNOWN:
+		case INTEL_OUTPUT_DDI:
 			if (WARN_ON(!HAS_DDI(to_i915(dev))))
 				break;
 		case INTEL_OUTPUT_DP:
@@ -10880,7 +10883,12 @@ intel_modeset_pipe_config(struct drm_crtc *crtc,
 		 * Determine output_types before calling the .compute_config()
 		 * hooks so that the hooks can use this information safely.
 		 */
-		pipe_config->output_types |= 1 << encoder->type;
+		if (encoder->compute_output_type)
+			pipe_config->output_types |=
+				BIT(encoder->compute_output_type(encoder, pipe_config,
+								 connector_state));
+		else
+			pipe_config->output_types |= BIT(encoder->type);
 	}
 
 encoder_retry:
@@ -11289,6 +11297,8 @@ intel_pipe_config_compare(struct drm_i915_private *dev_priv,
 	PIPE_CONF_CHECK_CLOCK_FUZZY(base.adjusted_mode.crtc_clock);
 	PIPE_CONF_CHECK_CLOCK_FUZZY(port_clock);
 
+	PIPE_CONF_CHECK_I(min_voltage_level);
+
 #undef PIPE_CONF_CHECK_X
 #undef PIPE_CONF_CHECK_I
 #undef PIPE_CONF_CHECK_P
@@ -11557,10 +11567,8 @@ verify_crtc_state(struct drm_crtc *crtc,
 				"Encoder connected to wrong pipe %c\n",
 				pipe_name(pipe));
 
-		if (active) {
-			pipe_config->output_types |= 1 << encoder->type;
+		if (active)
 			encoder->get_config(encoder, pipe_config);
-		}
 	}
 
 	intel_crtc_compute_pixel_rate(pipe_config);
@@ -11931,16 +11939,16 @@ static int intel_modeset_checks(struct drm_atomic_state *state)
 		 * holding all the crtc locks, even if we don't end up
 		 * touching the hardware
 		 */
-		if (!intel_cdclk_state_compare(&dev_priv->cdclk.logical,
-					       &intel_state->cdclk.logical)) {
+		if (intel_cdclk_changed(&dev_priv->cdclk.logical,
+					&intel_state->cdclk.logical)) {
 			ret = intel_lock_all_pipes(state);
 			if (ret < 0)
 				return ret;
 		}
 
 		/* All pipes must be switched off while we change the cdclk. */
-		if (!intel_cdclk_state_compare(&dev_priv->cdclk.actual,
-					       &intel_state->cdclk.actual)) {
+		if (intel_cdclk_needs_modeset(&dev_priv->cdclk.actual,
+					      &intel_state->cdclk.actual)) {
 			ret = intel_modeset_all_pipes(state);
 			if (ret < 0)
 				return ret;
@@ -11949,6 +11957,9 @@ static int intel_modeset_checks(struct drm_atomic_state *state)
 		DRM_DEBUG_KMS("New cdclk calculated to be logical %u kHz, actual %u kHz\n",
 			      intel_state->cdclk.logical.cdclk,
 			      intel_state->cdclk.actual.cdclk);
+		DRM_DEBUG_KMS("New voltage level calculated to be logical %u, actual %u\n",
+			      intel_state->cdclk.logical.voltage_level,
+			      intel_state->cdclk.actual.voltage_level);
 	} else {
 		to_intel_atomic_state(state)->cdclk.logical = dev_priv->cdclk.logical;
 	}
@@ -12517,6 +12528,9 @@ static int intel_atomic_commit(struct drm_device *dev,
 	if (intel_state->modeset) {
 		memcpy(dev_priv->min_cdclk, intel_state->min_cdclk,
 		       sizeof(intel_state->min_cdclk));
+		memcpy(dev_priv->min_voltage_level,
+		       intel_state->min_voltage_level,
+		       sizeof(intel_state->min_voltage_level));
 		dev_priv->active_crtcs = intel_state->active_crtcs;
 		dev_priv->cdclk.logical = intel_state->cdclk.logical;
 		dev_priv->cdclk.actual = intel_state->cdclk.actual;
@@ -12754,7 +12768,7 @@ skl_max_scale(struct intel_crtc *intel_crtc, struct intel_crtc_state *crtc_state
 	crtc_clock = crtc_state->base.adjusted_mode.crtc_clock;
 	max_dotclk = to_intel_atomic_state(crtc_state->base.state)->cdclk.logical.cdclk;
 
-	if (IS_GEMINILAKE(dev_priv))
+	if (IS_GEMINILAKE(dev_priv) || INTEL_GEN(dev_priv) >= 10)
 		max_dotclk *= 2;
 
 	if (WARN_ON_ONCE(!crtc_clock || max_dotclk < crtc_clock))
@@ -14349,6 +14363,7 @@ void intel_modeset_init_hw(struct drm_device *dev)
 	struct drm_i915_private *dev_priv = to_i915(dev);
 
 	intel_update_cdclk(dev_priv);
+	intel_dump_cdclk_state(&dev_priv->cdclk.hw, "Current CDCLK");
 	dev_priv->cdclk.logical = dev_priv->cdclk.actual = dev_priv->cdclk.hw;
 
 	intel_init_clock_gating(dev_priv);
@@ -14948,7 +14963,6 @@ static void intel_modeset_readout_hw_state(struct drm_device *dev)
 			crtc_state = to_intel_crtc_state(crtc->base.state);
 
 			encoder->base.crtc = &crtc->base;
-			crtc_state->output_types |= 1 << encoder->type;
 			encoder->get_config(encoder, crtc_state);
 		} else {
 			encoder->base.crtc = NULL;
@@ -15027,6 +15041,8 @@ static void intel_modeset_readout_hw_state(struct drm_device *dev)
 		}
 
 		dev_priv->min_cdclk[crtc->pipe] = min_cdclk;
+		dev_priv->min_voltage_level[crtc->pipe] =
+			crtc_state->min_voltage_level;
 
 		intel_pipe_config_sanity_check(dev_priv, crtc_state);
 	}

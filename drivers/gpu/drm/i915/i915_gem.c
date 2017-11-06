@@ -2923,6 +2923,16 @@ i915_gem_reset_prepare_engine(struct intel_engine_cs *engine)
 	tasklet_kill(&engine->execlists.irq_tasklet);
 	tasklet_disable(&engine->execlists.irq_tasklet);
 
+	/*
+	 * We're using worker to queue preemption requests from the tasklet in
+	 * GuC submission mode.
+	 * Even though tasklet was disabled, we may still have a worker queued.
+	 * Let's make sure that all workers scheduled before disabling the
+	 * tasklet are completed before continuing with the reset.
+	 */
+	if (engine->i915->guc.preempt_wq)
+		flush_workqueue(engine->i915->guc.preempt_wq);
+
 	if (engine->irq_seqno_barrier)
 		engine->irq_seqno_barrier(engine);
 
@@ -3278,13 +3288,20 @@ i915_gem_retire_work_handler(struct work_struct *work)
 	}
 }
 
+static inline bool
+new_requests_since_last_retire(const struct drm_i915_private *i915)
+{
+	return (READ_ONCE(i915->gt.active_requests) ||
+		work_pending(&i915->gt.idle_work.work));
+}
+
 static void
 i915_gem_idle_work_handler(struct work_struct *work)
 {
 	struct drm_i915_private *dev_priv =
 		container_of(work, typeof(*dev_priv), gt.idle_work.work);
-	struct drm_device *dev = &dev_priv->drm;
 	bool rearm_hangcheck;
+	ktime_t end;
 
 	if (!READ_ONCE(dev_priv->gt.awake))
 		return;
@@ -3293,14 +3310,21 @@ i915_gem_idle_work_handler(struct work_struct *work)
 	 * Wait for last execlists context complete, but bail out in case a
 	 * new request is submitted.
 	 */
-	wait_for(intel_engines_are_idle(dev_priv), 10);
-	if (READ_ONCE(dev_priv->gt.active_requests))
-		return;
+	end = ktime_add_ms(ktime_get(), 200);
+	do {
+		if (new_requests_since_last_retire(dev_priv))
+			return;
+
+		if (intel_engines_are_idle(dev_priv))
+			break;
+
+		usleep_range(100, 500);
+	} while (ktime_before(ktime_get(), end));
 
 	rearm_hangcheck =
 		cancel_delayed_work_sync(&dev_priv->gpu_error.hangcheck_work);
 
-	if (!mutex_trylock(&dev->struct_mutex)) {
+	if (!mutex_trylock(&dev_priv->drm.struct_mutex)) {
 		/* Currently busy, come back later */
 		mod_delayed_work(dev_priv->wq,
 				 &dev_priv->gt.idle_work,
@@ -3312,16 +3336,23 @@ i915_gem_idle_work_handler(struct work_struct *work)
 	 * New request retired after this work handler started, extend active
 	 * period until next instance of the work.
 	 */
-	if (work_pending(work))
+	if (new_requests_since_last_retire(dev_priv))
 		goto out_unlock;
 
-	if (dev_priv->gt.active_requests)
-		goto out_unlock;
+	/*
+	 * Be paranoid and flush a concurrent interrupt to make sure
+	 * we don't reactivate any irq tasklets after parking.
+	 *
+	 * FIXME: Note that even though we have waited for execlists to be idle,
+	 * there may still be an in-flight interrupt even though the CSB
+	 * is now empty. synchronize_irq() makes sure that a residual interrupt
+	 * is completed before we continue, but it doesn't prevent the HW from
+	 * raising a spurious interrupt later. To complete the shield we should
+	 * coordinate disabling the CS irq with flushing the interrupts.
+	 */
+	synchronize_irq(dev_priv->drm.irq);
 
-	if (wait_for(intel_engines_are_idle(dev_priv), 10))
-		DRM_ERROR("Timeout waiting for engines to idle\n");
-
-	intel_engines_mark_idle(dev_priv);
+	intel_engines_park(dev_priv);
 	i915_gem_timelines_mark_idle(dev_priv);
 
 	GEM_BUG_ON(!dev_priv->gt.awake);
@@ -3332,7 +3363,7 @@ i915_gem_idle_work_handler(struct work_struct *work)
 		gen6_rps_idle(dev_priv);
 	intel_runtime_pm_put(dev_priv);
 out_unlock:
-	mutex_unlock(&dev->struct_mutex);
+	mutex_unlock(&dev_priv->drm.struct_mutex);
 
 out_rearm:
 	if (rearm_hangcheck) {
@@ -4605,11 +4636,17 @@ static void __i915_gem_free_work(struct work_struct *work)
 	 * unbound now.
 	 */
 
+	spin_lock(&i915->mm.free_lock);
 	while ((freed = llist_del_all(&i915->mm.free_list))) {
+		spin_unlock(&i915->mm.free_lock);
+
 		__i915_gem_free_objects(i915, freed);
 		if (need_resched())
-			break;
+			return;
+
+		spin_lock(&i915->mm.free_lock);
 	}
+	spin_unlock(&i915->mm.free_lock);
 }
 
 static void __i915_gem_free_object_rcu(struct rcu_head *head)
@@ -4900,18 +4937,15 @@ int i915_gem_init_hw(struct drm_i915_private *dev_priv)
 		goto out;
 	}
 
-	/* Need to do basic initialisation of all rings first: */
-	ret = __i915_gem_restart_engines(dev_priv);
-	if (ret)
-		goto out;
-
-	intel_mocs_init_l3cc_table(dev_priv);
-
 	/* We can't enable contexts until all firmware is loaded */
 	ret = intel_uc_init_hw(dev_priv);
 	if (ret)
 		goto out;
 
+	intel_mocs_init_l3cc_table(dev_priv);
+
+	/* Only when the HW is re-initialised, can we replay the requests */
+	ret = __i915_gem_restart_engines(dev_priv);
 out:
 	intel_uncore_forcewake_put(dev_priv, FORCEWAKE_ALL);
 	return ret;

@@ -726,10 +726,12 @@ struct drm_i915_display_funcs {
 	void (*crtc_disable)(struct intel_crtc_state *old_crtc_state,
 			     struct drm_atomic_state *old_state);
 	void (*update_crtcs)(struct drm_atomic_state *state);
-	void (*audio_codec_enable)(struct drm_connector *connector,
-				   struct intel_encoder *encoder,
-				   const struct drm_display_mode *adjusted_mode);
-	void (*audio_codec_disable)(struct intel_encoder *encoder);
+	void (*audio_codec_enable)(struct intel_encoder *encoder,
+				   const struct intel_crtc_state *crtc_state,
+				   const struct drm_connector_state *conn_state);
+	void (*audio_codec_disable)(struct intel_encoder *encoder,
+				    const struct intel_crtc_state *old_crtc_state,
+				    const struct drm_connector_state *old_conn_state);
 	void (*fdi_link_train)(struct intel_crtc *crtc,
 			       const struct intel_crtc_state *crtc_state);
 	void (*init_clock_gating)(struct drm_i915_private *dev_priv);
@@ -911,6 +913,12 @@ struct i915_gpu_state {
 	struct intel_device_info device_info;
 	struct i915_params params;
 
+	struct i915_error_uc {
+		struct intel_uc_fw guc_fw;
+		struct intel_uc_fw huc_fw;
+		struct drm_i915_error_object *guc_log;
+	} uc;
+
 	/* Generic register state */
 	u32 eir;
 	u32 pgtbl_er;
@@ -934,7 +942,6 @@ struct i915_gpu_state {
 	struct intel_overlay_error_state *overlay;
 	struct intel_display_error_state *display;
 	struct drm_i915_error_object *semaphore;
-	struct drm_i915_error_object *guc_log;
 
 	struct drm_i915_error_engine {
 		int engine_id;
@@ -1698,6 +1705,8 @@ enum modeset_restore {
 #define DDC_PIN_D  0x06
 
 struct ddi_vbt_port_info {
+	int max_tmds_clock;
+
 	/*
 	 * This is an index in the HDMI/DVI DDI buffer translation table.
 	 * The special value HDMI_LEVEL_SHIFT_UNKNOWN means the VBT didn't
@@ -2228,6 +2237,7 @@ struct i915_oa_ops {
 
 struct intel_cdclk_state {
 	unsigned int cdclk, vco, ref;
+	u8 voltage_level;
 };
 
 struct drm_i915_private {
@@ -2415,6 +2425,8 @@ struct drm_i915_private {
 	unsigned int active_crtcs;
 	/* minimum acceptable cdclk for each pipe */
 	int min_cdclk[I915_MAX_PIPES];
+	/* minimum acceptable voltage level for each pipe */
+	u8 min_voltage_level[I915_MAX_PIPES];
 
 	int dpio_phy_iosf_port[I915_NUM_PHYS_VLV];
 
@@ -3137,6 +3149,8 @@ intel_info(const struct drm_i915_private *dev_priv)
 
 #define HAS_LOGICAL_RING_CONTEXTS(dev_priv) \
 		((dev_priv)->info.has_logical_ring_contexts)
+#define HAS_LOGICAL_RING_PREEMPTION(dev_priv) \
+		((dev_priv)->info.has_logical_ring_preemption)
 #define USES_PPGTT(dev_priv)		(i915_modparams.enable_ppgtt)
 #define USES_FULL_PPGTT(dev_priv)	(i915_modparams.enable_ppgtt >= 2)
 #define USES_FULL_48BIT_PPGTT(dev_priv)	(i915_modparams.enable_ppgtt == 3)
@@ -3315,7 +3329,9 @@ extern int i915_reset_engine(struct intel_engine_cs *engine,
 			     unsigned int flags);
 
 extern bool intel_has_reset_engine(struct drm_i915_private *dev_priv);
-extern int intel_guc_reset(struct drm_i915_private *dev_priv);
+extern int intel_reset_guc(struct drm_i915_private *dev_priv);
+extern int intel_guc_reset_engine(struct intel_guc *guc,
+				  struct intel_engine_cs *engine);
 extern void intel_engine_init_hangcheck(struct intel_engine_cs *engine);
 extern void intel_hangcheck_init(struct drm_i915_private *dev_priv);
 extern unsigned long i915_chipset_val(struct drm_i915_private *dev_priv);
@@ -4174,8 +4190,7 @@ bool bxt_ddi_phy_is_enabled(struct drm_i915_private *dev_priv,
 			    enum dpio_phy phy);
 bool bxt_ddi_phy_verify_state(struct drm_i915_private *dev_priv,
 			      enum dpio_phy phy);
-uint8_t bxt_ddi_phy_calc_lane_lat_optim_mask(struct intel_encoder *encoder,
-					     uint8_t lane_count);
+uint8_t bxt_ddi_phy_calc_lane_lat_optim_mask(uint8_t lane_count);
 void bxt_ddi_phy_set_lane_optim_mask(struct intel_encoder *encoder,
 				     uint8_t lane_lat_optim_mask);
 uint8_t bxt_ddi_phy_get_lane_lat_optim_mask(struct intel_encoder *encoder);

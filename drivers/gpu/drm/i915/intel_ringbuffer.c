@@ -480,9 +480,13 @@ static bool stop_ring(struct intel_engine_cs *engine)
 		}
 	}
 
-	I915_WRITE_CTL(engine, 0);
+	I915_WRITE_HEAD(engine, I915_READ_TAIL(engine));
+
 	I915_WRITE_HEAD(engine, 0);
 	I915_WRITE_TAIL(engine, 0);
+
+	/* The ring must be empty before it is disabled */
+	I915_WRITE_CTL(engine, 0);
 
 	return (I915_READ_HEAD(engine) & HEAD_ADDR) == 0;
 }
@@ -2028,12 +2032,15 @@ static void i9xx_set_default_submission(struct intel_engine_cs *engine)
 {
 	engine->submit_request = i9xx_submit_request;
 	engine->cancel_requests = cancel_requests;
+
+	engine->park = NULL;
+	engine->unpark = NULL;
 }
 
 static void gen6_bsd_set_default_submission(struct intel_engine_cs *engine)
 {
+	i9xx_set_default_submission(engine);
 	engine->submit_request = gen6_bsd_submit_request;
-	engine->cancel_requests = cancel_requests;
 }
 
 static void intel_ring_default_vfuncs(struct drm_i915_private *dev_priv,

@@ -620,7 +620,7 @@ int intel_engine_init_common(struct intel_engine_cs *engine)
 	 * Similarly the preempt context must always be available so that
 	 * we can interrupt the engine at any time.
 	 */
-	if (INTEL_INFO(engine->i915)->has_logical_ring_preemption) {
+	if (HAS_LOGICAL_RING_PREEMPTION(engine->i915)) {
 		ring = engine->context_pin(engine,
 					   engine->i915->preempt_context);
 		if (IS_ERR(ring)) {
@@ -651,7 +651,7 @@ err_rs_fini:
 err_breadcrumbs:
 	intel_engine_fini_breadcrumbs(engine);
 err_unpin_preempt:
-	if (INTEL_INFO(engine->i915)->has_logical_ring_preemption)
+	if (HAS_LOGICAL_RING_PREEMPTION(engine->i915))
 		engine->context_unpin(engine, engine->i915->preempt_context);
 err_unpin_kernel:
 	engine->context_unpin(engine, engine->i915->kernel_context);
@@ -679,7 +679,7 @@ void intel_engine_cleanup_common(struct intel_engine_cs *engine)
 	intel_engine_cleanup_cmd_parser(engine);
 	i915_gem_batch_pool_fini(&engine->batch_pool);
 
-	if (INTEL_INFO(engine->i915)->has_logical_ring_preemption)
+	if (HAS_LOGICAL_RING_PREEMPTION(engine->i915))
 		engine->context_unpin(engine, engine->i915->preempt_context);
 	engine->context_unpin(engine, engine->i915->kernel_context);
 }
@@ -1548,8 +1548,8 @@ bool intel_engine_is_idle(struct intel_engine_cs *engine)
 	if (test_bit(ENGINE_IRQ_EXECLIST, &engine->irq_posted))
 		return false;
 
-	/* Both ports drained, no more ELSP submission? */
-	if (port_request(&engine->execlists.port[0]))
+	/* Waiting to drain ELSP? */
+	if (READ_ONCE(engine->execlists.active))
 		return false;
 
 	/* ELSP is empty, but there are ready requests? */
@@ -1585,6 +1585,12 @@ bool intel_engines_are_idle(struct drm_i915_private *dev_priv)
 	return true;
 }
 
+bool intel_engine_has_kernel_context(const struct intel_engine_cs *engine)
+{
+	return (!engine->last_retired_context ||
+		i915_gem_context_is_kernel(engine->last_retired_context));
+}
+
 void intel_engines_reset_default_submission(struct drm_i915_private *i915)
 {
 	struct intel_engine_cs *engine;
@@ -1594,16 +1600,59 @@ void intel_engines_reset_default_submission(struct drm_i915_private *i915)
 		engine->set_default_submission(engine);
 }
 
-void intel_engines_mark_idle(struct drm_i915_private *i915)
+/**
+ * intel_engines_park: called when the GT is transitioning from busy->idle
+ * @i915: the i915 device
+ *
+ * The GT is now idle and about to go to sleep (maybe never to wake again?).
+ * Time for us to tidy and put away our toys (release resources back to the
+ * system).
+ */
+void intel_engines_park(struct drm_i915_private *i915)
 {
 	struct intel_engine_cs *engine;
 	enum intel_engine_id id;
 
 	for_each_engine(engine, i915, id) {
+		/* Flush the residual irq tasklets first. */
 		intel_engine_disarm_breadcrumbs(engine);
-		i915_gem_batch_pool_fini(&engine->batch_pool);
 		tasklet_kill(&engine->execlists.irq_tasklet);
+
+		/*
+		 * We are committed now to parking the engines, make sure there
+		 * will be no more interrupts arriving later and the engines
+		 * are truly idle.
+		 */
+		if (!intel_engine_is_idle(engine)) {
+			struct drm_printer p = drm_debug_printer(__func__);
+
+			DRM_ERROR("%s is not idle before parking\n",
+				  engine->name);
+			intel_engine_dump(engine, &p);
+		}
+
+		if (engine->park)
+			engine->park(engine);
+
+		i915_gem_batch_pool_fini(&engine->batch_pool);
 		engine->execlists.no_priolist = false;
+	}
+}
+
+/**
+ * intel_engines_unpark: called when the GT is transitioning from idle->busy
+ * @i915: the i915 device
+ *
+ * The GT was idle and now about to fire up with some new user requests.
+ */
+void intel_engines_unpark(struct drm_i915_private *i915)
+{
+	struct intel_engine_cs *engine;
+	enum intel_engine_id id;
+
+	for_each_engine(engine, i915, id) {
+		if (engine->unpark)
+			engine->unpark(engine);
 	}
 }
 
@@ -1688,9 +1737,14 @@ void intel_engine_dump(struct intel_engine_cs *engine, struct drm_printer *m)
 	drm_printf(m, "\tRING_TAIL:  0x%08x [0x%08x]\n",
 		   I915_READ(RING_TAIL(engine->mmio_base)) & TAIL_ADDR,
 		   rq ? rq->ring->tail : 0);
-	drm_printf(m, "\tRING_CTL:   0x%08x [%s]\n",
+	drm_printf(m, "\tRING_CTL:   0x%08x%s\n",
 		   I915_READ(RING_CTL(engine->mmio_base)),
-		   I915_READ(RING_CTL(engine->mmio_base)) & (RING_WAIT | RING_WAIT_SEMAPHORE) ? "waiting" : "");
+		   I915_READ(RING_CTL(engine->mmio_base)) & (RING_WAIT | RING_WAIT_SEMAPHORE) ? " [waiting]" : "");
+	if (INTEL_GEN(engine->i915) > 2) {
+		drm_printf(m, "\tRING_MODE:  0x%08x%s\n",
+			   I915_READ(RING_MI_MODE(engine->mmio_base)),
+			   I915_READ(RING_MI_MODE(engine->mmio_base)) & (MODE_IDLE) ? " [idle]" : "");
+	}
 
 	rcu_read_unlock();
 
@@ -1749,6 +1803,7 @@ void intel_engine_dump(struct intel_engine_cs *engine, struct drm_printer *m)
 					   idx);
 			}
 		}
+		drm_printf(m, "\t\tHW active? 0x%x\n", execlists->active);
 		rcu_read_unlock();
 	} else if (INTEL_GEN(dev_priv) > 6) {
 		drm_printf(m, "\tPP_DIR_BASE: 0x%08x\n",

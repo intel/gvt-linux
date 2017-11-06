@@ -901,9 +901,11 @@ list_update_cgroup_event(struct perf_event *event,
 	cpuctx_entry = &cpuctx->cgrp_cpuctx_entry;
 	/* cpuctx->cgrp is NULL unless a cgroup event is active in this CPU .*/
 	if (add) {
+		struct perf_cgroup *cgrp = perf_cgroup_from_task(current, ctx);
+
 		list_add(cpuctx_entry, this_cpu_ptr(&cgrp_cpuctx_list));
-		if (perf_cgroup_from_task(current, ctx) == event->cgrp)
-			cpuctx->cgrp = event->cgrp;
+		if (cgroup_is_descendant(cgrp->css.cgroup, event->cgrp->css.cgroup))
+			cpuctx->cgrp = cgrp;
 	} else {
 		list_del(cpuctx_entry);
 		cpuctx->cgrp = NULL;
@@ -9222,10 +9224,12 @@ EXPORT_SYMBOL_GPL(perf_pmu_register);
 void perf_pmu_unregister(struct pmu *pmu)
 {
 	int remove_device;
+	int remove_context;
 
 	mutex_lock(&pmus_lock);
 	remove_device = pmu_bus_running;
 	list_del_rcu(&pmu->entry);
+	remove_context = !find_pmu_context(pmu->task_ctx_nr);
 	mutex_unlock(&pmus_lock);
 
 	/*
@@ -9244,7 +9248,8 @@ void perf_pmu_unregister(struct pmu *pmu)
 		device_del(pmu->dev);
 		put_device(pmu->dev);
 	}
-	free_pmu_context(pmu);
+	if (remove_context)
+		free_pmu_context(pmu);
 }
 EXPORT_SYMBOL_GPL(perf_pmu_unregister);
 

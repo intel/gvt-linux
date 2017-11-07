@@ -1,28 +1,12 @@
-drm-upstream drm-fixes 9cc06965fc8b7c5592b6a1355dff2623611bfeb3
-	Merge branch 'drm-fixes-4.14' of git://people.freedesktop.org/~agd5f/linux into drm-fixes
-drm-misc drm-misc-fixes 62676d10b483a2ff6e8b08c5e7c7d63a831343f5
-	qxl: alloc & use shadow for dumb buffers
-drm-intel drm-intel-fixes bb5cf3386327c9cb5ca3fbb85242e940751649c8
-	drm/i915: Check incoming alignment for unfenced buffers (on i915gm)
-drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
-	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
-drm-upstream drm-next 8a6fb5b5823d863b07f670dc9e791d4622d5b7e9
-	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
-drm-misc drm-misc-next-fixes 30cfcf01665f3c8d8dc3ebb3dfb1a8248f53404a
-	drm/rockchip: add CONFIG_OF dependency for lvds
-drm-intel drm-intel-next-fixes 8a6fb5b5823d863b07f670dc9e791d4622d5b7e9
-	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
-drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
-	Linux 4.14-rc1
-drm-misc drm-misc-next de7e8bd01a241103c141801479e0bda786b76290
-	drm: via: use ktime_get() instead of do_gettimeofday
-drm-intel drm-intel-next-queued 84a20a8a360d5d3322d976672427fae800722038
-	drm/i915: Handle error-state modparams in dedicated functions
-drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
-	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
-sound-upstream for-linus 9b7d869ee5a77ed4a462372bb89af622e705bfb8
-	ALSA: timer: Limit max instances per timer
-sound-upstream for-next 3f1185d6c9d3fe91aa85ec8d3f4d71207452c458
-	ALSA: fix kernel-doc build warning
-drm-intel topic/core-for-CI 6fdcd04508c92fd588a30cc3a1c9e2c9be451230
-	e1000e: fix buffer overrun while the I219 is processing DMA transactions
+drm-tip/drm-tip 4295e1469b2127d79d2d02ef34d065509bdded97
+	drm-tip: 2017y-11m-06d-15h-35m-57s UTC integration manifest
+vfio-upstream/for-linus 796b755066dd6254bfb6388fec901631e868d1c7
+	vfio/pci: Fix handling of RC integrated endpoint PCIe capability size
+vfio-upstream/next d0422298337986e63714df6637093e4153d7dab9
+	Merge branches 'iommu/arm/smmu', 'iommu/updates', 'vfio/fixes', 'vfio/platform', 'iommu/vt-d', 'iommu/ipmmu-vmsa' and 'iommu/iova' into next
+origin/gvt-fixes 8474a88db1e08c576a03b52319fae67017aac0f3
+	drm/i915/gvt: Adding ACTHD mmio read handler
+origin/gvt-next dbb42ce9e7346e18b284b4fa720ebd68179094df
+	drm/i915/gvt: Limit read hw reg to active vgpu
+origin/gvt-next-fixes d02fd5f7709f1296bad5d92e7e8515ef1a05dec4
+	drm/i915/gvt: Remove one duplicated MMIO

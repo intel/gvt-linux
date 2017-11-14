@@ -1,28 +1,12 @@
-drm-upstream drm-fixes 60ccb31bd680469ee0db92b0b6594d79bd13ff87
-	Merge tag 'drm-intel-fixes-2017-11-08' of git://anongit.freedesktop.org/drm/drm-intel into drm-fixes
-drm-misc drm-misc-fixes 253696ccd613fbdaa5aba1de44c461a058e0a114
-	drm/vc4: Account for interrupts in flight
-drm-intel drm-intel-fixes 423a8a942e95493b73228ba6a3f176dcc7f35fa9
-	drm/i915: Deconstruct struct sgt_dma initialiser
-drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
-	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
-drm-upstream drm-next fc150d6bba8f446f77732cf27b09a7e646c25771
-	Merge branch 'linus-4.14-rc4-acp-prereq' of git://people.freedesktop.org/~agd5f/linux into drm-next
-drm-misc drm-misc-next-fixes a9386bb051931778436db3dd6e3a163f7db92b56
-	Merge tag 'drm-misc-next-fixes-2017-11-08' of git://anongit.freedesktop.org/drm/drm-misc into drm-next
-drm-intel drm-intel-next-fixes e8c49fa96838101435b9e4884d49b30da7a4e0c6
-	drm/i915: Reorder context-close to avoid calling i915_vma_close() under RCU
-drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
-	Linux 4.14-rc1
-drm-misc drm-misc-next 5d276a1acaa80f4b7a76577510a2b1835ce01f4f
-	dma-buf: add reservation_object_lock_interruptible()
-drm-intel drm-intel-next-queued b03ec3d67ab840f674eb61a3467fd971c9552aa4
-	drm/i915: There is only one fault register from GEN8 onwards
-drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
-	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
-sound-upstream for-linus 7087cb8fad5e19113d82f47f351fc6b338948d5f
-	Documentation: sound: hd-audio: notes.rst
-sound-upstream for-next 3f1185d6c9d3fe91aa85ec8d3f4d71207452c458
-	ALSA: fix kernel-doc build warning
-drm-intel topic/core-for-CI 6fdcd04508c92fd588a30cc3a1c9e2c9be451230
-	e1000e: fix buffer overrun while the I219 is processing DMA transactions
+drm-tip/drm-tip 47c27b789ea5499be24cd629a4f3b4ff741f29bf
+	drm-tip: 2017y-11m-14d-00h-46m-56s UTC integration manifest
+vfio-upstream/for-linus 796b755066dd6254bfb6388fec901631e868d1c7
+	vfio/pci: Fix handling of RC integrated endpoint PCIe capability size
+vfio-upstream/next d0422298337986e63714df6637093e4153d7dab9
+	Merge branches 'iommu/arm/smmu', 'iommu/updates', 'vfio/fixes', 'vfio/platform', 'iommu/vt-d', 'iommu/ipmmu-vmsa' and 'iommu/iova' into next
+origin/gvt-fixes 9a69cbf0c0df8ede6bdcdf361a71be90ab835d54
+	drm/i915/gvt: Fix unsafe locking caused by spin_unlock_bh
+origin/gvt-next 561c5b3818191492662a0030a8f96b8d851a4142
+	drm/i915/gvt: Let each vgpu has separate opregion memory
+origin/gvt-next-fixes d02fd5f7709f1296bad5d92e7e8515ef1a05dec4
+	drm/i915/gvt: Remove one duplicated MMIO

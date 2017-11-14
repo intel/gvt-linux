@@ -21,11 +21,8 @@ struct drm_gem_cma_object {
 	void *vaddr;
 };
 
-static inline struct drm_gem_cma_object *
-to_drm_gem_cma_obj(struct drm_gem_object *gem_obj)
-{
-	return container_of(gem_obj, struct drm_gem_cma_object, base);
-}
+#define to_drm_gem_cma_obj(gem_obj) \
+	container_of(gem_obj, struct drm_gem_cma_object, base)
 
 #ifndef CONFIG_MMU
 #define DRM_GEM_CMA_UNMAPPED_AREA_FOPS \
@@ -91,9 +88,8 @@ unsigned long drm_gem_cma_get_unmapped_area(struct file *filp,
 					    unsigned long flags);
 #endif
 
-#ifdef CONFIG_DEBUG_FS
-void drm_gem_cma_describe(struct drm_gem_cma_object *obj, struct seq_file *m);
-#endif
+void drm_gem_cma_print_info(struct drm_printer *p, unsigned int indent,
+			    const struct drm_gem_object *obj);
 
 struct sg_table *drm_gem_cma_prime_get_sg_table(struct drm_gem_object *obj);
 struct drm_gem_object *

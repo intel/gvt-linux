@@ -219,10 +219,8 @@ intel_fdi_link_freq(struct drm_i915_private *dev_priv,
 {
 	if (HAS_DDI(dev_priv))
 		return pipe_config->port_clock; /* SPLL */
-	else if (IS_GEN5(dev_priv))
-		return ((I915_READ(FDI_PLL_BIOS_0) & FDI_PLL_FB_CLOCK_MASK) + 2) * 10000;
 	else
-		return 270000;
+		return dev_priv->fdi_pll_freq;
 }
 
 static const struct intel_limit intel_limits_i8xx_dac = {
@@ -1703,7 +1701,7 @@ void vlv_wait_port_ready(struct drm_i915_private *dev_priv,
 	u32 port_mask;
 	i915_reg_t dpll_reg;
 
-	switch (dport->port) {
+	switch (dport->base.port) {
 	case PORT_B:
 		port_mask = DPLL_PORTB_READY_MASK;
 		dpll_reg = DPLL(0);
@@ -1725,7 +1723,8 @@ void vlv_wait_port_ready(struct drm_i915_private *dev_priv,
 				    dpll_reg, port_mask, expected_mask,
 				    1000))
 		WARN(1, "timed out waiting for port %c ready: got 0x%x, expected 0x%x\n",
-		     port_name(dport->port), I915_READ(dpll_reg) & port_mask, expected_mask);
+		     port_name(dport->base.port),
+		     I915_READ(dpll_reg) & port_mask, expected_mask);
 }
 
 static void ironlake_enable_pch_transcoder(struct drm_i915_private *dev_priv,
@@ -4483,7 +4482,7 @@ intel_trans_dp_port_sel(struct intel_crtc *crtc)
 	for_each_encoder_on_crtc(dev, &crtc->base, encoder) {
 		if (encoder->type == INTEL_OUTPUT_DP ||
 		    encoder->type == INTEL_OUTPUT_EDP)
-			return enc_to_dig_port(&encoder->base)->port;
+			return encoder->port;
 	}
 
 	return -1;
@@ -5939,6 +5938,7 @@ static void intel_crtc_disable_noatomic(struct drm_crtc *crtc,
 
 	dev_priv->active_crtcs &= ~(1 << intel_crtc->pipe);
 	dev_priv->min_cdclk[intel_crtc->pipe] = 0;
+	dev_priv->min_voltage_level[intel_crtc->pipe] = 0;
 }
 
 /*
@@ -7633,7 +7633,7 @@ static void ironlake_init_pch_refclk(struct drm_i915_private *dev_priv)
 			break;
 		case INTEL_OUTPUT_EDP:
 			has_panel = true;
-			if (enc_to_dig_port(&encoder->base)->port == PORT_A)
+			if (encoder->port == PORT_A)
 				has_cpu_edp = true;
 			break;
 		default:
@@ -8857,7 +8857,9 @@ static void hsw_restore_lcpll(struct drm_i915_private *dev_priv)
 	}
 
 	intel_uncore_forcewake_put(dev_priv, FORCEWAKE_ALL);
+
 	intel_update_cdclk(dev_priv);
+	intel_dump_cdclk_state(&dev_priv->cdclk.hw, "Current CDCLK");
 }
 
 /*
@@ -9230,10 +9232,6 @@ static bool haswell_get_pipe_config(struct intel_crtc *crtc,
 		else
 			ironlake_get_pfit_config(crtc, pipe_config);
 	}
-
-	if (IS_HASWELL(dev_priv))
-		pipe_config->ips_enabled = hsw_crtc_supports_ips(crtc) &&
-			(I915_READ(IPS_CTL) & IPS_ENABLE);
 
 	if (pipe_config->cpu_transcoder != TRANSCODER_EDP &&
 	    !transcoder_is_dsi(pipe_config->cpu_transcoder)) {
@@ -10577,7 +10575,7 @@ static const char * const output_type_str[] = {
 	OUTPUT_TYPE(DP),
 	OUTPUT_TYPE(EDP),
 	OUTPUT_TYPE(DSI),
-	OUTPUT_TYPE(UNKNOWN),
+	OUTPUT_TYPE(DDI),
 	OUTPUT_TYPE(DP_MST),
 };
 
@@ -10748,13 +10746,13 @@ static bool check_digital_port_conflicts(struct drm_atomic_state *state)
 
 		switch (encoder->type) {
 			unsigned int port_mask;
-		case INTEL_OUTPUT_UNKNOWN:
+		case INTEL_OUTPUT_DDI:
 			if (WARN_ON(!HAS_DDI(to_i915(dev))))
 				break;
 		case INTEL_OUTPUT_DP:
 		case INTEL_OUTPUT_HDMI:
 		case INTEL_OUTPUT_EDP:
-			port_mask = 1 << enc_to_dig_port(&encoder->base)->port;
+			port_mask = 1 << encoder->port;
 
 			/* the same port mustn't appear more than once */
 			if (used_ports & port_mask)
@@ -10764,7 +10762,7 @@ static bool check_digital_port_conflicts(struct drm_atomic_state *state)
 			break;
 		case INTEL_OUTPUT_DP_MST:
 			used_mst_ports |=
-				1 << enc_to_mst(&encoder->base)->primary->port;
+				1 << encoder->port;
 			break;
 		default:
 			break;
@@ -10881,7 +10879,12 @@ intel_modeset_pipe_config(struct drm_crtc *crtc,
 		 * Determine output_types before calling the .compute_config()
 		 * hooks so that the hooks can use this information safely.
 		 */
-		pipe_config->output_types |= 1 << encoder->type;
+		if (encoder->compute_output_type)
+			pipe_config->output_types |=
+				BIT(encoder->compute_output_type(encoder, pipe_config,
+								 connector_state));
+		else
+			pipe_config->output_types |= BIT(encoder->type);
 	}
 
 encoder_retry:
@@ -11070,6 +11073,9 @@ intel_pipe_config_compare(struct drm_i915_private *dev_priv,
 			  bool adjust)
 {
 	bool ret = true;
+	bool fixup_inherited = adjust &&
+		(current_config->base.mode.private_flags & I915_MODE_FLAG_INHERITED) &&
+		!(pipe_config->base.mode.private_flags & I915_MODE_FLAG_INHERITED);
 
 #define PIPE_CONF_CHECK_X(name)	\
 	if (current_config->name != pipe_config->name) { \
@@ -11086,6 +11092,31 @@ intel_pipe_config_compare(struct drm_i915_private *dev_priv,
 			  "(expected %i, found %i)\n", \
 			  current_config->name, \
 			  pipe_config->name); \
+		ret = false; \
+	}
+
+#define PIPE_CONF_CHECK_BOOL(name)	\
+	if (current_config->name != pipe_config->name) { \
+		pipe_config_err(adjust, __stringify(name), \
+			  "(expected %s, found %s)\n", \
+			  yesno(current_config->name), \
+			  yesno(pipe_config->name)); \
+		ret = false; \
+	}
+
+/*
+ * Checks state where we only read out the enabling, but not the entire
+ * state itself (like full infoframes or ELD for audio). These states
+ * require a full modeset on bootup to fix up.
+ */
+#define PIPE_CONF_CHECK_BOOL_INCOMPLETE(name) \
+	if (!fixup_inherited || (!current_config->name && !pipe_config->name)) { \
+		PIPE_CONF_CHECK_BOOL(name); \
+	} else { \
+		pipe_config_err(adjust, __stringify(name), \
+			  "unable to verify whether state matches exactly, forcing modeset (expected %s, found %s)\n", \
+			  yesno(current_config->name), \
+			  yesno(pipe_config->name)); \
 		ret = false; \
 	}
 
@@ -11174,7 +11205,7 @@ intel_pipe_config_compare(struct drm_i915_private *dev_priv,
 
 	PIPE_CONF_CHECK_I(cpu_transcoder);
 
-	PIPE_CONF_CHECK_I(has_pch_encoder);
+	PIPE_CONF_CHECK_BOOL(has_pch_encoder);
 	PIPE_CONF_CHECK_I(fdi_lanes);
 	PIPE_CONF_CHECK_M_N(fdi_m_n);
 
@@ -11206,17 +11237,17 @@ intel_pipe_config_compare(struct drm_i915_private *dev_priv,
 	PIPE_CONF_CHECK_I(base.adjusted_mode.crtc_vsync_end);
 
 	PIPE_CONF_CHECK_I(pixel_multiplier);
-	PIPE_CONF_CHECK_I(has_hdmi_sink);
+	PIPE_CONF_CHECK_BOOL(has_hdmi_sink);
 	if ((INTEL_GEN(dev_priv) < 8 && !IS_HASWELL(dev_priv)) ||
 	    IS_VALLEYVIEW(dev_priv) || IS_CHERRYVIEW(dev_priv))
-		PIPE_CONF_CHECK_I(limited_color_range);
+		PIPE_CONF_CHECK_BOOL(limited_color_range);
 
-	PIPE_CONF_CHECK_I(hdmi_scrambling);
-	PIPE_CONF_CHECK_I(hdmi_high_tmds_clock_ratio);
-	PIPE_CONF_CHECK_I(has_infoframe);
-	PIPE_CONF_CHECK_I(ycbcr420);
+	PIPE_CONF_CHECK_BOOL(hdmi_scrambling);
+	PIPE_CONF_CHECK_BOOL(hdmi_high_tmds_clock_ratio);
+	PIPE_CONF_CHECK_BOOL_INCOMPLETE(has_infoframe);
+	PIPE_CONF_CHECK_BOOL(ycbcr420);
 
-	PIPE_CONF_CHECK_I(has_audio);
+	PIPE_CONF_CHECK_BOOL_INCOMPLETE(has_audio);
 
 	PIPE_CONF_CHECK_FLAGS(base.adjusted_mode.flags,
 			      DRM_MODE_FLAG_INTERLACE);
@@ -11242,7 +11273,7 @@ intel_pipe_config_compare(struct drm_i915_private *dev_priv,
 		PIPE_CONF_CHECK_I(pipe_src_w);
 		PIPE_CONF_CHECK_I(pipe_src_h);
 
-		PIPE_CONF_CHECK_I(pch_pfit.enabled);
+		PIPE_CONF_CHECK_BOOL(pch_pfit.enabled);
 		if (current_config->pch_pfit.enabled) {
 			PIPE_CONF_CHECK_X(pch_pfit.pos);
 			PIPE_CONF_CHECK_X(pch_pfit.size);
@@ -11252,11 +11283,7 @@ intel_pipe_config_compare(struct drm_i915_private *dev_priv,
 		PIPE_CONF_CHECK_CLOCK_FUZZY(pixel_rate);
 	}
 
-	/* BDW+ don't expose a synchronous way to read the state */
-	if (IS_HASWELL(dev_priv))
-		PIPE_CONF_CHECK_I(ips_enabled);
-
-	PIPE_CONF_CHECK_I(double_wide);
+	PIPE_CONF_CHECK_BOOL(double_wide);
 
 	PIPE_CONF_CHECK_P(shared_dpll);
 	PIPE_CONF_CHECK_X(dpll_hw_state.dpll);
@@ -11290,8 +11317,12 @@ intel_pipe_config_compare(struct drm_i915_private *dev_priv,
 	PIPE_CONF_CHECK_CLOCK_FUZZY(base.adjusted_mode.crtc_clock);
 	PIPE_CONF_CHECK_CLOCK_FUZZY(port_clock);
 
+	PIPE_CONF_CHECK_I(min_voltage_level);
+
 #undef PIPE_CONF_CHECK_X
 #undef PIPE_CONF_CHECK_I
+#undef PIPE_CONF_CHECK_BOOL
+#undef PIPE_CONF_CHECK_BOOL_INCOMPLETE
 #undef PIPE_CONF_CHECK_P
 #undef PIPE_CONF_CHECK_FLAGS
 #undef PIPE_CONF_CHECK_CLOCK_FUZZY
@@ -11558,10 +11589,8 @@ verify_crtc_state(struct drm_crtc *crtc,
 				"Encoder connected to wrong pipe %c\n",
 				pipe_name(pipe));
 
-		if (active) {
-			pipe_config->output_types |= 1 << encoder->type;
+		if (active)
 			encoder->get_config(encoder, pipe_config);
-		}
 	}
 
 	intel_crtc_compute_pixel_rate(pipe_config);
@@ -11932,16 +11961,16 @@ static int intel_modeset_checks(struct drm_atomic_state *state)
 		 * holding all the crtc locks, even if we don't end up
 		 * touching the hardware
 		 */
-		if (!intel_cdclk_state_compare(&dev_priv->cdclk.logical,
-					       &intel_state->cdclk.logical)) {
+		if (intel_cdclk_changed(&dev_priv->cdclk.logical,
+					&intel_state->cdclk.logical)) {
 			ret = intel_lock_all_pipes(state);
 			if (ret < 0)
 				return ret;
 		}
 
 		/* All pipes must be switched off while we change the cdclk. */
-		if (!intel_cdclk_state_compare(&dev_priv->cdclk.actual,
-					       &intel_state->cdclk.actual)) {
+		if (intel_cdclk_needs_modeset(&dev_priv->cdclk.actual,
+					      &intel_state->cdclk.actual)) {
 			ret = intel_modeset_all_pipes(state);
 			if (ret < 0)
 				return ret;
@@ -11950,6 +11979,9 @@ static int intel_modeset_checks(struct drm_atomic_state *state)
 		DRM_DEBUG_KMS("New cdclk calculated to be logical %u kHz, actual %u kHz\n",
 			      intel_state->cdclk.logical.cdclk,
 			      intel_state->cdclk.actual.cdclk);
+		DRM_DEBUG_KMS("New voltage level calculated to be logical %u, actual %u\n",
+			      intel_state->cdclk.logical.voltage_level,
+			      intel_state->cdclk.actual.voltage_level);
 	} else {
 		to_intel_atomic_state(state)->cdclk.logical = dev_priv->cdclk.logical;
 	}
@@ -12518,6 +12550,9 @@ static int intel_atomic_commit(struct drm_device *dev,
 	if (intel_state->modeset) {
 		memcpy(dev_priv->min_cdclk, intel_state->min_cdclk,
 		       sizeof(intel_state->min_cdclk));
+		memcpy(dev_priv->min_voltage_level,
+		       intel_state->min_voltage_level,
+		       sizeof(intel_state->min_voltage_level));
 		dev_priv->active_crtcs = intel_state->active_crtcs;
 		dev_priv->cdclk.logical = intel_state->cdclk.logical;
 		dev_priv->cdclk.actual = intel_state->cdclk.actual;
@@ -12755,7 +12790,7 @@ skl_max_scale(struct intel_crtc *intel_crtc, struct intel_crtc_state *crtc_state
 	crtc_clock = crtc_state->base.adjusted_mode.crtc_clock;
 	max_dotclk = to_intel_atomic_state(crtc_state->base.state)->cdclk.logical.cdclk;
 
-	if (IS_GEMINILAKE(dev_priv))
+	if (IS_GEMINILAKE(dev_priv) || INTEL_GEN(dev_priv) >= 10)
 		max_dotclk *= 2;
 
 	if (WARN_ON_ONCE(!crtc_clock || max_dotclk < crtc_clock))
@@ -14350,6 +14385,7 @@ void intel_modeset_init_hw(struct drm_device *dev)
 	struct drm_i915_private *dev_priv = to_i915(dev);
 
 	intel_update_cdclk(dev_priv);
+	intel_dump_cdclk_state(&dev_priv->cdclk.hw, "Current CDCLK");
 	dev_priv->cdclk.logical = dev_priv->cdclk.actual = dev_priv->cdclk.hw;
 }
 
@@ -14429,6 +14465,8 @@ retry:
 
 		cs->wm.need_postvbl_update = true;
 		dev_priv->display.optimize_watermarks(intel_state, cs);
+
+		to_intel_crtc_state(crtc->state)->wm = cs->wm;
 	}
 
 put_state:
@@ -14436,6 +14474,22 @@ put_state:
 fail:
 	drm_modeset_drop_locks(&ctx);
 	drm_modeset_acquire_fini(&ctx);
+}
+
+static void intel_update_fdi_pll_freq(struct drm_i915_private *dev_priv)
+{
+	if (IS_GEN5(dev_priv)) {
+		u32 fdi_pll_clk =
+			I915_READ(FDI_PLL_BIOS_0) & FDI_PLL_FB_CLOCK_MASK;
+
+		dev_priv->fdi_pll_freq = (fdi_pll_clk + 2) * 10000;
+	} else if (IS_GEN6(dev_priv) || IS_IVYBRIDGE(dev_priv)) {
+		dev_priv->fdi_pll_freq = 270000;
+	} else {
+		return;
+	}
+
+	DRM_DEBUG_DRIVER("FDI PLL freq=%d\n", dev_priv->fdi_pll_freq);
 }
 
 int intel_modeset_init(struct drm_device *dev)
@@ -14525,6 +14579,7 @@ int intel_modeset_init(struct drm_device *dev)
 	}
 
 	intel_shared_dpll_init(dev);
+	intel_update_fdi_pll_freq(dev_priv);
 
 	intel_update_czclk(dev_priv);
 	intel_modeset_init_hw(dev);
@@ -14947,7 +15002,6 @@ static void intel_modeset_readout_hw_state(struct drm_device *dev)
 			crtc_state = to_intel_crtc_state(crtc->base.state);
 
 			encoder->base.crtc = &crtc->base;
-			crtc_state->output_types |= 1 << encoder->type;
 			encoder->get_config(encoder, crtc_state);
 		} else {
 			encoder->base.crtc = NULL;
@@ -15026,6 +15080,8 @@ static void intel_modeset_readout_hw_state(struct drm_device *dev)
 		}
 
 		dev_priv->min_cdclk[crtc->pipe] = min_cdclk;
+		dev_priv->min_voltage_level[crtc->pipe] =
+			crtc_state->min_voltage_level;
 
 		intel_pipe_config_sanity_check(dev_priv, crtc_state);
 	}
@@ -15160,17 +15216,6 @@ void intel_display_resume(struct drm_device *dev)
 		DRM_ERROR("Restoring old state failed with %i\n", ret);
 	if (state)
 		drm_atomic_state_put(state);
-}
-
-void intel_modeset_gem_init(struct drm_device *dev)
-{
-	struct drm_i915_private *dev_priv = to_i915(dev);
-
-	intel_init_gt_powersave(dev_priv);
-
-	intel_init_clock_gating(dev_priv);
-
-	intel_setup_overlay(dev_priv);
 }
 
 int intel_connector_register(struct drm_connector *connector)

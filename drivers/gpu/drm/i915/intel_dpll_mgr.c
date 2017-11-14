@@ -813,15 +813,11 @@ hsw_get_dpll(struct intel_crtc *crtc, struct intel_crtc_state *crtc_state,
 	memset(&crtc_state->dpll_hw_state, 0,
 	       sizeof(crtc_state->dpll_hw_state));
 
-	if (encoder->type == INTEL_OUTPUT_HDMI) {
+	if (intel_crtc_has_type(crtc_state, INTEL_OUTPUT_HDMI)) {
 		pll = hsw_ddi_hdmi_get_dpll(clock, crtc, crtc_state);
-
-	} else if (encoder->type == INTEL_OUTPUT_DP ||
-		   encoder->type == INTEL_OUTPUT_DP_MST ||
-		   encoder->type == INTEL_OUTPUT_EDP) {
+	} else if (intel_crtc_has_dp_encoder(crtc_state)) {
 		pll = hsw_ddi_dp_get_dpll(encoder, clock);
-
-	} else if (encoder->type == INTEL_OUTPUT_ANALOG) {
+	} else if (intel_crtc_has_type(crtc_state, INTEL_OUTPUT_ANALOG)) {
 		if (WARN_ON(crtc_state->port_clock / 2 != 135000))
 			return NULL;
 
@@ -1369,15 +1365,13 @@ skl_get_dpll(struct intel_crtc *crtc, struct intel_crtc_state *crtc_state,
 
 	memset(&dpll_hw_state, 0, sizeof(dpll_hw_state));
 
-	if (encoder->type == INTEL_OUTPUT_HDMI) {
+	if (intel_crtc_has_type(crtc_state, INTEL_OUTPUT_HDMI)) {
 		bret = skl_ddi_hdmi_pll_dividers(crtc, crtc_state, clock);
 		if (!bret) {
 			DRM_DEBUG_KMS("Could not get HDMI pll dividers.\n");
 			return NULL;
 		}
-	} else if (encoder->type == INTEL_OUTPUT_DP ||
-		   encoder->type == INTEL_OUTPUT_DP_MST ||
-		   encoder->type == INTEL_OUTPUT_EDP) {
+	} else if (intel_crtc_has_dp_encoder(crtc_state)) {
 		bret = skl_ddi_dp_set_dpll_hw_state(clock, &dpll_hw_state);
 		if (!bret) {
 			DRM_DEBUG_KMS("Could not set DP dpll HW state.\n");
@@ -1388,7 +1382,7 @@ skl_get_dpll(struct intel_crtc *crtc, struct intel_crtc_state *crtc_state,
 		return NULL;
 	}
 
-	if (encoder->type == INTEL_OUTPUT_EDP)
+	if (intel_crtc_has_type(crtc_state, INTEL_OUTPUT_EDP))
 		pll = intel_find_shared_dpll(crtc, crtc_state,
 					     DPLL_ID_SKL_DPLL0,
 					     DPLL_ID_SKL_DPLL0);
@@ -1808,18 +1802,15 @@ bxt_get_dpll(struct intel_crtc *crtc,
 {
 	struct intel_dpll_hw_state dpll_hw_state = { };
 	struct drm_i915_private *dev_priv = to_i915(crtc->base.dev);
-	struct intel_digital_port *intel_dig_port;
 	struct intel_shared_dpll *pll;
 	int i, clock = crtc_state->port_clock;
 
-	if (encoder->type == INTEL_OUTPUT_HDMI &&
+	if (intel_crtc_has_type(crtc_state, INTEL_OUTPUT_HDMI) &&
 	    !bxt_ddi_hdmi_set_dpll_hw_state(crtc, crtc_state, clock,
 					    &dpll_hw_state))
 		return NULL;
 
-	if ((encoder->type == INTEL_OUTPUT_DP ||
-	     encoder->type == INTEL_OUTPUT_EDP ||
-	     encoder->type == INTEL_OUTPUT_DP_MST) &&
+	if (intel_crtc_has_dp_encoder(crtc_state) &&
 	    !bxt_ddi_dp_set_dpll_hw_state(clock, &dpll_hw_state))
 		return NULL;
 
@@ -1828,15 +1819,8 @@ bxt_get_dpll(struct intel_crtc *crtc,
 
 	crtc_state->dpll_hw_state = dpll_hw_state;
 
-	if (encoder->type == INTEL_OUTPUT_DP_MST) {
-		struct intel_dp_mst_encoder *intel_mst = enc_to_mst(&encoder->base);
-
-		intel_dig_port = intel_mst->primary;
-	} else
-		intel_dig_port = enc_to_dig_port(&encoder->base);
-
 	/* 1:1 mapping between ports and PLLs */
-	i = (enum intel_dpll_id) intel_dig_port->port;
+	i = (enum intel_dpll_id) encoder->port;
 	pll = intel_get_shared_dpll_by_id(dev_priv, i);
 
 	DRM_DEBUG_KMS("[CRTC:%d:%s] using pre-allocated %s\n",
@@ -2008,8 +1992,8 @@ static void cnl_ddi_pll_enable(struct drm_i915_private *dev_priv,
 	 * requirement, follow the Display Voltage Frequency Switching
 	 * Sequence Before Frequency Change
 	 *
-	 * FIXME: (DVFS) is used to adjust the display voltage to match the
-	 * display clock frequencies
+	 * Note: DVFS is actually handled via the cdclk code paths,
+	 * hence we do nothing here.
 	 */
 
 	/* 6. Enable DPLL in DPLL_ENABLE. */
@@ -2030,8 +2014,8 @@ static void cnl_ddi_pll_enable(struct drm_i915_private *dev_priv,
 	 * requirement, follow the Display Voltage Frequency Switching
 	 * Sequence After Frequency Change
 	 *
-	 * FIXME: (DVFS) is used to adjust the display voltage to match the
-	 * display clock frequencies
+	 * Note: DVFS is actually handled via the cdclk code paths,
+	 * hence we do nothing here.
 	 */
 
 	/*
@@ -2055,8 +2039,8 @@ static void cnl_ddi_pll_disable(struct drm_i915_private *dev_priv,
 	 * requirement, follow the Display Voltage Frequency Switching
 	 * Sequence Before Frequency Change
 	 *
-	 * FIXME: (DVFS) is used to adjust the display voltage to match the
-	 * display clock frequencies
+	 * Note: DVFS is actually handled via the cdclk code paths,
+	 * hence we do nothing here.
 	 */
 
 	/* 3. Disable DPLL through DPLL_ENABLE. */
@@ -2077,8 +2061,8 @@ static void cnl_ddi_pll_disable(struct drm_i915_private *dev_priv,
 	 * requirement, follow the Display Voltage Frequency Switching
 	 * Sequence After Frequency Change
 	 *
-	 * FIXME: (DVFS) is used to adjust the display voltage to match the
-	 * display clock frequencies
+	 * Note: DVFS is actually handled via the cdclk code paths,
+	 * hence we do nothing here.
 	 */
 
 	/* 6. Disable DPLL power in DPLL_ENABLE. */
@@ -2345,15 +2329,13 @@ cnl_get_dpll(struct intel_crtc *crtc, struct intel_crtc_state *crtc_state,
 
 	memset(&dpll_hw_state, 0, sizeof(dpll_hw_state));
 
-	if (encoder->type == INTEL_OUTPUT_HDMI) {
+	if (intel_crtc_has_type(crtc_state, INTEL_OUTPUT_HDMI)) {
 		bret = cnl_ddi_hdmi_pll_dividers(crtc, crtc_state, clock);
 		if (!bret) {
 			DRM_DEBUG_KMS("Could not get HDMI pll dividers.\n");
 			return NULL;
 		}
-	} else if (encoder->type == INTEL_OUTPUT_DP ||
-		   encoder->type == INTEL_OUTPUT_DP_MST ||
-		   encoder->type == INTEL_OUTPUT_EDP) {
+	} else if (intel_crtc_has_dp_encoder(crtc_state)) {
 		bret = cnl_ddi_dp_set_dpll_hw_state(clock, &dpll_hw_state);
 		if (!bret) {
 			DRM_DEBUG_KMS("Could not set DP dpll HW state.\n");
@@ -2361,8 +2343,8 @@ cnl_get_dpll(struct intel_crtc *crtc, struct intel_crtc_state *crtc_state,
 		}
 		crtc_state->dpll_hw_state = dpll_hw_state;
 	} else {
-		DRM_DEBUG_KMS("Skip DPLL setup for encoder %d\n",
-			      encoder->type);
+		DRM_DEBUG_KMS("Skip DPLL setup for output_types 0x%x\n",
+			      crtc_state->output_types);
 		return NULL;
 	}
 

@@ -355,9 +355,6 @@ static inline bool i915_mmio_reg_valid(i915_reg_t reg)
 #define   ECOCHK_PPGTT_WT_HSW		(0x2<<3)
 #define   ECOCHK_PPGTT_WB_HSW		(0x3<<3)
 
-#define GEN8_CONFIG0			_MMIO(0xD00)
-#define  GEN9_DEFAULT_FIXES		(1 << 3 | 1 << 2 | 1 << 1)
-
 #define GAC_ECO_BITS			_MMIO(0x14090)
 #define   ECOBITS_SNB_BIT		(1<<13)
 #define   ECOBITS_PPGTT_CACHE64B	(3<<8)
@@ -1109,16 +1106,50 @@ static inline bool i915_mmio_reg_valid(i915_reg_t reg)
 #define OA_PERFCNT1_HI      _MMIO(0x91BC)
 #define OA_PERFCNT2_LO      _MMIO(0x91C0)
 #define OA_PERFCNT2_HI      _MMIO(0x91C4)
+#define OA_PERFCNT3_LO      _MMIO(0x91C8)
+#define OA_PERFCNT3_HI      _MMIO(0x91CC)
+#define OA_PERFCNT4_LO      _MMIO(0x91D8)
+#define OA_PERFCNT4_HI      _MMIO(0x91DC)
 
 #define OA_PERFMATRIX_LO    _MMIO(0x91C8)
 #define OA_PERFMATRIX_HI    _MMIO(0x91CC)
 
 /* RPM unit config (Gen8+) */
 #define RPM_CONFIG0	    _MMIO(0x0D00)
-#define RPM_CONFIG1	    _MMIO(0x0D04)
+#define  GEN9_RPM_CONFIG0_CRYSTAL_CLOCK_FREQ_SHIFT	3
+#define  GEN9_RPM_CONFIG0_CRYSTAL_CLOCK_FREQ_MASK	(1 << GEN9_RPM_CONFIG0_CRYSTAL_CLOCK_FREQ_SHIFT)
+#define  GEN9_RPM_CONFIG0_CRYSTAL_CLOCK_FREQ_19_2_MHZ	0
+#define  GEN9_RPM_CONFIG0_CRYSTAL_CLOCK_FREQ_24_MHZ	1
+#define  GEN10_RPM_CONFIG0_CTC_SHIFT_PARAMETER_SHIFT	1
+#define  GEN10_RPM_CONFIG0_CTC_SHIFT_PARAMETER_MASK	(0x3 << GEN10_RPM_CONFIG0_CTC_SHIFT_PARAMETER_SHIFT)
 
-/* RPC unit config (Gen8+) */
-#define RPM_CONFIG	    _MMIO(0x0D08)
+#define RPM_CONFIG1	    _MMIO(0x0D04)
+#define  GEN10_GT_NOA_ENABLE  (1 << 9)
+
+/* GPM unit config (Gen9+) */
+#define CTC_MODE			_MMIO(0xA26C)
+#define  CTC_SOURCE_PARAMETER_MASK 1
+#define  CTC_SOURCE_CRYSTAL_CLOCK	0
+#define  CTC_SOURCE_DIVIDE_LOGIC	1
+#define  CTC_SHIFT_PARAMETER_SHIFT	1
+#define  CTC_SHIFT_PARAMETER_MASK	(0x3 << CTC_SHIFT_PARAMETER_SHIFT)
+
+/* RCP unit config (Gen8+) */
+#define RCP_CONFIG	    _MMIO(0x0D08)
+
+/* NOA (HSW) */
+#define HSW_MBVID2_NOA0		_MMIO(0x9E80)
+#define HSW_MBVID2_NOA1		_MMIO(0x9E84)
+#define HSW_MBVID2_NOA2		_MMIO(0x9E88)
+#define HSW_MBVID2_NOA3		_MMIO(0x9E8C)
+#define HSW_MBVID2_NOA4		_MMIO(0x9E90)
+#define HSW_MBVID2_NOA5		_MMIO(0x9E94)
+#define HSW_MBVID2_NOA6		_MMIO(0x9E98)
+#define HSW_MBVID2_NOA7		_MMIO(0x9E9C)
+#define HSW_MBVID2_NOA8		_MMIO(0x9EA0)
+#define HSW_MBVID2_NOA9		_MMIO(0x9EA4)
+
+#define HSW_MBVID2_MISR0	_MMIO(0x9EC0)
 
 /* NOA (Gen8+) */
 #define NOA_CONFIG(i)	    _MMIO(0x0D0C + (i) * 4)
@@ -2329,6 +2360,8 @@ enum i915_power_well_id {
 #define   ARB_MODE_SWIZZLE_BDW	(1<<1)
 #define RENDER_HWS_PGA_GEN7	_MMIO(0x04080)
 #define RING_FAULT_REG(engine)	_MMIO(0x4094 + 0x100*(engine)->hw_id)
+#define GEN8_RING_FAULT_REG	_MMIO(0x4094)
+#define   GEN8_RING_FAULT_ENGINE_ID(x)	(((x) >> 12) & 0x7)
 #define   RING_FAULT_GTTSEL_MASK (1<<11)
 #define   RING_FAULT_SRCID(x)	(((x) >> 3) & 0xff)
 #define   RING_FAULT_FAULT_TYPE(x) (((x) >> 1) & 0x3)
@@ -3837,6 +3870,7 @@ enum {
  */
 #define SLICE_UNIT_LEVEL_CLKGATE	_MMIO(0x94d4)
 #define  SARBUNIT_CLKGATE_DIS		(1 << 5)
+#define  RCCUNIT_CLKGATE_DIS		(1 << 7)
 
 /*
  * Display engine regs
@@ -7774,8 +7808,9 @@ enum {
 #define  FORCEWAKE_ACK_MEDIA_GEN9		_MMIO(0x0D88)
 #define  FORCEWAKE_ACK_RENDER_GEN9		_MMIO(0x0D84)
 #define  FORCEWAKE_ACK_BLITTER_GEN9		_MMIO(0x130044)
-#define   FORCEWAKE_KERNEL			0x1
-#define   FORCEWAKE_USER			0x2
+#define   FORCEWAKE_KERNEL			BIT(0)
+#define   FORCEWAKE_USER			BIT(1)
+#define   FORCEWAKE_KERNEL_FALLBACK		BIT(15)
 #define  FORCEWAKE_MT_ACK			_MMIO(0x130040)
 #define  ECOBUS					_MMIO(0xa180)
 #define    FORCEWAKE_MT_ENABLE			(1<<5)
@@ -7905,6 +7940,7 @@ enum {
 #define GEN6_RC1_WAKE_RATE_LIMIT		_MMIO(0xA098)
 #define GEN6_RC6_WAKE_RATE_LIMIT		_MMIO(0xA09C)
 #define GEN6_RC6pp_WAKE_RATE_LIMIT		_MMIO(0xA0A0)
+#define GEN10_MEDIA_WAKE_RATE_LIMIT		_MMIO(0xA0A0)
 #define GEN6_RC_EVALUATION_INTERVAL		_MMIO(0xA0A8)
 #define GEN6_RC_IDLE_HYSTERSIS			_MMIO(0xA0AC)
 #define GEN6_RC_SLEEP				_MMIO(0xA0B0)
@@ -8036,11 +8072,18 @@ enum {
 #define   CHV_EU311_PG_ENABLE		(1<<1)
 
 #define GEN9_SLICE_PGCTL_ACK(slice)	_MMIO(0x804c + (slice)*0x4)
+#define GEN10_SLICE_PGCTL_ACK(slice)	_MMIO(0x804c + ((slice) / 3) * 0x34 + \
+					      ((slice) % 3) * 0x4)
 #define   GEN9_PGCTL_SLICE_ACK		(1 << 0)
 #define   GEN9_PGCTL_SS_ACK(subslice)	(1 << (2 + (subslice)*2))
+#define   GEN10_PGCTL_VALID_SS_MASK(slice) ((slice) == 0 ? 0x7F : 0x1F)
 
 #define GEN9_SS01_EU_PGCTL_ACK(slice)	_MMIO(0x805c + (slice)*0x8)
+#define GEN10_SS01_EU_PGCTL_ACK(slice)	_MMIO(0x805c + ((slice) / 3) * 0x30 + \
+					      ((slice) % 3) * 0x8)
 #define GEN9_SS23_EU_PGCTL_ACK(slice)	_MMIO(0x8060 + (slice)*0x8)
+#define GEN10_SS23_EU_PGCTL_ACK(slice)	_MMIO(0x8060 + ((slice) / 3) * 0x30 + \
+					      ((slice) % 3) * 0x8)
 #define   GEN9_PGCTL_SSA_EU08_ACK	(1 << 0)
 #define   GEN9_PGCTL_SSA_EU19_ACK	(1 << 2)
 #define   GEN9_PGCTL_SSA_EU210_ACK	(1 << 4)
@@ -8836,6 +8879,12 @@ enum skl_power_gate {
 #define GEN4_TIMESTAMP		_MMIO(0x2358)
 #define ILK_TIMESTAMP_HI	_MMIO(0x70070)
 #define IVB_TIMESTAMP_CTR	_MMIO(0x44070)
+
+#define GEN9_TIMESTAMP_OVERRIDE				_MMIO(0x44074)
+#define  GEN9_TIMESTAMP_OVERRIDE_US_COUNTER_DIVIDER_SHIFT	0
+#define  GEN9_TIMESTAMP_OVERRIDE_US_COUNTER_DIVIDER_MASK	0x3ff
+#define  GEN9_TIMESTAMP_OVERRIDE_US_COUNTER_DENOMINATOR_SHIFT	12
+#define  GEN9_TIMESTAMP_OVERRIDE_US_COUNTER_DENOMINATOR_MASK	(0xf << 12)
 
 #define _PIPE_FRMTMSTMP_A		0x70048
 #define PIPE_FRMTMSTMP(pipe)		\

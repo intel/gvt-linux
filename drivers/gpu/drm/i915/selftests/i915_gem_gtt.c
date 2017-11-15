@@ -267,7 +267,9 @@ static int lowlevel_hole(struct drm_i915_private *i915,
 			mock_vma.node.size = BIT_ULL(size);
 			mock_vma.node.start = addr;
 
+			intel_runtime_pm_get(i915);
 			vm->insert_entries(vm, &mock_vma, I915_CACHE_NONE, 0);
+			intel_runtime_pm_put(i915);
 		}
 		count = n;
 
@@ -697,7 +699,7 @@ static int drunk_hole(struct drm_i915_private *i915,
 		unsigned int *order, count, n;
 		struct i915_vma *vma;
 		u64 hole_size;
-		int err;
+		int err = -ENODEV;
 
 		hole_size = (hole_end - hole_start) >> size;
 		if (hole_size > KMALLOC_MAX_SIZE / sizeof(u32))
@@ -956,7 +958,7 @@ static int exercise_ggtt(struct drm_i915_private *i915,
 	u64 hole_start, hole_end, last = 0;
 	struct drm_mm_node *node;
 	IGT_TIMEOUT(end_time);
-	int err;
+	int err = -ENODEV;
 
 	mutex_lock(&i915->drm.struct_mutex);
 restart:
@@ -1047,6 +1049,7 @@ static int igt_ggtt_page(void *arg)
 		goto out_remove;
 	}
 
+	intel_runtime_pm_get(i915);
 	for (n = 0; n < count; n++) {
 		u64 offset = tmp.start + order[n] * PAGE_SIZE;
 		u32 __iomem *vaddr;
@@ -1086,6 +1089,7 @@ static int igt_ggtt_page(void *arg)
 			break;
 		}
 	}
+	intel_runtime_pm_put(i915);
 
 	kfree(order);
 out_remove:
@@ -1160,7 +1164,7 @@ static int igt_gtt_reserve(void *arg)
 	struct drm_i915_gem_object *obj, *on;
 	LIST_HEAD(objects);
 	u64 total;
-	int err;
+	int err = -ENODEV;
 
 	/* i915_gem_gtt_reserve() tries to reserve the precise range
 	 * for the node, and evicts if it has to. So our test checks that
@@ -1351,7 +1355,7 @@ static int igt_gtt_insert(void *arg)
 	}, *ii;
 	LIST_HEAD(objects);
 	u64 total;
-	int err;
+	int err = -ENODEV;
 
 	/* i915_gem_gtt_insert() tries to allocate some free space in the GTT
 	 * to the node, evicting if required.

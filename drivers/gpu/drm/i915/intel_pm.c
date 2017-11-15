@@ -75,9 +75,6 @@ static void gen9_init_clock_gating(struct drm_i915_private *dev_priv)
 	I915_WRITE(CHICKEN_PAR1_1,
 		   I915_READ(CHICKEN_PAR1_1) | SKL_EDP_PSR_FIX_RDWRAP);
 
-	I915_WRITE(GEN8_CONFIG0,
-		   I915_READ(GEN8_CONFIG0) | GEN9_DEFAULT_FIXES);
-
 	/* WaEnableChickenDCPR:skl,bxt,kbl,glk,cfl */
 	I915_WRITE(GEN8_CHICKEN_DCPR_1,
 		   I915_READ(GEN8_CHICKEN_DCPR_1) | MASK_WAKEMEM);
@@ -928,7 +925,7 @@ static void pineview_update_wm(struct intel_crtc *unused_crtc)
  *  and the size of 8 whole lines. This adjustment is always performed
  *  in the actual pixel depth regardless of whether FBC is enabled or not."
  */
-static int g4x_tlb_miss_wa(int fifo_size, int width, int cpp)
+static unsigned int g4x_tlb_miss_wa(int fifo_size, int width, int cpp)
 {
 	int tlb_miss = fifo_size * 64 - width * cpp * 8;
 
@@ -1105,8 +1102,8 @@ static uint16_t g4x_compute_wm(const struct intel_crtc_state *crtc_state,
 	struct drm_i915_private *dev_priv = to_i915(plane->base.dev);
 	const struct drm_display_mode *adjusted_mode =
 		&crtc_state->base.adjusted_mode;
-	int clock, htotal, cpp, width, wm;
-	int latency = dev_priv->wm.pri_latency[level] * 10;
+	unsigned int latency = dev_priv->wm.pri_latency[level] * 10;
+	unsigned int clock, htotal, cpp, width, wm;
 
 	if (latency == 0)
 		return USHRT_MAX;
@@ -1145,7 +1142,7 @@ static uint16_t g4x_compute_wm(const struct intel_crtc_state *crtc_state,
 		   level == G4X_WM_LEVEL_NORMAL) {
 		wm = intel_wm_method1(clock, cpp, latency);
 	} else {
-		int small, large;
+		unsigned int small, large;
 
 		small = intel_wm_method1(clock, cpp, latency);
 		large = intel_wm_method2(clock, htotal, width, cpp, latency);
@@ -1158,7 +1155,7 @@ static uint16_t g4x_compute_wm(const struct intel_crtc_state *crtc_state,
 
 	wm = DIV_ROUND_UP(wm, 64) + 2;
 
-	return min_t(int, wm, USHRT_MAX);
+	return min_t(unsigned int, wm, USHRT_MAX);
 }
 
 static bool g4x_raw_plane_wm_set(struct intel_crtc_state *crtc_state,
@@ -1602,7 +1599,7 @@ static uint16_t vlv_compute_wm_level(const struct intel_crtc_state *crtc_state,
 	struct drm_i915_private *dev_priv = to_i915(plane->base.dev);
 	const struct drm_display_mode *adjusted_mode =
 		&crtc_state->base.adjusted_mode;
-	int clock, htotal, cpp, width, wm;
+	unsigned int clock, htotal, cpp, width, wm;
 
 	if (dev_priv->wm.pri_latency[level] == 0)
 		return USHRT_MAX;
@@ -1628,7 +1625,7 @@ static uint16_t vlv_compute_wm_level(const struct intel_crtc_state *crtc_state,
 				    dev_priv->wm.pri_latency[level] * 10);
 	}
 
-	return min_t(int, wm, USHRT_MAX);
+	return min_t(unsigned int, wm, USHRT_MAX);
 }
 
 static bool vlv_need_sprite0_fifo_workaround(unsigned int active_planes)
@@ -3930,6 +3927,7 @@ skl_pipe_downscale_amount(const struct intel_crtc_state *crtc_state)
 int skl_check_pipe_max_pixel_rate(struct intel_crtc *intel_crtc,
 				  struct intel_crtc_state *cstate)
 {
+	struct drm_i915_private *dev_priv = to_i915(intel_crtc->base.dev);
 	struct drm_crtc_state *crtc_state = &cstate->base;
 	struct drm_atomic_state *state = crtc_state->state;
 	struct drm_plane *plane;
@@ -3972,7 +3970,7 @@ int skl_check_pipe_max_pixel_rate(struct intel_crtc *intel_crtc,
 	crtc_clock = crtc_state->adjusted_mode.crtc_clock;
 	dotclk = to_intel_atomic_state(state)->cdclk.logical.cdclk;
 
-	if (IS_GEMINILAKE(to_i915(intel_crtc->base.dev)))
+	if (IS_GEMINILAKE(dev_priv) || INTEL_GEN(dev_priv) >= 10)
 		dotclk *= 2;
 
 	pipe_max_pixel_rate = div_round_up_u32_fixed16(dotclk, pipe_downscale);
@@ -6620,12 +6618,19 @@ static void gen9_enable_rc6(struct drm_i915_private *dev_priv)
 	I915_WRITE(GEN6_RC_CONTROL, 0);
 
 	/* 2b: Program RC6 thresholds.*/
-
-	/* WaRsDoubleRc6WrlWithCoarsePowerGating: Doubling WRL only when CPG is enabled */
-	if (IS_SKYLAKE(dev_priv))
+	if (INTEL_GEN(dev_priv) >= 10) {
+		I915_WRITE(GEN6_RC6_WAKE_RATE_LIMIT, 54 << 16 | 85);
+		I915_WRITE(GEN10_MEDIA_WAKE_RATE_LIMIT, 150);
+	} else if (IS_SKYLAKE(dev_priv)) {
+		/*
+		 * WaRsDoubleRc6WrlWithCoarsePowerGating:skl Doubling WRL only
+		 * when CPG is enabled
+		 */
 		I915_WRITE(GEN6_RC6_WAKE_RATE_LIMIT, 108 << 16);
-	else
+	} else {
 		I915_WRITE(GEN6_RC6_WAKE_RATE_LIMIT, 54 << 16);
+	}
+
 	I915_WRITE(GEN6_RC_EVALUATION_INTERVAL, 125000); /* 12500 * 1280ns */
 	I915_WRITE(GEN6_RC_IDLE_HYSTERSIS, 25); /* 25 * 1280ns */
 	for_each_engine(engine, dev_priv, id)
@@ -7910,7 +7915,6 @@ void intel_init_gt_powersave(struct drm_i915_private *dev_priv)
 		intel_runtime_pm_get(dev_priv);
 	}
 
-	mutex_lock(&dev_priv->drm.struct_mutex);
 	mutex_lock(&dev_priv->pcu_lock);
 
 	/* Initialize RPS limits (for userspace) */
@@ -7952,9 +7956,6 @@ void intel_init_gt_powersave(struct drm_i915_private *dev_priv)
 	rps->boost_freq = rps->max_freq;
 
 	mutex_unlock(&dev_priv->pcu_lock);
-	mutex_unlock(&dev_priv->drm.struct_mutex);
-
-	intel_autoenable_gt_powersave(dev_priv);
 }
 
 void intel_cleanup_gt_powersave(struct drm_i915_private *dev_priv)
@@ -7978,9 +7979,6 @@ void intel_suspend_gt_powersave(struct drm_i915_private *dev_priv)
 {
 	if (INTEL_GEN(dev_priv) < 6)
 		return;
-
-	if (cancel_delayed_work_sync(&dev_priv->gt_pm.autoenable_work))
-		intel_runtime_pm_put(dev_priv);
 
 	/* gen6_rps_idle() will be called later to disable interrupts */
 }
@@ -8138,65 +8136,6 @@ void intel_enable_gt_powersave(struct drm_i915_private *dev_priv)
 		intel_enable_llc_pstate(dev_priv);
 
 	mutex_unlock(&dev_priv->pcu_lock);
-}
-
-static void __intel_autoenable_gt_powersave(struct work_struct *work)
-{
-	struct drm_i915_private *dev_priv =
-		container_of(work,
-			     typeof(*dev_priv),
-			     gt_pm.autoenable_work.work);
-	struct intel_engine_cs *rcs;
-	struct drm_i915_gem_request *req;
-
-	rcs = dev_priv->engine[RCS];
-	if (rcs->last_retired_context)
-		goto out;
-
-	if (!rcs->init_context)
-		goto out;
-
-	mutex_lock(&dev_priv->drm.struct_mutex);
-
-	req = i915_gem_request_alloc(rcs, dev_priv->kernel_context);
-	if (IS_ERR(req))
-		goto unlock;
-
-	if (!i915_modparams.enable_execlists && i915_switch_context(req) == 0)
-		rcs->init_context(req);
-
-	/* Mark the device busy, calling intel_enable_gt_powersave() */
-	i915_add_request(req);
-
-unlock:
-	mutex_unlock(&dev_priv->drm.struct_mutex);
-out:
-	intel_runtime_pm_put(dev_priv);
-}
-
-void intel_autoenable_gt_powersave(struct drm_i915_private *dev_priv)
-{
-	if (IS_IRONLAKE_M(dev_priv)) {
-		ironlake_enable_drps(dev_priv);
-		intel_init_emon(dev_priv);
-	} else if (INTEL_INFO(dev_priv)->gen >= 6) {
-		/*
-		 * PCU communication is slow and this doesn't need to be
-		 * done at any specific time, so do this out of our fast path
-		 * to make resume and init faster.
-		 *
-		 * We depend on the HW RC6 power context save/restore
-		 * mechanism when entering D3 through runtime PM suspend. So
-		 * disable RPM until RPS/RC6 is properly setup. We can only
-		 * get here via the driver load/system resume/runtime resume
-		 * paths, so the _noresume version is enough (and in case of
-		 * runtime resume it's necessary).
-		 */
-		if (queue_delayed_work(dev_priv->wq,
-				       &dev_priv->gt_pm.autoenable_work,
-				       round_jiffies_up_relative(HZ)))
-			intel_runtime_pm_get_noresume(dev_priv);
-	}
 }
 
 static void ibx_init_clock_gating(struct drm_i915_private *dev_priv)
@@ -8532,11 +8471,13 @@ static void cnl_init_clock_gating(struct drm_i915_private *dev_priv)
 	I915_WRITE(DISP_ARB_CTL, I915_READ(DISP_ARB_CTL) |
 		   DISP_FBC_MEMORY_WAKE);
 
+	val = I915_READ(SLICE_UNIT_LEVEL_CLKGATE);
+	/* ReadHitWriteOnlyDisable:cnl */
+	val |= RCCUNIT_CLKGATE_DIS;
 	/* WaSarbUnitClockGatingDisable:cnl (pre-prod) */
 	if (IS_CNL_REVID(dev_priv, CNL_REVID_A0, CNL_REVID_B0))
-		I915_WRITE(SLICE_UNIT_LEVEL_CLKGATE,
-			   I915_READ(SLICE_UNIT_LEVEL_CLKGATE) |
-			   SARBUNIT_CLKGATE_DIS);
+		val |= SARBUNIT_CLKGATE_DIS;
+	I915_WRITE(SLICE_UNIT_LEVEL_CLKGATE, val);
 
 	/* Display WA #1133: WaFbcSkipSegments:cnl */
 	val = I915_READ(ILK_DPFC_CHICKEN);
@@ -9429,8 +9370,6 @@ void intel_pm_setup(struct drm_i915_private *dev_priv)
 {
 	mutex_init(&dev_priv->pcu_lock);
 
-	INIT_DELAYED_WORK(&dev_priv->gt_pm.autoenable_work,
-			  __intel_autoenable_gt_powersave);
 	atomic_set(&dev_priv->gt_pm.rps.num_waiters, 0);
 
 	dev_priv->runtime_pm.suspended = false;

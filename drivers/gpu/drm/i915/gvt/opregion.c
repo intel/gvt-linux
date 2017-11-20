@@ -232,7 +232,7 @@ static int alloc_and_init_virt_opregion(struct intel_vgpu *vgpu)
 	buf = (u8 *)vgpu_opregion(vgpu)->va;
 	header = (struct opregion_header *)buf;
 	memcpy(header->signature, OPREGION_SIGNATURE,
-			sizeof(OPREGION_SIGNATURE));
+			sizeof(OPREGION_SIGNATURE) - 1);
 	header->size = 0x8;
 	header->opregion_ver = 0x02000000;
 	header->mboxes = MBOX_VBT;

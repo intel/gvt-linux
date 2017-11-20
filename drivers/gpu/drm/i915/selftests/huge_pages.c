@@ -989,17 +989,9 @@ static int gpu_write(struct i915_vma *vma,
 	i915_vma_unpin(batch);
 	i915_vma_close(batch);
 
-	err = rq->engine->emit_flush(rq, EMIT_INVALIDATE);
-	if (err)
-		goto err_request;
-
-	err = i915_switch_context(rq);
-	if (err)
-		goto err_request;
-
-	err = rq->engine->emit_bb_start(rq,
-					batch->node.start, batch->node.size,
-					flags);
+	err = engine->emit_bb_start(rq,
+				    batch->node.start, batch->node.size,
+				    flags);
 	if (err)
 		goto err_request;
 
@@ -1158,6 +1150,9 @@ static int igt_ppgtt_exhaust_huge(void *arg)
 	unsigned int page_mask;
 	int n, i;
 	int err = -ENODEV;
+
+	if (supported == I915_GTT_PAGE_SIZE_4K)
+		return 0;
 
 	/*
 	 * Sanity check creating objects with a varying mix of page sizes --

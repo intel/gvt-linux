@@ -158,14 +158,6 @@ static int gpu_fill(struct drm_i915_gem_object *obj,
 		goto err_batch;
 	}
 
-	err = engine->emit_flush(rq, EMIT_INVALIDATE);
-	if (err)
-		goto err_request;
-
-	err = i915_switch_context(rq);
-	if (err)
-		goto err_request;
-
 	flags = 0;
 	if (INTEL_GEN(vm->i915) <= 5)
 		flags |= I915_DISPATCH_SECURE;
@@ -325,7 +317,7 @@ static int igt_ctx_exec(void *arg)
 	LIST_HEAD(objects);
 	unsigned long ncontexts, ndwords, dw;
 	bool first_shared_gtt = true;
-	int err;
+	int err = -ENODEV;
 
 	/* Create a few different contexts (with different mm) and write
 	 * through each ctx/mm using the GPU making sure those writes end

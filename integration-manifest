@@ -1,28 +1,12 @@
-drm-upstream drm-fixes 60ccb31bd680469ee0db92b0b6594d79bd13ff87
-	Merge tag 'drm-intel-fixes-2017-11-08' of git://anongit.freedesktop.org/drm/drm-intel into drm-fixes
-drm-misc drm-misc-fixes 9271c0ca573e02a360b636ecd8cb408852f4e9f6
-	drm/edid: Don't send non-zero YQ in AVI infoframe for HDMI 1.x sinks
-drm-intel drm-intel-fixes 423a8a942e95493b73228ba6a3f176dcc7f35fa9
-	drm/i915: Deconstruct struct sgt_dma initialiser
-drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
-	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
-drm-upstream drm-next f150891fd9878ef0d9197c4e8451ce67c3bdd014
-	Merge tag 'exynos-drm-next-for-v4.15' of git://git.kernel.org/pub/scm/linux/kernel/git/daeinki/drm-exynos into drm-next
-drm-misc drm-misc-next-fixes f150891fd9878ef0d9197c4e8451ce67c3bdd014
-	Merge tag 'exynos-drm-next-for-v4.15' of git://git.kernel.org/pub/scm/linux/kernel/git/daeinki/drm-exynos into drm-next
-drm-intel drm-intel-next-fixes e8c49fa96838101435b9e4884d49b30da7a4e0c6
-	drm/i915: Reorder context-close to avoid calling i915_vma_close() under RCU
-drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
-	Linux 4.14-rc1
-drm-misc drm-misc-next cb20dd170d6a7d41e0f347998771b0e0db183438
-	drm/vc4: Add support for NV21 and NV61.
-drm-intel drm-intel-next-queued 36fe778a489e0461126fc657ff333522c24d5391
-	drm/i915: Don't use GEN6_RC_VIDEO_FREQ on gen10+
-drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
-	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
-sound-upstream for-linus 0ce48e1727975012a00b7887a12f068238c55bcd
-	ALSA: hda/realtek: Add headset mic support for Intel NUC Skull Canyon
-sound-upstream for-next 3f1185d6c9d3fe91aa85ec8d3f4d71207452c458
-	ALSA: fix kernel-doc build warning
-drm-intel topic/core-for-CI 70c1cedd5c56f5e3d451c8ab1a4fe5ffd2ab2267
-	e1000e: fix buffer overrun while the I219 is processing DMA transactions
+drm-tip/drm-tip 8ec4b7c1d5d8599ce39fd0f2f6345f66bb29a27b
+	drm-tip: 2017y-11m-20d-23h-49m-58s UTC integration manifest
+vfio-upstream/for-linus e41dd1556d4d22c4b51c9003552af36e1d3e9b4a
+	Merge branch 'iommu-fixes/vt-d' into for-linus
+vfio-upstream/next d0422298337986e63714df6637093e4153d7dab9
+	Merge branches 'iommu/arm/smmu', 'iommu/updates', 'vfio/fixes', 'vfio/platform', 'iommu/vt-d', 'iommu/ipmmu-vmsa' and 'iommu/iova' into next
+origin/gvt-next a682cb674456dc67653f38917519a49c4236f9ba
+	drm/i915/gvt: Add opregion support
+origin/gvt-fixes 0a125c0dd941ae37d0281b2b85c52fcea595645b
+	drm/i915/gvt: remove skl_misc_ctl_write handler
+origin/gvt-next-fixes d02fd5f7709f1296bad5d92e7e8515ef1a05dec4
+	drm/i915/gvt: Remove one duplicated MMIO

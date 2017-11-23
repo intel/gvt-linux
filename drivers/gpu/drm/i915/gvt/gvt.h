@@ -47,6 +47,7 @@
 #include "render.h"
 #include "cmd_parser.h"
 #include "migrate.h"
+#include "fb_decoder.h"
 
 #define GVT_MAX_VGPU 8
 

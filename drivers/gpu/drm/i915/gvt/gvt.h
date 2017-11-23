@@ -48,6 +48,7 @@
 #include "cmd_parser.h"
 #include "migrate.h"
 #include "fb_decoder.h"
+#include "dmabuf.h"
 
 #define GVT_MAX_VGPU 8
 
@@ -193,8 +194,16 @@ struct intel_vgpu {
 		struct kvm *kvm;
 		struct work_struct release_work;
 		atomic_t released;
+		struct vfio_device *vfio_device;
 	} vdev;
 #endif
+
+	struct list_head dmabuf_obj_list_head;
+	struct mutex dmabuf_lock;
+	struct idr object_idr;
+
+	struct completion vblank_done;
+
 };
 
 /* validating GM healthy status*/
@@ -548,6 +557,8 @@ struct intel_gvt_ops {
 	void (*vgpu_deactivate)(struct intel_vgpu *);
 	int  (*vgpu_save_restore)(struct intel_vgpu *, char *buf, size_t count,
 				  void *base, uint64_t off, bool restore);
+	int (*vgpu_query_plane)(struct intel_vgpu *vgpu, void *);
+	int (*vgpu_get_dmabuf)(struct intel_vgpu *vgpu, unsigned int);
 };
 
 

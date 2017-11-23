@@ -55,6 +55,8 @@ static const struct intel_gvt_ops intel_gvt_ops = {
 	.vgpu_activate = intel_gvt_activate_vgpu,
 	.vgpu_deactivate = intel_gvt_deactivate_vgpu,
 	.vgpu_save_restore = intel_gvt_save_restore,
+	.vgpu_query_plane = intel_vgpu_query_plane,
+	.vgpu_get_dmabuf = intel_vgpu_get_dmabuf,
 };
 
 /**

@@ -131,7 +131,7 @@ static struct dn_rt_hash_bucket *dn_rt_hash_table;
 static unsigned int dn_rt_hash_mask;
 
 static struct timer_list dn_route_timer;
-static DEFINE_TIMER(dn_rt_flush_timer, dn_run_flush, 0, 0);
+static DEFINE_TIMER(dn_rt_flush_timer, dn_run_flush);
 int decnet_dst_gc_interval = 2;
 
 static struct dst_ops dn_dst_ops = {
@@ -338,7 +338,7 @@ static int dn_insert_route(struct dn_route *rt, unsigned int hash, struct dn_rou
 					   dn_rt_hash_table[hash].chain);
 			rcu_assign_pointer(dn_rt_hash_table[hash].chain, rth);
 
-			dst_use(&rth->dst, now);
+			dst_hold_and_use(&rth->dst, now);
 			spin_unlock_bh(&dn_rt_hash_table[hash].lock);
 
 			dst_release_immediate(&rt->dst);
@@ -351,7 +351,7 @@ static int dn_insert_route(struct dn_route *rt, unsigned int hash, struct dn_rou
 	rcu_assign_pointer(rt->dst.dn_next, dn_rt_hash_table[hash].chain);
 	rcu_assign_pointer(dn_rt_hash_table[hash].chain, rt);
 
-	dst_use(&rt->dst, now);
+	dst_hold_and_use(&rt->dst, now);
 	spin_unlock_bh(&dn_rt_hash_table[hash].lock);
 	*rp = rt;
 	return 0;
@@ -1258,7 +1258,7 @@ static int __dn_route_output_key(struct dst_entry **pprt, const struct flowidn *
 			    (flp->flowidn_mark == rt->fld.flowidn_mark) &&
 			    dn_is_output_route(rt) &&
 			    (rt->fld.flowidn_oif == flp->flowidn_oif)) {
-				dst_use(&rt->dst, jiffies);
+				dst_hold_and_use(&rt->dst, jiffies);
 				rcu_read_unlock_bh();
 				*pprt = &rt->dst;
 				return 0;
@@ -1535,7 +1535,7 @@ static int dn_route_input(struct sk_buff *skb)
 		    (rt->fld.flowidn_oif == 0) &&
 		    (rt->fld.flowidn_mark == skb->mark) &&
 		    (rt->fld.flowidn_iif == cb->iif)) {
-			dst_use(&rt->dst, jiffies);
+			dst_hold_and_use(&rt->dst, jiffies);
 			rcu_read_unlock();
 			skb_dst_set(skb, (struct dst_entry *)rt);
 			return 0;

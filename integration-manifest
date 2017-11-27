@@ -1,0 +1,28 @@
+drm-upstream drm-fixes 60ccb31bd680469ee0db92b0b6594d79bd13ff87
+	Merge tag 'drm-intel-fixes-2017-11-08' of git://anongit.freedesktop.org/drm/drm-intel into drm-fixes
+drm-misc drm-misc-fixes 517f56839f581618d24f2e67a35738a5c6cbaecb
+	drm/rockchip: dw-mipi-dsi: fix possible un-balanced runtime PM enable
+drm-intel drm-intel-fixes 4fbd8d194f06c8a3fd2af1ce560ddb31f7ec8323
+	Linux 4.15-rc1
+drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
+	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
+drm-upstream drm-next c209101fc1c91a318422733a3721ff6a9ff7899f
+	Merge tag 'drm-misc-fixes-2017-11-20' of git://anongit.freedesktop.org/drm/drm-misc into drm-next
+drm-misc drm-misc-next-fixes c209101fc1c91a318422733a3721ff6a9ff7899f
+	Merge tag 'drm-misc-fixes-2017-11-20' of git://anongit.freedesktop.org/drm/drm-misc into drm-next
+drm-intel drm-intel-next-fixes 3572f04c69ed4369da5d3c65d84fb18774aa60b6
+	drm/i915: Fix init_clock_gating for resume
+drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
+	Linux 4.14-rc1
+drm-misc drm-misc-next 298b6a815bba69c12336114c546104ba9d25bc8f
+	dma-buf: Fix ifnullfree.cocci warnings
+drm-intel drm-intel-next-queued d02a1d830880b611000aaa0df8a8d7aabf1d8718
+	drm/i915: Rename i915_gem_timelines_mark_idle
+drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
+	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
+sound-upstream for-linus 4fbd8d194f06c8a3fd2af1ce560ddb31f7ec8323
+	Linux 4.15-rc1
+sound-upstream for-next 3f1185d6c9d3fe91aa85ec8d3f4d71207452c458
+	ALSA: fix kernel-doc build warning
+drm-intel topic/core-for-CI 79d79155ff788ce3202130fe3a3085052c6bc439
+	Revert "x86/entry/64: Add missing irqflags tracing to native_load_gs_index()"

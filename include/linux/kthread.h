@@ -6,10 +6,12 @@
 #include <linux/sched.h>
 #include <linux/cgroup.h>
 
-__printf(4, 5)
-struct task_struct *kthread_create_on_node(int (*threadfn)(void *data),
+__printf(6, 7)
+struct task_struct *_kthread_create_on_node(int (*threadfn)(void *data),
 					   void *data,
 					   int node,
+					   struct lock_class_key *exited_key,
+					   struct lock_class_key *parked_key,
 					   const char namefmt[], ...);
 
 /**
@@ -25,12 +27,27 @@ struct task_struct *kthread_create_on_node(int (*threadfn)(void *data),
  */
 #define kthread_create(threadfn, data, namefmt, arg...) \
 	kthread_create_on_node(threadfn, data, NUMA_NO_NODE, namefmt, ##arg)
+#define kthread_create_on_node(threadfn, data, node, namefmt, arg...)	\
+({									\
+	static struct lock_class_key __exited_key, __parked_key;	\
+	_kthread_create_on_node(threadfn, data, node, &__exited_key,	\
+			       &__parked_key, namefmt, ##arg);		\
+})
 
 
-struct task_struct *kthread_create_on_cpu(int (*threadfn)(void *data),
+struct task_struct *_kthread_create_on_cpu(int (*threadfn)(void *data),
 					  void *data,
 					  unsigned int cpu,
+					  struct lock_class_key *exited_key,
+					  struct lock_class_key *parked_key,
 					  const char *namefmt);
+#define kthread_create_on_cpu(threadfn, data, cpu, namefmt)		\
+({									\
+	static struct lock_class_key __exited_key, __parked_key;	\
+	_kthread_create_on_cpu(threadfn, data, cpu, &__exited_key,\
+			       &__parked_key, namefmt);			\
+})
+
 
 /**
  * kthread_run - create and wake a thread.
@@ -171,13 +188,30 @@ extern void __kthread_init_worker(struct kthread_worker *worker,
 
 int kthread_worker_fn(void *worker_ptr);
 
-__printf(2, 3)
+__printf(4, 5)
 struct kthread_worker *
-kthread_create_worker(unsigned int flags, const char namefmt[], ...);
+_kthread_create_worker(unsigned int flags,
+		       struct lock_class_key *exited_key,
+		       struct lock_class_key *parked_key,
+		       const char namefmt[], ...);
+#define kthread_create_worker(flags, namefmt...)				\
+({									\
+	static struct lock_class_key __exited_key, __parked_key;	\
+	_kthread_create_worker(flags, &__exited_key, &__parked_key,	\
+			       ##namefmt);				\
+})
 
-__printf(3, 4) struct kthread_worker *
-kthread_create_worker_on_cpu(int cpu, unsigned int flags,
+__printf(5, 6) struct kthread_worker *
+_kthread_create_worker_on_cpu(int cpu, unsigned int flags,
+		       struct lock_class_key *exited_key,
+		       struct lock_class_key *parked_key,
 			     const char namefmt[], ...);
+#define kthread_create_worker_on_cpu(cpu, flags, namefmt...)	\
+({									\
+	static struct lock_class_key __exited_key, __parked_key;	\
+	_kthread_create_worker_on_cpu(cpu, flags, &__exited_key, &__parked_key,\
+			       ##namefmt);				\
+})
 
 bool kthread_queue_work(struct kthread_worker *worker,
 			struct kthread_work *work);

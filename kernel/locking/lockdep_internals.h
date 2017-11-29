@@ -101,7 +101,8 @@ static const unsigned long LOCKF_USED_IN_IRQ_READ =
 #else
 #define MAX_LOCKDEP_ENTRIES	(1UL << CONFIG_LOCKDEP_BITS)
 
-#define MAX_LOCKDEP_CHAINS_BITS	CONFIG_LOCKDEP_CHAINS_BITS
+/* FIXME: This can now be tuned in .config with CONFIG_LOCKDEP_CHAINS_BITS */
+#define MAX_LOCKDEP_CHAINS_BITS	17
 
 /*
  * Stack-trace: tightly packed array of stack backtrace

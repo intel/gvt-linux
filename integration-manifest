@@ -1,28 +1,10 @@
-drm-upstream drm-fixes 60ccb31bd680469ee0db92b0b6594d79bd13ff87
-	Merge tag 'drm-intel-fixes-2017-11-08' of git://anongit.freedesktop.org/drm/drm-intel into drm-fixes
-drm-misc drm-misc-fixes 52dd06506e9bbc2a37b352df7dfc5468f8da21fd
-	drm/fb_helper: Disable all crtc's when initial setup fails.
-drm-intel drm-intel-fixes cb9ac095e5b4580367c6ce5f91124a906bb10f7c
-	drm/i915: Disable THP until we have a GPU read BW W/A
-drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
-	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
-drm-upstream drm-next c209101fc1c91a318422733a3721ff6a9ff7899f
-	Merge tag 'drm-misc-fixes-2017-11-20' of git://anongit.freedesktop.org/drm/drm-misc into drm-next
-drm-misc drm-misc-next-fixes c209101fc1c91a318422733a3721ff6a9ff7899f
-	Merge tag 'drm-misc-fixes-2017-11-20' of git://anongit.freedesktop.org/drm/drm-misc into drm-next
-drm-intel drm-intel-next-fixes 3572f04c69ed4369da5d3c65d84fb18774aa60b6
-	drm/i915: Fix init_clock_gating for resume
-drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
-	Linux 4.14-rc1
-drm-misc drm-misc-next b415b79529391abd29b6a30b93697821f01e082f
-	MAINTAINERS: change maintainer for Rockchip drm drivers
-drm-intel drm-intel-next-queued cc44085616a94a998dc8f708e37ec9df2df97a87
-	drm/i915/guc: Change default GuC FW for KBL to v9.39
-drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
-	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
-sound-upstream for-linus 4fbd8d194f06c8a3fd2af1ce560ddb31f7ec8323
-	Linux 4.15-rc1
-sound-upstream for-next 3f1185d6c9d3fe91aa85ec8d3f4d71207452c458
-	ALSA: fix kernel-doc build warning
-drm-intel topic/core-for-CI aff78eb7ce76b42d4c94d2f5ce768c1c2c8fb94d
-	lockdep: finer-grained completion key for kthread
+drm-tip/drm-tip c4d54f402f910e8f2cbdd1cd6f13e020c919ba34
+	drm-tip: 2017y-11m-29d-22h-50m-51s UTC integration manifest
+vfio-upstream/for-linus e41dd1556d4d22c4b51c9003552af36e1d3e9b4a
+	Merge branch 'iommu-fixes/vt-d' into for-linus
+vfio-upstream/next d0422298337986e63714df6637093e4153d7dab9
+	Merge branches 'iommu/arm/smmu', 'iommu/updates', 'vfio/fixes', 'vfio/platform', 'iommu/vt-d', 'iommu/ipmmu-vmsa' and 'iommu/iova' into next
+origin/gvt-next bbc4f05b25e9827dfa2ffe130117224e9d13000d
+	drm/i915/gvt: Free dmabuf_obj list in intel_vgpu_dmabuf_cleanup
+origin/gvt-fixes b721b65af4eb46df6a1d9e34b14003225e403565
+	drm/i915/gvt: Correct ADDR_4K/2M/1G_MASK definition

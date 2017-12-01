@@ -1,28 +1,10 @@
-drm-upstream drm-fixes 60ccb31bd680469ee0db92b0b6594d79bd13ff87
-	Merge tag 'drm-intel-fixes-2017-11-08' of git://anongit.freedesktop.org/drm/drm-intel into drm-fixes
-drm-misc drm-misc-fixes 4dbd6c03fbf88299c573d676838896c6e06aade2
-	drm/bridge: tc358767: fix 1-lane behavior
-drm-intel drm-intel-fixes fd50fbb6bfdea5daa4ae4dd7b7082485ac44bdf5
-	drm/i915: Disable THP until we have a GPU read BW W/A
-drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
-	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
-drm-upstream drm-next c209101fc1c91a318422733a3721ff6a9ff7899f
-	Merge tag 'drm-misc-fixes-2017-11-20' of git://anongit.freedesktop.org/drm/drm-misc into drm-next
-drm-misc drm-misc-next-fixes c209101fc1c91a318422733a3721ff6a9ff7899f
-	Merge tag 'drm-misc-fixes-2017-11-20' of git://anongit.freedesktop.org/drm/drm-misc into drm-next
-drm-intel drm-intel-next-fixes 3572f04c69ed4369da5d3c65d84fb18774aa60b6
-	drm/i915: Fix init_clock_gating for resume
-drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
-	Linux 4.14-rc1
-drm-misc drm-misc-next 3233fc0a691a351b6c1f6ff080b2a7d893337d20
-	drm/docs: Add todo entry for simple modeset suspend/resume
-drm-intel drm-intel-next-queued 8bd099a71db660f3bd000dd2256032dbf49a6e84
-	drm/i915: Tidy up signed/unsigned comparison
-drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
-	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
-sound-upstream for-linus 43a3542870328601be02fcc9d27b09db467336ef
-	ALSA: seq: Remove spurious WARN_ON() at timer check
-sound-upstream for-next 3f1185d6c9d3fe91aa85ec8d3f4d71207452c458
-	ALSA: fix kernel-doc build warning
-drm-intel topic/core-for-CI 3cec989afafdfaa285f3e2dcd4e1afb256da76be
-	lockdep: finer-grained completion key for kthread
+drm-tip/drm-tip 2147458fbe6d5cd610598f1270265e26c716a596
+	drm-tip: 2017y-11m-30d-23h-37m-28s UTC integration manifest
+vfio-upstream/for-linus e41dd1556d4d22c4b51c9003552af36e1d3e9b4a
+	Merge branch 'iommu-fixes/vt-d' into for-linus
+vfio-upstream/next d0422298337986e63714df6637093e4153d7dab9
+	Merge branches 'iommu/arm/smmu', 'iommu/updates', 'vfio/fixes', 'vfio/platform', 'iommu/vt-d', 'iommu/ipmmu-vmsa' and 'iommu/iova' into next
+origin/gvt-next 071fcf368fedf4ebaaa16f1323fae2ba567dcfa7
+	drm/i915/gvt: Kick scheduler when new workload queued
+origin/gvt-fixes b721b65af4eb46df6a1d9e34b14003225e403565
+	drm/i915/gvt: Correct ADDR_4K/2M/1G_MASK definition

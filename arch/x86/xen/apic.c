@@ -31,7 +31,7 @@ static unsigned int xen_io_apic_read(unsigned apic, unsigned reg)
 	return 0xfd;
 }
 
-static u32 xen_set_apic_id(unsigned int x)
+static unsigned long xen_set_apic_id(unsigned int x)
 {
 	WARN_ON(1);
 	return x;
@@ -161,10 +161,12 @@ static struct apic xen_pv_apic = {
 	/* .irq_delivery_mode - used in native_compose_msi_msg only */
 	/* .irq_dest_mode     - used in native_compose_msi_msg only */
 
+	.target_cpus			= default_target_cpus,
 	.disable_esr			= 0,
 	/* .dest_logical      -  default_send_IPI_ use it but we use our own. */
 	.check_apicid_used		= default_check_apicid_used, /* Used on 32-bit */
 
+	.vector_allocation_domain	= flat_vector_allocation_domain,
 	.init_apic_ldr			= xen_noop, /* setup_local_APIC calls it */
 
 	.ioapic_phys_id_map		= default_ioapic_phys_id_map, /* Used on 32-bit */
@@ -177,7 +179,7 @@ static struct apic xen_pv_apic = {
 	.get_apic_id 			= xen_get_apic_id,
 	.set_apic_id 			= xen_set_apic_id, /* Can be NULL on 32-bit. */
 
-	.calc_dest_apicid		= apic_flat_calc_apicid,
+	.cpu_mask_to_apicid		= flat_cpu_mask_to_apicid,
 
 #ifdef CONFIG_SMP
 	.send_IPI_mask 			= xen_send_IPI_mask,

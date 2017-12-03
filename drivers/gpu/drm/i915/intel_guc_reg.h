@@ -21,8 +21,8 @@
  * IN THE SOFTWARE.
  *
  */
-#ifndef _I915_GUC_REG_H_
-#define _I915_GUC_REG_H_
+#ifndef _INTEL_GUC_REG_H_
+#define _INTEL_GUC_REG_H_
 
 /* Definitions of GuC H/W registers, bits, etc */
 
@@ -52,7 +52,8 @@
 #define SOFT_SCRATCH_COUNT		16
 
 #define UOS_RSA_SCRATCH(i)		_MMIO(0xc200 + (i) * 4)
-#define   UOS_RSA_SCRATCH_MAX_COUNT	  64
+#define UOS_RSA_SCRATCH_COUNT		64
+
 #define DMA_ADDR_0_LOW			_MMIO(0xc300)
 #define DMA_ADDR_0_HIGH			_MMIO(0xc304)
 #define DMA_ADDR_1_LOW			_MMIO(0xc308)
@@ -101,13 +102,6 @@
 #define   GUC_ENABLE_READ_CACHE_FOR_WOPCM_DATA	(1<<10)
 #define   GUC_ENABLE_MIA_CLOCK_GATING		(1<<15)
 #define   GUC_GEN10_SHIM_WC_ENABLE		(1<<21)
-
-#define GUC_SHIM_CONTROL_VALUE	(GUC_DISABLE_SRAM_INIT_TO_ZEROES	| \
-				 GUC_ENABLE_READ_CACHE_LOGIC		| \
-				 GUC_ENABLE_MIA_CACHING			| \
-				 GUC_ENABLE_READ_CACHE_FOR_SRAM_DATA	| \
-				 GUC_ENABLE_READ_CACHE_FOR_WOPCM_DATA	| \
-				 GUC_ENABLE_MIA_CLOCK_GATING)
 
 #define GUC_SEND_INTERRUPT		_MMIO(0xc4c8)
 #define   GUC_SEND_TRIGGER		  (1<<0)

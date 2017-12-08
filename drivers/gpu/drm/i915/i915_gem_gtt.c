@@ -3503,7 +3503,7 @@ int i915_ggtt_probe_hw(struct drm_i915_private *dev_priv)
 	 * currently don't have any bits spare to pass in this upper
 	 * restriction!
 	 */
-	if (HAS_GUC(dev_priv) && i915_modparams.enable_guc_loading) {
+	if (USES_GUC(dev_priv)) {
 		ggtt->base.total = min_t(u64, ggtt->base.total, GUC_GGTT_TOP);
 		ggtt->mappable_end = min(ggtt->mappable_end, ggtt->base.total);
 	}
@@ -3620,10 +3620,7 @@ void i915_gem_restore_gtt_mappings(struct drm_i915_private *dev_priv)
 		bool ggtt_bound = false;
 		struct i915_vma *vma;
 
-		list_for_each_entry(vma, &obj->vma_list, obj_link) {
-			if (vma->vm != &ggtt->base)
-				continue;
-
+		for_each_ggtt_vma(vma, obj) {
 			if (!i915_vma_unbind(vma))
 				continue;
 

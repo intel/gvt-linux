@@ -3234,7 +3234,15 @@ intel_info(const struct drm_i915_private *dev_priv)
 #define HAS_GUC_CT(dev_priv)	((dev_priv)->info.has_guc_ct)
 #define HAS_GUC_UCODE(dev_priv)	(HAS_GUC(dev_priv))
 #define HAS_GUC_SCHED(dev_priv)	(HAS_GUC(dev_priv))
+
+/* For now, anything with a GuC has also HuC */
+#define HAS_HUC(dev_priv)	(HAS_GUC(dev_priv))
 #define HAS_HUC_UCODE(dev_priv)	(HAS_GUC(dev_priv))
+
+/* Having a GuC is not the same as using a GuC */
+#define USES_GUC(dev_priv)		intel_uc_is_using_guc()
+#define USES_GUC_SUBMISSION(dev_priv)	intel_uc_is_using_guc_submission()
+#define USES_HUC(dev_priv)		intel_uc_is_using_huc()
 
 #define HAS_RESOURCE_STREAMER(dev_priv) ((dev_priv)->info.has_resource_streamer)
 
@@ -3878,6 +3886,8 @@ int __must_check i915_gem_evict_for_node(struct i915_address_space *vm,
 					 struct drm_mm_node *node,
 					 unsigned int flags);
 int i915_gem_evict_vm(struct i915_address_space *vm);
+
+void i915_gem_flush_ggtt_writes(struct drm_i915_private *dev_priv);
 
 /* belongs in i915_gem_gtt.h */
 static inline void i915_gem_chipset_flush(struct drm_i915_private *dev_priv)

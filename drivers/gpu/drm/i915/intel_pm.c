@@ -8424,6 +8424,8 @@ static void cnp_init_clock_gating(struct drm_i915_private *dev_priv)
 
 static void cnl_init_clock_gating(struct drm_i915_private *dev_priv)
 {
+	u64 val;
+
 	cnp_init_clock_gating(dev_priv);
 
 	/* This is not an Wa. Enable for better image quality */

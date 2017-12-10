@@ -568,9 +568,16 @@ static void uv_init_apic_ldr(void)
 {
 }
 
-static u32 apic_uv_calc_apicid(unsigned int cpu)
+static int
+uv_cpu_mask_to_apicid(const struct cpumask *mask, struct irq_data *irqdata,
+		      unsigned int *apicid)
 {
-	return apic_default_calc_apicid(cpu) | uv_apicid_hibits;
+	int ret = default_cpu_mask_to_apicid(mask, irqdata, apicid);
+
+	if (!ret)
+		*apicid |= uv_apicid_hibits;
+
+	return ret;
 }
 
 static unsigned int x2apic_get_apic_id(unsigned long x)
@@ -583,7 +590,7 @@ static unsigned int x2apic_get_apic_id(unsigned long x)
 	return id;
 }
 
-static u32 set_apic_id(unsigned int id)
+static unsigned long set_apic_id(unsigned int id)
 {
 	/* CHECKME: Do we need to mask out the xapic extra bits? */
 	return id;
@@ -620,10 +627,12 @@ static struct apic apic_x2apic_uv_x __ro_after_init = {
 	.irq_delivery_mode		= dest_Fixed,
 	.irq_dest_mode			= 0, /* Physical */
 
+	.target_cpus			= online_target_cpus,
 	.disable_esr			= 0,
 	.dest_logical			= APIC_DEST_LOGICAL,
 	.check_apicid_used		= NULL,
 
+	.vector_allocation_domain	= default_vector_allocation_domain,
 	.init_apic_ldr			= uv_init_apic_ldr,
 
 	.ioapic_phys_id_map		= NULL,
@@ -636,7 +645,7 @@ static struct apic apic_x2apic_uv_x __ro_after_init = {
 	.get_apic_id			= x2apic_get_apic_id,
 	.set_apic_id			= set_apic_id,
 
-	.calc_dest_apicid		= apic_uv_calc_apicid,
+	.cpu_mask_to_apicid		= uv_cpu_mask_to_apicid,
 
 	.send_IPI			= uv_send_IPI_one,
 	.send_IPI_mask			= uv_send_IPI_mask,

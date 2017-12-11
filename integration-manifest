@@ -1,28 +1,10 @@
-drm-upstream drm-fixes 90eeb3aa34831ff3d031589c0c24892eb8a07e51
-	Merge tag 'drm-misc-fixes-2017-12-07' of git://anongit.freedesktop.org/drm/drm-misc into drm-fixes
-drm-misc drm-misc-fixes babc8110057cb9ca542c3c1666cbda4e8ccf9250
-	drm/vc4: Release fence after signalling
-drm-intel drm-intel-fixes d85936ab62f902ab84be7a021aa013d4b5dfe292
-	Merge tag 'gvt-fixes-2017-12-06' of https://github.com/intel/gvt-linux into drm-intel-fixes
-drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
-	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
-drm-upstream drm-next 9428088c90b6f7d5edd2a1b0d742c75339b36f6e
-	drm/qxl: reapply cursor after resetting primary
-drm-misc drm-misc-next-fixes c209101fc1c91a318422733a3721ff6a9ff7899f
-	Merge tag 'drm-misc-fixes-2017-11-20' of git://anongit.freedesktop.org/drm/drm-misc into drm-next
-drm-intel drm-intel-next-fixes 3572f04c69ed4369da5d3c65d84fb18774aa60b6
-	drm/i915: Fix init_clock_gating for resume
-drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
-	Linux 4.14-rc1
-drm-misc drm-misc-next d3820952ea1b49f46e340e2d366b080d3ddeea65
-	drm/tinydrm: Use drm_fb_cma_fbdev_init_with_funcs/fini()
-drm-intel drm-intel-next-queued 2d8d1afb4d7d6d88a1ac19010d9a1a9594188ce3
-	drm/i915: Add is-wedged flag to intel_engine_dump()
-drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
-	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
-sound-upstream for-linus 2b4584d00a6bc02b63ab3c7213060d41a74bdff1
-	ALSA: hda - Add vendor id for Cannonlake HDMI codec
-sound-upstream for-next 108884e6c5aa731c6704000e27444d51d090078b
-	ALSA: usb-audio: Change the semantics of the enable option
-drm-intel topic/core-for-CI cb777dfe89da66a2d170f84c8cbcc4534bd0aa40
-	lockdep: finer-grained completion key for kthread
+drm-tip/drm-tip 6c0bf00e417c7d37409f87be775ff98c76505350
+	drm-tip: 2017y-12m-10d-18h-32m-45s UTC integration manifest
+vfio-upstream/for-linus e41dd1556d4d22c4b51c9003552af36e1d3e9b4a
+	Merge branch 'iommu-fixes/vt-d' into for-linus
+vfio-upstream/next d0422298337986e63714df6637093e4153d7dab9
+	Merge branches 'iommu/arm/smmu', 'iommu/updates', 'vfio/fixes', 'vfio/platform', 'iommu/vt-d', 'iommu/ipmmu-vmsa' and 'iommu/iova' into next
+origin/gvt-next 461bd6227ede277138bf33c2156b6ebd1fba04c2
+	drm/i915/gvt/fb_decoder: Fix out-of-bounds read
+origin/gvt-fixes f5f00e7dcc4161f07b76ff1a854e8b1ea7a1ed41
+	drm/i915/gvt: Fix pipe A enable as default for vgpu

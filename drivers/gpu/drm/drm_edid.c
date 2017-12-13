@@ -4428,6 +4428,7 @@ drm_reset_display_info(struct drm_connector *connector)
 	info->cea_rev = 0;
 	info->max_tmds_clock = 0;
 	info->dvi_dual = false;
+	info->has_hdmi_infoframe = false;
 
 	info->non_desktop = 0;
 }

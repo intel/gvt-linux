@@ -1,0 +1,28 @@
+drm-upstream drm-fixes 90eeb3aa34831ff3d031589c0c24892eb8a07e51
+	Merge tag 'drm-misc-fixes-2017-12-07' of git://anongit.freedesktop.org/drm/drm-misc into drm-fixes
+drm-misc drm-misc-fixes ea497bb92064875497554ee7cdf10df7fb7393fc
+	drm: rework delayed connector cleanup in connector_iter
+drm-intel drm-intel-fixes 50c4c4e268a2d7a3e58ebb698ac74da0de40ae36
+	Linux 4.15-rc3
+drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
+	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
+drm-upstream drm-next 9428088c90b6f7d5edd2a1b0d742c75339b36f6e
+	drm/qxl: reapply cursor after resetting primary
+drm-misc drm-misc-next-fixes c209101fc1c91a318422733a3721ff6a9ff7899f
+	Merge tag 'drm-misc-fixes-2017-11-20' of git://anongit.freedesktop.org/drm/drm-misc into drm-next
+drm-intel drm-intel-next-fixes 3572f04c69ed4369da5d3c65d84fb18774aa60b6
+	drm/i915: Fix init_clock_gating for resume
+drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
+	Linux 4.14-rc1
+drm-misc drm-misc-next 170178fe99dd212bf25e70c89bc4b6e195564ffc
+	drm: Update edid-derived drm_display_info fields at edid property set [v2]
+drm-intel drm-intel-next-queued 6ca9a2beb54a385c8cc5e39a9d2ef49945896c64
+	drm/i915: Unwind i915_gem_init() failure
+drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
+	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
+sound-upstream for-linus 2b4584d00a6bc02b63ab3c7213060d41a74bdff1
+	ALSA: hda - Add vendor id for Cannonlake HDMI codec
+sound-upstream for-next 108884e6c5aa731c6704000e27444d51d090078b
+	ALSA: usb-audio: Change the semantics of the enable option
+drm-intel topic/core-for-CI bce2220230cbca04fa8065cbdab0e83204cf801a
+	lockdep: finer-grained completion key for kthread

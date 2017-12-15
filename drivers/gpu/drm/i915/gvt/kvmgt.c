@@ -705,12 +705,26 @@ static ssize_t intel_vgpu_read(struct mdev_device *mdev, char __user *buf,
 			size_t count, loff_t *ppos)
 {
 	unsigned int done = 0;
+	unsigned int index = VFIO_PCI_OFFSET_TO_INDEX(*ppos);
 	int ret;
 
 	while (count) {
 		size_t filled;
 
-		if (count >= 4 && !(*ppos % 4)) {
+		if (count >= 8 && !(*ppos % 8) &&
+		    (index == VFIO_PCI_BAR0_REGION_INDEX)) {
+			u64 val;
+
+			ret = intel_vgpu_rw(mdev, (char *)&val, sizeof(val),
+					ppos, false);
+			if (ret <= 0)
+				goto read_err;
+
+			if (copy_to_user(buf, &val, sizeof(val)))
+				goto read_err;
+
+			filled = 8;
+		} else if (count >= 4 && !(*ppos % 4)) {
 			u32 val;
 
 			ret = intel_vgpu_rw(mdev, (char *)&val, sizeof(val),
@@ -765,12 +779,26 @@ static ssize_t intel_vgpu_write(struct mdev_device *mdev,
 				size_t count, loff_t *ppos)
 {
 	unsigned int done = 0;
+	unsigned int index = VFIO_PCI_OFFSET_TO_INDEX(*ppos);
 	int ret;
 
 	while (count) {
 		size_t filled;
 
-		if (count >= 4 && !(*ppos % 4)) {
+		if (count >= 8 && !(*ppos % 8) &&
+		    (index == VFIO_PCI_BAR0_REGION_INDEX)) {
+			u64 val;
+
+			if (copy_from_user(&val, buf, sizeof(val)))
+				goto write_err;
+
+			ret = intel_vgpu_rw(mdev, (char *)&val, sizeof(val),
+					ppos, true);
+			if (ret <= 0)
+				goto write_err;
+
+			filled = 8;
+		} else if (count >= 4 && !(*ppos % 4)) {
 			u32 val;
 
 			if (copy_from_user(&val, buf, sizeof(val)))

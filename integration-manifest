@@ -1,0 +1,28 @@
+drm-upstream drm-fixes 90eeb3aa34831ff3d031589c0c24892eb8a07e51
+	Merge tag 'drm-misc-fixes-2017-12-07' of git://anongit.freedesktop.org/drm/drm-misc into drm-fixes
+drm-misc drm-misc-fixes caea4f384858ee7861367920df36995e7acfe160
+	drm/sun4i: validate modes for HDMI
+drm-intel drm-intel-fixes 2cf654db8d7eafb973d28eb3cddf043d353e1345
+	drm/i915/fence: Use rcu to defer freeing of irq_work
+drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
+	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
+drm-upstream drm-next 9428088c90b6f7d5edd2a1b0d742c75339b36f6e
+	drm/qxl: reapply cursor after resetting primary
+drm-misc drm-misc-next-fixes c209101fc1c91a318422733a3721ff6a9ff7899f
+	Merge tag 'drm-misc-fixes-2017-11-20' of git://anongit.freedesktop.org/drm/drm-misc into drm-next
+drm-intel drm-intel-next-fixes 3572f04c69ed4369da5d3c65d84fb18774aa60b6
+	drm/i915: Fix init_clock_gating for resume
+drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
+	Linux 4.14-rc1
+drm-misc drm-misc-next 5fca5ece6af8dd507c0459262766369e057e6d60
+	drm/doc: Move legacy kms helpers to the very end
+drm-intel drm-intel-next-queued ab309a6a3a0b3b6ce495c7a31731ff82cff7faa2
+	drm/i915: Unifying debugfs return codes for unsupported features
+drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
+	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
+sound-upstream for-linus c1cfd9025cc394fd137a01159d74335c5ac978ce
+	ALSA: rawmidi: Avoid racy info ioctl via ctl device
+sound-upstream for-next 108884e6c5aa731c6704000e27444d51d090078b
+	ALSA: usb-audio: Change the semantics of the enable option
+drm-intel topic/core-for-CI eafaa5181ce3b00985b363b40016368911a7fb91
+	PCI / PM: Force devices to D0 in pci_pm_thaw_noirq()

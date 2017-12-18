@@ -561,6 +561,8 @@ struct intel_gvt_ops {
 				  void *base, uint64_t off, bool restore);
 	int (*vgpu_query_plane)(struct intel_vgpu *vgpu, void *);
 	int (*vgpu_get_dmabuf)(struct intel_vgpu *vgpu, unsigned int);
+	int (*write_protect_handler)(struct intel_vgpu *, u64, void *,
+				     unsigned int);
 };
 
 

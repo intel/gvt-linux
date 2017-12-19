@@ -3875,6 +3875,9 @@ enum {
 #define  SARBUNIT_CLKGATE_DIS		(1 << 5)
 #define  RCCUNIT_CLKGATE_DIS		(1 << 7)
 
+#define UNSLICE_UNIT_LEVEL_CLKGATE	_MMIO(0x9434)
+#define  VFUNIT_CLKGATE_DIS		(1 << 20)
+
 /*
  * Display engine regs
  */
@@ -6329,6 +6332,7 @@ enum {
 #define   PLANE_CTL_TILED_X			(  1 << 10)
 #define   PLANE_CTL_TILED_Y			(  4 << 10)
 #define   PLANE_CTL_TILED_YF			(  5 << 10)
+#define   PLANE_CTL_FLIP_HORIZONTAL		(  1 << 8)
 #define   PLANE_CTL_ALPHA_MASK			(0x3 << 4) /* Pre-GLK */
 #define   PLANE_CTL_ALPHA_DISABLE		(  0 << 4)
 #define   PLANE_CTL_ALPHA_SW_PREMULTIPLY	(  2 << 4)
@@ -8142,6 +8146,7 @@ enum {
 #define   PARTIAL_INSTRUCTION_SHOOTDOWN_DISABLE	(1<<8)
 #define   STALL_DOP_GATING_DISABLE		(1<<5)
 #define   THROTTLE_12_5				(7<<2)
+#define   DISABLE_EARLY_EOT			(1<<1)
 
 #define GEN7_ROW_CHICKEN2		_MMIO(0xe4f4)
 #define GEN7_ROW_CHICKEN2_GT2		_MMIO(0xf4f4)

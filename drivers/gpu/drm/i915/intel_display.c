@@ -2639,7 +2639,6 @@ intel_alloc_initial_plane_obj(struct intel_crtc *crtc,
 {
 	struct drm_device *dev = crtc->base.dev;
 	struct drm_i915_private *dev_priv = to_i915(dev);
-	struct i915_ggtt *ggtt = &dev_priv->ggtt;
 	struct drm_i915_gem_object *obj = NULL;
 	struct drm_mode_fb_cmd2 mode_cmd = { 0 };
 	struct drm_framebuffer *fb = &plane_config->fb->base;
@@ -2655,7 +2654,7 @@ intel_alloc_initial_plane_obj(struct intel_crtc *crtc,
 	/* If the FB is too big, just don't use it since fbdev is not very
 	 * important and we should probably use that space with FBC or other
 	 * features. */
-	if (size_aligned * 2 > ggtt->stolen_usable_size)
+	if (size_aligned * 2 > dev_priv->stolen_usable_size)
 		return false;
 
 	mutex_lock(&dev->struct_mutex);
@@ -3074,6 +3073,12 @@ int skl_check_plane_surface(struct intel_plane_state *plane_state)
 	unsigned int rotation = plane_state->base.rotation;
 	int ret;
 
+	if (rotation & DRM_MODE_REFLECT_X &&
+	    fb->modifier == DRM_FORMAT_MOD_LINEAR) {
+		DRM_DEBUG_KMS("horizontal flip is not supported with linear surface formats\n");
+		return -EINVAL;
+	}
+
 	if (!plane_state->base.visible)
 		return 0;
 
@@ -3454,9 +3459,9 @@ static u32 skl_plane_ctl_tiling(uint64_t fb_modifier)
 	return 0;
 }
 
-static u32 skl_plane_ctl_rotation(unsigned int rotation)
+static u32 skl_plane_ctl_rotate(unsigned int rotate)
 {
-	switch (rotation) {
+	switch (rotate) {
 	case DRM_MODE_ROTATE_0:
 		break;
 	/*
@@ -3470,7 +3475,22 @@ static u32 skl_plane_ctl_rotation(unsigned int rotation)
 	case DRM_MODE_ROTATE_270:
 		return PLANE_CTL_ROTATE_90;
 	default:
-		MISSING_CASE(rotation);
+		MISSING_CASE(rotate);
+	}
+
+	return 0;
+}
+
+static u32 cnl_plane_ctl_flip(unsigned int reflect)
+{
+	switch (reflect) {
+	case 0:
+		break;
+	case DRM_MODE_REFLECT_X:
+		return PLANE_CTL_FLIP_HORIZONTAL;
+	case DRM_MODE_REFLECT_Y:
+	default:
+		MISSING_CASE(reflect);
 	}
 
 	return 0;
@@ -3498,7 +3518,11 @@ u32 skl_plane_ctl(const struct intel_crtc_state *crtc_state,
 
 	plane_ctl |= skl_plane_ctl_format(fb->format->format);
 	plane_ctl |= skl_plane_ctl_tiling(fb->modifier);
-	plane_ctl |= skl_plane_ctl_rotation(rotation);
+	plane_ctl |= skl_plane_ctl_rotate(rotation & DRM_MODE_ROTATE_MASK);
+
+	if (INTEL_GEN(dev_priv) >= 10)
+		plane_ctl |= cnl_plane_ctl_flip(rotation &
+						DRM_MODE_REFLECT_MASK);
 
 	if (key->flags & I915_SET_COLORKEY_DESTINATION)
 		plane_ctl |= PLANE_CTL_KEY_ENABLE_DESTINATION;
@@ -10966,31 +10990,6 @@ fail:
 	return ret;
 }
 
-static void
-intel_modeset_update_crtc_state(struct drm_atomic_state *state)
-{
-	struct drm_crtc *crtc;
-	struct drm_crtc_state *new_crtc_state;
-	int i;
-
-	/* Double check state. */
-	for_each_new_crtc_in_state(state, crtc, new_crtc_state, i) {
-		to_intel_crtc(crtc)->config = to_intel_crtc_state(new_crtc_state);
-
-		/*
-		 * Update legacy state to satisfy fbc code. This can
-		 * be removed when fbc uses the atomic state.
-		 */
-		if (drm_atomic_get_existing_plane_state(state, crtc->primary)) {
-			struct drm_plane_state *plane_state = crtc->primary->state;
-
-			crtc->primary->fb = plane_state->fb;
-			crtc->x = plane_state->src_x >> 16;
-			crtc->y = plane_state->src_y >> 16;
-		}
-	}
-}
-
 static bool intel_fuzzy_clock_check(int clock1, int clock2)
 {
 	int diff;
@@ -12363,9 +12362,9 @@ static void intel_atomic_commit_tail(struct drm_atomic_state *state)
 		}
 	}
 
-	/* Only after disabling all output pipelines that will be changed can we
-	 * update the the output configuration. */
-	intel_modeset_update_crtc_state(state);
+	/* FIXME: Eventually get rid of our intel_crtc->config pointer */
+	for_each_new_crtc_in_state(state, crtc, new_crtc_state, i)
+		to_intel_crtc(crtc)->config = to_intel_crtc_state(new_crtc_state);
 
 	if (intel_state->modeset) {
 		drm_atomic_helper_update_legacy_modeset_state(state->dev, state);
@@ -13326,7 +13325,12 @@ intel_primary_plane_create(struct drm_i915_private *dev_priv, enum pipe pipe)
 	if (ret)
 		goto fail;
 
-	if (INTEL_GEN(dev_priv) >= 9) {
+	if (INTEL_GEN(dev_priv) >= 10) {
+		supported_rotations =
+			DRM_MODE_ROTATE_0 | DRM_MODE_ROTATE_90 |
+			DRM_MODE_ROTATE_180 | DRM_MODE_ROTATE_270 |
+			DRM_MODE_REFLECT_X;
+	} else if (INTEL_GEN(dev_priv) >= 9) {
 		supported_rotations =
 			DRM_MODE_ROTATE_0 | DRM_MODE_ROTATE_90 |
 			DRM_MODE_ROTATE_180 | DRM_MODE_ROTATE_270;
@@ -14620,7 +14624,7 @@ int intel_modeset_init(struct drm_device *dev)
 		dev->mode_config.cursor_height = MAX_CURSOR_HEIGHT;
 	}
 
-	dev->mode_config.fb_base = ggtt->mappable_base;
+	dev->mode_config.fb_base = ggtt->gmadr.start;
 
 	DRM_DEBUG_KMS("%d display pipe%s available.\n",
 		      INTEL_INFO(dev_priv)->num_pipes,

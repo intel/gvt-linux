@@ -1272,6 +1272,9 @@ static int cnl_init_workarounds(struct intel_engine_cs *engine)
 	if (ret)
 		return ret;
 
+	/* WaDisableEarlyEOT:cnl */
+	WA_SET_BIT_MASKED(GEN8_ROW_CHICKEN, DISABLE_EARLY_EOT);
+
 	return 0;
 }
 
@@ -1513,10 +1516,8 @@ bool intel_engines_are_idle(struct drm_i915_private *dev_priv)
 	struct intel_engine_cs *engine;
 	enum intel_engine_id id;
 
-	if (READ_ONCE(dev_priv->gt.active_requests))
-		return false;
-
-	/* If the driver is wedged, HW state may be very inconsistent and
+	/*
+	 * If the driver is wedged, HW state may be very inconsistent and
 	 * report that it is still busy, even though we have stopped using it.
 	 */
 	if (i915_terminally_wedged(&dev_priv->gpu_error))
@@ -1596,7 +1597,7 @@ void intel_engines_park(struct drm_i915_private *i915)
 			dev_err(i915->drm.dev,
 				"%s is not idle before parking\n",
 				engine->name);
-			intel_engine_dump(engine, &p);
+			intel_engine_dump(engine, &p, NULL);
 		}
 
 		if (engine->park)
@@ -1666,7 +1667,9 @@ static void print_request(struct drm_printer *m,
 		   rq->timeline->common->name);
 }
 
-void intel_engine_dump(struct intel_engine_cs *engine, struct drm_printer *m)
+void intel_engine_dump(struct intel_engine_cs *engine,
+		       struct drm_printer *m,
+		       const char *header, ...)
 {
 	struct intel_breadcrumbs * const b = &engine->breadcrumbs;
 	const struct intel_engine_execlists * const execlists = &engine->execlists;
@@ -1674,17 +1677,29 @@ void intel_engine_dump(struct intel_engine_cs *engine, struct drm_printer *m)
 	struct drm_i915_private *dev_priv = engine->i915;
 	struct drm_i915_gem_request *rq;
 	struct rb_node *rb;
+	char hdr[80];
 	u64 addr;
 
-	drm_printf(m, "%s\n", engine->name);
+	if (header) {
+		va_list ap;
+
+		va_start(ap, header);
+		drm_vprintf(m, header, &ap);
+		va_end(ap);
+	}
+
+	if (i915_terminally_wedged(&engine->i915->gpu_error))
+		drm_printf(m, "*** WEDGED ***\n");
+
 	drm_printf(m, "\tcurrent seqno %x, last %x, hangcheck %x [%d ms], inflight %d\n",
 		   intel_engine_get_seqno(engine),
 		   intel_engine_last_submit(engine),
 		   engine->hangcheck.seqno,
 		   jiffies_to_msecs(jiffies - engine->hangcheck.action_timestamp),
 		   engine->timeline->inflight_seqnos);
-	drm_printf(m, "\tReset count: %d\n",
-		   i915_reset_engine_count(error, engine));
+	drm_printf(m, "\tReset count: %d (global %d)\n",
+		   i915_reset_engine_count(error, engine),
+		   i915_reset_count(error));
 
 	rcu_read_lock();
 
@@ -1745,6 +1760,24 @@ void intel_engine_dump(struct intel_engine_cs *engine, struct drm_printer *m)
 	addr = intel_engine_get_last_batch_head(engine);
 	drm_printf(m, "\tBBADDR: 0x%08x_%08x\n",
 		   upper_32_bits(addr), lower_32_bits(addr));
+	if (INTEL_GEN(dev_priv) >= 8)
+		addr = I915_READ64_2x32(RING_DMA_FADD(engine->mmio_base),
+					RING_DMA_FADD_UDW(engine->mmio_base));
+	else if (INTEL_GEN(dev_priv) >= 4)
+		addr = I915_READ(RING_DMA_FADD(engine->mmio_base));
+	else
+		addr = I915_READ(DMA_FADD_I8XX);
+	drm_printf(m, "\tDMA_FADDR: 0x%08x_%08x\n",
+		   upper_32_bits(addr), lower_32_bits(addr));
+	if (INTEL_GEN(dev_priv) >= 4) {
+		drm_printf(m, "\tIPEIR: 0x%08x\n",
+			   I915_READ(RING_IPEIR(engine->mmio_base)));
+		drm_printf(m, "\tIPEHR: 0x%08x\n",
+			   I915_READ(RING_IPEHR(engine->mmio_base)));
+	} else {
+		drm_printf(m, "\tIPEIR: 0x%08x\n", I915_READ(IPEIR));
+		drm_printf(m, "\tIPEHR: 0x%08x\n", I915_READ(IPEHR));
+	}
 
 	if (HAS_EXECLISTS(dev_priv)) {
 		const u32 *hws = &engine->status_page.page_addr[I915_HWS_CSB_BUF0_INDEX];
@@ -1786,12 +1819,12 @@ void intel_engine_dump(struct intel_engine_cs *engine, struct drm_printer *m)
 
 			rq = port_unpack(&execlists->port[idx], &count);
 			if (rq) {
-				drm_printf(m, "\t\tELSP[%d] count=%d, ",
-					   idx, count);
-				print_request(m, rq, "rq: ");
+				snprintf(hdr, sizeof(hdr),
+					 "\t\tELSP[%d] count=%d, rq: ",
+					 idx, count);
+				print_request(m, rq, hdr);
 			} else {
-				drm_printf(m, "\t\tELSP[%d] idle\n",
-					   idx);
+				drm_printf(m, "\t\tELSP[%d] idle\n", idx);
 			}
 		}
 		drm_printf(m, "\t\tHW active? 0x%x\n", execlists->active);
@@ -1826,6 +1859,16 @@ void intel_engine_dump(struct intel_engine_cs *engine, struct drm_printer *m)
 	}
 	spin_unlock_irq(&b->rb_lock);
 
+	if (INTEL_GEN(dev_priv) >= 6) {
+		drm_printf(m, "\tRING_IMR: %08x\n", I915_READ_IMR(engine));
+	}
+
+	drm_printf(m, "IRQ? 0x%lx (breadcrumbs? %s) (execlists? %s)\n",
+		   engine->irq_posted,
+		   yesno(test_bit(ENGINE_IRQ_BREADCRUMB,
+				  &engine->irq_posted)),
+		   yesno(test_bit(ENGINE_IRQ_EXECLIST,
+				  &engine->irq_posted)));
 	drm_printf(m, "Idle? %s\n", yesno(intel_engine_is_idle(engine)));
 	drm_printf(m, "\n");
 }

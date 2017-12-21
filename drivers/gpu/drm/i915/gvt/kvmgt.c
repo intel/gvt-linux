@@ -1019,6 +1019,8 @@ static long intel_vgpu_ioctl(struct mdev_device *mdev, unsigned int cmd,
 			if (!sparse)
 				return -ENOMEM;
 
+			sparse->header.id = VFIO_REGION_INFO_CAP_SPARSE_MMAP;
+			sparse->header.version = 1;
 			sparse->nr_areas = nr_areas;
 			cap_type_id = VFIO_REGION_INFO_CAP_SPARSE_MMAP;
 			sparse->areas[0].offset =
@@ -1044,7 +1046,9 @@ static long intel_vgpu_ioctl(struct mdev_device *mdev, unsigned int cmd,
 			break;
 		default:
 			{
-				struct vfio_region_info_cap_type cap_type;
+				struct vfio_region_info_cap_type cap_type = {
+					.header.id = VFIO_REGION_INFO_CAP_TYPE,
+					.header.version = 1 };
 
 				if (info.index >= VFIO_PCI_NUM_REGIONS +
 						vgpu->vdev.num_regions)
@@ -1061,8 +1065,8 @@ static long intel_vgpu_ioctl(struct mdev_device *mdev, unsigned int cmd,
 				cap_type.subtype = vgpu->vdev.region[i].subtype;
 
 				ret = vfio_info_add_capability(&caps,
-						VFIO_REGION_INFO_CAP_TYPE,
-						&cap_type);
+							&cap_type.header,
+							sizeof(cap_type));
 				if (ret)
 					return ret;
 			}
@@ -1072,8 +1076,9 @@ static long intel_vgpu_ioctl(struct mdev_device *mdev, unsigned int cmd,
 			switch (cap_type_id) {
 			case VFIO_REGION_INFO_CAP_SPARSE_MMAP:
 				ret = vfio_info_add_capability(&caps,
-					VFIO_REGION_INFO_CAP_SPARSE_MMAP,
-					sparse);
+					&sparse->header, sizeof(*sparse) +
+					(sparse->nr_areas *
+						sizeof(*sparse->areas)));
 				kfree(sparse);
 				if (ret)
 					return ret;

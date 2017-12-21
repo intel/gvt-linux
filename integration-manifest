@@ -1,0 +1,28 @@
+drm-upstream drm-fixes 51b83e142834638d4fdb4d628ec8602b1107d91b
+	Merge branch 'linux-4.15' of git://github.com/skeggsb/linux into drm-fixes
+drm-misc drm-misc-fixes ce0769e0ea4b3e192466243a1a9fd39acf214f1e
+	drm/plane: Make framebuffer refcounting the responsibility of setplane_internal callers
+drm-intel drm-intel-fixes a4ffdc2b6726958c07d535318400124e3a3bc19b
+	drm/i915: Protect DDI port to DPLL map from theoretical race.
+drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
+	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
+drm-upstream drm-next 6b7dcb536e3535444c39286333f10d06d2f44fb5
+	BackMerge tag 'v4.15-rc4' into drm-next
+drm-misc drm-misc-next-fixes c209101fc1c91a318422733a3721ff6a9ff7899f
+	Merge tag 'drm-misc-fixes-2017-11-20' of git://anongit.freedesktop.org/drm/drm-misc into drm-next
+drm-intel drm-intel-next-fixes 3572f04c69ed4369da5d3c65d84fb18774aa60b6
+	drm/i915: Fix init_clock_gating for resume
+drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
+	Linux 4.14-rc1
+drm-misc drm-misc-next 8d44e9e69aacecd522bb2797eb2febc5c6c46558
+	drm/framebuffer: Print task that allocated the fb in debug info.
+drm-intel drm-intel-next-queued f0cbd8bd877f3d8c5b80a6b1add9ca9010d7f9d8
+	i915: Reject CCS modifiers for pipe C on Geminilake
+drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
+	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
+sound-upstream for-linus 1e9a328e4b35af22c23ce9357c2c2a77159e74bb
+	Merge tag 'asoc-fix-v4.15-rc4' of https://git.kernel.org/pub/scm/linux/kernel/git/broonie/sound into for-linus
+sound-upstream for-next 56a23ee52611ca76421f3d7cac100e1616716dae
+	ALSA: usb-audio: Proper fallback at get_term_name()
+drm-intel topic/core-for-CI ddcc30ad1833c991a3bb1b07851224130a032b9a
+	PCI / PM: Force devices to D0 in pci_pm_thaw_noirq()

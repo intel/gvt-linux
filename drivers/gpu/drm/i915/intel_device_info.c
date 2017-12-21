@@ -22,6 +22,8 @@
  *
  */
 
+#include <drm/drm_print.h>
+
 #include "i915_drv.h"
 
 #define PLATFORM_NAME(x) [INTEL_##x] = #x
@@ -67,19 +69,27 @@ const char *intel_platform_name(enum intel_platform platform)
 	return platform_names[platform];
 }
 
-void intel_device_info_dump(struct drm_i915_private *dev_priv)
+void intel_device_info_dump_flags(const struct intel_device_info *info,
+				  struct drm_printer *p)
 {
-	const struct intel_device_info *info = &dev_priv->info;
-
-	DRM_DEBUG_DRIVER("i915 device info: platform=%s gen=%i pciid=0x%04x rev=0x%02x",
-			 intel_platform_name(info->platform),
-			 info->gen,
-			 dev_priv->drm.pdev->device,
-			 dev_priv->drm.pdev->revision);
-#define PRINT_FLAG(name) \
-	DRM_DEBUG_DRIVER("i915 device info: " #name ": %s", yesno(info->name))
+#define PRINT_FLAG(name) drm_printf(p, "%s: %s\n", #name, yesno(info->name));
 	DEV_INFO_FOR_EACH_FLAG(PRINT_FLAG);
 #undef PRINT_FLAG
+}
+
+void intel_device_info_dump(const struct intel_device_info *info,
+			    struct drm_printer *p)
+{
+	struct drm_i915_private *dev_priv =
+		container_of(info, struct drm_i915_private, info);
+
+	drm_printf(p, "pciid=0x%04x rev=0x%02x platform=%s gen=%i\n",
+		   INTEL_DEVID(dev_priv),
+		   INTEL_REVID(dev_priv),
+		   intel_platform_name(info->platform),
+		   info->gen);
+
+	intel_device_info_dump_flags(info, p);
 }
 
 static void gen10_sseu_info_init(struct drm_i915_private *dev_priv)
@@ -403,20 +413,20 @@ static u32 read_timestamp_frequency(struct drm_i915_private *dev_priv)
 				freq = f24_mhz;
 				break;
 			}
-		}
 
-		/* Now figure out how the command stream's timestamp register
-		 * increments from this frequency (it might increment only
-		 * every few clock cycle).
-		 */
-		freq >>= 3 - ((rpm_config_reg &
-			       GEN10_RPM_CONFIG0_CTC_SHIFT_PARAMETER_MASK) >>
-			      GEN10_RPM_CONFIG0_CTC_SHIFT_PARAMETER_SHIFT);
+			/* Now figure out how the command stream's timestamp
+			 * register increments from this frequency (it might
+			 * increment only every few clock cycle).
+			 */
+			freq >>= 3 - ((rpm_config_reg &
+				       GEN10_RPM_CONFIG0_CTC_SHIFT_PARAMETER_MASK) >>
+				      GEN10_RPM_CONFIG0_CTC_SHIFT_PARAMETER_SHIFT);
+		}
 
 		return freq;
 	}
 
-	DRM_ERROR("Unknown gen, unable to compute command stream timestamp frequency\n");
+	MISSING_CASE("Unknown gen, unable to read command streamer timestamp frequency\n");
 	return 0;
 }
 

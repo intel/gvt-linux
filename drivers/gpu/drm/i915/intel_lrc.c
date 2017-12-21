@@ -431,8 +431,6 @@ static inline void elsp_write(u64 desc, u32 __iomem *elsp)
 static void execlists_submit_ports(struct intel_engine_cs *engine)
 {
 	struct execlist_port *port = engine->execlists.port;
-	u32 __iomem *elsp =
-		engine->i915->regs + i915_mmio_reg_offset(RING_ELSP(engine));
 	unsigned int n;
 
 	for (n = execlists_num_ports(&engine->execlists); n--; ) {
@@ -451,14 +449,14 @@ static void execlists_submit_ports(struct intel_engine_cs *engine)
 
 			GEM_TRACE("%s in[%d]:  ctx=%d.%d, seqno=%x\n",
 				  engine->name, n,
-				  rq->ctx->hw_id, count,
+				  port[n].context_id, count,
 				  rq->global_seqno);
 		} else {
 			GEM_BUG_ON(!n);
 			desc = 0;
 		}
 
-		elsp_write(desc, elsp);
+		elsp_write(desc, engine->execlists.elsp);
 	}
 	execlists_clear_active(&engine->execlists, EXECLISTS_ACTIVE_HWACK);
 }
@@ -496,8 +494,6 @@ static void inject_preempt_context(struct intel_engine_cs *engine)
 {
 	struct intel_context *ce =
 		&engine->i915->preempt_context->engine[engine->id];
-	u32 __iomem *elsp =
-		engine->i915->regs + i915_mmio_reg_offset(RING_ELSP(engine));
 	unsigned int n;
 
 	GEM_BUG_ON(engine->i915->preempt_context->hw_id != PREEMPT_ID);
@@ -508,11 +504,11 @@ static void inject_preempt_context(struct intel_engine_cs *engine)
 	ce->ring->tail &= (ce->ring->size - 1);
 	ce->lrc_reg_state[CTX_RING_TAIL+1] = ce->ring->tail;
 
-	GEM_TRACE("\n");
+	GEM_TRACE("%s\n", engine->name);
 	for (n = execlists_num_ports(&engine->execlists); --n; )
-		elsp_write(0, elsp);
+		elsp_write(0, engine->execlists.elsp);
 
-	elsp_write(ce->lrc_desc, elsp);
+	elsp_write(ce->lrc_desc, engine->execlists.elsp);
 	execlists_clear_active(&engine->execlists, EXECLISTS_ACTIVE_HWACK);
 }
 
@@ -865,7 +861,7 @@ static void execlists_submission_tasklet(unsigned long data)
 			 */
 
 			status = READ_ONCE(buf[2 * head]); /* maybe mmio! */
-			GEM_TRACE("%s csb[%dd]: status=0x%08x:0x%08x\n",
+			GEM_TRACE("%s csb[%d]: status=0x%08x:0x%08x\n",
 				  engine->name, head,
 				  status, buf[2*head + 1]);
 
@@ -909,8 +905,8 @@ static void execlists_submission_tasklet(unsigned long data)
 			rq = port_unpack(port, &count);
 			GEM_TRACE("%s out[0]: ctx=%d.%d, seqno=%x\n",
 				  engine->name,
-				  rq->ctx->hw_id, count,
-				  rq->global_seqno);
+				  port->context_id, count,
+				  rq ? rq->global_seqno : 0);
 			GEM_BUG_ON(count == 0);
 			if (--count == 0) {
 				GEM_BUG_ON(status & GEN8_CTX_STATUS_PREEMPTED);
@@ -1509,6 +1505,9 @@ static int gen8_init_common_ring(struct intel_engine_cs *engine)
 	execlists->csb_head = -1;
 	execlists->active = 0;
 
+	execlists->elsp =
+		dev_priv->regs + i915_mmio_reg_offset(RING_ELSP(engine));
+
 	/* After a GPU reset, we may have requests to replay */
 	if (execlists->first)
 		tasklet_schedule(&execlists->tasklet);
@@ -1556,6 +1555,8 @@ static void reset_common_ring(struct intel_engine_cs *engine,
 	struct intel_context *ce;
 	unsigned long flags;
 
+	GEM_TRACE("%s seqno=%x\n",
+		  engine->name, request ? request->global_seqno : 0);
 	spin_lock_irqsave(&engine->timeline->lock, flags);
 
 	/*

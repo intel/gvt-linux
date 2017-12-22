@@ -1793,6 +1793,21 @@ static unsigned long kvmgt_virt_to_pfn(void *addr)
 	return PFN_DOWN(__pa(addr));
 }
 
+static bool kvmgt_is_valid_gfn(unsigned long handle, unsigned long gfn)
+{
+	struct kvmgt_guest_info *info;
+	struct kvm *kvm;
+
+	if (!handle_valid(handle))
+		return false;
+
+	info = (struct kvmgt_guest_info *)handle;
+	kvm = info->kvm;
+
+	return kvm_is_visible_gfn(kvm, gfn);
+
+}
+
 struct intel_gvt_mpt kvmgt_mpt = {
 	.host_init = kvmgt_host_init,
 	.host_exit = kvmgt_host_exit,
@@ -1807,6 +1822,7 @@ struct intel_gvt_mpt kvmgt_mpt = {
 	.gfn_to_mfn = kvmgt_gfn_to_pfn,
 	.get_vfio_device = kvmgt_get_vfio_device,
 	.put_vfio_device = kvmgt_put_vfio_device,
+	.is_valid_gfn = kvmgt_is_valid_gfn,
 };
 EXPORT_SYMBOL_GPL(kvmgt_mpt);
 

@@ -57,6 +57,7 @@ struct intel_gvt_mpt {
 			     bool map);
 	int (*get_vfio_device)(void *vgpu);
 	void (*put_vfio_device)(void *vgpu);
+	bool (*is_valid_gfn)(unsigned long handle, unsigned long gfn);
 };
 
 extern struct intel_gvt_mpt xengt_mpt;

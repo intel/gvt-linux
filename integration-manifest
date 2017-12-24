@@ -1,0 +1,28 @@
+drm-upstream drm-fixes e7cdf5c82f1773c3386b93bbcf13b9bfff29fa31
+	drm/syncobj: Stop reusing the same struct file for all syncobj -> fd
+drm-misc drm-misc-fixes e7cdf5c82f1773c3386b93bbcf13b9bfff29fa31
+	drm/syncobj: Stop reusing the same struct file for all syncobj -> fd
+drm-intel drm-intel-fixes 8bc0d7ac934b6f2d0dc8f38a3104d281c9db1e98
+	i915: Reject CCS modifiers for pipe C on Geminilake
+drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
+	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
+drm-upstream drm-next df2869abd92b740af141ee2eb081bfc69bd80877
+	Merge branch 'drm-next-4.16' of git://people.freedesktop.org/~agd5f/linux into drm-next
+drm-misc drm-misc-next-fixes c209101fc1c91a318422733a3721ff6a9ff7899f
+	Merge tag 'drm-misc-fixes-2017-11-20' of git://anongit.freedesktop.org/drm/drm-misc into drm-next
+drm-intel drm-intel-next-fixes 3572f04c69ed4369da5d3c65d84fb18774aa60b6
+	drm/i915: Fix init_clock_gating for resume
+drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
+	Linux 4.14-rc1
+drm-misc drm-misc-next e61a656fc06747901fed6cd0cb12484dc72896d8
+	drm: fix tainted kernel caused by drm_panel_orientation_quirks.c
+drm-intel drm-intel-next-queued c8dae55a8ced625038d52d26e48273707fab2688
+	drm/i915/vlv: Add cdclk workaround for DSI
+drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
+	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
+sound-upstream for-linus 8da5bbfc7cbba909f4f32d5e1dda3750baa5d853
+	ALSA: hda - change the location for one mic on a Lenovo machine
+sound-upstream for-next 56a23ee52611ca76421f3d7cac100e1616716dae
+	ALSA: usb-audio: Proper fallback at get_term_name()
+drm-intel topic/core-for-CI ddcc30ad1833c991a3bb1b07851224130a032b9a
+	PCI / PM: Force devices to D0 in pci_pm_thaw_noirq()

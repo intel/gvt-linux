@@ -80,7 +80,7 @@ static struct engine_mmio gen8_engine_mmio_list[] __cacheline_aligned = {
 	{BCS, RING_INSTPM(BLT_RING_BASE), 0xffff, false}, /* 0x220c0 */
 	{BCS, RING_HWSTAM(BLT_RING_BASE), 0x0, false}, /* 0x22098 */
 	{BCS, RING_EXCC(BLT_RING_BASE), 0x0, false}, /* 0x22028 */
-	{ /* Terminated */ }
+	{RCS, INVALID_MMIO_REG, 0, false } /* Terminated */
 };
 
 static struct engine_mmio gen9_engine_mmio_list[] __cacheline_aligned = {
@@ -146,7 +146,7 @@ static struct engine_mmio gen9_engine_mmio_list[] __cacheline_aligned = {
 	{RCS, GEN8_GARBCNTL, 0x0, false}, /* 0xb004 */
 	{RCS, GEN7_FF_THREAD_MODE, 0x0, false}, /* 0x20a0 */
 	{RCS, FF_SLICE_CS_CHICKEN2, 0xffff, false}, /* 0x20e4 */
-	{ /* Terminated */ }
+	{RCS, INVALID_MMIO_REG, 0, false } /* Terminated */
 };
 
 static u32 gen9_render_mocs[I915_NUM_ENGINES][64];
@@ -279,8 +279,8 @@ static void switch_mmio_to_vgpu(struct intel_vgpu *vgpu, int ring_id)
 	if (IS_SKYLAKE(dev_priv) || IS_KABYLAKE(dev_priv))
 		load_mocs(vgpu, ring_id);
 
-	mmio = vgpu->gvt->engine_mmio_list;
-	while (i915_mmio_reg_offset((mmio++)->reg)) {
+	for (mmio = vgpu->gvt->engine_mmio_list;
+	     i915_mmio_reg_valid(mmio->reg); mmio++) {
 		if (mmio->ring_id != ring_id)
 			continue;
 
@@ -321,8 +321,8 @@ static void switch_mmio_to_host(struct intel_vgpu *vgpu, int ring_id)
 	if (IS_SKYLAKE(dev_priv) || IS_KABYLAKE(dev_priv))
 		restore_mocs(vgpu, ring_id);
 
-	mmio = vgpu->gvt->engine_mmio_list;
-	while (i915_mmio_reg_offset((mmio++)->reg)) {
+	for (mmio = vgpu->gvt->engine_mmio_list;
+	     i915_mmio_reg_valid(mmio->reg); mmio++) {
 		if (mmio->ring_id != ring_id)
 			continue;
 

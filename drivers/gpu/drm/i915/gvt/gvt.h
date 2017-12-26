@@ -397,9 +397,9 @@ int intel_gvt_load_firmware(struct intel_gvt *gvt);
 
 /* Aperture/GM space definitions for vGPU Guest view point */
 #define vgpu_guest_aperture_offset(vgpu) \
-	vgpu_vreg(vgpu, vgtif_reg(avail_rs.mappable_gmadr.base))
+	vgpu_vreg_t(vgpu, vgtif_reg(avail_rs.mappable_gmadr.base))
 #define vgpu_guest_hidden_offset(vgpu)	\
-	vgpu_vreg(vgpu, vgtif_reg(avail_rs.nonmappable_gmadr.base))
+	vgpu_vreg_t(vgpu, vgtif_reg(avail_rs.nonmappable_gmadr.base))
 
 #define vgpu_guest_aperture_gmadr_base(vgpu) (vgpu_guest_aperture_offset(vgpu))
 #define vgpu_guest_aperture_gmadr_end(vgpu) \

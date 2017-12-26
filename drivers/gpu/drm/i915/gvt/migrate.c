@@ -515,7 +515,7 @@ static int vreg_load(const struct gvt_migration_obj_t *obj, u32 size)
 
 	//restore vblank emulation
 	for (pipe = PIPE_A; pipe < I915_MAX_PIPES; ++pipe)
-		MIG_VREG_RESTORE(vgpu, INTEL_GVT_MMIO_OFFSET(PIPECONF(pipe)));
+		MIG_VREG_RESTORE(vgpu, i915_mmio_reg_offset(PIPECONF(pipe)));
 
 	return n_transfer;
 }

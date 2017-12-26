@@ -496,8 +496,8 @@ void intel_gvt_reset_vgpu_locked(struct intel_vgpu *vgpu, bool dmlr,
 {
 	struct intel_gvt *gvt = vgpu->gvt;
 	struct intel_gvt_workload_scheduler *scheduler = &gvt->scheduler;
-	u64 maddr = vgpu_vreg(vgpu, vgtif_reg(avail_rs.mappable_gmadr.base));
-	u64 unmaddr = vgpu_vreg(vgpu,
+	u64 maddr = vgpu_vreg_t(vgpu, vgtif_reg(avail_rs.mappable_gmadr.base));
+	u64 unmaddr = vgpu_vreg_t(vgpu,
 				vgtif_reg(avail_rs.nonmappable_gmadr.base));
 	unsigned int resetting_eng = dmlr ? ALL_ENGINES : engine_mask;
 
@@ -531,9 +531,9 @@ void intel_gvt_reset_vgpu_locked(struct intel_vgpu *vgpu, bool dmlr,
 
 		intel_vgpu_reset_mmio(vgpu, dmlr);
 		populate_pvinfo_page(vgpu);
-		vgpu_vreg(vgpu, vgtif_reg(avail_rs.mappable_gmadr.base)) =
+		vgpu_vreg_t(vgpu, vgtif_reg(avail_rs.mappable_gmadr.base)) =
 			maddr;
-		vgpu_vreg(vgpu, vgtif_reg(avail_rs.nonmappable_gmadr.base)) =
+		vgpu_vreg_t(vgpu, vgtif_reg(avail_rs.nonmappable_gmadr.base)) =
 			unmaddr;
 		intel_vgpu_reset_display(vgpu);
 

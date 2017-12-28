@@ -1128,6 +1128,18 @@ static uint64_t intel_vgpu_get_bar0_addr(struct intel_vgpu *vgpu)
 	return ((u64)start_hi << 32) | start_lo;
 }
 
+static int xengt_hvm_write_handler(struct intel_vgpu *vgpu, uint64_t pa,
+				   void *p_data, unsigned int bytes)
+{
+
+	/* Check whether pa is ppgtt */
+	if (intel_gvt_ops->write_protect_handler(vgpu, pa, p_data, bytes) == 0)
+		return 0;
+
+	/* pa is mmio reg or gtt */
+	return intel_gvt_ops->emulate_mmio_write(vgpu, pa, p_data, bytes);
+}
+
 static int xengt_hvm_mmio_emulation(struct intel_vgpu *vgpu,
 		struct ioreq *req)
 {
@@ -1185,9 +1197,8 @@ static int xengt_hvm_mmio_emulation(struct intel_vgpu *vgpu,
 		if (!req->data_is_ptr) {
 			if (req->count != 1)
 				goto err_ioreq_count;
-			if (intel_gvt_ops->emulate_mmio_write(vgpu,
-						req->addr,
-						&req->data, req->size))
+			if (xengt_hvm_write_handler(vgpu, req->addr, &req->data,
+						    req->size))
 				return -EINVAL;
 		} else {
 			for (i = 0; i < req->count; i++) {
@@ -1200,9 +1211,9 @@ static int xengt_hvm_mmio_emulation(struct intel_vgpu *vgpu,
 				}
 
 				memcpy(&tmp, gva, req->size);
-				if (intel_gvt_ops->emulate_mmio_write(vgpu,
-						req->addr +	sign * i * req->size,
-						&tmp, req->size))
+				if (xengt_hvm_write_handler(vgpu,
+					    req->addr + sign * i * req->size,
+					    &tmp, req->size))
 					return -EINVAL;
 			}
 		}

@@ -1974,7 +1974,7 @@ int intel_vgpu_write_protect_handler(struct intel_vgpu *vgpu, u64 pa,
 				     void *p_data, unsigned int bytes)
 {
 	struct intel_gvt *gvt = vgpu->gvt;
-	int ret = 0;
+	int ret = -EINVAL;
 
 	if (atomic_read(&vgpu->gtt.n_tracked_guest_page)) {
 		struct intel_vgpu_page_track *t;

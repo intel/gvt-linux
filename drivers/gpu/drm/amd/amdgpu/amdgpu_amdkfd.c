@@ -85,12 +85,45 @@ void amdgpu_amdkfd_device_probe(struct amdgpu_device *adev)
 		kfd2kgd = amdgpu_amdkfd_gfx_8_0_get_functions();
 		break;
 	default:
-		dev_info(adev->dev, "kfd not supported on this ASIC\n");
+		dev_dbg(adev->dev, "kfd not supported on this ASIC\n");
 		return;
 	}
 
 	adev->kfd = kgd2kfd->probe((struct kgd_dev *)adev,
 				   adev->pdev, kfd2kgd);
+}
+
+/**
+ * amdgpu_doorbell_get_kfd_info - Report doorbell configuration required to
+ *                                setup amdkfd
+ *
+ * @adev: amdgpu_device pointer
+ * @aperture_base: output returning doorbell aperture base physical address
+ * @aperture_size: output returning doorbell aperture size in bytes
+ * @start_offset: output returning # of doorbell bytes reserved for amdgpu.
+ *
+ * amdgpu and amdkfd share the doorbell aperture. amdgpu sets it up,
+ * takes doorbells required for its own rings and reports the setup to amdkfd.
+ * amdgpu reserved doorbells are at the start of the doorbell aperture.
+ */
+static void amdgpu_doorbell_get_kfd_info(struct amdgpu_device *adev,
+					 phys_addr_t *aperture_base,
+					 size_t *aperture_size,
+					 size_t *start_offset)
+{
+	/*
+	 * The first num_doorbells are used by amdgpu.
+	 * amdkfd takes whatever's left in the aperture.
+	 */
+	if (adev->doorbell.size > adev->doorbell.num_doorbells * sizeof(u32)) {
+		*aperture_base = adev->doorbell.base;
+		*aperture_size = adev->doorbell.size;
+		*start_offset = adev->doorbell.num_doorbells * sizeof(u32);
+	} else {
+		*aperture_base = 0;
+		*aperture_size = 0;
+		*start_offset = 0;
+	}
 }
 
 void amdgpu_amdkfd_device_init(struct amdgpu_device *adev)

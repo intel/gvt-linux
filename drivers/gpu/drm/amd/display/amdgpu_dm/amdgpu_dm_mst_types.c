@@ -177,12 +177,43 @@ static const struct drm_connector_funcs dm_dp_mst_connector_funcs = {
 static int dm_connector_update_modes(struct drm_connector *connector,
 				struct edid *edid)
 {
-	int ret;
+	return drm_add_edid_modes(connector, edid);
+}
 
-	ret = drm_add_edid_modes(connector, edid);
-	drm_edid_to_eld(connector, edid);
+void dm_dp_mst_dc_sink_create(struct drm_connector *connector)
+{
+	struct amdgpu_dm_connector *aconnector = to_amdgpu_dm_connector(connector);
+	struct edid *edid;
+	struct dc_sink *dc_sink;
+	struct dc_sink_init_data init_params = {
+			.link = aconnector->dc_link,
+			.sink_signal = SIGNAL_TYPE_DISPLAY_PORT_MST };
 
-	return ret;
+	edid = drm_dp_mst_get_edid(connector, &aconnector->mst_port->mst_mgr, aconnector->port);
+
+	if (!edid) {
+		drm_mode_connector_update_edid_property(
+			&aconnector->base,
+			NULL);
+		return;
+	}
+
+	aconnector->edid = edid;
+
+	dc_sink = dc_link_add_remote_sink(
+		aconnector->dc_link,
+		(uint8_t *)aconnector->edid,
+		(aconnector->edid->extensions + 1) * EDID_LENGTH,
+		&init_params);
+
+	dc_sink->priv = aconnector;
+	aconnector->dc_sink = dc_sink;
+
+	amdgpu_dm_add_sink_to_freesync_module(
+			connector, aconnector->edid);
+
+	drm_mode_connector_update_edid_property(
+					&aconnector->base, aconnector->edid);
 }
 
 void dm_dp_mst_dc_sink_create(struct drm_connector *connector)

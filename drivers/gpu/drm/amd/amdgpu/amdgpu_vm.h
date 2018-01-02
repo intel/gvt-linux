@@ -24,10 +24,11 @@
 #ifndef __AMDGPU_VM_H__
 #define __AMDGPU_VM_H__
 
-#include <linux/rbtree.h>
 #include <linux/idr.h>
+#include <linux/kfifo.h>
+#include <linux/rbtree.h>
+#include <drm/gpu_scheduler.h>
 
-#include "gpu_scheduler.h"
 #include "amdgpu_sync.h"
 #include "amdgpu_ring.h"
 
@@ -69,6 +70,12 @@ struct amdgpu_bo_list_entry;
 /* PDE is handled as PTE for VEGA10 */
 #define AMDGPU_PDE_PTE		(1ULL << 54)
 
+/* PTE is handled as PDE for VEGA10 (Translate Further) */
+#define AMDGPU_PTE_TF		(1ULL << 56)
+
+/* PDE Block Fragment Size for VEGA10 */
+#define AMDGPU_PDE_BFS(a)	((uint64_t)a << 59)
+
 /* VEGA10 only */
 #define AMDGPU_PTE_MTYPE(a)    ((uint64_t)a << 57)
 #define AMDGPU_PTE_MTYPE_MASK	AMDGPU_PTE_MTYPE(3ULL)
@@ -96,6 +103,19 @@ struct amdgpu_bo_list_entry;
 /* hardcode that limit for now */
 #define AMDGPU_VA_RESERVED_SIZE			(8ULL << 20)
 
+/* VA hole for 48bit addresses on Vega10 */
+#define AMDGPU_VA_HOLE_START			0x0000800000000000ULL
+#define AMDGPU_VA_HOLE_END			0xffff800000000000ULL
+
+/*
+ * Hardware is programmed as if the hole doesn't exists with start and end
+ * address values.
+ *
+ * This mask is used to remove the upper 16bits of the VA and so come up with
+ * the linear addr value.
+ */
+#define AMDGPU_VA_HOLE_MASK			0x0000ffffffffffffULL
+
 /* max vmids dedicated for process */
 #define AMDGPU_VM_MAX_RESERVED_VMID	1
 
@@ -105,6 +125,16 @@ struct amdgpu_bo_list_entry;
 /* See vm_update_mode */
 #define AMDGPU_VM_USE_CPU_FOR_GFX (1 << 0)
 #define AMDGPU_VM_USE_CPU_FOR_COMPUTE (1 << 1)
+
+/* VMPT level enumerate, and the hiberachy is:
+ * PDB2->PDB1->PDB0->PTB
+ */
+enum amdgpu_vm_level {
+	AMDGPU_VM_PDB2,
+	AMDGPU_VM_PDB1,
+	AMDGPU_VM_PDB0,
+	AMDGPU_VM_PTB
+};
 
 /* base structure for tracking BO usage in a VM */
 struct amdgpu_vm_bo_base {
@@ -124,11 +154,10 @@ struct amdgpu_vm_bo_base {
 
 struct amdgpu_vm_pt {
 	struct amdgpu_vm_bo_base	base;
-	uint64_t			addr;
+	bool				huge;
 
 	/* array of page tables, one for each directory entry */
 	struct amdgpu_vm_pt		*entries;
-	unsigned			last_entry_used;
 };
 
 #define AMDGPU_VM_FAULT(pasid, addr) (((u64)(pasid) << 48) | (addr))
@@ -162,7 +191,7 @@ struct amdgpu_vm {
 	spinlock_t		freed_lock;
 
 	/* Scheduler entity for page table updates */
-	struct amd_sched_entity	entity;
+	struct drm_sched_entity	entity;
 
 	/* client id and PASID (TODO: replace client_id with PASID) */
 	u64                     client_id;
@@ -221,9 +250,9 @@ struct amdgpu_vm_manager {
 
 	uint64_t				max_pfn;
 	uint32_t				num_level;
-	uint64_t				vm_size;
 	uint32_t				block_size;
 	uint32_t				fragment_size;
+	enum amdgpu_vm_level			root_level;
 	/* vram base address for page table entry  */
 	u64					vram_base_offset;
 	/* vm pte handling */
@@ -312,10 +341,9 @@ struct amdgpu_bo_va_mapping *amdgpu_vm_bo_lookup_mapping(struct amdgpu_vm *vm,
 							 uint64_t addr);
 void amdgpu_vm_bo_rmv(struct amdgpu_device *adev,
 		      struct amdgpu_bo_va *bo_va);
-void amdgpu_vm_set_fragment_size(struct amdgpu_device *adev,
-				uint32_t fragment_size_default);
-void amdgpu_vm_adjust_size(struct amdgpu_device *adev, uint64_t vm_size,
-				uint32_t fragment_size_default);
+void amdgpu_vm_adjust_size(struct amdgpu_device *adev, uint32_t vm_size,
+			   uint32_t fragment_size_default, unsigned max_level,
+			   unsigned max_bits);
 int amdgpu_vm_ioctl(struct drm_device *dev, void *data, struct drm_file *filp);
 bool amdgpu_vm_need_pipeline_sync(struct amdgpu_ring *ring,
 				  struct amdgpu_job *job);

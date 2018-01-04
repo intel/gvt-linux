@@ -1133,8 +1133,7 @@ static long intel_vgpu_ioctl(struct mdev_device *mdev, unsigned int cmd,
 			sparse->header.version = 1;
 			sparse->nr_areas = nr_areas;
 			cap_type_id = VFIO_REGION_INFO_CAP_SPARSE_MMAP;
-			sparse->areas[0].offset =
-					PAGE_ALIGN(vgpu_aperture_offset(vgpu));
+			sparse->areas[0].offset = 0;
 			sparse->areas[0].size = vgpu_aperture_sz(vgpu);
 			break;
 

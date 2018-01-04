@@ -366,6 +366,12 @@ struct vfio_region_gfx_edid {
  */
 #define VFIO_REGION_INFO_CAP_MSIX_MAPPABLE	3
 
+/* Offset in region to save device state */
+#define VFIO_DEVICE_STATE_OFFSET	1
+
+#define VFIO_DEVICE_START	0
+#define VFIO_DEVICE_STOP	1
+
 /**
  * VFIO_DEVICE_GET_IRQ_INFO - _IOWR(VFIO_TYPE, VFIO_BASE + 9,
  *				    struct vfio_irq_info)

@@ -184,6 +184,7 @@ static const struct intel_gvt_ops intel_gvt_ops = {
 	.vgpu_query_plane = intel_vgpu_query_plane,
 	.vgpu_get_dmabuf = intel_vgpu_get_dmabuf,
 	.write_protect_handler = intel_vgpu_page_track_handler,
+	.vgpu_save_restore = intel_gvt_save_restore,
 };
 
 /**

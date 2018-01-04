@@ -209,6 +209,7 @@ void intel_gvt_activate_vgpu(struct intel_vgpu *vgpu)
 {
 	mutex_lock(&vgpu->gvt->lock);
 	vgpu->active = true;
+	intel_vgpu_start_schedule(vgpu);
 	mutex_unlock(&vgpu->gvt->lock);
 }
 

@@ -507,7 +507,7 @@ static inline void ppgtt_set_shadow_root_entry(struct intel_vgpu_mm *mm,
 	_ppgtt_set_root_entry(mm, entry, index, false);
 }
 
-static void ggtt_get_guest_entry(struct intel_vgpu_mm *mm,
+void ggtt_get_guest_entry(struct intel_vgpu_mm *mm,
 		struct intel_gvt_gtt_entry *entry, unsigned long index)
 {
 	struct intel_gvt_gtt_pte_ops *pte_ops = mm->vgpu->gvt->gtt.pte_ops;

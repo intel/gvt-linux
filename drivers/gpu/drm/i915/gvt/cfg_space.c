@@ -33,6 +33,7 @@
 
 #include "i915_drv.h"
 #include "gvt.h"
+#include "i915_pvinfo.h"
 
 enum {
 	INTEL_GVT_PCI_BAR_GTTMMIO = 0,
@@ -125,7 +126,7 @@ static int map_aperture(struct intel_vgpu *vgpu, bool map)
 	else
 		val = *(u32 *)(vgpu_cfg_space(vgpu) + PCI_BASE_ADDRESS_2);
 
-	first_gfn = (val + vgpu_aperture_offset(vgpu)) >> PAGE_SHIFT;
+	first_gfn = (val + vgpu_guest_aperture_offset(vgpu)) >> PAGE_SHIFT;
 
 	ret = intel_gvt_hypervisor_map_gfn_to_mfn(vgpu, first_gfn,
 						  aperture_pa >> PAGE_SHIFT,

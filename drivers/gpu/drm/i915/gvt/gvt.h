@@ -402,6 +402,20 @@ int intel_gvt_load_firmware(struct intel_gvt *gvt);
 #define vgpu_fence_base(vgpu) (vgpu->fence.base)
 #define vgpu_fence_sz(vgpu) (vgpu->fence.size)
 
+/* Aperture/GM space definitions for vGPU Guest view point */
+#define vgpu_guest_aperture_offset(vgpu) \
+	vgpu_vreg_t(vgpu, vgtif_reg(avail_rs.mappable_gmadr.base))
+#define vgpu_guest_hidden_offset(vgpu)	\
+	vgpu_vreg_t(vgpu, vgtif_reg(avail_rs.nonmappable_gmadr.base))
+
+#define vgpu_guest_aperture_gmadr_base(vgpu) (vgpu_guest_aperture_offset(vgpu))
+#define vgpu_guest_aperture_gmadr_end(vgpu) \
+	(vgpu_guest_aperture_gmadr_base(vgpu) + vgpu_aperture_sz(vgpu) - 1)
+
+#define vgpu_guest_hidden_gmadr_base(vgpu) (vgpu_guest_hidden_offset(vgpu))
+#define vgpu_guest_hidden_gmadr_end(vgpu) \
+	(vgpu_guest_hidden_gmadr_base(vgpu) + vgpu_hidden_sz(vgpu) - 1)
+
 struct intel_vgpu_creation_params {
 	__u64 handle;
 	__u64 low_gm_sz;  /* in MB */
@@ -476,12 +490,12 @@ void intel_gvt_deactivate_vgpu(struct intel_vgpu *vgpu);
 
 /* validating GM functions */
 #define vgpu_gmadr_is_aperture(vgpu, gmadr) \
-	((gmadr >= vgpu_aperture_gmadr_base(vgpu)) && \
-	 (gmadr <= vgpu_aperture_gmadr_end(vgpu)))
+	((gmadr >= vgpu_guest_aperture_gmadr_base(vgpu)) && \
+	 (gmadr <= vgpu_guest_aperture_gmadr_end(vgpu)))
 
 #define vgpu_gmadr_is_hidden(vgpu, gmadr) \
-	((gmadr >= vgpu_hidden_gmadr_base(vgpu)) && \
-	 (gmadr <= vgpu_hidden_gmadr_end(vgpu)))
+	((gmadr >= vgpu_guest_hidden_gmadr_base(vgpu)) && \
+	 (gmadr <= vgpu_guest_hidden_gmadr_end(vgpu)))
 
 #define vgpu_gmadr_is_valid(vgpu, gmadr) \
 	 ((vgpu_gmadr_is_aperture(vgpu, gmadr) || \

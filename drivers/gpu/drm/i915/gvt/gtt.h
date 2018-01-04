@@ -255,6 +255,9 @@ struct intel_vgpu_mm *intel_vgpu_get_ppgtt_mm(struct intel_vgpu *vgpu,
 
 int intel_vgpu_put_ppgtt_mm(struct intel_vgpu *vgpu, u64 pdps[]);
 
+void ggtt_get_guest_entry(struct intel_vgpu_mm *mm,
+		struct intel_gvt_gtt_entry *entry, unsigned long index);
+
 int intel_vgpu_emulate_ggtt_mmio_read(struct intel_vgpu *vgpu,
 	unsigned int off, void *p_data, unsigned int bytes);
 

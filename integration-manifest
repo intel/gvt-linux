@@ -1,28 +1,10 @@
-drm-upstream drm-fixes 03bfd4e19b935adb8be4f7342f13395fb7f11096
-	Merge tag 'drm-intel-fixes-2017-12-22-1' of git://anongit.freedesktop.org/drm/drm-intel into drm-fixes
-drm-misc drm-misc-fixes ce9caf2f79a5aa170a4b6456a03db639eed9c988
-	drm/vc4: Move IRQ enable to PM path
-drm-intel drm-intel-fixes af2e01da344e9f90e38d039c39385882d7364c0f
-	docs: fix, intel_guc_loader.c has been moved to intel_guc_fw.c
-drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
-	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
-drm-upstream drm-next 350877626faba5d60cbb8cef2bdeb524212c780b
-	Merge tag 'drm-intel-next-2017-12-22' of git://anongit.freedesktop.org/drm/drm-intel into drm-next
-drm-misc drm-misc-next-fixes c209101fc1c91a318422733a3721ff6a9ff7899f
-	Merge tag 'drm-misc-fixes-2017-11-20' of git://anongit.freedesktop.org/drm/drm-misc into drm-next
-drm-intel drm-intel-next-fixes 3572f04c69ed4369da5d3c65d84fb18774aa60b6
-	drm/i915: Fix init_clock_gating for resume
-drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
-	Linux 4.14-rc1
-drm-misc drm-misc-next 5b8ea816e8e057702d8c2ac66342c864fa517ede
-	drm/tinydrm: add driver for ST7735R panels
-drm-intel drm-intel-next-queued c68ce69910e3b292afc138e12725399d3b0fb347
-	drm/i915: Assert we do not try to wait on an invalid seqno
-drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
-	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
-sound-upstream for-linus fe08f34d066f4404934a509b6806db1a4f700c86
-	ALSA: pcm: Remove incorrect snd_BUG_ON() usages
-sound-upstream for-next 7a0a87160a1dc09220ec485b31d0f82f687a053f
-	ALSA: pcm: Set config update bits only when really changed
-drm-intel topic/core-for-CI be8dea61d8de396928bee848407f5fe683c34221
-	lockdep: finer-grained completion key for kthread
+drm-tip/drm-tip 5f40895798adb2b511014d4bc7167845b179f8da
+	drm-tip: 2018y-01m-04d-00h-29m-57s UTC integration manifest
+vfio-upstream/for-linus e41dd1556d4d22c4b51c9003552af36e1d3e9b4a
+	Merge branch 'iommu-fixes/vt-d' into for-linus
+vfio-upstream/next 5887a2b2d6cc581a4e1d1f2df1214cc3dd933f1b
+	Merge branches 'v4.16-iommu/amd', 'v4.16-iommu/ipmmu-vmsa', 'v4.16-iommu/misc', 'v4.16-iommu/vt-d' and 'v4.16/vfio' into v4.16/next
+origin/gvt-next 39f1ef58cf12f0ab32a9ae1cb9e5e1725c52433e
+	drm/i915/gvt: add PLANE_KEYMAX regs to mmio track list
+origin/gvt-fixes 121d760d0788f95619049c63449d977065cab69d
+	drm/i915/gvt: Clear the shadow page table entry after post-sync

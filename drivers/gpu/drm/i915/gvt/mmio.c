@@ -49,6 +49,19 @@ int intel_vgpu_gpa_to_mmio_offset(struct intel_vgpu *vgpu, u64 gpa)
 	return gpa - gttmmio_gpa;
 }
 
+/**
+ * intel_vgpu_mmio_offset_to_GPA - translate a MMIO offset to GPA
+ * @vgpu: a vGPU
+ *
+ * Returns:
+ * Zero on success, negative error code if failed
+ */
+int intel_vgpu_mmio_offset_to_gpa(struct intel_vgpu *vgpu, u64 offset)
+{
+	return offset + ((*(u64 *)(vgpu_cfg_space(vgpu) + PCI_BASE_ADDRESS_0)) &
+			~GENMASK(3, 0));
+}
+
 #define reg_is_mmio(gvt, reg)  \
 	(reg >= 0 && reg < gvt->device_info.mmio_size)
 

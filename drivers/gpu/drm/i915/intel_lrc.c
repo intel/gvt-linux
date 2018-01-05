@@ -1011,7 +1011,8 @@ static void execlists_schedule(struct drm_i915_gem_request *request, int prio)
 	stack.signaler = &request->priotree;
 	list_add(&stack.dfs_link, &dfs);
 
-	/* Recursively bump all dependent priorities to match the new request.
+	/*
+	 * Recursively bump all dependent priorities to match the new request.
 	 *
 	 * A naive approach would be to use recursion:
 	 * static void update_priorities(struct i915_priotree *pt, prio) {
@@ -1028,27 +1029,29 @@ static void execlists_schedule(struct drm_i915_gem_request *request, int prio)
 	 * end result is a topological list of requests in reverse order, the
 	 * last element in the list is the request we must execute first.
 	 */
-	list_for_each_entry_safe(dep, p, &dfs, dfs_link) {
+	list_for_each_entry(dep, &dfs, dfs_link) {
 		struct i915_priotree *pt = dep->signaler;
 
-		/* Within an engine, there can be no cycle, but we may
+		/*
+		 * Within an engine, there can be no cycle, but we may
 		 * refer to the same dependency chain multiple times
 		 * (redundant dependencies are not eliminated) and across
 		 * engines.
 		 */
 		list_for_each_entry(p, &pt->signalers_list, signal_link) {
-			if (i915_gem_request_completed(pt_to_request(p->signaler)))
+			GEM_BUG_ON(p == dep); /* no cycles! */
+
+			if (i915_priotree_signaled(p->signaler))
 				continue;
 
 			GEM_BUG_ON(p->signaler->priority < pt->priority);
 			if (prio > READ_ONCE(p->signaler->priority))
 				list_move_tail(&p->dfs_link, &dfs);
 		}
-
-		list_safe_reset_next(dep, p, dfs_link);
 	}
 
-	/* If we didn't need to bump any existing priorities, and we haven't
+	/*
+	 * If we didn't need to bump any existing priorities, and we haven't
 	 * yet submitted this request (i.e. there is no potential race with
 	 * execlists_submit_request()), we can set our own priority and skip
 	 * acquiring the engine locks.
@@ -1469,9 +1472,20 @@ static u8 gtiir[] = {
 	[VECS] = 3,
 };
 
-static int gen8_init_common_ring(struct intel_engine_cs *engine)
+static void enable_execlists(struct intel_engine_cs *engine)
 {
 	struct drm_i915_private *dev_priv = engine->i915;
+
+	I915_WRITE(RING_HWSTAM(engine->mmio_base), 0xffffffff);
+	I915_WRITE(RING_MODE_GEN7(engine),
+		   _MASKED_BIT_ENABLE(GFX_RUN_LIST_ENABLE));
+	I915_WRITE(RING_HWS_PGA(engine->mmio_base),
+		   engine->status_page.ggtt_offset);
+	POSTING_READ(RING_HWS_PGA(engine->mmio_base));
+}
+
+static int gen8_init_common_ring(struct intel_engine_cs *engine)
+{
 	struct intel_engine_execlists * const execlists = &engine->execlists;
 	int ret;
 
@@ -1482,34 +1496,13 @@ static int gen8_init_common_ring(struct intel_engine_cs *engine)
 	intel_engine_reset_breadcrumbs(engine);
 	intel_engine_init_hangcheck(engine);
 
-	I915_WRITE(RING_HWSTAM(engine->mmio_base), 0xffffffff);
-	I915_WRITE(RING_MODE_GEN7(engine),
-		   _MASKED_BIT_ENABLE(GFX_RUN_LIST_ENABLE));
-	I915_WRITE(RING_HWS_PGA(engine->mmio_base),
-		   engine->status_page.ggtt_offset);
-	POSTING_READ(RING_HWS_PGA(engine->mmio_base));
-
+	enable_execlists(engine);
 	DRM_DEBUG_DRIVER("Execlists enabled for %s\n", engine->name);
 
 	GEM_BUG_ON(engine->id >= ARRAY_SIZE(gtiir));
 
-	/*
-	 * Clear any pending interrupt state.
-	 *
-	 * We do it twice out of paranoia that some of the IIR are double
-	 * buffered, and if we only reset it once there may still be
-	 * an interrupt pending.
-	 */
-	I915_WRITE(GEN8_GT_IIR(gtiir[engine->id]),
-		   GT_CONTEXT_SWITCH_INTERRUPT << engine->irq_shift);
-	I915_WRITE(GEN8_GT_IIR(gtiir[engine->id]),
-		   GT_CONTEXT_SWITCH_INTERRUPT << engine->irq_shift);
-	clear_bit(ENGINE_IRQ_EXECLIST, &engine->irq_posted);
 	execlists->csb_head = -1;
 	execlists->active = 0;
-
-	execlists->elsp =
-		dev_priv->regs + i915_mmio_reg_offset(RING_ELSP(engine));
 
 	/* After a GPU reset, we may have requests to replay */
 	if (execlists->first)
@@ -1551,6 +1544,24 @@ static int gen9_init_render_ring(struct intel_engine_cs *engine)
 	return init_workarounds_ring(engine);
 }
 
+static void reset_irq(struct intel_engine_cs *engine)
+{
+	struct drm_i915_private *dev_priv = engine->i915;
+
+	/*
+	 * Clear any pending interrupt state.
+	 *
+	 * We do it twice out of paranoia that some of the IIR are double
+	 * buffered, and if we only reset it once there may still be
+	 * an interrupt pending.
+	 */
+	I915_WRITE(GEN8_GT_IIR(gtiir[engine->id]),
+		   GT_CONTEXT_SWITCH_INTERRUPT << engine->irq_shift);
+	I915_WRITE(GEN8_GT_IIR(gtiir[engine->id]),
+		   GT_CONTEXT_SWITCH_INTERRUPT << engine->irq_shift);
+	clear_bit(ENGINE_IRQ_EXECLIST, &engine->irq_posted);
+}
+
 static void reset_common_ring(struct intel_engine_cs *engine,
 			      struct drm_i915_gem_request *request)
 {
@@ -1560,6 +1571,9 @@ static void reset_common_ring(struct intel_engine_cs *engine,
 
 	GEM_TRACE("%s seqno=%x\n",
 		  engine->name, request ? request->global_seqno : 0);
+
+	reset_irq(engine);
+
 	spin_lock_irqsave(&engine->timeline->lock, flags);
 
 	/*
@@ -1909,6 +1923,7 @@ void intel_logical_ring_cleanup(struct intel_engine_cs *engine)
 	intel_engine_cleanup_common(engine);
 
 	lrc_destroy_wa_ctx(engine);
+
 	engine->i915 = NULL;
 	dev_priv->engine[engine->id] = NULL;
 	kfree(engine);
@@ -1997,6 +2012,9 @@ static int logical_ring_init(struct intel_engine_cs *engine)
 	ret = intel_engine_init_common(engine);
 	if (ret)
 		goto error;
+
+	engine->execlists.elsp =
+		engine->i915->regs + i915_mmio_reg_offset(RING_ELSP(engine));
 
 	return 0;
 

@@ -47,6 +47,7 @@ obj-$(CONFIG_DRM_DEBUG_MM_SELFTEST) += selftests/
 
 obj-$(CONFIG_DRM)	+= drm.o
 obj-$(CONFIG_DRM_MIPI_DSI) += drm_mipi_dsi.o
+obj-$(CONFIG_DRM_PANEL_ORIENTATION_QUIRKS) += drm_panel_orientation_quirks.o
 obj-$(CONFIG_DRM_ARM)	+= arm/
 obj-$(CONFIG_DRM_TTM)	+= ttm/
 obj-$(CONFIG_DRM_TDFX)	+= tdfx/
@@ -101,3 +102,4 @@ obj-$(CONFIG_DRM_MXSFB)	+= mxsfb/
 obj-$(CONFIG_DRM_TINYDRM) += tinydrm/
 obj-$(CONFIG_DRM_PL111) += pl111/
 obj-$(CONFIG_DRM_TVE200) += tve200/
+obj-$(CONFIG_DRM_SCHED)	+= scheduler/

@@ -1394,6 +1394,40 @@ static int skl_power_well_ctl_write(struct intel_vgpu *vgpu,
 	return intel_vgpu_default_mmio_write(vgpu, offset, &v, bytes);
 }
 
+static int skl_misc_ctl_write(struct intel_vgpu *vgpu, unsigned int offset,
+		void *p_data, unsigned int bytes)
+{
+	struct drm_i915_private *dev_priv = vgpu->gvt->dev_priv;
+	u32 v = *(u32 *)p_data;
+
+	if (!IS_SKYLAKE(dev_priv) && !IS_KABYLAKE(dev_priv))
+		return intel_vgpu_default_mmio_write(vgpu,
+				offset, p_data, bytes);
+
+	switch (offset) {
+	case 0x4ddc:
+		/* bypass WaCompressedResourceSamplerPbeMediaNewHashMode */
+		vgpu_vreg(vgpu, offset) = v & ~(1 << 31);
+		break;
+	case 0x42080:
+		/* bypass WaCompressedResourceDisplayNewHashMode */
+		vgpu_vreg(vgpu, offset) = v & ~(1 << 15);
+		break;
+	case 0xe194:
+		/* bypass WaCompressedResourceSamplerPbeMediaNewHashMode */
+		vgpu_vreg(vgpu, offset) = v & ~(1 << 8);
+		break;
+	case 0x7014:
+		/* bypass WaCompressedResourceSamplerPbeMediaNewHashMode */
+		vgpu_vreg(vgpu, offset) = v & ~(1 << 13);
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
 static int skl_lcpll_write(struct intel_vgpu *vgpu, unsigned int offset,
 		void *p_data, unsigned int bytes)
 {
@@ -1669,7 +1703,7 @@ static int init_generic_mmio_info(struct intel_gvt *gvt)
 	MMIO_DFH(GEN7_COMMON_SLICE_CHICKEN1, D_ALL, F_MODE_MASK | F_CMD_ACCESS,
 		NULL, NULL);
 	MMIO_DFH(COMMON_SLICE_CHICKEN2, D_ALL, F_MODE_MASK | F_CMD_ACCESS,
-		 NULL, NULL);
+		 NULL, skl_misc_ctl_write);
 	MMIO_DFH(_MMIO(0x9030), D_ALL, F_CMD_ACCESS, NULL, NULL);
 	MMIO_DFH(_MMIO(0x20a0), D_ALL, F_CMD_ACCESS, NULL, NULL);
 	MMIO_DFH(_MMIO(0x2420), D_ALL, F_CMD_ACCESS, NULL, NULL);
@@ -2561,7 +2595,8 @@ static int init_broadwell_mmio_info(struct intel_gvt *gvt)
 	MMIO_D(_MMIO(0x6e570), D_BDW_PLUS);
 	MMIO_D(_MMIO(0x65f10), D_BDW_PLUS);
 
-	MMIO_DFH(_MMIO(0xe194), D_BDW_PLUS, F_MODE_MASK | F_CMD_ACCESS, NULL, NULL);
+	MMIO_DFH(_MMIO(0xe194), D_BDW_PLUS, F_MODE_MASK | F_CMD_ACCESS, NULL,
+		 skl_misc_ctl_write);
 	MMIO_DFH(_MMIO(0xe188), D_BDW_PLUS, F_MODE_MASK | F_CMD_ACCESS, NULL, NULL);
 	MMIO_DFH(HALF_SLICE_CHICKEN2, D_BDW_PLUS, F_MODE_MASK | F_CMD_ACCESS, NULL, NULL);
 	MMIO_DFH(_MMIO(0x2580), D_BDW_PLUS, F_MODE_MASK | F_CMD_ACCESS, NULL, NULL);
@@ -2611,8 +2646,8 @@ static int init_skl_mmio_info(struct intel_gvt *gvt)
 	MMIO_D(GEN9_MEDIA_PG_IDLE_HYSTERESIS, D_SKL_PLUS);
 	MMIO_D(GEN9_RENDER_PG_IDLE_HYSTERESIS, D_SKL_PLUS);
 	MMIO_DFH(GEN9_GAMT_ECO_REG_RW_IA, D_SKL_PLUS, F_CMD_ACCESS, NULL, NULL);
-	MMIO_DH(_MMIO(0x4ddc), D_SKL_PLUS, NULL, NULL);
-	MMIO_DH(_MMIO(0x42080), D_SKL_PLUS, NULL, NULL);
+	MMIO_DH(_MMIO(0x4ddc), D_SKL_PLUS, NULL, skl_misc_ctl_write);
+	MMIO_DH(_MMIO(0x42080), D_SKL_PLUS, NULL, skl_misc_ctl_write);
 	MMIO_D(_MMIO(0x45504), D_SKL_PLUS);
 	MMIO_D(_MMIO(0x45520), D_SKL_PLUS);
 	MMIO_D(_MMIO(0x46000), D_SKL_PLUS);

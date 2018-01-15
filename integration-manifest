@@ -1,0 +1,32 @@
+drm-upstream drm-fixes fee6c614a5c20783a5c28c2671c186c06e19c215
+	Merge tag 'drm-intel-fixes-2018-01-11-1' of git://anongit.freedesktop.org/drm/drm-intel into drm-fixes
+drm-misc drm-misc-fixes 3b9c57cef4de80f29885e1edf69828de8d3fae6b
+	drm/sun4i: hdmi: Add missing rate halving check in sun4i_tmds_determine_rate
+drm-intel drm-intel-fixes 5005c8514285ae4f28e862f8d91faaa2015e03a3
+	drm/i915: Don't adjust priority on an already signaled fence
+drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
+	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
+drm-upstream drm-next 9be712ef4612268c28b9f1e2d850d3ceab06ef66
+	Merge tag 'drm/tegra/for-4.16-rc1-fixes' of git://anongit.freedesktop.org/tegra/linux into drm-next
+drm-misc drm-misc-next-fixes a1c55bccf6004ec9fbcf892328f9658767aa22bb
+	drm/panel: lvds: Add support for the power-supply property
+drm-intel drm-intel-next-fixes 3572f04c69ed4369da5d3c65d84fb18774aa60b6
+	drm/i915: Fix init_clock_gating for resume
+drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
+	Linux 4.14-rc1
+drm-misc drm-misc-next 49f81d80ab8496c400dee63b31530723a390911f
+	drm/pl111: Support handling bridge timings
+drm-intel drm-intel-next-queued c9ef291a7e79ebc9fb1723090c12fae626e74c46
+	drm/i915/psr: Avoid initializing PSR if there is no sink support.
+drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
+	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
+sound-upstream for-linus b3defb791b26ea0683a93a4f49c77ec45ec96f10
+	ALSA: seq: Make ioctls race-free
+sound-upstream for-next 8999bd3c6323a3f3815b5c45628023f3a994b7a8
+	Merge tag 'asoc-v4.16-2' of https://git.kernel.org/pub/scm/linux/kernel/git/broonie/sound into for-next
+drm-intel topic/core-for-CI be8dea61d8de396928bee848407f5fe683c34221
+	lockdep: finer-grained completion key for kthread
+drm-misc topic/hdcp 01468d6c711a31a9fe333d072afa8a4730ef3bf9
+	drm/i915: Only disable HDCP when it's active
+drm-misc topic/hdcp 01468d6c711a31a9fe333d072afa8a4730ef3bf9
+	drm/i915: Only disable HDCP when it's active

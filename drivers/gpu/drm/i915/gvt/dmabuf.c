@@ -499,6 +499,8 @@ int intel_vgpu_get_dmabuf(struct intel_vgpu *vgpu, unsigned int dmabuf_id)
 		    dmabuf_fd,
 		    file_count(dmabuf->file),
 		    kref_read(&obj->base.refcount));
+	get_dma_buf(dmabuf);
+	get_dma_buf(dmabuf);
 
 	return dmabuf_fd;
 

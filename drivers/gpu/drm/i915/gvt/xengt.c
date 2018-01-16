@@ -1062,11 +1062,10 @@ err:
 	return -ENOMEM;
 }
 
-static void xengt_vmem_destroy(struct intel_vgpu *vgpu)
+static void xengt_vmem_destroy(struct xengt_hvm_dev *info)
 {
 	int i, j;
 	unsigned long nr_low_1mb_bkt, nr_high_bkt, nr_high_bkt_4k;
-	struct xengt_hvm_dev *info = (struct xengt_hvm_dev *)vgpu->handle;
 
 	if (!info || info->vm_id == 0)
 		return;
@@ -1409,23 +1408,19 @@ static int xengt_emulation_thread(void *priv)
 	return 0;
 }
 
-static inline void xengt_raise_emulation_request(struct intel_vgpu *vgpu,
+static inline void xengt_raise_emulation_request(struct xengt_hvm_dev *info,
 	int vcpu)
 {
-	struct xengt_hvm_dev *info = (struct xengt_hvm_dev *)vgpu->handle;
-
 	set_bit(vcpu, info->ioreq_pending);
 	wake_up(&info->io_event_wq);
 }
 
 static irqreturn_t xengt_io_req_handler(int irq, void *dev)
 {
-	struct intel_vgpu *vgpu;
 	struct xengt_hvm_dev *info;
 	int vcpu;
 
-	vgpu = (struct intel_vgpu *)dev;
-	info = (struct xengt_hvm_dev *)vgpu->handle;
+	info = (struct xengt_hvm_dev *)dev;
 
 	for (vcpu = 0; vcpu < info->nr_vcpu; vcpu++) {
 		if (info->evtchn_irq[vcpu] == irq)
@@ -1438,7 +1433,7 @@ static irqreturn_t xengt_io_req_handler(int irq, void *dev)
 		return IRQ_NONE;
 	}
 
-	xengt_raise_emulation_request(vgpu, vcpu);
+	xengt_raise_emulation_request(info, vcpu);
 
 	return IRQ_HANDLED;
 }
@@ -1459,15 +1454,19 @@ static void xengt_logd_destroy(struct xengt_hvm_dev *info)
 
 void xengt_instance_destroy(struct intel_vgpu *vgpu)
 {
-	struct xengt_hvm_dev *info;
+	struct xengt_hvm_dev *info = NULL;
 	int vcpu;
 
-	intel_gvt_ops->vgpu_deactivate(vgpu);
+	if (vgpu) {
+		info = (struct xengt_hvm_dev *)vgpu->handle;
+		intel_gvt_ops->vgpu_deactivate(vgpu);
+		intel_gvt_ops->vgpu_destroy(vgpu);
+	}
 
-	info = (struct xengt_hvm_dev *)vgpu->handle;
 	if (info == NULL)
-		goto free_vgpu;
+		return;
 
+	info->vgpu = NULL;
 	info->on_destroy = true;
 	if (info->emulation_thread != NULL)
 		kthread_stop(info->emulation_thread);
@@ -1485,7 +1484,7 @@ void xengt_instance_destroy(struct intel_vgpu *vgpu)
 
 	for (vcpu = 0; vcpu < info->nr_vcpu; vcpu++) {
 		if (info->evtchn_irq[vcpu] >= 0)
-			unbind_from_irqhandler(info->evtchn_irq[vcpu], vgpu);
+			unbind_from_irqhandler(info->evtchn_irq[vcpu], info);
 	}
 
 	if (info->iopage_vma != NULL) {
@@ -1501,13 +1500,8 @@ void xengt_instance_destroy(struct intel_vgpu *vgpu)
 
 out1:
 	xengt_logd_destroy(info);
-	xengt_vmem_destroy(vgpu);
-	vgpu->handle = (unsigned long)NULL;
+	xengt_vmem_destroy(info);
 	kfree(info);
-
-free_vgpu:
-	if (vgpu)
-		intel_gvt_ops->vgpu_destroy(vgpu);
 }
 
 struct intel_vgpu *xengt_instance_create(domid_t vm_id,
@@ -1572,7 +1566,7 @@ struct intel_vgpu *xengt_instance_create(domid_t vm_id,
 		irq = bind_interdomain_evtchn_to_irqhandler(vm_id,
 				info->iopage->vcpu_ioreq[vcpu].vp_eport,
 				xengt_io_req_handler, 0,
-				"xengt", vgpu);
+				"xengt", info);
 		if (irq < 0) {
 			rc = irq;
 			gvt_err("Failed to bind event channle: %d\n", rc);

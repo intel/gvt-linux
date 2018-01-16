@@ -1,32 +1,10 @@
-drm-upstream drm-fixes fee6c614a5c20783a5c28c2671c186c06e19c215
-	Merge tag 'drm-intel-fixes-2018-01-11-1' of git://anongit.freedesktop.org/drm/drm-intel into drm-fixes
-drm-misc drm-misc-fixes 3b9c57cef4de80f29885e1edf69828de8d3fae6b
-	drm/sun4i: hdmi: Add missing rate halving check in sun4i_tmds_determine_rate
-drm-intel drm-intel-fixes a8750ddca918032d6349adbf9a4b6555e7db20da
-	Linux 4.15-rc8
-drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
-	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
-drm-upstream drm-next 9be712ef4612268c28b9f1e2d850d3ceab06ef66
-	Merge tag 'drm/tegra/for-4.16-rc1-fixes' of git://anongit.freedesktop.org/tegra/linux into drm-next
-drm-misc drm-misc-next-fixes a0d605372a279d71abd29ed985b9a51e66e12170
-	drm/panel: lvds: Handle the optional regulator case properly
-drm-intel drm-intel-next-fixes 9be712ef4612268c28b9f1e2d850d3ceab06ef66
-	Merge tag 'drm/tegra/for-4.16-rc1-fixes' of git://anongit.freedesktop.org/tegra/linux into drm-next
-drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
-	Linux 4.14-rc1
-drm-misc drm-misc-next 10399b22c1a0e0bbbf56460447e7e602737b0058
-	drm/tinydrm/mipi-dbi: Change reset active time
-drm-intel drm-intel-next-queued beacbd16158a583dc22104d59ea9ac0a808be73f
-	drm/i915: Use our singlethreaded wq for freeing objects
-drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
-	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
-sound-upstream for-linus b3defb791b26ea0683a93a4f49c77ec45ec96f10
-	ALSA: seq: Make ioctls race-free
-sound-upstream for-next c469652bb5e8fb715db7d152f46d33b3740c9b87
-	ALSA: hda - Use IS_REACHABLE() for dependency on input
-drm-intel topic/core-for-CI be8dea61d8de396928bee848407f5fe683c34221
-	lockdep: finer-grained completion key for kthread
-drm-misc topic/hdcp 01468d6c711a31a9fe333d072afa8a4730ef3bf9
-	drm/i915: Only disable HDCP when it's active
-drm-misc topic/hdcp 01468d6c711a31a9fe333d072afa8a4730ef3bf9
-	drm/i915: Only disable HDCP when it's active
+drm-tip/drm-tip 70efeb2fa45da6f29e43893bb014b3c269e84e7b
+	drm-tip: 2018y-01m-15d-21h-15m-57s UTC integration manifest
+vfio-upstream/for-linus 563b5cbe334e9503ab2b234e279d500fc4f76018
+	iommu/arm-smmu-v3: Cope with duplicated Stream IDs
+vfio-upstream/next 5887a2b2d6cc581a4e1d1f2df1214cc3dd933f1b
+	Merge branches 'v4.16-iommu/amd', 'v4.16-iommu/ipmmu-vmsa', 'v4.16-iommu/misc', 'v4.16-iommu/vt-d' and 'v4.16/vfio' into v4.16/next
+origin/gvt-next 0eb582541cfd7a17b6fcf9282c966c0e59efd02f
+	drm/i915/gvt: cancel scheduler timer when no vGPU exists
+origin/gvt-fixes 65e7439204b57b7a7f6e4694f9e2a9adde5e77ed
+	drm/i915/gvt: Fix stack-out-of-bounds bug in cmd parser

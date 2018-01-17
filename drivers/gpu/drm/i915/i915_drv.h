@@ -453,9 +453,9 @@ struct intel_display_error_state;
 
 struct i915_gpu_state {
 	struct kref ref;
-	struct timeval time;
-	struct timeval boottime;
-	struct timeval uptime;
+	ktime_t time;
+	ktime_t boottime;
+	ktime_t uptime;
 
 	struct drm_i915_private *i915;
 
@@ -754,7 +754,6 @@ struct i915_drrs {
 struct i915_psr {
 	struct mutex lock;
 	bool sink_support;
-	bool source_ok;
 	struct intel_dp *enabled;
 	bool active;
 	struct delayed_work work;

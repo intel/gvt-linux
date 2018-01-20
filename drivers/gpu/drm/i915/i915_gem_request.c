@@ -161,12 +161,16 @@ i915_priotree_fini(struct drm_i915_private *i915, struct i915_priotree *pt)
 
 	GEM_BUG_ON(!list_empty(&pt->link));
 
-	/* Everyone we depended upon (the fences we wait to be signaled)
+	/*
+	 * Everyone we depended upon (the fences we wait to be signaled)
 	 * should retire before us and remove themselves from our list.
 	 * However, retirement is run independently on each timeline and
 	 * so we may be called out-of-order.
 	 */
 	list_for_each_entry_safe(dep, next, &pt->signalers_list, signal_link) {
+		GEM_BUG_ON(!i915_priotree_signaled(dep->signaler));
+		GEM_BUG_ON(!list_empty(&dep->dfs_link));
+
 		list_del(&dep->wait_link);
 		if (dep->flags & I915_DEPENDENCY_ALLOC)
 			i915_dependency_free(i915, dep);
@@ -174,6 +178,9 @@ i915_priotree_fini(struct drm_i915_private *i915, struct i915_priotree *pt)
 
 	/* Remove ourselves from everyone who depends upon us */
 	list_for_each_entry_safe(dep, next, &pt->waiters_list, wait_link) {
+		GEM_BUG_ON(dep->signaler != pt);
+		GEM_BUG_ON(!list_empty(&dep->dfs_link));
+
 		list_del(&dep->signal_link);
 		if (dep->flags & I915_DEPENDENCY_ALLOC)
 			i915_dependency_free(i915, dep);
@@ -688,6 +695,17 @@ i915_gem_request_alloc(struct intel_engine_cs *engine,
 					     I915_WAIT_INTERRUPTIBLE);
 		if (ret)
 			goto err_unreserve;
+
+		/*
+		 * We've forced the client to stall and catch up with whatever
+		 * backlog there might have been. As we are assuming that we
+		 * caused the mempressure, now is an opportune time to
+		 * recover as much memory from the request pool as is possible.
+		 * Having already penalized the client to stall, we spend
+		 * a little extra time to re-optimise page allocation.
+		 */
+		kmem_cache_shrink(dev_priv->requests);
+		rcu_barrier(); /* Recover the TYPESAFE_BY_RCU pages */
 
 		req = kmem_cache_alloc(dev_priv->requests, GFP_KERNEL);
 		if (!req) {

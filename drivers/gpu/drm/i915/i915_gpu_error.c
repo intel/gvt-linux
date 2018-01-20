@@ -34,16 +34,25 @@
 
 #include "i915_drv.h"
 
-static const char *engine_str(int engine)
+static inline const struct intel_engine_cs *
+engine_lookup(const struct drm_i915_private *i915, unsigned int id)
 {
-	switch (engine) {
-	case RCS: return "render";
-	case VCS: return "bsd";
-	case BCS: return "blt";
-	case VECS: return "vebox";
-	case VCS2: return "bsd2";
-	default: return "";
-	}
+	if (id >= I915_NUM_ENGINES)
+		return NULL;
+
+	return i915->engine[id];
+}
+
+static inline const char *
+__engine_name(const struct intel_engine_cs *engine)
+{
+	return engine ? engine->name : "";
+}
+
+static const char *
+engine_name(const struct drm_i915_private *i915, unsigned int id)
+{
+	return __engine_name(engine_lookup(i915, id));
 }
 
 static const char *tiling_flag(int tiling)
@@ -345,7 +354,7 @@ static void print_error_buffers(struct drm_i915_error_state_buf *m,
 		err_puts(m, purgeable_flag(err->purgeable));
 		err_puts(m, err->userptr ? " userptr" : "");
 		err_puts(m, err->engine != -1 ? " " : "");
-		err_puts(m, engine_str(err->engine));
+		err_puts(m, engine_name(m->i915, err->engine));
 		err_puts(m, i915_cache_level_str(m->i915, err->cache_level));
 
 		if (err->name)
@@ -415,7 +424,8 @@ static void error_print_engine(struct drm_i915_error_state_buf *m,
 {
 	int n;
 
-	err_printf(m, "%s command stream:\n", engine_str(ee->engine_id));
+	err_printf(m, "%s command stream:\n",
+		   engine_name(m->i915, ee->engine_id));
 	err_printf(m, "  IDLE?: %s\n", yesno(ee->idle));
 	err_printf(m, "  START: 0x%08x\n", ee->start);
 	err_printf(m, "  HEAD:  0x%08x [0x%08x]\n", ee->head, ee->rq_head);
@@ -610,6 +620,7 @@ int i915_error_state_to_str(struct drm_i915_error_state_buf *m,
 {
 	struct drm_i915_private *dev_priv = m->i915;
 	struct drm_i915_error_object *obj;
+	struct timespec64 ts;
 	int i, j;
 
 	if (!error) {
@@ -620,18 +631,21 @@ int i915_error_state_to_str(struct drm_i915_error_state_buf *m,
 	if (*error->error_msg)
 		err_printf(m, "%s\n", error->error_msg);
 	err_printf(m, "Kernel: " UTS_RELEASE "\n");
-	err_printf(m, "Time: %ld s %ld us\n",
-		   error->time.tv_sec, error->time.tv_usec);
-	err_printf(m, "Boottime: %ld s %ld us\n",
-		   error->boottime.tv_sec, error->boottime.tv_usec);
-	err_printf(m, "Uptime: %ld s %ld us\n",
-		   error->uptime.tv_sec, error->uptime.tv_usec);
+	ts = ktime_to_timespec64(error->time);
+	err_printf(m, "Time: %lld s %ld us\n",
+		   (s64)ts.tv_sec, ts.tv_nsec / NSEC_PER_USEC);
+	ts = ktime_to_timespec64(error->boottime);
+	err_printf(m, "Boottime: %lld s %ld us\n",
+		   (s64)ts.tv_sec, ts.tv_nsec / NSEC_PER_USEC);
+	ts = ktime_to_timespec64(error->uptime);
+	err_printf(m, "Uptime: %lld s %ld us\n",
+		   (s64)ts.tv_sec, ts.tv_nsec / NSEC_PER_USEC);
 
 	for (i = 0; i < ARRAY_SIZE(error->engine); i++) {
 		if (error->engine[i].hangcheck_stalled &&
 		    error->engine[i].context.pid) {
 			err_printf(m, "Active process (on ring %s): %s [%d], score %d\n",
-				   engine_str(i),
+				   engine_name(m->i915, i),
 				   error->engine[i].context.comm,
 				   error->engine[i].context.pid,
 				   error->engine[i].context.ban_score);
@@ -1737,11 +1751,10 @@ static int capture(void *data)
 {
 	struct i915_gpu_state *error = data;
 
-	do_gettimeofday(&error->time);
-	error->boottime = ktime_to_timeval(ktime_get_boottime());
-	error->uptime =
-		ktime_to_timeval(ktime_sub(ktime_get(),
-					   error->i915->gt.last_init_time));
+	error->time = ktime_get_real();
+	error->boottime = ktime_get_boottime();
+	error->uptime = ktime_sub(ktime_get(),
+				  error->i915->gt.last_init_time);
 
 	capture_params(error);
 	capture_uc_state(error);

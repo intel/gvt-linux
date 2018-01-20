@@ -453,9 +453,9 @@ struct intel_display_error_state;
 
 struct i915_gpu_state {
 	struct kref ref;
-	struct timeval time;
-	struct timeval boottime;
-	struct timeval uptime;
+	ktime_t time;
+	ktime_t boottime;
+	ktime_t uptime;
 
 	struct drm_i915_private *i915;
 
@@ -754,7 +754,6 @@ struct i915_drrs {
 struct i915_psr {
 	struct mutex lock;
 	bool sink_support;
-	bool source_ok;
 	struct intel_dp *enabled;
 	bool active;
 	struct delayed_work work;
@@ -783,6 +782,7 @@ enum intel_pch {
 	PCH_SPT,        /* Sunrisepoint PCH */
 	PCH_KBP,        /* Kaby Lake PCH */
 	PCH_CNP,        /* Cannon Lake PCH */
+	PCH_ICP,	/* Ice Lake PCH */
 	PCH_NOP,
 };
 
@@ -1792,7 +1792,7 @@ struct i915_oa_ops {
 };
 
 struct intel_cdclk_state {
-	unsigned int cdclk, vco, ref;
+	unsigned int cdclk, vco, ref, bypass;
 	u8 voltage_level;
 };
 
@@ -2595,6 +2595,7 @@ intel_info(const struct drm_i915_private *dev_priv)
 #define IS_GEMINILAKE(dev_priv)	IS_PLATFORM(dev_priv, INTEL_GEMINILAKE)
 #define IS_COFFEELAKE(dev_priv)	IS_PLATFORM(dev_priv, INTEL_COFFEELAKE)
 #define IS_CANNONLAKE(dev_priv)	IS_PLATFORM(dev_priv, INTEL_CANNONLAKE)
+#define IS_ICELAKE(dev_priv)	IS_PLATFORM(dev_priv, INTEL_ICELAKE)
 #define IS_MOBILE(dev_priv)	((dev_priv)->info.is_mobile)
 #define IS_HSW_EARLY_SDV(dev_priv) (IS_HASWELL(dev_priv) && \
 				    (INTEL_DEVID(dev_priv) & 0xFF00) == 0x0C00)
@@ -2706,6 +2707,7 @@ intel_info(const struct drm_i915_private *dev_priv)
 #define IS_GEN8(dev_priv)	(!!((dev_priv)->info.gen_mask & BIT(7)))
 #define IS_GEN9(dev_priv)	(!!((dev_priv)->info.gen_mask & BIT(8)))
 #define IS_GEN10(dev_priv)	(!!((dev_priv)->info.gen_mask & BIT(9)))
+#define IS_GEN11(dev_priv)	(!!((dev_priv)->info.gen_mask & BIT(10)))
 
 #define IS_LP(dev_priv)	(INTEL_INFO(dev_priv)->is_lp)
 #define IS_GEN9_LP(dev_priv)	(IS_GEN9(dev_priv) && IS_LP(dev_priv))
@@ -2843,11 +2845,13 @@ intel_info(const struct drm_i915_private *dev_priv)
 #define INTEL_PCH_KBP_DEVICE_ID_TYPE		0xA280
 #define INTEL_PCH_CNP_DEVICE_ID_TYPE		0xA300
 #define INTEL_PCH_CNP_LP_DEVICE_ID_TYPE		0x9D80
+#define INTEL_PCH_ICP_DEVICE_ID_TYPE		0x3480
 #define INTEL_PCH_P2X_DEVICE_ID_TYPE		0x7100
 #define INTEL_PCH_P3X_DEVICE_ID_TYPE		0x7000
 #define INTEL_PCH_QEMU_DEVICE_ID_TYPE		0x2900 /* qemu q35 has 2918 */
 
 #define INTEL_PCH_TYPE(dev_priv) ((dev_priv)->pch_type)
+#define HAS_PCH_ICP(dev_priv) (INTEL_PCH_TYPE(dev_priv) == PCH_ICP)
 #define HAS_PCH_CNP(dev_priv) (INTEL_PCH_TYPE(dev_priv) == PCH_CNP)
 #define HAS_PCH_CNP_LP(dev_priv) \
 	((dev_priv)->pch_id == INTEL_PCH_CNP_LP_DEVICE_ID_TYPE)

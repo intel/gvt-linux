@@ -369,7 +369,8 @@ i915_gem_object_wait_fence(struct dma_fence *fence,
 	if (i915_gem_request_completed(rq))
 		goto out;
 
-	/* This client is about to stall waiting for the GPU. In many cases
+	/*
+	 * This client is about to stall waiting for the GPU. In many cases
 	 * this is undesirable and limits the throughput of the system, as
 	 * many clients cannot continue processing user input/output whilst
 	 * blocked. RPS autotuning may take tens of milliseconds to respond
@@ -384,11 +385,9 @@ i915_gem_object_wait_fence(struct dma_fence *fence,
 	 * forcing the clocks too high for the whole system, we only allow
 	 * each client to waitboost once in a busy period.
 	 */
-	if (rps_client) {
+	if (rps_client && !i915_gem_request_started(rq)) {
 		if (INTEL_GEN(rq->i915) >= 6)
 			gen6_rps_boost(rq, rps_client);
-		else
-			rps_client = NULL;
 	}
 
 	timeout = i915_wait_request(rq, flags, timeout);
@@ -4699,7 +4698,8 @@ static void __i915_gem_free_work(struct work_struct *work)
 		container_of(work, struct drm_i915_private, mm.free_work);
 	struct llist_node *freed;
 
-	/* All file-owned VMA should have been released by this point through
+	/*
+	 * All file-owned VMA should have been released by this point through
 	 * i915_gem_close_object(), or earlier by i915_gem_context_close().
 	 * However, the object may also be bound into the global GTT (e.g.
 	 * older GPUs without per-process support, or for direct access through
@@ -4726,13 +4726,18 @@ static void __i915_gem_free_object_rcu(struct rcu_head *head)
 		container_of(head, typeof(*obj), rcu);
 	struct drm_i915_private *i915 = to_i915(obj->base.dev);
 
-	/* We can't simply use call_rcu() from i915_gem_free_object()
-	 * as we need to block whilst unbinding, and the call_rcu
-	 * task may be called from softirq context. So we take a
-	 * detour through a worker.
+	/*
+	 * Since we require blocking on struct_mutex to unbind the freed
+	 * object from the GPU before releasing resources back to the
+	 * system, we can not do that directly from the RCU callback (which may
+	 * be a softirq context), but must instead then defer that work onto a
+	 * kthread. We use the RCU callback rather than move the freed object
+	 * directly onto the work queue so that we can mix between using the
+	 * worker and performing frees directly from subsequent allocations for
+	 * crude but effective memory throttling.
 	 */
 	if (llist_add(&obj->freed, &i915->mm.free_list))
-		schedule_work(&i915->mm.free_work);
+		queue_work(i915->wq, &i915->mm.free_work);
 }
 
 void i915_gem_free_object(struct drm_gem_object *gem_obj)
@@ -4745,7 +4750,8 @@ void i915_gem_free_object(struct drm_gem_object *gem_obj)
 	if (discard_backing_storage(obj))
 		obj->mm.madv = I915_MADV_DONTNEED;
 
-	/* Before we free the object, make sure any pure RCU-only
+	/*
+	 * Before we free the object, make sure any pure RCU-only
 	 * read-side critical sections are complete, e.g.
 	 * i915_gem_busy_ioctl(). For the corresponding synchronized
 	 * lookup see i915_gem_object_lookup_rcu().

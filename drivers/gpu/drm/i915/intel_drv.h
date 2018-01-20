@@ -1760,6 +1760,7 @@ static inline void intel_backlight_device_unregister(struct intel_connector *con
 
 
 /* intel_psr.c */
+#define CAN_PSR(dev_priv) (HAS_PSR(dev_priv) && dev_priv->psr.sink_support)
 void intel_psr_enable(struct intel_dp *intel_dp,
 		      const struct intel_crtc_state *crtc_state);
 void intel_psr_disable(struct intel_dp *intel_dp,
@@ -1932,6 +1933,8 @@ void skl_update_plane(struct intel_plane *plane,
 		      const struct intel_plane_state *plane_state);
 void skl_disable_plane(struct intel_plane *plane, struct intel_crtc *crtc);
 bool skl_plane_get_hw_state(struct intel_plane *plane);
+bool skl_plane_has_ccs(struct drm_i915_private *dev_priv,
+		       enum pipe pipe, enum plane_id plane_id);
 
 /* intel_tv.c */
 void intel_tv_init(struct drm_i915_private *dev_priv);

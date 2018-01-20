@@ -1,0 +1,32 @@
+drm-upstream drm-fixes 04cef3eadcf0bf9783a985286cc5f48c5d33fd7a
+	Merge tag 'drm-intel-fixes-2018-01-18' of git://anongit.freedesktop.org/drm/drm-intel into drm-fixes
+drm-misc drm-misc-fixes 17b11b76b87afe9f8be199d7a5f442497133e2b0
+	drm/vc4: Fix NULL pointer dereference in vc4_save_hang_state()
+drm-intel drm-intel-fixes 4488496d58200c7511842e049a4cc891d928da56
+	drm/i915: Fix deadlock in i830_disable_pipe()
+drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
+	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
+drm-upstream drm-next 4a6cc7a44e98a0460bd094b68c75f0705fdc450a
+	BackMerge tag 'v4.15-rc8' into drm-next
+drm-misc drm-misc-next-fixes 341a0ffceaa44660c43d219a3b2569ebbd7d3ad1
+	drm: Fix PANEL_ORIENTATION_QUIRKS breaking the Kconfig DRM menuconfig
+drm-intel drm-intel-next-fixes 759315f4f7570aa75ffa99107abd295a9652810d
+	drm/i915: Only attempt to scan the requested number of shrinker slabs
+drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
+	Linux 4.14-rc1
+drm-misc drm-misc-next 54156da8937c9f5f84b4215e239a61ecc7c29275
+	Merge airlied/drm-next into drm-misc-next
+drm-intel drm-intel-next-queued 861023e0b6c44d6373abb3e63f853592adda0e3b
+	drm/i915/psr: Don't name status or debug registers like control registers.
+drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
+	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
+sound-upstream for-linus 1c9609e3a8cf5997bd35205cfda1ff2218ee793b
+	ALSA: hda - Reduce the suspend time consumption for ALC256
+sound-upstream for-next 1c9609e3a8cf5997bd35205cfda1ff2218ee793b
+	ALSA: hda - Reduce the suspend time consumption for ALC256
+drm-intel topic/core-for-CI be8dea61d8de396928bee848407f5fe683c34221
+	lockdep: finer-grained completion key for kthread
+drm-misc topic/hdcp 49d85d034268ab9d9156ff6f81cc07d4caad03f6
+	drm/i915: Check for downstream topology errors
+drm-misc topic/hdcp 49d85d034268ab9d9156ff6f81cc07d4caad03f6
+	drm/i915: Check for downstream topology errors

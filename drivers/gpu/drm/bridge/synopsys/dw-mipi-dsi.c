@@ -136,10 +136,6 @@
 					 GEN_SW_0P_TX_LP)
 
 #define DSI_GEN_HDR			0x6c
-/* TODO These 2 defines will be reworked thanks to mipi_dsi_create_packet() */
-#define GEN_HDATA(data)			(((data) & 0xffff) << 8)
-#define GEN_HTYPE(type)			(((type) & 0xff) << 0)
-
 #define DSI_GEN_PLD_DATA		0x70
 
 #define DSI_CMD_PKT_STATUS		0x74
@@ -359,52 +355,23 @@ static int dw_mipi_dsi_gen_pkt_hdr_write(struct dw_mipi_dsi *dsi, u32 hdr_val)
 	return 0;
 }
 
-static int dw_mipi_dsi_dcs_short_write(struct dw_mipi_dsi *dsi,
-				       const struct mipi_dsi_msg *msg)
+static int dw_mipi_dsi_write(struct dw_mipi_dsi *dsi,
+			     const struct mipi_dsi_packet *packet)
 {
-	const u8 *tx_buf = msg->tx_buf;
-	u16 data = 0;
+	const u8 *tx_buf = packet->payload;
+	int len = packet->payload_length, pld_data_bytes = sizeof(u32), ret;
+	__le32 word;
 	u32 val;
 
-	if (msg->tx_len > 0)
-		data |= tx_buf[0];
-	if (msg->tx_len > 1)
-		data |= tx_buf[1] << 8;
-
-	if (msg->tx_len > 2) {
-		dev_err(dsi->dev, "too long tx buf length %zu for short write\n",
-			msg->tx_len);
-		return -EINVAL;
-	}
-
-	val = GEN_HDATA(data) | GEN_HTYPE(msg->type);
-	return dw_mipi_dsi_gen_pkt_hdr_write(dsi, val);
-}
-
-static int dw_mipi_dsi_dcs_long_write(struct dw_mipi_dsi *dsi,
-				      const struct mipi_dsi_msg *msg)
-{
-	const u8 *tx_buf = msg->tx_buf;
-	int len = msg->tx_len, pld_data_bytes = sizeof(u32), ret;
-	u32 hdr_val = GEN_HDATA(msg->tx_len) | GEN_HTYPE(msg->type);
-	u32 remainder;
-	u32 val;
-
-	if (msg->tx_len < 3) {
-		dev_err(dsi->dev, "wrong tx buf length %zu for long write\n",
-			msg->tx_len);
-		return -EINVAL;
-	}
-
-	while (DIV_ROUND_UP(len, pld_data_bytes)) {
+	while (len) {
 		if (len < pld_data_bytes) {
-			remainder = 0;
-			memcpy(&remainder, tx_buf, len);
-			dsi_write(dsi, DSI_GEN_PLD_DATA, remainder);
+			word = 0;
+			memcpy(&word, tx_buf, len);
+			dsi_write(dsi, DSI_GEN_PLD_DATA, le32_to_cpu(word));
 			len = 0;
 		} else {
-			memcpy(&remainder, tx_buf, pld_data_bytes);
-			dsi_write(dsi, DSI_GEN_PLD_DATA, remainder);
+			memcpy(&word, tx_buf, pld_data_bytes);
+			dsi_write(dsi, DSI_GEN_PLD_DATA, le32_to_cpu(word));
 			tx_buf += pld_data_bytes;
 			len -= pld_data_bytes;
 		}
@@ -419,40 +386,27 @@ static int dw_mipi_dsi_dcs_long_write(struct dw_mipi_dsi *dsi,
 		}
 	}
 
-	return dw_mipi_dsi_gen_pkt_hdr_write(dsi, hdr_val);
+	word = 0;
+	memcpy(&word, packet->header, sizeof(packet->header));
+	return dw_mipi_dsi_gen_pkt_hdr_write(dsi, le32_to_cpu(word));
 }
 
 static ssize_t dw_mipi_dsi_host_transfer(struct mipi_dsi_host *host,
 					 const struct mipi_dsi_msg *msg)
 {
 	struct dw_mipi_dsi *dsi = host_to_dsi(host);
+	struct mipi_dsi_packet packet;
 	int ret;
 
-	/*
-	 * TODO dw drv improvements
-	 * use mipi_dsi_create_packet() instead of all following
-	 * functions and code (no switch cases, no
-	 * dw_mipi_dsi_dcs_short_write(), only the loop in long_write...)
-	 * and use packet.header...
-	 */
-	dw_mipi_message_config(dsi, msg);
-
-	switch (msg->type) {
-	case MIPI_DSI_DCS_SHORT_WRITE:
-	case MIPI_DSI_DCS_SHORT_WRITE_PARAM:
-	case MIPI_DSI_SET_MAXIMUM_RETURN_PACKET_SIZE:
-		ret = dw_mipi_dsi_dcs_short_write(dsi, msg);
-		break;
-	case MIPI_DSI_DCS_LONG_WRITE:
-		ret = dw_mipi_dsi_dcs_long_write(dsi, msg);
-		break;
-	default:
-		dev_err(dsi->dev, "unsupported message type 0x%02x\n",
-			msg->type);
-		ret = -EINVAL;
+	ret = mipi_dsi_create_packet(&packet, msg);
+	if (ret) {
+		dev_err(dsi->dev, "failed to create packet: %d\n", ret);
+		return ret;
 	}
 
-	return ret;
+	dw_mipi_message_config(dsi, msg);
+
+	return dw_mipi_dsi_write(dsi, &packet);
 }
 
 static const struct mipi_dsi_host_ops dw_mipi_dsi_host_ops = {
@@ -746,9 +700,9 @@ static void dw_mipi_dsi_bridge_post_disable(struct drm_bridge *bridge)
 	pm_runtime_put(dsi->dev);
 }
 
-void dw_mipi_dsi_bridge_mode_set(struct drm_bridge *bridge,
-				 struct drm_display_mode *mode,
-				 struct drm_display_mode *adjusted_mode)
+static void dw_mipi_dsi_bridge_mode_set(struct drm_bridge *bridge,
+					struct drm_display_mode *mode,
+					struct drm_display_mode *adjusted_mode)
 {
 	struct dw_mipi_dsi *dsi = bridge_to_dsi(bridge);
 	const struct dw_mipi_dsi_phy_ops *phy_ops = dsi->plat_data->phy_ops;
@@ -922,8 +876,6 @@ __dw_mipi_dsi_probe(struct platform_device *pdev,
 	dsi->bridge.of_node = pdev->dev.of_node;
 #endif
 
-	dev_set_drvdata(dev, dsi);
-
 	return dsi;
 }
 
@@ -935,23 +887,16 @@ static void __dw_mipi_dsi_remove(struct dw_mipi_dsi *dsi)
 /*
  * Probe/remove API, used from platforms based on the DRM bridge API.
  */
-int dw_mipi_dsi_probe(struct platform_device *pdev,
-		      const struct dw_mipi_dsi_plat_data *plat_data)
+struct dw_mipi_dsi *
+dw_mipi_dsi_probe(struct platform_device *pdev,
+		  const struct dw_mipi_dsi_plat_data *plat_data)
 {
-	struct dw_mipi_dsi *dsi;
-
-	dsi = __dw_mipi_dsi_probe(pdev, plat_data);
-	if (IS_ERR(dsi))
-		return PTR_ERR(dsi);
-
-	return 0;
+	return __dw_mipi_dsi_probe(pdev, plat_data);
 }
 EXPORT_SYMBOL_GPL(dw_mipi_dsi_probe);
 
-void dw_mipi_dsi_remove(struct platform_device *pdev)
+void dw_mipi_dsi_remove(struct dw_mipi_dsi *dsi)
 {
-	struct dw_mipi_dsi *dsi = platform_get_drvdata(pdev);
-
 	mipi_dsi_host_unregister(&dsi->dsi_host);
 
 	__dw_mipi_dsi_remove(dsi);
@@ -961,31 +906,30 @@ EXPORT_SYMBOL_GPL(dw_mipi_dsi_remove);
 /*
  * Bind/unbind API, used from platforms based on the component framework.
  */
-int dw_mipi_dsi_bind(struct platform_device *pdev, struct drm_encoder *encoder,
-		     const struct dw_mipi_dsi_plat_data *plat_data)
+struct dw_mipi_dsi *
+dw_mipi_dsi_bind(struct platform_device *pdev, struct drm_encoder *encoder,
+		 const struct dw_mipi_dsi_plat_data *plat_data)
 {
 	struct dw_mipi_dsi *dsi;
 	int ret;
 
 	dsi = __dw_mipi_dsi_probe(pdev, plat_data);
 	if (IS_ERR(dsi))
-		return PTR_ERR(dsi);
+		return dsi;
 
 	ret = drm_bridge_attach(encoder, &dsi->bridge, NULL);
 	if (ret) {
-		dw_mipi_dsi_remove(pdev);
+		dw_mipi_dsi_remove(dsi);
 		DRM_ERROR("Failed to initialize bridge with drm\n");
-		return ret;
+		return ERR_PTR(ret);
 	}
 
-	return 0;
+	return dsi;
 }
 EXPORT_SYMBOL_GPL(dw_mipi_dsi_bind);
 
-void dw_mipi_dsi_unbind(struct device *dev)
+void dw_mipi_dsi_unbind(struct dw_mipi_dsi *dsi)
 {
-	struct dw_mipi_dsi *dsi = dev_get_drvdata(dev);
-
 	__dw_mipi_dsi_remove(dsi);
 }
 EXPORT_SYMBOL_GPL(dw_mipi_dsi_unbind);

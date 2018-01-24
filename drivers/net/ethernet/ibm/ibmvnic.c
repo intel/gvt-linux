@@ -756,6 +756,12 @@ static int ibmvnic_login(struct net_device *netdev)
 		}
 	} while (adapter->renegotiate);
 
+	/* handle pending MAC address changes after successful login */
+	if (adapter->mac_change_pending) {
+		__ibmvnic_set_mac(netdev, &adapter->desired.mac);
+		adapter->mac_change_pending = false;
+	}
+
 	return 0;
 }
 
@@ -992,11 +998,6 @@ static int ibmvnic_open(struct net_device *netdev)
 	int rc, vpd;
 
 	mutex_lock(&adapter->reset_lock);
-
-	if (adapter->mac_change_pending) {
-		__ibmvnic_set_mac(netdev, &adapter->desired.mac);
-		adapter->mac_change_pending = false;
-	}
 
 	if (adapter->state != VNIC_CLOSED) {
 		rc = ibmvnic_login(netdev);
@@ -1275,6 +1276,7 @@ static int ibmvnic_xmit(struct sk_buff *skb, struct net_device *netdev)
 	unsigned char *dst;
 	u64 *handle_array;
 	int index = 0;
+	u8 proto = 0;
 	int ret = 0;
 
 	if (adapter->resetting) {
@@ -1363,16 +1365,17 @@ static int ibmvnic_xmit(struct sk_buff *skb, struct net_device *netdev)
 	}
 
 	if (skb->protocol == htons(ETH_P_IP)) {
-		if (ip_hdr(skb)->version == 4)
-			tx_crq.v1.flags1 |= IBMVNIC_TX_PROT_IPV4;
-		else if (ip_hdr(skb)->version == 6)
-			tx_crq.v1.flags1 |= IBMVNIC_TX_PROT_IPV6;
-
-		if (ip_hdr(skb)->protocol == IPPROTO_TCP)
-			tx_crq.v1.flags1 |= IBMVNIC_TX_PROT_TCP;
-		else if (ip_hdr(skb)->protocol != IPPROTO_TCP)
-			tx_crq.v1.flags1 |= IBMVNIC_TX_PROT_UDP;
+		tx_crq.v1.flags1 |= IBMVNIC_TX_PROT_IPV4;
+		proto = ip_hdr(skb)->protocol;
+	} else if (skb->protocol == htons(ETH_P_IPV6)) {
+		tx_crq.v1.flags1 |= IBMVNIC_TX_PROT_IPV6;
+		proto = ipv6_hdr(skb)->nexthdr;
 	}
+
+	if (proto == IPPROTO_TCP)
+		tx_crq.v1.flags1 |= IBMVNIC_TX_PROT_TCP;
+	else if (proto == IPPROTO_UDP)
+		tx_crq.v1.flags1 |= IBMVNIC_TX_PROT_UDP;
 
 	if (skb->ip_summed == CHECKSUM_PARTIAL) {
 		tx_crq.v1.flags1 |= IBMVNIC_TX_CHKSUM_OFFLOAD;
@@ -1527,7 +1530,7 @@ static int ibmvnic_set_mac(struct net_device *netdev, void *p)
 	struct ibmvnic_adapter *adapter = netdev_priv(netdev);
 	struct sockaddr *addr = p;
 
-	if (adapter->state != VNIC_OPEN) {
+	if (adapter->state == VNIC_PROBED) {
 		memcpy(&adapter->desired.mac, addr, sizeof(struct sockaddr));
 		adapter->mac_change_pending = true;
 		return 0;
@@ -3345,7 +3348,11 @@ static void handle_query_ip_offload_rsp(struct ibmvnic_adapter *adapter)
 		return;
 	}
 
+	adapter->ip_offload_ctrl.len =
+	    cpu_to_be32(sizeof(adapter->ip_offload_ctrl));
 	adapter->ip_offload_ctrl.version = cpu_to_be32(INITIAL_VERSION_IOB);
+	adapter->ip_offload_ctrl.ipv4_chksum = buf->ipv4_chksum;
+	adapter->ip_offload_ctrl.ipv6_chksum = buf->ipv6_chksum;
 	adapter->ip_offload_ctrl.tcp_ipv4_chksum = buf->tcp_ipv4_chksum;
 	adapter->ip_offload_ctrl.udp_ipv4_chksum = buf->udp_ipv4_chksum;
 	adapter->ip_offload_ctrl.tcp_ipv6_chksum = buf->tcp_ipv6_chksum;

@@ -2387,6 +2387,20 @@ static unsigned int intel_fb_modifier_to_tiling(uint64_t fb_modifier)
 	}
 }
 
+/*
+ * From the Sky Lake PRM:
+ * "The Color Control Surface (CCS) contains the compression status of
+ *  the cache-line pairs. The compression state of the cache-line pair
+ *  is specified by 2 bits in the CCS. Each CCS cache-line represents
+ *  an area on the main surface of 16 x16 sets of 128 byte Y-tiled
+ *  cache-line-pairs. CCS is always Y tiled."
+ *
+ * Since cache line pairs refers to horizontally adjacent cache lines,
+ * each cache line in the CCS corresponds to an area of 32x16 cache
+ * lines on the main surface. Since each pixel is 4 bytes, this gives
+ * us a ratio of one byte in the CCS for each 8x16 pixels in the
+ * main surface.
+ */
 static const struct drm_format_info ccs_formats[] = {
 	{ .format = DRM_FORMAT_XRGB8888, .depth = 24, .num_planes = 2, .cpp = { 4, 1, }, .hsub = 8, .vsub = 16, },
 	{ .format = DRM_FORMAT_XBGR8888, .depth = 24, .num_planes = 2, .cpp = { 4, 1, }, .hsub = 8, .vsub = 16, },
@@ -3027,6 +3041,7 @@ static int skl_check_nv12_aux_surface(struct intel_plane_state *plane_state)
 static int skl_check_ccs_aux_surface(struct intel_plane_state *plane_state)
 {
 	struct intel_plane *plane = to_intel_plane(plane_state->base.plane);
+	struct drm_i915_private *dev_priv = to_i915(plane->base.dev);
 	struct intel_crtc *crtc = to_intel_crtc(plane_state->base.crtc);
 	const struct drm_framebuffer *fb = plane_state->base.fb;
 	int src_x = plane_state->base.src.x1 >> 16;
@@ -3037,17 +3052,8 @@ static int skl_check_ccs_aux_surface(struct intel_plane_state *plane_state)
 	int y = src_y / vsub;
 	u32 offset;
 
-	switch (plane->id) {
-	case PLANE_PRIMARY:
-	case PLANE_SPRITE0:
-		break;
-	default:
-		DRM_DEBUG_KMS("RC support only on plane 1 and 2\n");
-		return -EINVAL;
-	}
-
-	if (crtc->pipe == PIPE_C) {
-		DRM_DEBUG_KMS("No RC support on pipe C\n");
+	if (!skl_plane_has_ccs(dev_priv, crtc->pipe, plane->id)) {
+		DRM_DEBUG_KMS("No RC support on %s\n", plane->base.name);
 		return -EINVAL;
 	}
 
@@ -12533,7 +12539,13 @@ static int do_rps_boost(struct wait_queue_entry *_wait,
 	struct wait_rps_boost *wait = container_of(_wait, typeof(*wait), wait);
 	struct drm_i915_gem_request *rq = wait->request;
 
-	gen6_rps_boost(rq, NULL);
+	/*
+	 * If we missed the vblank, but the request is already running it
+	 * is reasonable to assume that it will complete before the next
+	 * vblank without our intervention, so leave RPS alone.
+	 */
+	if (!i915_gem_request_started(rq))
+		gen6_rps_boost(rq, NULL);
 	i915_gem_request_put(rq);
 
 	drm_crtc_vblank_put(wait->crtc);
@@ -12963,8 +12975,6 @@ static bool intel_primary_plane_format_mod_supported(struct drm_plane *plane,
 		return i965_mod_supported(format, modifier);
 	else
 		return i8xx_mod_supported(format, modifier);
-
-	unreachable();
 }
 
 static bool intel_cursor_plane_format_mod_supported(struct drm_plane *plane,
@@ -13172,21 +13182,14 @@ intel_primary_plane_create(struct drm_i915_private *dev_priv, enum pipe pipe)
 	else
 		primary->i9xx_plane = (enum i9xx_plane_id) pipe;
 	primary->id = PLANE_PRIMARY;
-	primary->frontbuffer_bit = INTEL_FRONTBUFFER_PRIMARY(pipe);
+	primary->frontbuffer_bit = INTEL_FRONTBUFFER(pipe, primary->id);
 	primary->check_plane = intel_check_primary_plane;
 
-	if (INTEL_GEN(dev_priv) >= 10) {
+	if (INTEL_GEN(dev_priv) >= 9) {
 		intel_primary_formats = skl_primary_formats;
 		num_formats = ARRAY_SIZE(skl_primary_formats);
-		modifiers = skl_format_modifiers_ccs;
 
-		primary->update_plane = skl_update_plane;
-		primary->disable_plane = skl_disable_plane;
-		primary->get_hw_state = skl_plane_get_hw_state;
-	} else if (INTEL_GEN(dev_priv) >= 9) {
-		intel_primary_formats = skl_primary_formats;
-		num_formats = ARRAY_SIZE(skl_primary_formats);
-		if (pipe < PIPE_C)
+		if (skl_plane_has_ccs(dev_priv, pipe, PLANE_PRIMARY))
 			modifiers = skl_format_modifiers_ccs;
 		else
 			modifiers = skl_format_modifiers_noccs;
@@ -13300,7 +13303,7 @@ intel_cursor_plane_create(struct drm_i915_private *dev_priv,
 	cursor->pipe = pipe;
 	cursor->i9xx_plane = (enum i9xx_plane_id) pipe;
 	cursor->id = PLANE_CURSOR;
-	cursor->frontbuffer_bit = INTEL_FRONTBUFFER_CURSOR(pipe);
+	cursor->frontbuffer_bit = INTEL_FRONTBUFFER(pipe, cursor->id);
 
 	if (IS_I845G(dev_priv) || IS_I865G(dev_priv)) {
 		cursor->update_plane = i845_update_cursor;

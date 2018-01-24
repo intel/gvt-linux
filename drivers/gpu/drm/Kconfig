@@ -7,6 +7,7 @@
 menuconfig DRM
 	tristate "Direct Rendering Manager (XFree86 4.1.0 and higher DRI support)"
 	depends on (AGP || AGP=n) && !EMULATED_CMPXCHG && HAS_DMA
+	select DRM_PANEL_ORIENTATION_QUIRKS
 	select HDMI
 	select FB_CMDLINE
 	select I2C
@@ -25,6 +26,10 @@ menuconfig DRM
 config DRM_MIPI_DSI
 	bool
 	depends on DRM
+
+# Separate option because drm_panel_orientation_quirks.c is shared with fbdev
+config DRM_PANEL_ORIENTATION_QUIRKS
+	tristate
 
 config DRM_DP_AUX_CHARDEV
 	bool "DRM DP AUX Interface"
@@ -149,6 +154,10 @@ config DRM_VM
 	bool
 	depends on DRM && MMU
 
+config DRM_SCHED
+	tristate
+	depends on DRM
+
 source "drivers/gpu/drm/i2c/Kconfig"
 
 source "drivers/gpu/drm/arm/Kconfig"
@@ -178,6 +187,7 @@ config DRM_AMDGPU
 	depends on DRM && PCI && MMU
 	select FW_LOADER
         select DRM_KMS_HELPER
+	select DRM_SCHED
         select DRM_TTM
 	select POWER_SUPPLY
 	select HWMON

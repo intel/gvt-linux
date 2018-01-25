@@ -6372,9 +6372,18 @@ static int intel_crtc_compute_config(struct intel_crtc *crtc,
 	 * - LVDS dual channel mode
 	 * - Double wide pipe
 	 */
-	if ((intel_crtc_has_type(pipe_config, INTEL_OUTPUT_LVDS) &&
-	     intel_is_dual_link_lvds(dev)) || pipe_config->double_wide)
-		pipe_config->pipe_src_w &= ~1;
+	if (pipe_config->pipe_src_w & 1) {
+		if (pipe_config->double_wide) {
+			DRM_DEBUG_KMS("Odd pipe source width not supported with double wide pipe\n");
+			return -EINVAL;
+		}
+
+		if (intel_crtc_has_type(pipe_config, INTEL_OUTPUT_LVDS) &&
+		    intel_is_dual_link_lvds(dev)) {
+			DRM_DEBUG_KMS("Odd pipe source width not supported with dual link LVDS\n");
+			return -EINVAL;
+		}
+	}
 
 	/* Cantiga+ cannot handle modes with a hsync front porch of 0.
 	 * WaPruneModeWithIncorrectHsyncOffset:ctg,elk,ilk,snb,ivb,vlv,hsw.
@@ -9308,13 +9317,18 @@ static int intel_check_cursor(struct intel_crtc_state *crtc_state,
 			      struct intel_plane_state *plane_state)
 {
 	const struct drm_framebuffer *fb = plane_state->base.fb;
+	struct drm_rect clip = {};
 	int src_x, src_y;
 	u32 offset;
 	int ret;
 
+	if (crtc_state->base.enable)
+		drm_mode_get_hv_timing(&crtc_state->base.mode,
+				       &clip.x2, &clip.y2);
+
 	ret = drm_atomic_helper_check_plane_state(&plane_state->base,
 						  &crtc_state->base,
-						  &plane_state->clip,
+						  &clip,
 						  DRM_PLANE_HELPER_NO_SCALING,
 						  DRM_PLANE_HELPER_NO_SCALING,
 						  true, true);
@@ -12743,6 +12757,7 @@ intel_check_primary_plane(struct intel_plane *plane,
 	int min_scale = DRM_PLANE_HELPER_NO_SCALING;
 	int max_scale = DRM_PLANE_HELPER_NO_SCALING;
 	bool can_position = false;
+	struct drm_rect clip = {};
 	int ret;
 
 	if (INTEL_GEN(dev_priv) >= 9) {
@@ -12754,9 +12769,13 @@ intel_check_primary_plane(struct intel_plane *plane,
 		can_position = true;
 	}
 
+	if (crtc_state->base.enable)
+		drm_mode_get_hv_timing(&crtc_state->base.mode,
+				       &clip.x2, &clip.y2);
+
 	ret = drm_atomic_helper_check_plane_state(&state->base,
 						  &crtc_state->base,
-						  &state->clip,
+						  &clip,
 						  min_scale, max_scale,
 						  can_position, true);
 	if (ret)

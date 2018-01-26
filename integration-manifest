@@ -1,32 +1,12 @@
-drm-upstream drm-fixes 7e3f8e91e8d92a542ba30d7b07108882e82ad348
-	Merge tag 'drm-misc-fixes-2018-01-24' of git://anongit.freedesktop.org/drm/drm-misc into drm-fixes
-drm-misc drm-misc-fixes 17b11b76b87afe9f8be199d7a5f442497133e2b0
-	drm/vc4: Fix NULL pointer dereference in vc4_save_hang_state()
-drm-intel drm-intel-fixes 0c5b9b5d9adbad4b60491f9ba0d2af38904bb4b9
-	Linux 4.15-rc9
-drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
-	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
-drm-upstream drm-next 559f17bec508548850654dd04525fd69d90f6d4e
-	Merge tag 'drm-misc-next-fixes-2018-01-18' of git://anongit.freedesktop.org/drm/drm-misc into drm-next
-drm-misc drm-misc-next-fixes 5bffee867df7494ecd32c1e6ec4e8fc934c521b7
-	dma-buf: fix reservation_object_wait_timeout_rcu once more v2
-drm-intel drm-intel-next-fixes 759315f4f7570aa75ffa99107abd295a9652810d
-	drm/i915: Only attempt to scan the requested number of shrinker slabs
-drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
-	Linux 4.14-rc1
-drm-misc drm-misc-next a35f2f34b5b4ea079abefb644ac4f828c30e9a5d
-	dma-buf: make returning the exclusive fence optional
-drm-intel drm-intel-next-queued 09b1a4e4b583b4c54c819563717949807fdbb640
-	drm/i915/lrc: Clear context restore/save inhibit flags for new contexts
-drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
-	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
-sound-upstream for-linus 1c9609e3a8cf5997bd35205cfda1ff2218ee793b
-	ALSA: hda - Reduce the suspend time consumption for ALC256
-sound-upstream for-next 1c9609e3a8cf5997bd35205cfda1ff2218ee793b
-	ALSA: hda - Reduce the suspend time consumption for ALC256
-drm-intel topic/core-for-CI be8dea61d8de396928bee848407f5fe683c34221
-	lockdep: finer-grained completion key for kthread
-drm-misc topic/hdcp 49d85d034268ab9d9156ff6f81cc07d4caad03f6
-	drm/i915: Check for downstream topology errors
-drm-misc topic/hdcp 49d85d034268ab9d9156ff6f81cc07d4caad03f6
-	drm/i915: Check for downstream topology errors
+drm-tip/drm-tip 804d087465e907accca7a2631d8a9485729b9a48
+	drm-tip: 2018y-01m-25d-18h-22m-16s UTC integration manifest
+vfio-upstream/for-linus 563b5cbe334e9503ab2b234e279d500fc4f76018
+	iommu/arm-smmu-v3: Cope with duplicated Stream IDs
+vfio-upstream/next 46ed90f157f42d956ffed17c003f089a59b76e3e
+	vfio: mdev: make a couple of functions and structure vfio_mdev_driver static
+origin/gvt-next 9c2341f767455848a049705d2df7ad60d2c93d5e
+	drm/i915/gvt: cancel scheduler timer when no vGPU exists
+origin/gvt-next-fixes 541e5ad2496d6a9ec4780c04c0a80e8c1b910f53
+	drm/i915/gvt: only reset execlist state of one engine during VM engine reset
+origin/gvt-fixes 65e7439204b57b7a7f6e4694f9e2a9adde5e77ed
+	drm/i915/gvt: Fix stack-out-of-bounds bug in cmd parser

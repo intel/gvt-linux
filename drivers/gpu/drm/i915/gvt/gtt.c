@@ -451,7 +451,9 @@ static int gtt_entry_p2m(struct intel_vgpu *vgpu, struct intel_gvt_gtt_entry *p,
 		struct intel_gvt_gtt_entry *m)
 {
 	struct intel_gvt_gtt_pte_ops *ops = vgpu->gvt->gtt.pte_ops;
-	unsigned long gfn, mfn;
+	unsigned long gfn;
+	dma_addr_t dma_addr;
+	int ret;
 
 	*m = *p;
 
@@ -460,13 +462,13 @@ static int gtt_entry_p2m(struct intel_vgpu *vgpu, struct intel_gvt_gtt_entry *p,
 
 	gfn = ops->get_pfn(p);
 
-	mfn = intel_gvt_hypervisor_gfn_to_mfn(vgpu, gfn);
-	if (mfn == INTEL_GVT_INVALID_ADDR) {
-		gvt_vgpu_err("fail to translate gfn: 0x%lx\n", gfn);
+	ret = intel_gvt_hypervisor_dma_map_guest_page(vgpu, gfn, &dma_addr);
+	if (ret) {
+		gvt_vgpu_err("fail to setup dma map for gfn 0x%lx\n", gfn);
 		return -ENXIO;
 	}
 
-	ops->set_pfn(m, mfn);
+	ops->set_pfn(m, dma_addr >> PAGE_SHIFT);
 	return 0;
 }
 
@@ -865,6 +867,23 @@ static void ppgtt_get_shadow_page(struct intel_vgpu_ppgtt_spt *spt)
 	atomic_inc(&spt->refcount);
 }
 
+static inline void ppgtt_invalidate_pte(struct intel_vgpu_ppgtt_spt *spt,
+		struct intel_gvt_gtt_entry *entry)
+{
+	struct intel_vgpu *vgpu = spt->vgpu;
+	struct intel_gvt_gtt_pte_ops *ops = vgpu->gvt->gtt.pte_ops;
+	unsigned long pfn;
+	int type;
+
+	pfn = ops->get_pfn(entry);
+	type = spt->shadow_page.type;
+
+	if (pfn == vgpu->gtt.scratch_pt[type].page_mfn)
+		return;
+
+	intel_gvt_hypervisor_dma_unmap_guest_page(vgpu, pfn << PAGE_SHIFT);
+}
+
 static int ppgtt_invalidate_shadow_page(struct intel_vgpu_ppgtt_spt *spt);
 
 static int ppgtt_invalidate_shadow_page_by_shadow_entry(struct intel_vgpu *vgpu,
@@ -909,8 +928,11 @@ static int ppgtt_invalidate_shadow_page(struct intel_vgpu_ppgtt_spt *spt)
 	if (atomic_dec_return(&spt->refcount) > 0)
 		return 0;
 
-	if (gtt_type_is_pte_pt(spt->shadow_page.type))
+	if (gtt_type_is_pte_pt(spt->shadow_page.type)) {
+		for_each_present_shadow_entry(spt, &e, index)
+			ppgtt_invalidate_pte(spt, &e);
 		goto release;
+	}
 
 	for_each_present_shadow_entry(spt, &e, index) {
 		if (!gtt_type_is_pt(get_next_pt_type(e.type))) {
@@ -1069,7 +1091,9 @@ static int ppgtt_handle_guest_entry_removal(struct intel_vgpu_guest_page *gpt,
 		ret = ppgtt_invalidate_shadow_page(s);
 		if (ret)
 			goto fail;
-	}
+	} else
+		ppgtt_invalidate_pte(spt, se);
+
 	return 0;
 fail:
 	gvt_vgpu_err("fail: shadow page %p guest entry 0x%llx type %d\n",

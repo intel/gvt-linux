@@ -1,0 +1,34 @@
+drm-upstream drm-fixes baa35cc322c1f6c43506ee9a32c232b05a7eaa8c
+	Merge branch 'linux-4.15' of git://github.com/skeggsb/linux into drm-fixes
+drm-misc drm-misc-fixes 17b11b76b87afe9f8be199d7a5f442497133e2b0
+	drm/vc4: Fix NULL pointer dereference in vc4_save_hang_state()
+drm-intel drm-intel-fixes d8a5b80568a9cb66810e75b182018e9edb68e8ff
+	Linux 4.15
+drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
+	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
+drm-upstream drm-next 559f17bec508548850654dd04525fd69d90f6d4e
+	Merge tag 'drm-misc-next-fixes-2018-01-18' of git://anongit.freedesktop.org/drm/drm-misc into drm-next
+drm-misc drm-misc-next-fixes 5bffee867df7494ecd32c1e6ec4e8fc934c521b7
+	dma-buf: fix reservation_object_wait_timeout_rcu once more v2
+drm-intel drm-intel-next-fixes 759315f4f7570aa75ffa99107abd295a9652810d
+	drm/i915: Only attempt to scan the requested number of shrinker slabs
+drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
+	Linux 4.14-rc1
+drm-misc drm-misc-next c2925bde829a748265a69aef128f0a88d82cb689
+	drm/edid: use true and false for boolean values
+drm-intel drm-intel-next-queued 53ddb3cdb063d7be74aa22ed831cad8aa5ee0863
+	drm/i915/cnl: Fix DP max rate for Cannonlake with port F.
+drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
+	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
+sound-upstream for-linus 1c9609e3a8cf5997bd35205cfda1ff2218ee793b
+	ALSA: hda - Reduce the suspend time consumption for ALC256
+sound-upstream for-next 1c9609e3a8cf5997bd35205cfda1ff2218ee793b
+	ALSA: hda - Reduce the suspend time consumption for ALC256
+drm-intel topic/core-for-CI be8dea61d8de396928bee848407f5fe683c34221
+	lockdep: finer-grained completion key for kthread
+drm-misc topic/hdcp 363932b43dddfaba8095984e2b57674937323f1f
+	drm/i915: Downgrade hdcp logs from INFO to DEBUG_KMS
+drm-misc topic/hdcp 363932b43dddfaba8095984e2b57674937323f1f
+	drm/i915: Downgrade hdcp logs from INFO to DEBUG_KMS
+drm-misc topic/backlight_for_lag 2e4ef3347b4a4eb65c4fd950d94bbd75fed4d798
+	video: backlight: Add devres versions of of_find_backlight

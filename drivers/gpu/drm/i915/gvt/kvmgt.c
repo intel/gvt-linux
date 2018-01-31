@@ -764,6 +764,8 @@ static int intel_vgpu_open(struct mdev_device *mdev)
 	if (ret)
 		goto undo_group;
 
+	kvmgt_set_opregion(vgpu);
+
 	kvmgt_init_migration(vgpu);
 
 	intel_gvt_ops->vgpu_activate(vgpu);
@@ -1803,7 +1805,6 @@ struct intel_gvt_mpt kvmgt_mpt = {
 	.read_gpa = kvmgt_read_gpa,
 	.write_gpa = kvmgt_write_gpa,
 	.gfn_to_mfn = kvmgt_gfn_to_pfn,
-	.set_opregion = kvmgt_set_opregion,
 	.get_vfio_device = kvmgt_get_vfio_device,
 	.put_vfio_device = kvmgt_put_vfio_device,
 };

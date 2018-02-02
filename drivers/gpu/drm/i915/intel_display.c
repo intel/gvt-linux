@@ -12190,7 +12190,7 @@ static void intel_atomic_wait_for_vblanks(struct drm_device *dev,
 		lret = wait_event_timeout(dev->vblank[pipe].queue,
 				last_vblank_count[pipe] !=
 					drm_crtc_vblank_count(&crtc->base),
-				msecs_to_jiffies(50));
+				msecs_to_jiffies(100));
 
 		WARN(!lret, "pipe %c vblank wait timed out\n", pipe_name(pipe));
 

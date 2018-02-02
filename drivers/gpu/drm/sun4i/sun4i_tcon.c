@@ -902,7 +902,7 @@ static int sun4i_tcon_bind(struct device *dev, struct device *master,
 				has_lvds_alt = false;
 			} else {
 				dev_err(dev, "Couldn't get the LVDS PLL\n");
-				return PTR_ERR(tcon->lvds_rst);
+				return PTR_ERR(tcon->lvds_pll);
 			}
 		} else {
 			has_lvds_alt = true;
@@ -946,7 +946,7 @@ static int sun4i_tcon_bind(struct device *dev, struct device *master,
 	if (IS_ERR(tcon->crtc)) {
 		dev_err(dev, "Couldn't create our CRTC\n");
 		ret = PTR_ERR(tcon->crtc);
-		goto err_free_clocks;
+		goto err_free_dotclock;
 	}
 
 	/*
@@ -965,7 +965,7 @@ static int sun4i_tcon_bind(struct device *dev, struct device *master,
 	of_node_put(remote);
 
 	if (ret < 0)
-		goto err_free_clocks;
+		goto err_free_dotclock;
 
 	if (tcon->quirks->needs_de_be_mux) {
 		/*

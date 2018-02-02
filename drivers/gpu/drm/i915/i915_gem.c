@@ -467,7 +467,7 @@ static void __fence_set_priority(struct dma_fence *fence, int prio)
 	struct drm_i915_gem_request *rq;
 	struct intel_engine_cs *engine;
 
-	if (!dma_fence_is_i915(fence))
+	if (dma_fence_is_signaled(fence) || !dma_fence_is_i915(fence))
 		return;
 
 	rq = to_request(fence);
@@ -3323,16 +3323,15 @@ i915_gem_retire_work_handler(struct work_struct *work)
 		mutex_unlock(&dev->struct_mutex);
 	}
 
-	/* Keep the retire handler running until we are finally idle.
+	/*
+	 * Keep the retire handler running until we are finally idle.
 	 * We do not need to do this test under locking as in the worst-case
 	 * we queue the retire worker once too often.
 	 */
-	if (READ_ONCE(dev_priv->gt.awake)) {
-		i915_queue_hangcheck(dev_priv);
+	if (READ_ONCE(dev_priv->gt.awake))
 		queue_delayed_work(dev_priv->wq,
 				   &dev_priv->gt.retire_work,
 				   round_jiffies_up_relative(HZ));
-	}
 }
 
 static inline bool

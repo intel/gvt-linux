@@ -453,9 +453,9 @@ struct intel_display_error_state;
 
 struct i915_gpu_state {
 	struct kref ref;
-	struct timeval time;
-	struct timeval boottime;
-	struct timeval uptime;
+	ktime_t time;
+	ktime_t boottime;
+	ktime_t uptime;
 
 	struct drm_i915_private *i915;
 
@@ -754,7 +754,6 @@ struct i915_drrs {
 struct i915_psr {
 	struct mutex lock;
 	bool sink_support;
-	bool source_ok;
 	struct intel_dp *enabled;
 	bool active;
 	struct delayed_work work;
@@ -783,6 +782,7 @@ enum intel_pch {
 	PCH_SPT,        /* Sunrisepoint PCH */
 	PCH_KBP,        /* Kaby Lake PCH */
 	PCH_CNP,        /* Cannon Lake PCH */
+	PCH_ICP,	/* Ice Lake PCH */
 	PCH_NOP,
 };
 
@@ -1255,6 +1255,7 @@ enum modeset_restore {
 #define DP_AUX_B 0x10
 #define DP_AUX_C 0x20
 #define DP_AUX_D 0x30
+#define DP_AUX_F 0x60
 
 #define DDC_PIN_B  0x05
 #define DDC_PIN_C  0x04
@@ -1281,6 +1282,7 @@ struct ddi_vbt_port_info {
 
 	uint8_t dp_boost_level;
 	uint8_t hdmi_boost_level;
+	int dp_max_link_rate;		/* 0 for not limited by VBT */
 };
 
 enum psr_lines_to_wait {
@@ -1460,6 +1462,7 @@ struct skl_wm_params {
 	uint_fixed_16_16_t plane_blocks_per_line;
 	uint_fixed_16_16_t y_tile_minimum;
 	uint32_t linetime_us;
+	uint32_t dbuf_block_size;
 };
 
 /*
@@ -1792,7 +1795,7 @@ struct i915_oa_ops {
 };
 
 struct intel_cdclk_state {
-	unsigned int cdclk, vco, ref;
+	unsigned int cdclk, vco, ref, bypass;
 	u8 voltage_level;
 };
 
@@ -2313,6 +2316,12 @@ struct drm_i915_private {
 		bool awake;
 
 		/**
+		 * The number of times we have woken up.
+		 */
+		unsigned int epoch;
+#define I915_EPOCH_INVALID 0
+
+		/**
 		 * We leave the user IRQ off as much as possible,
 		 * but this means that requests will finish and never
 		 * be retired once the system goes idle. Set a timer to
@@ -2404,16 +2413,11 @@ enum hdmi_force_audio {
  *
  * We have one bit per pipe and per scanout plane type.
  */
-#define INTEL_MAX_SPRITE_BITS_PER_PIPE 5
 #define INTEL_FRONTBUFFER_BITS_PER_PIPE 8
-#define INTEL_FRONTBUFFER_PRIMARY(pipe) \
-	(1 << (INTEL_FRONTBUFFER_BITS_PER_PIPE * (pipe)))
-#define INTEL_FRONTBUFFER_CURSOR(pipe) \
-	(1 << (1 + (INTEL_FRONTBUFFER_BITS_PER_PIPE * (pipe))))
-#define INTEL_FRONTBUFFER_SPRITE(pipe, plane) \
-	(1 << (2 + plane + (INTEL_FRONTBUFFER_BITS_PER_PIPE * (pipe))))
+#define INTEL_FRONTBUFFER(pipe, plane_id) \
+	(1 << ((plane_id) + INTEL_FRONTBUFFER_BITS_PER_PIPE * (pipe)))
 #define INTEL_FRONTBUFFER_OVERLAY(pipe) \
-	(1 << (2 + INTEL_MAX_SPRITE_BITS_PER_PIPE + (INTEL_FRONTBUFFER_BITS_PER_PIPE * (pipe))))
+	(1 << (INTEL_FRONTBUFFER_BITS_PER_PIPE - 1 + INTEL_FRONTBUFFER_BITS_PER_PIPE * (pipe)))
 #define INTEL_FRONTBUFFER_ALL_MASK(pipe) \
 	(0xff << (INTEL_FRONTBUFFER_BITS_PER_PIPE * (pipe)))
 
@@ -2595,6 +2599,7 @@ intel_info(const struct drm_i915_private *dev_priv)
 #define IS_GEMINILAKE(dev_priv)	IS_PLATFORM(dev_priv, INTEL_GEMINILAKE)
 #define IS_COFFEELAKE(dev_priv)	IS_PLATFORM(dev_priv, INTEL_COFFEELAKE)
 #define IS_CANNONLAKE(dev_priv)	IS_PLATFORM(dev_priv, INTEL_CANNONLAKE)
+#define IS_ICELAKE(dev_priv)	IS_PLATFORM(dev_priv, INTEL_ICELAKE)
 #define IS_MOBILE(dev_priv)	((dev_priv)->info.is_mobile)
 #define IS_HSW_EARLY_SDV(dev_priv) (IS_HASWELL(dev_priv) && \
 				    (INTEL_DEVID(dev_priv) & 0xFF00) == 0x0C00)
@@ -2646,6 +2651,8 @@ intel_info(const struct drm_i915_private *dev_priv)
 				 (dev_priv)->info.gt == 2)
 #define IS_CFL_GT3(dev_priv)	(IS_COFFEELAKE(dev_priv) && \
 				 (dev_priv)->info.gt == 3)
+#define IS_CNL_WITH_PORT_F(dev_priv)   (IS_CANNONLAKE(dev_priv) && \
+					(INTEL_DEVID(dev_priv) & 0x0004) == 0x0004)
 
 #define IS_ALPHA_SUPPORT(intel_info) ((intel_info)->is_alpha_support)
 
@@ -2706,6 +2713,7 @@ intel_info(const struct drm_i915_private *dev_priv)
 #define IS_GEN8(dev_priv)	(!!((dev_priv)->info.gen_mask & BIT(7)))
 #define IS_GEN9(dev_priv)	(!!((dev_priv)->info.gen_mask & BIT(8)))
 #define IS_GEN10(dev_priv)	(!!((dev_priv)->info.gen_mask & BIT(9)))
+#define IS_GEN11(dev_priv)	(!!((dev_priv)->info.gen_mask & BIT(10)))
 
 #define IS_LP(dev_priv)	(INTEL_INFO(dev_priv)->is_lp)
 #define IS_GEN9_LP(dev_priv)	(IS_GEN9(dev_priv) && IS_LP(dev_priv))
@@ -2843,11 +2851,13 @@ intel_info(const struct drm_i915_private *dev_priv)
 #define INTEL_PCH_KBP_DEVICE_ID_TYPE		0xA280
 #define INTEL_PCH_CNP_DEVICE_ID_TYPE		0xA300
 #define INTEL_PCH_CNP_LP_DEVICE_ID_TYPE		0x9D80
+#define INTEL_PCH_ICP_DEVICE_ID_TYPE		0x3480
 #define INTEL_PCH_P2X_DEVICE_ID_TYPE		0x7100
 #define INTEL_PCH_P3X_DEVICE_ID_TYPE		0x7000
 #define INTEL_PCH_QEMU_DEVICE_ID_TYPE		0x2900 /* qemu q35 has 2918 */
 
 #define INTEL_PCH_TYPE(dev_priv) ((dev_priv)->pch_type)
+#define HAS_PCH_ICP(dev_priv) (INTEL_PCH_TYPE(dev_priv) == PCH_ICP)
 #define HAS_PCH_CNP(dev_priv) (INTEL_PCH_TYPE(dev_priv) == PCH_CNP)
 #define HAS_PCH_CNP_LP(dev_priv) \
 	((dev_priv)->pch_id == INTEL_PCH_CNP_LP_DEVICE_ID_TYPE)
@@ -2950,8 +2960,10 @@ void intel_hpd_irq_handler(struct drm_i915_private *dev_priv,
 void intel_hpd_init(struct drm_i915_private *dev_priv);
 void intel_hpd_init_work(struct drm_i915_private *dev_priv);
 void intel_hpd_cancel_work(struct drm_i915_private *dev_priv);
-enum port intel_hpd_pin_to_port(enum hpd_pin pin);
-enum hpd_pin intel_hpd_pin(enum port port);
+enum port intel_hpd_pin_to_port(struct drm_i915_private *dev_priv,
+				enum hpd_pin pin);
+enum hpd_pin intel_hpd_pin_default(struct drm_i915_private *dev_priv,
+				   enum port port);
 bool intel_hpd_disable(struct drm_i915_private *dev_priv, enum hpd_pin pin);
 void intel_hpd_enable(struct drm_i915_private *dev_priv, enum hpd_pin pin);
 
@@ -3717,7 +3729,12 @@ extern void intel_display_print_error_state(struct drm_i915_error_state_buf *e,
 					    struct intel_display_error_state *error);
 
 int sandybridge_pcode_read(struct drm_i915_private *dev_priv, u32 mbox, u32 *val);
-int sandybridge_pcode_write(struct drm_i915_private *dev_priv, u32 mbox, u32 val);
+int sandybridge_pcode_write_timeout(struct drm_i915_private *dev_priv, u32 mbox,
+				    u32 val, int fast_timeout_us,
+				    int slow_timeout_ms);
+#define sandybridge_pcode_write(dev_priv, mbox, val)	\
+	sandybridge_pcode_write_timeout(dev_priv, mbox, val, 500, 0)
+
 int skl_pcode_request(struct drm_i915_private *dev_priv, u32 mbox, u32 request,
 		      u32 reply_mask, u32 reply, int timeout_base_ms);
 

@@ -452,6 +452,8 @@ void gen6_disable_rps_interrupts(struct drm_i915_private *dev_priv)
 
 void gen9_reset_guc_interrupts(struct drm_i915_private *dev_priv)
 {
+	assert_rpm_wakelock_held(dev_priv);
+
 	spin_lock_irq(&dev_priv->irq_lock);
 	gen6_reset_pm_iir(dev_priv, dev_priv->pm_guc_events);
 	spin_unlock_irq(&dev_priv->irq_lock);
@@ -459,6 +461,8 @@ void gen9_reset_guc_interrupts(struct drm_i915_private *dev_priv)
 
 void gen9_enable_guc_interrupts(struct drm_i915_private *dev_priv)
 {
+	assert_rpm_wakelock_held(dev_priv);
+
 	spin_lock_irq(&dev_priv->irq_lock);
 	if (!dev_priv->guc.interrupts_enabled) {
 		WARN_ON_ONCE(I915_READ(gen6_pm_iir(dev_priv)) &
@@ -471,6 +475,8 @@ void gen9_enable_guc_interrupts(struct drm_i915_private *dev_priv)
 
 void gen9_disable_guc_interrupts(struct drm_i915_private *dev_priv)
 {
+	assert_rpm_wakelock_held(dev_priv);
+
 	spin_lock_irq(&dev_priv->irq_lock);
 	dev_priv->guc.interrupts_enabled = false;
 
@@ -1568,10 +1574,11 @@ static bool i9xx_port_hotplug_long_detect(enum port port, u32 val)
  *
  * Note that the caller is expected to zero out the masks initially.
  */
-static void intel_get_hpd_pins(u32 *pin_mask, u32 *long_mask,
-			     u32 hotplug_trigger, u32 dig_hotplug_reg,
-			     const u32 hpd[HPD_NUM_PINS],
-			     bool long_pulse_detect(enum port port, u32 val))
+static void intel_get_hpd_pins(struct drm_i915_private *dev_priv,
+			       u32 *pin_mask, u32 *long_mask,
+			       u32 hotplug_trigger, u32 dig_hotplug_reg,
+			       const u32 hpd[HPD_NUM_PINS],
+			       bool long_pulse_detect(enum port port, u32 val))
 {
 	enum port port;
 	int i;
@@ -1582,7 +1589,7 @@ static void intel_get_hpd_pins(u32 *pin_mask, u32 *long_mask,
 
 		*pin_mask |= BIT(i);
 
-		port = intel_hpd_pin_to_port(i);
+		port = intel_hpd_pin_to_port(dev_priv, i);
 		if (port == PORT_NONE)
 			continue;
 
@@ -1970,8 +1977,9 @@ static void i9xx_hpd_irq_handler(struct drm_i915_private *dev_priv,
 		u32 hotplug_trigger = hotplug_status & HOTPLUG_INT_STATUS_G4X;
 
 		if (hotplug_trigger) {
-			intel_get_hpd_pins(&pin_mask, &long_mask, hotplug_trigger,
-					   hotplug_trigger, hpd_status_g4x,
+			intel_get_hpd_pins(dev_priv, &pin_mask, &long_mask,
+					   hotplug_trigger, hotplug_trigger,
+					   hpd_status_g4x,
 					   i9xx_port_hotplug_long_detect);
 
 			intel_hpd_irq_handler(dev_priv, pin_mask, long_mask);
@@ -1983,8 +1991,9 @@ static void i9xx_hpd_irq_handler(struct drm_i915_private *dev_priv,
 		u32 hotplug_trigger = hotplug_status & HOTPLUG_INT_STATUS_I915;
 
 		if (hotplug_trigger) {
-			intel_get_hpd_pins(&pin_mask, &long_mask, hotplug_trigger,
-					   hotplug_trigger, hpd_status_i915,
+			intel_get_hpd_pins(dev_priv, &pin_mask, &long_mask,
+					   hotplug_trigger, hotplug_trigger,
+					   hpd_status_i915,
 					   i9xx_port_hotplug_long_detect);
 			intel_hpd_irq_handler(dev_priv, pin_mask, long_mask);
 		}
@@ -2185,7 +2194,7 @@ static void ibx_hpd_irq_handler(struct drm_i915_private *dev_priv,
 	if (!hotplug_trigger)
 		return;
 
-	intel_get_hpd_pins(&pin_mask, &long_mask, hotplug_trigger,
+	intel_get_hpd_pins(dev_priv, &pin_mask, &long_mask, hotplug_trigger,
 			   dig_hotplug_reg, hpd,
 			   pch_port_hotplug_long_detect);
 
@@ -2327,8 +2336,8 @@ static void spt_irq_handler(struct drm_i915_private *dev_priv, u32 pch_iir)
 		dig_hotplug_reg = I915_READ(PCH_PORT_HOTPLUG);
 		I915_WRITE(PCH_PORT_HOTPLUG, dig_hotplug_reg);
 
-		intel_get_hpd_pins(&pin_mask, &long_mask, hotplug_trigger,
-				   dig_hotplug_reg, hpd_spt,
+		intel_get_hpd_pins(dev_priv, &pin_mask, &long_mask,
+				   hotplug_trigger, dig_hotplug_reg, hpd_spt,
 				   spt_port_hotplug_long_detect);
 	}
 
@@ -2338,8 +2347,8 @@ static void spt_irq_handler(struct drm_i915_private *dev_priv, u32 pch_iir)
 		dig_hotplug_reg = I915_READ(PCH_PORT_HOTPLUG2);
 		I915_WRITE(PCH_PORT_HOTPLUG2, dig_hotplug_reg);
 
-		intel_get_hpd_pins(&pin_mask, &long_mask, hotplug2_trigger,
-				   dig_hotplug_reg, hpd_spt,
+		intel_get_hpd_pins(dev_priv, &pin_mask, &long_mask,
+				   hotplug2_trigger, dig_hotplug_reg, hpd_spt,
 				   spt_port_hotplug2_long_detect);
 	}
 
@@ -2359,7 +2368,7 @@ static void ilk_hpd_irq_handler(struct drm_i915_private *dev_priv,
 	dig_hotplug_reg = I915_READ(DIGITAL_PORT_HOTPLUG_CNTRL);
 	I915_WRITE(DIGITAL_PORT_HOTPLUG_CNTRL, dig_hotplug_reg);
 
-	intel_get_hpd_pins(&pin_mask, &long_mask, hotplug_trigger,
+	intel_get_hpd_pins(dev_priv, &pin_mask, &long_mask, hotplug_trigger,
 			   dig_hotplug_reg, hpd,
 			   ilk_port_hotplug_long_detect);
 
@@ -2536,7 +2545,7 @@ static void bxt_hpd_irq_handler(struct drm_i915_private *dev_priv,
 	dig_hotplug_reg = I915_READ(PCH_PORT_HOTPLUG);
 	I915_WRITE(PCH_PORT_HOTPLUG, dig_hotplug_reg);
 
-	intel_get_hpd_pins(&pin_mask, &long_mask, hotplug_trigger,
+	intel_get_hpd_pins(dev_priv, &pin_mask, &long_mask, hotplug_trigger,
 			   dig_hotplug_reg, hpd,
 			   bxt_port_hotplug_long_detect);
 
@@ -2578,6 +2587,9 @@ gen8_de_irq_handler(struct drm_i915_private *dev_priv, u32 master_ctl)
 				tmp_mask |= GEN9_AUX_CHANNEL_B |
 					    GEN9_AUX_CHANNEL_C |
 					    GEN9_AUX_CHANNEL_D;
+
+			if (IS_CNL_WITH_PORT_F(dev_priv))
+				tmp_mask |= CNL_AUX_CHANNEL_F;
 
 			if (iir & tmp_mask) {
 				dp_aux_irq_handler(dev_priv);
@@ -3610,6 +3622,9 @@ static void gen8_de_irq_postinstall(struct drm_i915_private *dev_priv)
 	} else {
 		de_pipe_masked |= GEN8_DE_PIPE_IRQ_FAULT_ERRORS;
 	}
+
+	if (IS_CNL_WITH_PORT_F(dev_priv))
+		de_port_masked |= CNL_AUX_CHANNEL_F;
 
 	de_pipe_enables = de_pipe_masked | GEN8_PIPE_VBLANK |
 					   GEN8_PIPE_FIFO_UNDERRUN;

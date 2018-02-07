@@ -349,6 +349,7 @@ tcg	Trusted Computing Group
 tcl	Toby Churchill Ltd.
 technexion	TechNexion
 technologic	Technologic Systems
+tempo	Tempo Semiconductor
 terasic	Terasic Inc.
 thine	THine Electronics, Inc.
 ti	Texas Instruments

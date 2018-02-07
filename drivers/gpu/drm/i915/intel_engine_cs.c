@@ -38,9 +38,11 @@
  */
 #define HSW_CXT_TOTAL_SIZE		(17 * PAGE_SIZE)
 
+#define DEFAULT_LR_CONTEXT_RENDER_SIZE	(22 * PAGE_SIZE)
 #define GEN8_LR_CONTEXT_RENDER_SIZE	(20 * PAGE_SIZE)
 #define GEN9_LR_CONTEXT_RENDER_SIZE	(22 * PAGE_SIZE)
 #define GEN10_LR_CONTEXT_RENDER_SIZE	(18 * PAGE_SIZE)
+#define GEN11_LR_CONTEXT_RENDER_SIZE	(14 * PAGE_SIZE)
 
 #define GEN8_LR_CONTEXT_OTHER_SIZE	( 2 * PAGE_SIZE)
 
@@ -157,6 +159,9 @@ __intel_engine_context_size(struct drm_i915_private *dev_priv, u8 class)
 		switch (INTEL_GEN(dev_priv)) {
 		default:
 			MISSING_CASE(INTEL_GEN(dev_priv));
+			return DEFAULT_LR_CONTEXT_RENDER_SIZE;
+		case 11:
+			return GEN11_LR_CONTEXT_RENDER_SIZE;
 		case 10:
 			return GEN10_LR_CONTEXT_RENDER_SIZE;
 		case 9:
@@ -1272,6 +1277,9 @@ static int cnl_init_workarounds(struct intel_engine_cs *engine)
 	if (ret)
 		return ret;
 
+	/* WaDisableEarlyEOT:cnl */
+	WA_SET_BIT_MASKED(GEN8_ROW_CHICKEN, DISABLE_EARLY_EOT);
+
 	return 0;
 }
 
@@ -1335,6 +1343,11 @@ static int glk_init_workarounds(struct intel_engine_cs *engine)
 	if (ret)
 		return ret;
 
+	/* WA #0862: Userspace has to set "Barrier Mode" to avoid hangs. */
+	ret = wa_ring_whitelist_reg(engine, GEN9_SLICE_COMMON_ECO_CHICKEN1);
+	if (ret)
+		return ret;
+
 	/* WaToEnableHwFixForPushConstHWBug:glk */
 	WA_SET_BIT_MASKED(COMMON_SLICE_CHICKEN2,
 			  GEN8_SBE_DISABLE_REPLAY_BUF_OPTIMIZATION);
@@ -1381,7 +1394,8 @@ int init_workarounds_ring(struct intel_engine_cs *engine)
 	struct drm_i915_private *dev_priv = engine->i915;
 	int err;
 
-	WARN_ON(engine->id != RCS);
+	if (GEM_WARN_ON(engine->id != RCS))
+		return -EINVAL;
 
 	dev_priv->workarounds.count = 0;
 	dev_priv->workarounds.hw_whitelist_count[engine->id] = 0;
@@ -1664,6 +1678,35 @@ static void print_request(struct drm_printer *m,
 		   rq->timeline->common->name);
 }
 
+static void hexdump(struct drm_printer *m, const void *buf, size_t len)
+{
+	const size_t rowsize = 8 * sizeof(u32);
+	const void *prev = NULL;
+	bool skip = false;
+	size_t pos;
+
+	for (pos = 0; pos < len; pos += rowsize) {
+		char line[128];
+
+		if (prev && !memcmp(prev, buf + pos, rowsize)) {
+			if (!skip) {
+				drm_printf(m, "*\n");
+				skip = true;
+			}
+			continue;
+		}
+
+		WARN_ON_ONCE(hex_dump_to_buffer(buf + pos, len - pos,
+						rowsize, sizeof(u32),
+						line, sizeof(line),
+						false) >= sizeof(line));
+		drm_printf(m, "%08zx %s\n", pos, line);
+
+		prev = buf + pos;
+		skip = false;
+	}
+}
+
 void intel_engine_dump(struct intel_engine_cs *engine,
 		       struct drm_printer *m,
 		       const char *header, ...)
@@ -1757,6 +1800,24 @@ void intel_engine_dump(struct intel_engine_cs *engine,
 	addr = intel_engine_get_last_batch_head(engine);
 	drm_printf(m, "\tBBADDR: 0x%08x_%08x\n",
 		   upper_32_bits(addr), lower_32_bits(addr));
+	if (INTEL_GEN(dev_priv) >= 8)
+		addr = I915_READ64_2x32(RING_DMA_FADD(engine->mmio_base),
+					RING_DMA_FADD_UDW(engine->mmio_base));
+	else if (INTEL_GEN(dev_priv) >= 4)
+		addr = I915_READ(RING_DMA_FADD(engine->mmio_base));
+	else
+		addr = I915_READ(DMA_FADD_I8XX);
+	drm_printf(m, "\tDMA_FADDR: 0x%08x_%08x\n",
+		   upper_32_bits(addr), lower_32_bits(addr));
+	if (INTEL_GEN(dev_priv) >= 4) {
+		drm_printf(m, "\tIPEIR: 0x%08x\n",
+			   I915_READ(RING_IPEIR(engine->mmio_base)));
+		drm_printf(m, "\tIPEHR: 0x%08x\n",
+			   I915_READ(RING_IPEHR(engine->mmio_base)));
+	} else {
+		drm_printf(m, "\tIPEIR: 0x%08x\n", I915_READ(IPEIR));
+		drm_printf(m, "\tIPEHR: 0x%08x\n", I915_READ(IPEHR));
+	}
 
 	if (HAS_EXECLISTS(dev_priv)) {
 		const u32 *hws = &engine->status_page.page_addr[I915_HWS_CSB_BUF0_INDEX];
@@ -1848,8 +1909,11 @@ void intel_engine_dump(struct intel_engine_cs *engine,
 				  &engine->irq_posted)),
 		   yesno(test_bit(ENGINE_IRQ_EXECLIST,
 				  &engine->irq_posted)));
+
+	drm_printf(m, "HWSP:\n");
+	hexdump(m, engine->status_page.page_addr, PAGE_SIZE);
+
 	drm_printf(m, "Idle? %s\n", yesno(intel_engine_is_idle(engine)));
-	drm_printf(m, "\n");
 }
 
 static u8 user_class_map[] = {
@@ -1885,24 +1949,42 @@ intel_engine_lookup_user(struct drm_i915_private *i915, u8 class, u8 instance)
  */
 int intel_enable_engine_stats(struct intel_engine_cs *engine)
 {
+	struct intel_engine_execlists *execlists = &engine->execlists;
 	unsigned long flags;
+	int err = 0;
 
 	if (!intel_engine_supports_stats(engine))
 		return -ENODEV;
 
+	tasklet_disable(&execlists->tasklet);
 	spin_lock_irqsave(&engine->stats.lock, flags);
-	if (engine->stats.enabled == ~0)
-		goto busy;
-	if (engine->stats.enabled++ == 0)
+
+	if (unlikely(engine->stats.enabled == ~0)) {
+		err = -EBUSY;
+		goto unlock;
+	}
+
+	if (engine->stats.enabled++ == 0) {
+		const struct execlist_port *port = execlists->port;
+		unsigned int num_ports = execlists_num_ports(execlists);
+
 		engine->stats.enabled_at = ktime_get();
+
+		/* XXX submission method oblivious? */
+		while (num_ports-- && port_isset(port)) {
+			engine->stats.active++;
+			port++;
+		}
+
+		if (engine->stats.active)
+			engine->stats.start = engine->stats.enabled_at;
+	}
+
+unlock:
 	spin_unlock_irqrestore(&engine->stats.lock, flags);
+	tasklet_enable(&execlists->tasklet);
 
-	return 0;
-
-busy:
-	spin_unlock_irqrestore(&engine->stats.lock, flags);
-
-	return -EBUSY;
+	return err;
 }
 
 static ktime_t __intel_engine_get_busy_time(struct intel_engine_cs *engine)

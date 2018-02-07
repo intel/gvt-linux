@@ -359,7 +359,7 @@ static void hangcheck_accumulate_sample(struct intel_engine_cs *engine,
 	case ENGINE_DEAD:
 		if (drm_debug & DRM_UT_DRIVER) {
 			struct drm_printer p = drm_debug_printer("hangcheck");
-			intel_engine_dump(engine, &p, "%s", engine->name);
+			intel_engine_dump(engine, &p, "%s\n", engine->name);
 		}
 		break;
 
@@ -411,7 +411,6 @@ static void i915_hangcheck_elapsed(struct work_struct *work)
 	struct intel_engine_cs *engine;
 	enum intel_engine_id id;
 	unsigned int hung = 0, stuck = 0;
-	int busy_count = 0;
 
 	if (!i915_modparams.enable_hangcheck)
 		return;
@@ -429,30 +428,26 @@ static void i915_hangcheck_elapsed(struct work_struct *work)
 	intel_uncore_arm_unclaimed_mmio_detection(dev_priv);
 
 	for_each_engine(engine, dev_priv, id) {
-		struct intel_engine_hangcheck cur_state, *hc = &cur_state;
-		const bool busy = intel_engine_has_waiter(engine);
+		struct intel_engine_hangcheck hc;
 
 		semaphore_clear_deadlocks(dev_priv);
 
-		hangcheck_load_sample(engine, hc);
-		hangcheck_accumulate_sample(engine, hc);
-		hangcheck_store_sample(engine, hc);
+		hangcheck_load_sample(engine, &hc);
+		hangcheck_accumulate_sample(engine, &hc);
+		hangcheck_store_sample(engine, &hc);
 
 		if (engine->hangcheck.stalled) {
 			hung |= intel_engine_flag(engine);
-			if (hc->action != ENGINE_DEAD)
+			if (hc.action != ENGINE_DEAD)
 				stuck |= intel_engine_flag(engine);
 		}
-
-		busy_count += busy;
 	}
 
 	if (hung)
 		hangcheck_declare_hang(dev_priv, hung, stuck);
 
 	/* Reset timer in case GPU hangs without another request being added */
-	if (busy_count)
-		i915_queue_hangcheck(dev_priv);
+	i915_queue_hangcheck(dev_priv);
 }
 
 void intel_engine_init_hangcheck(struct intel_engine_cs *engine)

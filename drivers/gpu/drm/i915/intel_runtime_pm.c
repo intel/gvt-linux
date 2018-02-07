@@ -94,6 +94,8 @@ intel_display_power_domain_str(enum intel_display_power_domain domain)
 		return "PORT_DDI_D_LANES";
 	case POWER_DOMAIN_PORT_DDI_E_LANES:
 		return "PORT_DDI_E_LANES";
+	case POWER_DOMAIN_PORT_DDI_F_LANES:
+		return "PORT_DDI_F_LANES";
 	case POWER_DOMAIN_PORT_DDI_A_IO:
 		return "PORT_DDI_A_IO";
 	case POWER_DOMAIN_PORT_DDI_B_IO:
@@ -104,6 +106,8 @@ intel_display_power_domain_str(enum intel_display_power_domain domain)
 		return "PORT_DDI_D_IO";
 	case POWER_DOMAIN_PORT_DDI_E_IO:
 		return "PORT_DDI_E_IO";
+	case POWER_DOMAIN_PORT_DDI_F_IO:
+		return "PORT_DDI_F_IO";
 	case POWER_DOMAIN_PORT_DSI:
 		return "PORT_DSI";
 	case POWER_DOMAIN_PORT_CRT:
@@ -124,6 +128,8 @@ intel_display_power_domain_str(enum intel_display_power_domain domain)
 		return "AUX_C";
 	case POWER_DOMAIN_AUX_D:
 		return "AUX_D";
+	case POWER_DOMAIN_AUX_F:
+		return "AUX_F";
 	case POWER_DOMAIN_GMBUS:
 		return "GMBUS";
 	case POWER_DOMAIN_INIT:
@@ -390,6 +396,15 @@ static void hsw_power_well_enable(struct drm_i915_private *dev_priv,
 	I915_WRITE(HSW_PWR_WELL_CTL_DRIVER(id), val | HSW_PWR_WELL_CTL_REQ(id));
 	hsw_wait_for_power_well_enable(dev_priv, power_well);
 
+	/* Display WA #1178: cnl */
+	if (IS_CANNONLAKE(dev_priv) &&
+	    (id == CNL_DISP_PW_AUX_B || id == CNL_DISP_PW_AUX_C ||
+	     id == CNL_DISP_PW_AUX_D || id == CNL_DISP_PW_AUX_F)) {
+		val = I915_READ(CNL_AUX_ANAOVRD1(id));
+		val |= CNL_AUX_ANAOVRD1_ENABLE | CNL_AUX_ANAOVRD1_LDO_BYPASS;
+		I915_WRITE(CNL_AUX_ANAOVRD1(id), val);
+	}
+
 	if (wait_fuses)
 		gen9_wait_for_power_well_fuses(dev_priv, pg);
 
@@ -600,6 +615,11 @@ void gen9_enable_dc5(struct drm_i915_private *dev_priv)
 
 	DRM_DEBUG_KMS("Enabling DC5\n");
 
+	/* Wa Display #1183: skl,kbl,cfl */
+	if (IS_GEN9_BC(dev_priv))
+		I915_WRITE(GEN8_CHICKEN_DCPR_1, I915_READ(GEN8_CHICKEN_DCPR_1) |
+			   SKL_SELECT_ALTERNATE_DC_EXIT);
+
 	gen9_set_dc_state(dev_priv, DC_STATE_EN_UPTO_DC5);
 }
 
@@ -626,6 +646,11 @@ void skl_enable_dc6(struct drm_i915_private *dev_priv)
 void skl_disable_dc6(struct drm_i915_private *dev_priv)
 {
 	DRM_DEBUG_KMS("Disabling DC6\n");
+
+	/* Wa Display #1183: skl,kbl,cfl */
+	if (IS_GEN9_BC(dev_priv))
+		I915_WRITE(GEN8_CHICKEN_DCPR_1, I915_READ(GEN8_CHICKEN_DCPR_1) |
+			   SKL_SELECT_ALTERNATE_DC_EXIT);
 
 	gen9_set_dc_state(dev_priv, DC_STATE_DISABLE);
 }
@@ -1726,13 +1751,13 @@ void intel_display_power_put(struct drm_i915_private *dev_priv,
 	BIT_ULL(POWER_DOMAIN_AUX_C) |			\
 	BIT_ULL(POWER_DOMAIN_AUDIO) |			\
 	BIT_ULL(POWER_DOMAIN_VGA) |				\
-	BIT_ULL(POWER_DOMAIN_GMBUS) |			\
 	BIT_ULL(POWER_DOMAIN_INIT))
 #define BXT_DISPLAY_DC_OFF_POWER_DOMAINS (		\
 	BXT_DISPLAY_POWERWELL_2_POWER_DOMAINS |		\
 	BIT_ULL(POWER_DOMAIN_GT_IRQ) |			\
 	BIT_ULL(POWER_DOMAIN_MODESET) |			\
 	BIT_ULL(POWER_DOMAIN_AUX_A) |			\
+	BIT_ULL(POWER_DOMAIN_GMBUS) |			\
 	BIT_ULL(POWER_DOMAIN_INIT))
 #define BXT_DPIO_CMN_A_POWER_DOMAINS (			\
 	BIT_ULL(POWER_DOMAIN_PORT_DDI_A_LANES) |		\
@@ -1792,6 +1817,7 @@ void intel_display_power_put(struct drm_i915_private *dev_priv,
 	BIT_ULL(POWER_DOMAIN_GT_IRQ) |			\
 	BIT_ULL(POWER_DOMAIN_MODESET) |			\
 	BIT_ULL(POWER_DOMAIN_AUX_A) |			\
+	BIT_ULL(POWER_DOMAIN_GMBUS) |			\
 	BIT_ULL(POWER_DOMAIN_INIT))
 
 #define CNL_DISPLAY_POWERWELL_2_POWER_DOMAINS (		\
@@ -1805,9 +1831,11 @@ void intel_display_power_put(struct drm_i915_private *dev_priv,
 	BIT_ULL(POWER_DOMAIN_PORT_DDI_B_LANES) |		\
 	BIT_ULL(POWER_DOMAIN_PORT_DDI_C_LANES) |		\
 	BIT_ULL(POWER_DOMAIN_PORT_DDI_D_LANES) |		\
+	BIT_ULL(POWER_DOMAIN_PORT_DDI_F_LANES) |		\
 	BIT_ULL(POWER_DOMAIN_AUX_B) |                       \
 	BIT_ULL(POWER_DOMAIN_AUX_C) |			\
 	BIT_ULL(POWER_DOMAIN_AUX_D) |			\
+	BIT_ULL(POWER_DOMAIN_AUX_F) |			\
 	BIT_ULL(POWER_DOMAIN_AUDIO) |			\
 	BIT_ULL(POWER_DOMAIN_VGA) |				\
 	BIT_ULL(POWER_DOMAIN_INIT))
@@ -1835,8 +1863,15 @@ void intel_display_power_put(struct drm_i915_private *dev_priv,
 #define CNL_DISPLAY_AUX_D_POWER_DOMAINS (		\
 	BIT_ULL(POWER_DOMAIN_AUX_D) |			\
 	BIT_ULL(POWER_DOMAIN_INIT))
+#define CNL_DISPLAY_AUX_F_POWER_DOMAINS (		\
+	BIT_ULL(POWER_DOMAIN_AUX_F) |			\
+	BIT_ULL(POWER_DOMAIN_INIT))
+#define CNL_DISPLAY_DDI_F_IO_POWER_DOMAINS (		\
+	BIT_ULL(POWER_DOMAIN_PORT_DDI_F_IO) |		\
+	BIT_ULL(POWER_DOMAIN_INIT))
 #define CNL_DISPLAY_DC_OFF_POWER_DOMAINS (		\
 	CNL_DISPLAY_POWERWELL_2_POWER_DOMAINS |		\
+	BIT_ULL(POWER_DOMAIN_GT_IRQ) |			\
 	BIT_ULL(POWER_DOMAIN_MODESET) |			\
 	BIT_ULL(POWER_DOMAIN_AUX_A) |			\
 	BIT_ULL(POWER_DOMAIN_INIT))
@@ -2384,6 +2419,18 @@ static struct i915_power_well cnl_power_wells[] = {
 		.ops = &hsw_power_well_ops,
 		.id = SKL_DISP_PW_DDI_D,
 	},
+	{
+		.name = "DDI F IO power well",
+		.domains = CNL_DISPLAY_DDI_F_IO_POWER_DOMAINS,
+		.ops = &hsw_power_well_ops,
+		.id = CNL_DISP_PW_DDI_F,
+	},
+	{
+		.name = "AUX F",
+		.domains = CNL_DISPLAY_AUX_F_POWER_DOMAINS,
+		.ops = &hsw_power_well_ops,
+		.id = CNL_DISP_PW_AUX_F,
+	},
 };
 
 static int
@@ -2499,6 +2546,16 @@ int intel_power_domains_init(struct drm_i915_private *dev_priv)
 		set_power_wells(power_domains, skl_power_wells);
 	} else if (IS_CANNONLAKE(dev_priv)) {
 		set_power_wells(power_domains, cnl_power_wells);
+
+		/*
+		 * DDI and Aux IO are getting enabled for all ports
+		 * regardless the presence or use. So, in order to avoid
+		 * timeouts, lets remove them from the list
+		 * for the SKUs without port F.
+		 */
+		if (!IS_CNL_WITH_PORT_F(dev_priv))
+			power_domains->power_well_count -= 2;
+
 	} else if (IS_BROXTON(dev_priv)) {
 		set_power_wells(power_domains, bxt_power_wells);
 	} else if (IS_GEMINILAKE(dev_priv)) {

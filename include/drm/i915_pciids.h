@@ -373,43 +373,61 @@
 /* CFL S */
 #define INTEL_CFL_S_GT1_IDS(info) \
 	INTEL_VGA_DEVICE(0x3E90, info), /* SRV GT1 */ \
-	INTEL_VGA_DEVICE(0x3E93, info)  /* SRV GT1 */
+	INTEL_VGA_DEVICE(0x3E93, info), /* SRV GT1 */ \
+	INTEL_VGA_DEVICE(0x3E99, info)  /* SRV GT1 */
 
 #define INTEL_CFL_S_GT2_IDS(info) \
 	INTEL_VGA_DEVICE(0x3E91, info), /* SRV GT2 */ \
 	INTEL_VGA_DEVICE(0x3E92, info), /* SRV GT2 */ \
-	INTEL_VGA_DEVICE(0x3E96, info)  /* SRV GT2 */
+	INTEL_VGA_DEVICE(0x3E96, info), /* SRV GT2 */ \
+	INTEL_VGA_DEVICE(0x3E9A, info)  /* SRV GT2 */
 
 /* CFL H */
 #define INTEL_CFL_H_GT2_IDS(info) \
 	INTEL_VGA_DEVICE(0x3E9B, info), /* Halo GT2 */ \
 	INTEL_VGA_DEVICE(0x3E94, info)  /* Halo GT2 */
 
-/* CFL U */
+/* CFL U GT1 */
+#define INTEL_CFL_U_GT1_IDS(info) \
+	INTEL_VGA_DEVICE(0x3EA1, info), \
+	INTEL_VGA_DEVICE(0x3EA4, info)
+
+/* CFL U GT2 */
+#define INTEL_CFL_U_GT2_IDS(info) \
+	INTEL_VGA_DEVICE(0x3EA0, info), \
+	INTEL_VGA_DEVICE(0x3EA3, info), \
+	INTEL_VGA_DEVICE(0x3EA9, info)
+
+/* CFL U GT3 */
 #define INTEL_CFL_U_GT3_IDS(info) \
+	INTEL_VGA_DEVICE(0x3EA2, info), /* ULT GT3 */ \
+	INTEL_VGA_DEVICE(0x3EA5, info), /* ULT GT3 */ \
 	INTEL_VGA_DEVICE(0x3EA6, info), /* ULT GT3 */ \
 	INTEL_VGA_DEVICE(0x3EA7, info), /* ULT GT3 */ \
-	INTEL_VGA_DEVICE(0x3EA8, info), /* ULT GT3 */ \
-	INTEL_VGA_DEVICE(0x3EA5, info)  /* ULT GT3 */
+	INTEL_VGA_DEVICE(0x3EA8, info)  /* ULT GT3 */
 
-/* CNL U 2+2 */
-#define INTEL_CNL_U_GT2_IDS(info) \
+#define INTEL_CFL_IDS(info)	   \
+	INTEL_CFL_S_GT1_IDS(info), \
+	INTEL_CFL_S_GT2_IDS(info), \
+	INTEL_CFL_H_GT2_IDS(info), \
+	INTEL_CFL_U_GT1_IDS(info), \
+	INTEL_CFL_U_GT2_IDS(info), \
+	INTEL_CFL_U_GT3_IDS(info)
+
+/* CNL */
+#define INTEL_CNL_IDS(info) \
 	INTEL_VGA_DEVICE(0x5A52, info), \
 	INTEL_VGA_DEVICE(0x5A5A, info), \
 	INTEL_VGA_DEVICE(0x5A42, info), \
-	INTEL_VGA_DEVICE(0x5A4A, info)
-
-/* CNL Y 2+2 */
-#define INTEL_CNL_Y_GT2_IDS(info) \
+	INTEL_VGA_DEVICE(0x5A4A, info), \
 	INTEL_VGA_DEVICE(0x5A51, info), \
 	INTEL_VGA_DEVICE(0x5A59, info), \
 	INTEL_VGA_DEVICE(0x5A41, info), \
 	INTEL_VGA_DEVICE(0x5A49, info), \
 	INTEL_VGA_DEVICE(0x5A71, info), \
-	INTEL_VGA_DEVICE(0x5A79, info)
-
-#define INTEL_CNL_IDS(info) \
-	INTEL_CNL_U_GT2_IDS(info), \
-	INTEL_CNL_Y_GT2_IDS(info)
+	INTEL_VGA_DEVICE(0x5A79, info), \
+	INTEL_VGA_DEVICE(0x5A54, info), \
+	INTEL_VGA_DEVICE(0x5A5C, info), \
+	INTEL_VGA_DEVICE(0x5A44, info)
 
 #endif /* _I915_PCIIDS_H */

@@ -75,11 +75,22 @@ static const struct gmbus_pin gmbus_pins_cnp[] = {
 	[GMBUS_PIN_4_CNP] = { "dpd", GPIOE },
 };
 
+static const struct gmbus_pin gmbus_pins_icp[] = {
+	[GMBUS_PIN_1_BXT] = { "dpa", GPIOA },
+	[GMBUS_PIN_2_BXT] = { "dpb", GPIOB },
+	[GMBUS_PIN_9_TC1_ICP] = { "tc1", GPIOC },
+	[GMBUS_PIN_10_TC2_ICP] = { "tc2", GPIOD },
+	[GMBUS_PIN_11_TC3_ICP] = { "tc3", GPIOE },
+	[GMBUS_PIN_12_TC4_ICP] = { "tc4", GPIOF },
+};
+
 /* pin is expected to be valid */
 static const struct gmbus_pin *get_gmbus_pin(struct drm_i915_private *dev_priv,
 					     unsigned int pin)
 {
-	if (HAS_PCH_CNP(dev_priv))
+	if (HAS_PCH_ICP(dev_priv))
+		return &gmbus_pins_icp[pin];
+	else if (HAS_PCH_CNP(dev_priv))
 		return &gmbus_pins_cnp[pin];
 	else if (IS_GEN9_LP(dev_priv))
 		return &gmbus_pins_bxt[pin];
@@ -96,7 +107,9 @@ bool intel_gmbus_is_valid_pin(struct drm_i915_private *dev_priv,
 {
 	unsigned int size;
 
-	if (HAS_PCH_CNP(dev_priv))
+	if (HAS_PCH_ICP(dev_priv))
+		size = ARRAY_SIZE(gmbus_pins_icp);
+	else if (HAS_PCH_CNP(dev_priv))
 		size = ARRAY_SIZE(gmbus_pins_cnp);
 	else if (IS_GEN9_LP(dev_priv))
 		size = ARRAY_SIZE(gmbus_pins_bxt);
@@ -128,20 +141,44 @@ intel_i2c_reset(struct drm_i915_private *dev_priv)
 	I915_WRITE(GMBUS4, 0);
 }
 
-static void intel_i2c_quirk_set(struct drm_i915_private *dev_priv, bool enable)
+static void pnv_gmbus_clock_gating(struct drm_i915_private *dev_priv,
+				   bool enable)
 {
 	u32 val;
 
 	/* When using bit bashing for I2C, this bit needs to be set to 1 */
-	if (!IS_PINEVIEW(dev_priv))
-		return;
-
 	val = I915_READ(DSPCLK_GATE_D);
-	if (enable)
-		val |= DPCUNIT_CLOCK_GATE_DISABLE;
+	if (!enable)
+		val |= PNV_GMBUSUNIT_CLOCK_GATE_DISABLE;
 	else
-		val &= ~DPCUNIT_CLOCK_GATE_DISABLE;
+		val &= ~PNV_GMBUSUNIT_CLOCK_GATE_DISABLE;
 	I915_WRITE(DSPCLK_GATE_D, val);
+}
+
+static void pch_gmbus_clock_gating(struct drm_i915_private *dev_priv,
+				   bool enable)
+{
+	u32 val;
+
+	val = I915_READ(SOUTH_DSPCLK_GATE_D);
+	if (!enable)
+		val |= PCH_GMBUSUNIT_CLOCK_GATE_DISABLE;
+	else
+		val &= ~PCH_GMBUSUNIT_CLOCK_GATE_DISABLE;
+	I915_WRITE(SOUTH_DSPCLK_GATE_D, val);
+}
+
+static void bxt_gmbus_clock_gating(struct drm_i915_private *dev_priv,
+				   bool enable)
+{
+	u32 val;
+
+	val = I915_READ(GEN9_CLKGATE_DIS_4);
+	if (!enable)
+		val |= BXT_GMBUS_GATING_DIS;
+	else
+		val &= ~BXT_GMBUS_GATING_DIS;
+	I915_WRITE(GEN9_CLKGATE_DIS_4, val);
 }
 
 static u32 get_reserved(struct intel_gmbus *bus)
@@ -221,7 +258,10 @@ intel_gpio_pre_xfer(struct i2c_adapter *adapter)
 	struct drm_i915_private *dev_priv = bus->dev_priv;
 
 	intel_i2c_reset(dev_priv);
-	intel_i2c_quirk_set(dev_priv, true);
+
+	if (IS_PINEVIEW(dev_priv))
+		pnv_gmbus_clock_gating(dev_priv, false);
+
 	set_data(bus, 1);
 	set_clock(bus, 1);
 	udelay(I2C_RISEFALL_TIME);
@@ -238,7 +278,9 @@ intel_gpio_post_xfer(struct i2c_adapter *adapter)
 
 	set_data(bus, 1);
 	set_clock(bus, 1);
-	intel_i2c_quirk_set(dev_priv, false);
+
+	if (IS_PINEVIEW(dev_priv))
+		pnv_gmbus_clock_gating(dev_priv, true);
 }
 
 static void
@@ -481,6 +523,13 @@ do_gmbus_xfer(struct i2c_adapter *adapter, struct i2c_msg *msgs, int num)
 	int i = 0, inc, try = 0;
 	int ret = 0;
 
+	/* Display WA #0868: skl,bxt,kbl,cfl,glk,cnl */
+	if (IS_GEN9_LP(dev_priv))
+		bxt_gmbus_clock_gating(dev_priv, false);
+	else if (HAS_PCH_SPT(dev_priv) ||
+		 HAS_PCH_KBP(dev_priv) || HAS_PCH_CNP(dev_priv))
+		pch_gmbus_clock_gating(dev_priv, false);
+
 retry:
 	I915_WRITE_FW(GMBUS0, bus->reg0);
 
@@ -582,6 +631,13 @@ timeout:
 	ret = -EAGAIN;
 
 out:
+	/* Display WA #0868: skl,bxt,kbl,cfl,glk,cnl */
+	if (IS_GEN9_LP(dev_priv))
+		bxt_gmbus_clock_gating(dev_priv, true);
+	else if (HAS_PCH_SPT(dev_priv) ||
+		 HAS_PCH_KBP(dev_priv) || HAS_PCH_CNP(dev_priv))
+		pch_gmbus_clock_gating(dev_priv, true);
+
 	return ret;
 }
 

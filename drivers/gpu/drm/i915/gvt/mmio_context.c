@@ -268,6 +268,16 @@ static void restore_mocs(struct intel_vgpu *vgpu, int ring_id)
 
 #define CTX_CONTEXT_CONTROL_VAL	0x03
 
+bool is_inhibit_context(struct i915_gem_context *ctx, int ring_id)
+{
+	u32 *reg_state = ctx->engine[ring_id].lrc_reg_state;
+	u32 inhibit_mask =
+		_MASKED_BIT_ENABLE(CTX_CTRL_ENGINE_CTX_RESTORE_INHIBIT);
+
+	return inhibit_mask ==
+		(reg_state[CTX_CONTEXT_CONTROL_VAL] & inhibit_mask);
+}
+
 /* Switch ring mmio values (context) from host to a vgpu. */
 static void switch_mmio_to_vgpu(struct intel_vgpu *vgpu, int ring_id)
 {

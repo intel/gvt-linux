@@ -1139,21 +1139,21 @@ static int pvinfo_mmio_read(struct intel_vgpu *vgpu, unsigned int offset,
 
 static int handle_g2v_notification(struct intel_vgpu *vgpu, int notification)
 {
-	int ret = 0;
+	intel_gvt_gtt_type_t root_entry_type = GTT_TYPE_PPGTT_ROOT_L4_ENTRY;
+	struct intel_vgpu_mm *mm;
+	u64 *pdps;
+
+	pdps = (u64 *)&vgpu_vreg64_t(vgpu, vgtif_reg(pdp[0]));
 
 	switch (notification) {
 	case VGT_G2V_PPGTT_L3_PAGE_TABLE_CREATE:
-		ret = intel_vgpu_g2v_create_ppgtt_mm(vgpu, 3);
-		break;
-	case VGT_G2V_PPGTT_L3_PAGE_TABLE_DESTROY:
-		ret = intel_vgpu_g2v_destroy_ppgtt_mm(vgpu, 3);
-		break;
+		root_entry_type = GTT_TYPE_PPGTT_ROOT_L3_ENTRY;
 	case VGT_G2V_PPGTT_L4_PAGE_TABLE_CREATE:
-		ret = intel_vgpu_g2v_create_ppgtt_mm(vgpu, 4);
-		break;
+		mm = intel_vgpu_get_ppgtt_mm(vgpu, root_entry_type, pdps);
+		return PTR_ERR_OR_ZERO(mm);
+	case VGT_G2V_PPGTT_L3_PAGE_TABLE_DESTROY:
 	case VGT_G2V_PPGTT_L4_PAGE_TABLE_DESTROY:
-		ret = intel_vgpu_g2v_destroy_ppgtt_mm(vgpu, 4);
-		break;
+		return intel_vgpu_put_ppgtt_mm(vgpu, pdps);
 	case VGT_G2V_EXECLIST_CONTEXT_CREATE:
 	case VGT_G2V_EXECLIST_CONTEXT_DESTROY:
 	case 1:	/* Remove this in guest driver. */
@@ -1161,7 +1161,7 @@ static int handle_g2v_notification(struct intel_vgpu *vgpu, int notification)
 	default:
 		gvt_vgpu_err("Invalid PV notification %d\n", notification);
 	}
-	return ret;
+	return 0;
 }
 
 static int send_display_ready_uevent(struct intel_vgpu *vgpu, int ready)

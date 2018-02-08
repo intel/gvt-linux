@@ -50,6 +50,8 @@
 #define RING_GFX_MODE(base)	_MMIO((base) + 0x29c)
 #define VF_GUARDBAND		_MMIO(0x83a4)
 
+#define GEN9_MOCS_SIZE		64
+
 /* Raw offset is appened to each line for convenience. */
 static struct engine_mmio gen8_engine_mmio_list[] __cacheline_aligned = {
 	{RCS, GFX_MODE_GEN7, 0xffff, false}, /* 0x229c */
@@ -150,8 +152,8 @@ static struct engine_mmio gen9_engine_mmio_list[] __cacheline_aligned = {
 	{RCS, INVALID_MMIO_REG, 0, false } /* Terminated */
 };
 
-static u32 gen9_render_mocs[I915_NUM_ENGINES][64];
-static u32 gen9_render_mocs_L3[32];
+static u32 gen9_render_mocs[I915_NUM_ENGINES][GEN9_MOCS_SIZE];
+static u32 gen9_render_mocs_L3[GEN9_MOCS_SIZE / 2];
 
 static void handle_tlb_pending_event(struct intel_vgpu *vgpu, int ring_id)
 {
@@ -215,7 +217,7 @@ static void load_mocs(struct intel_vgpu *vgpu, int ring_id)
 		return;
 
 	offset.reg = regs[ring_id];
-	for (i = 0; i < 64; i++) {
+	for (i = 0; i < GEN9_MOCS_SIZE; i++) {
 		gen9_render_mocs[ring_id][i] = I915_READ_FW(offset);
 		I915_WRITE_FW(offset, vgpu_vreg(vgpu, offset));
 		offset.reg += 4;
@@ -223,7 +225,7 @@ static void load_mocs(struct intel_vgpu *vgpu, int ring_id)
 
 	if (ring_id == RCS) {
 		l3_offset.reg = 0xb020;
-		for (i = 0; i < 32; i++) {
+		for (i = 0; i < GEN9_MOCS_SIZE / 2; i++) {
 			gen9_render_mocs_L3[i] = I915_READ_FW(l3_offset);
 			I915_WRITE_FW(l3_offset, vgpu_vreg(vgpu, l3_offset));
 			l3_offset.reg += 4;
@@ -248,7 +250,7 @@ static void restore_mocs(struct intel_vgpu *vgpu, int ring_id)
 		return;
 
 	offset.reg = regs[ring_id];
-	for (i = 0; i < 64; i++) {
+	for (i = 0; i < GEN9_MOCS_SIZE; i++) {
 		vgpu_vreg(vgpu, offset) = I915_READ_FW(offset);
 		I915_WRITE_FW(offset, gen9_render_mocs[ring_id][i]);
 		offset.reg += 4;
@@ -256,7 +258,7 @@ static void restore_mocs(struct intel_vgpu *vgpu, int ring_id)
 
 	if (ring_id == RCS) {
 		l3_offset.reg = 0xb020;
-		for (i = 0; i < 32; i++) {
+		for (i = 0; i < GEN9_MOCS_SIZE / 2; i++) {
 			vgpu_vreg(vgpu, l3_offset) = I915_READ_FW(l3_offset);
 			I915_WRITE_FW(l3_offset, gen9_render_mocs_L3[i]);
 			l3_offset.reg += 4;

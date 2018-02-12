@@ -279,6 +279,11 @@ struct intel_engine_execlists {
 	 * @csb_use_mmio: access csb through mmio, instead of hwsp
 	 */
 	bool csb_use_mmio;
+
+	/**
+	 * @preempt_complete_status: expected CSB upon completing preemption
+	 */
+	u32 preempt_complete_status;
 };
 
 #define INTEL_ENGINE_CS_MAX_NAME 8
@@ -366,20 +371,6 @@ struct intel_engine_cs {
 		 */
 #define I915_ENGINE_SAMPLE_MAX (I915_SAMPLE_SEMA + 1)
 		struct i915_pmu_sample sample[I915_ENGINE_SAMPLE_MAX];
-		/**
-		 * @busy_stats: Has enablement of engine stats tracking been
-		 * 		requested.
-		 */
-		bool busy_stats;
-		/**
-		 * @disable_busy_stats: Work item for busy stats disabling.
-		 *
-		 * Same as with @enable_busy_stats action, with the difference
-		 * that we delay it in case there are rapid enable-disable
-		 * actions, which can happen during tool startup (like perf
-		 * stat).
-		 */
-		struct delayed_work disable_busy_stats;
 	} pmu;
 
 	/*
@@ -668,7 +659,7 @@ intel_engine_flag(const struct intel_engine_cs *engine)
 }
 
 static inline u32
-intel_read_status_page(struct intel_engine_cs *engine, int reg)
+intel_read_status_page(const struct intel_engine_cs *engine, int reg)
 {
 	/* Ensure that the compiler doesn't optimize away the load. */
 	return READ_ONCE(engine->status_page.page_addr[reg]);
@@ -826,8 +817,8 @@ int intel_init_bsd_ring_buffer(struct intel_engine_cs *engine);
 int intel_init_blt_ring_buffer(struct intel_engine_cs *engine);
 int intel_init_vebox_ring_buffer(struct intel_engine_cs *engine);
 
-u64 intel_engine_get_active_head(struct intel_engine_cs *engine);
-u64 intel_engine_get_last_batch_head(struct intel_engine_cs *engine);
+u64 intel_engine_get_active_head(const struct intel_engine_cs *engine);
+u64 intel_engine_get_last_batch_head(const struct intel_engine_cs *engine);
 
 static inline u32 intel_engine_get_seqno(struct intel_engine_cs *engine)
 {

@@ -1,0 +1,32 @@
+drm-upstream drm-fixes baa35cc322c1f6c43506ee9a32c232b05a7eaa8c
+	Merge branch 'linux-4.15' of git://github.com/skeggsb/linux into drm-fixes
+drm-misc drm-misc-fixes 54f809cfbd6b4a43959039f5d33596ed3297ce16
+	drm/atomic: Fix memleak on ERESTARTSYS during non-blocking commits
+drm-intel drm-intel-fixes d8a5b80568a9cb66810e75b182018e9edb68e8ff
+	Linux 4.15
+drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
+	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
+drm-upstream drm-next 94fc27ac487a80daf42f97b1a0503d029f3c1325
+	Merge tag 'drm-intel-next-fixes-2018-02-07' of git://anongit.freedesktop.org/drm/drm-intel into drm-next
+drm-misc drm-misc-next-fixes 761e05a702f5d537ffcca1ba933f9f0a968aa022
+	drm: Check for lessee in DROP_MASTER ioctl
+drm-intel drm-intel-next-fixes 6dd3104e78943685d5183efe883d83a5f2361bf1
+	drm/i915/bios: add DP max link rate to VBT child device struct
+drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
+	Linux 4.14-rc1
+drm-misc drm-misc-next 65101d8c9108201118efa7e08f4e2c57f438deb9
+	drm/vc4: Expose performance counters to userspace
+drm-intel drm-intel-next-queued e53792f44d8bde64022093cfc3f39db0e7d39212
+	drm/i915: Replace open-coded memset_p()
+drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
+	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
+sound-upstream for-linus 1dcb1859dd6752131b85c78fb3e440bd1d2cf361
+	Merge branch 'topic/fixes' into for-linus
+sound-upstream for-next bafeca673f04ecd54cbb6b87faf8d525a886d481
+	Merge branch 'topic/hda-sync-power' into for-next
+drm-intel topic/core-for-CI 26d0911005e5b8d76cc7035fed35dadd15e18ff5
+	lockdep: finer-grained completion key for kthread
+drm-misc topic/hdcp 2834d9dfaf0276e197158be6af8e1a1d59e58289
+	drm/i915: fix misalignment in HDCP register def
+drm-misc topic/backlight_for_lag 2e4ef3347b4a4eb65c4fd950d94bbd75fed4d798
+	video: backlight: Add devres versions of of_find_backlight

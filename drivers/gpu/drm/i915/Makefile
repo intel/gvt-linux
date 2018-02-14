@@ -17,6 +17,7 @@ subdir-ccflags-y += $(call cc-disable-warning, unused-parameter)
 subdir-ccflags-y += $(call cc-disable-warning, type-limits)
 subdir-ccflags-y += $(call cc-disable-warning, missing-field-initializers)
 subdir-ccflags-y += $(call cc-disable-warning, implicit-fallthrough)
+subdir-ccflags-y += $(call cc-disable-warning, unused-but-set-variable)
 subdir-ccflags-$(CONFIG_DRM_I915_WERROR) += -Werror
 
 # Fine grained warnings disable
@@ -83,6 +84,7 @@ i915-y += i915_cmd_parser.o \
 i915-y += intel_uc.o \
 	  intel_uc_fw.o \
 	  intel_guc.o \
+	  intel_guc_ads.o \
 	  intel_guc_ct.o \
 	  intel_guc_fw.o \
 	  intel_guc_log.o \

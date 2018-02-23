@@ -1,0 +1,28 @@
+drm-upstream drm-fixes dfe8db22372873d205c78a9fd5370b1b088a2b87
+	Merge tag 'drm-misc-fixes-2018-02-21' of git://anongit.freedesktop.org/drm/drm-misc into drm-fixes
+drm-misc drm-misc-fixes c20bb155c2c5acb775f68be5d84fe679687c3c1e
+	drm/nouveau: prefer XBGR2101010 for addfb ioctl
+drm-intel drm-intel-fixes 15fa4d7a8fb9cea93b1525880f6b968b6c3d4e5a
+	drm/i915: Make global seqno known in i915_gem_request_execute tracepoint
+drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
+	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
+drm-upstream drm-next 727edc744098e2a3d2f9f9ce53edb49cb7817ea1
+	Merge tag 'drm-misc-next-2018-02-21' of git://anongit.freedesktop.org/drm/drm-misc into drm-next
+drm-misc drm-misc-next-fixes 761e05a702f5d537ffcca1ba933f9f0a968aa022
+	drm: Check for lessee in DROP_MASTER ioctl
+drm-intel drm-intel-next-fixes 6dd3104e78943685d5183efe883d83a5f2361bf1
+	drm/i915/bios: add DP max link rate to VBT child device struct
+drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
+	Linux 4.14-rc1
+drm-misc drm-misc-next 879659bb87a87a7a23b190e211d33bdd6763c746
+	drm/stm: check pitch and size calculations even if !CONFIG_MMU
+drm-intel drm-intel-next-queued f6322eddaff7662e81178a28730e420bf934a512
+	drm/i915/preemption: Allow preemption between submission ports
+drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
+	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
+sound-upstream for-linus 7229b12f5da33d5c376ee264f063703844b8092d
+	ALSA: x86: hdmi: Add single_port option for compatible behavior
+sound-upstream for-next 248a380a3c2e7e3363f26c17b6923b430cf6463e
+	ALSA: hda-beep: add SPDX identifiers
+drm-intel topic/core-for-CI aebb1fbb1780998d4dc719e7c8162ad85a945f02
+	scripts: kernel-doc: support in-line comments on nested structs/unions

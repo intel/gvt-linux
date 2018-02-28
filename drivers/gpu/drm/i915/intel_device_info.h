@@ -137,13 +137,13 @@ struct intel_device_info {
 	enum intel_platform platform;
 	u32 platform_mask;
 
+	unsigned int page_sizes; /* page sizes supported by the HW */
+
 	u32 display_mmio_offset;
 
 	u8 num_pipes;
 	u8 num_sprites[I915_MAX_PIPES];
 	u8 num_scalers[I915_MAX_PIPES];
-
-	unsigned int page_sizes; /* page sizes supported by the HW */
 
 #define DEFINE_FLAG(name) u8 name:1
 	DEV_INFO_FOR_EACH_FLAG(DEFINE_FLAG);
@@ -167,6 +167,10 @@ struct intel_device_info {
 	} color;
 };
 
+struct intel_driver_caps {
+	unsigned int scheduler;
+};
+
 static inline unsigned int sseu_subslice_total(const struct sseu_dev_info *sseu)
 {
 	return hweight8(sseu->slice_mask) * hweight8(sseu->subslice_mask);
@@ -181,5 +185,8 @@ void intel_device_info_dump_flags(const struct intel_device_info *info,
 				  struct drm_printer *p);
 void intel_device_info_dump_runtime(const struct intel_device_info *info,
 				    struct drm_printer *p);
+
+void intel_driver_caps_print(const struct intel_driver_caps *caps,
+			     struct drm_printer *p);
 
 #endif

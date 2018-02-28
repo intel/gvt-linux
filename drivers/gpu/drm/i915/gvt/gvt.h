@@ -48,6 +48,7 @@
 #include "cmd_parser.h"
 #include "fb_decoder.h"
 #include "dmabuf.h"
+#include "page_track.h"
 
 #define GVT_MAX_VGPU 8
 
@@ -190,6 +191,7 @@ struct intel_vgpu {
 	struct intel_vgpu_opregion opregion;
 	struct intel_vgpu_display display;
 	struct intel_vgpu_submission submission;
+	struct radix_tree_root page_track_tree;
 	u32 hws_pga[I915_NUM_ENGINES];
 
 	struct dentry *debugfs;
@@ -308,7 +310,10 @@ struct intel_gvt {
 	wait_queue_head_t service_thread_wq;
 	unsigned long service_request;
 
-	struct engine_mmio *engine_mmio_list;
+	struct {
+		struct engine_mmio *mmio;
+		int ctx_mmio_count[I915_NUM_ENGINES];
+	} engine_mmio_list;
 
 	struct dentry *debugfs_root;
 };

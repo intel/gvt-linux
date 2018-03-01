@@ -2067,9 +2067,18 @@ static unsigned int intel_surf_alignment(const struct drm_framebuffer *fb,
 	}
 }
 
+static bool intel_plane_uses_fence(const struct intel_plane_state *plane_state)
+{
+	struct intel_plane *plane = to_intel_plane(plane_state->base.plane);
+	struct drm_i915_private *dev_priv = to_i915(plane->base.dev);
+
+	return INTEL_GEN(dev_priv) < 4 || plane->has_fbc;
+}
+
 struct i915_vma *
 intel_pin_and_fence_fb_obj(struct drm_framebuffer *fb,
 			   unsigned int rotation,
+			   bool uses_fence,
 			   unsigned long *out_flags)
 {
 	struct drm_device *dev = fb->dev;
@@ -2122,7 +2131,9 @@ intel_pin_and_fence_fb_obj(struct drm_framebuffer *fb,
 	if (IS_ERR(vma))
 		goto err;
 
-	if (i915_vma_is_map_and_fenceable(vma)) {
+	if (uses_fence && i915_vma_is_map_and_fenceable(vma)) {
+		int ret;
+
 		/* Install a fence for tiled scan-out. Pre-i965 always needs a
 		 * fence, whereas 965+ only requires a fence if using
 		 * framebuffer compression.  For simplicity, we always, when
@@ -2139,7 +2150,13 @@ intel_pin_and_fence_fb_obj(struct drm_framebuffer *fb,
 		 * something and try to run the system in a "less than optimal"
 		 * mode that matches the user configuration.
 		 */
-		if (i915_vma_pin_fence(vma) == 0 && vma->fence)
+		ret = i915_vma_pin_fence(vma);
+		if (ret != 0 && INTEL_GEN(dev_priv) < 4) {
+			vma = ERR_PTR(ret);
+			goto err;
+		}
+
+		if (ret == 0 && vma->fence)
 			*out_flags |= PLANE_HAS_FENCE;
 	}
 
@@ -2828,6 +2845,7 @@ valid_fb:
 	intel_state->vma =
 		intel_pin_and_fence_fb_obj(fb,
 					   primary->state->rotation,
+					   intel_plane_uses_fence(intel_state),
 					   &intel_state->flags);
 	mutex_unlock(&dev->struct_mutex);
 	if (IS_ERR(intel_state->vma)) {
@@ -12590,23 +12608,23 @@ struct wait_rps_boost {
 	struct wait_queue_entry wait;
 
 	struct drm_crtc *crtc;
-	struct drm_i915_gem_request *request;
+	struct i915_request *request;
 };
 
 static int do_rps_boost(struct wait_queue_entry *_wait,
 			unsigned mode, int sync, void *key)
 {
 	struct wait_rps_boost *wait = container_of(_wait, typeof(*wait), wait);
-	struct drm_i915_gem_request *rq = wait->request;
+	struct i915_request *rq = wait->request;
 
 	/*
 	 * If we missed the vblank, but the request is already running it
 	 * is reasonable to assume that it will complete before the next
 	 * vblank without our intervention, so leave RPS alone.
 	 */
-	if (!i915_gem_request_started(rq))
+	if (!i915_request_started(rq))
 		gen6_rps_boost(rq, NULL);
-	i915_gem_request_put(rq);
+	i915_request_put(rq);
 
 	drm_crtc_vblank_put(wait->crtc);
 
@@ -12642,6 +12660,42 @@ static void add_rps_boost_after_vblank(struct drm_crtc *crtc,
 	wait->wait.flags = 0;
 
 	add_wait_queue(drm_crtc_vblank_waitqueue(crtc), &wait->wait);
+}
+
+static int intel_plane_pin_fb(struct intel_plane_state *plane_state)
+{
+	struct intel_plane *plane = to_intel_plane(plane_state->base.plane);
+	struct drm_i915_private *dev_priv = to_i915(plane->base.dev);
+	struct drm_framebuffer *fb = plane_state->base.fb;
+	struct i915_vma *vma;
+
+	if (plane->id == PLANE_CURSOR &&
+	    INTEL_INFO(dev_priv)->cursor_needs_physical) {
+		struct drm_i915_gem_object *obj = intel_fb_obj(fb);
+		const int align = intel_cursor_alignment(dev_priv);
+
+		return i915_gem_object_attach_phys(obj, align);
+	}
+
+	vma = intel_pin_and_fence_fb_obj(fb,
+					 plane_state->base.rotation,
+					 intel_plane_uses_fence(plane_state),
+					 &plane_state->flags);
+	if (IS_ERR(vma))
+		return PTR_ERR(vma);
+
+	plane_state->vma = vma;
+
+	return 0;
+}
+
+static void intel_plane_unpin_fb(struct intel_plane_state *old_plane_state)
+{
+	struct i915_vma *vma;
+
+	vma = fetch_and_zero(&old_plane_state->vma);
+	if (vma)
+		intel_unpin_fb_vma(vma, old_plane_state->flags);
 }
 
 /**
@@ -12718,22 +12772,7 @@ intel_prepare_plane_fb(struct drm_plane *plane,
 		return ret;
 	}
 
-	if (plane->type == DRM_PLANE_TYPE_CURSOR &&
-	    INTEL_INFO(dev_priv)->cursor_needs_physical) {
-		const int align = intel_cursor_alignment(dev_priv);
-
-		ret = i915_gem_object_attach_phys(obj, align);
-	} else {
-		struct i915_vma *vma;
-
-		vma = intel_pin_and_fence_fb_obj(fb,
-						 new_state->rotation,
-						 &to_intel_plane_state(new_state)->flags);
-		if (!IS_ERR(vma))
-			to_intel_plane_state(new_state)->vma = vma;
-		else
-			ret =  PTR_ERR(vma);
-	}
+	ret = intel_plane_pin_fb(to_intel_plane_state(new_state));
 
 	i915_gem_object_wait_priority(obj, 0, I915_PRIORITY_DISPLAY);
 
@@ -12777,15 +12816,12 @@ void
 intel_cleanup_plane_fb(struct drm_plane *plane,
 		       struct drm_plane_state *old_state)
 {
-	struct i915_vma *vma;
+	struct drm_i915_private *dev_priv = to_i915(plane->dev);
 
 	/* Should only be called after a successful intel_prepare_plane_fb()! */
-	vma = fetch_and_zero(&to_intel_plane_state(old_state)->vma);
-	if (vma) {
-		mutex_lock(&plane->dev->struct_mutex);
-		intel_unpin_fb_vma(vma, to_intel_plane_state(old_state)->flags);
-		mutex_unlock(&plane->dev->struct_mutex);
-	}
+	mutex_lock(&dev_priv->drm.struct_mutex);
+	intel_plane_unpin_fb(to_intel_plane_state(old_state));
+	mutex_unlock(&dev_priv->drm.struct_mutex);
 }
 
 int
@@ -13076,7 +13112,6 @@ intel_legacy_cursor_update(struct drm_plane *plane,
 	struct intel_plane *intel_plane = to_intel_plane(plane);
 	struct drm_framebuffer *old_fb;
 	struct drm_crtc_state *crtc_state = crtc->state;
-	struct i915_vma *old_vma, *vma;
 
 	/*
 	 * When crtc is inactive or there is a modeset pending,
@@ -13135,27 +13170,9 @@ intel_legacy_cursor_update(struct drm_plane *plane,
 	if (ret)
 		goto out_free;
 
-	if (INTEL_INFO(dev_priv)->cursor_needs_physical) {
-		int align = intel_cursor_alignment(dev_priv);
-
-		ret = i915_gem_object_attach_phys(intel_fb_obj(fb), align);
-		if (ret) {
-			DRM_DEBUG_KMS("failed to attach phys object\n");
-			goto out_unlock;
-		}
-	} else {
-		vma = intel_pin_and_fence_fb_obj(fb,
-						 new_plane_state->rotation,
-						 &to_intel_plane_state(new_plane_state)->flags);
-		if (IS_ERR(vma)) {
-			DRM_DEBUG_KMS("failed to pin object\n");
-
-			ret = PTR_ERR(vma);
-			goto out_unlock;
-		}
-
-		to_intel_plane_state(new_plane_state)->vma = vma;
-	}
+	ret = intel_plane_pin_fb(to_intel_plane_state(new_plane_state));
+	if (ret)
+		goto out_unlock;
 
 	old_fb = old_plane_state->fb;
 
@@ -13175,10 +13192,7 @@ intel_legacy_cursor_update(struct drm_plane *plane,
 		intel_plane->disable_plane(intel_plane, to_intel_crtc(crtc));
 	}
 
-	old_vma = fetch_and_zero(&to_intel_plane_state(old_plane_state)->vma);
-	if (old_vma)
-		intel_unpin_fb_vma(old_vma,
-				   to_intel_plane_state(old_plane_state)->flags);
+	intel_plane_unpin_fb(to_intel_plane_state(old_plane_state));
 
 out_unlock:
 	mutex_unlock(&dev_priv->drm.struct_mutex);
@@ -13205,6 +13219,32 @@ static const struct drm_plane_funcs intel_cursor_plane_funcs = {
 	.atomic_destroy_state = intel_plane_destroy_state,
 	.format_mod_supported = intel_cursor_plane_format_mod_supported,
 };
+
+static bool i9xx_plane_has_fbc(struct drm_i915_private *dev_priv,
+			       enum i9xx_plane_id i9xx_plane)
+{
+	if (!HAS_FBC(dev_priv))
+		return false;
+
+	if (IS_BROADWELL(dev_priv) || IS_HASWELL(dev_priv))
+		return i9xx_plane == PLANE_A; /* tied to pipe A */
+	else if (IS_IVYBRIDGE(dev_priv))
+		return i9xx_plane == PLANE_A || i9xx_plane == PLANE_B ||
+			i9xx_plane == PLANE_C;
+	else if (INTEL_GEN(dev_priv) >= 4)
+		return i9xx_plane == PLANE_A || i9xx_plane == PLANE_B;
+	else
+		return i9xx_plane == PLANE_A;
+}
+
+static bool skl_plane_has_fbc(struct drm_i915_private *dev_priv,
+			      enum pipe pipe, enum plane_id plane_id)
+{
+	if (!HAS_FBC(dev_priv))
+		return false;
+
+	return pipe == PIPE_A && plane_id == PLANE_PRIMARY;
+}
 
 static struct intel_plane *
 intel_primary_plane_create(struct drm_i915_private *dev_priv, enum pipe pipe)
@@ -13248,6 +13288,21 @@ intel_primary_plane_create(struct drm_i915_private *dev_priv, enum pipe pipe)
 		primary->i9xx_plane = (enum i9xx_plane_id) pipe;
 	primary->id = PLANE_PRIMARY;
 	primary->frontbuffer_bit = INTEL_FRONTBUFFER(pipe, primary->id);
+
+	if (INTEL_GEN(dev_priv) >= 9)
+		primary->has_fbc = skl_plane_has_fbc(dev_priv,
+						     primary->pipe,
+						     primary->id);
+	else
+		primary->has_fbc = i9xx_plane_has_fbc(dev_priv,
+						      primary->i9xx_plane);
+
+	if (primary->has_fbc) {
+		struct intel_fbc *fbc = &dev_priv->fbc;
+
+		fbc->possible_framebuffer_bits |= primary->frontbuffer_bit;
+	}
+
 	primary->check_plane = intel_check_primary_plane;
 
 	if (INTEL_GEN(dev_priv) >= 9) {

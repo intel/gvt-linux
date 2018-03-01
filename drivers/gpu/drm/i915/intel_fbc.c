@@ -46,16 +46,6 @@ static inline bool fbc_supported(struct drm_i915_private *dev_priv)
 	return HAS_FBC(dev_priv);
 }
 
-static inline bool fbc_on_pipe_a_only(struct drm_i915_private *dev_priv)
-{
-	return IS_HASWELL(dev_priv) || INTEL_GEN(dev_priv) >= 8;
-}
-
-static inline bool fbc_on_plane_a_only(struct drm_i915_private *dev_priv)
-{
-	return INTEL_GEN(dev_priv) < 4;
-}
-
 static inline bool no_fbc_on_multiple_pipes(struct drm_i915_private *dev_priv)
 {
 	return INTEL_GEN(dev_priv) <= 3;
@@ -819,6 +809,12 @@ static bool intel_fbc_can_activate(struct intel_crtc *crtc)
 	 * Note that is possible for a tiled surface to be unmappable (and
 	 * so have no fence associated with it) due to aperture constaints
 	 * at the time of pinning.
+	 *
+	 * FIXME with 90/270 degree rotation we should use the fence on
+	 * the normal GTT view (the rotated view doesn't even have a
+	 * fence). Would need changes to the FBC fence Y offset as well.
+	 * For now this will effecively disable FBC with 90/270 degree
+	 * rotation.
 	 */
 	if (!(cache->flags & PLANE_HAS_FENCE)) {
 		fbc->no_fbc_reason = "framebuffer not tiled or fenced";
@@ -1094,13 +1090,10 @@ void intel_fbc_choose_crtc(struct drm_i915_private *dev_priv,
 		struct intel_crtc_state *crtc_state;
 		struct intel_crtc *crtc = to_intel_crtc(plane_state->base.crtc);
 
+		if (!plane->has_fbc)
+			continue;
+
 		if (!plane_state->base.visible)
-			continue;
-
-		if (fbc_on_pipe_a_only(dev_priv) && crtc->pipe != PIPE_A)
-			continue;
-
-		if (fbc_on_plane_a_only(dev_priv) && plane->i9xx_plane != PLANE_A)
 			continue;
 
 		crtc_state = intel_atomic_get_new_crtc_state(state, crtc);
@@ -1357,7 +1350,6 @@ static bool need_fbc_vtd_wa(struct drm_i915_private *dev_priv)
 void intel_fbc_init(struct drm_i915_private *dev_priv)
 {
 	struct intel_fbc *fbc = &dev_priv->fbc;
-	enum pipe pipe;
 
 	INIT_WORK(&fbc->work.work, intel_fbc_work_fn);
 	INIT_WORK(&fbc->underrun_work, intel_fbc_underrun_work_fn);
@@ -1376,14 +1368,6 @@ void intel_fbc_init(struct drm_i915_private *dev_priv)
 	if (!HAS_FBC(dev_priv)) {
 		fbc->no_fbc_reason = "unsupported by this chipset";
 		return;
-	}
-
-	for_each_pipe(dev_priv, pipe) {
-		fbc->possible_framebuffer_bits |=
-			INTEL_FRONTBUFFER(pipe, PLANE_PRIMARY);
-
-		if (fbc_on_pipe_a_only(dev_priv))
-			break;
 	}
 
 	/* This value was pulled out of someone's hat */

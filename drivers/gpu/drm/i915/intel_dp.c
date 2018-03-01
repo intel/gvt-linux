@@ -96,15 +96,6 @@ static const struct dp_link_dpll chv_dpll[] = {
 		{ .p1 = 2, .p2 = 1, .n = 1, .m1 = 2, .m2 = 0x6c00000 } }
 };
 
-static const int bxt_rates[] = { 162000, 216000, 243000, 270000,
-				  324000, 432000, 540000 };
-static const int skl_rates[] = { 162000, 216000, 270000,
-				  324000, 432000, 540000 };
-static const int cnl_rates[] = { 162000, 216000, 270000,
-				 324000, 432000, 540000,
-				 648000, 810000 };
-static const int default_rates[] = { 162000, 270000, 540000 };
-
 /**
  * intel_dp_is_edp - is the given port attached to an eDP panel (either CPU or PCH)
  * @intel_dp: DP struct
@@ -144,14 +135,17 @@ static void intel_dp_unset_edid(struct intel_dp *intel_dp);
 /* update sink rates from dpcd */
 static void intel_dp_set_sink_rates(struct intel_dp *intel_dp)
 {
+	static const int dp_rates[] = {
+		162000, 270000, 540000, 810000
+	};
 	int i, max_rate;
 
 	max_rate = drm_dp_bw_code_to_link_rate(intel_dp->dpcd[DP_MAX_LINK_RATE]);
 
-	for (i = 0; i < ARRAY_SIZE(default_rates); i++) {
-		if (default_rates[i] > max_rate)
+	for (i = 0; i < ARRAY_SIZE(dp_rates); i++) {
+		if (dp_rates[i] > max_rate)
 			break;
-		intel_dp->sink_rates[i] = default_rates[i];
+		intel_dp->sink_rates[i] = dp_rates[i];
 	}
 
 	intel_dp->num_sink_rates = i;
@@ -268,6 +262,22 @@ static int cnl_max_source_rate(struct intel_dp *intel_dp)
 static void
 intel_dp_set_source_rates(struct intel_dp *intel_dp)
 {
+	/* The values must be in increasing order */
+	static const int cnl_rates[] = {
+		162000, 216000, 270000, 324000, 432000, 540000, 648000, 810000
+	};
+	static const int bxt_rates[] = {
+		162000, 216000, 243000, 270000, 324000, 432000, 540000
+	};
+	static const int skl_rates[] = {
+		162000, 216000, 270000, 324000, 432000, 540000
+	};
+	static const int hsw_rates[] = {
+		162000, 270000, 540000
+	};
+	static const int g4x_rates[] = {
+		162000, 270000
+	};
 	struct intel_digital_port *dig_port = dp_to_dig_port(intel_dp);
 	struct drm_i915_private *dev_priv = to_i915(dig_port->base.base.dev);
 	const struct ddi_vbt_port_info *info =
@@ -278,23 +288,23 @@ intel_dp_set_source_rates(struct intel_dp *intel_dp)
 	/* This should only be done once */
 	WARN_ON(intel_dp->source_rates || intel_dp->num_source_rates);
 
-	if (IS_GEN9_LP(dev_priv)) {
-		source_rates = bxt_rates;
-		size = ARRAY_SIZE(bxt_rates);
-	} else if (IS_CANNONLAKE(dev_priv)) {
+	if (IS_CANNONLAKE(dev_priv)) {
 		source_rates = cnl_rates;
 		size = ARRAY_SIZE(cnl_rates);
 		max_rate = cnl_max_source_rate(intel_dp);
+	} else if (IS_GEN9_LP(dev_priv)) {
+		source_rates = bxt_rates;
+		size = ARRAY_SIZE(bxt_rates);
 	} else if (IS_GEN9_BC(dev_priv)) {
 		source_rates = skl_rates;
 		size = ARRAY_SIZE(skl_rates);
 	} else if ((IS_HASWELL(dev_priv) && !IS_HSW_ULX(dev_priv)) ||
 		   IS_BROADWELL(dev_priv)) {
-		source_rates = default_rates;
-		size = ARRAY_SIZE(default_rates);
+		source_rates = hsw_rates;
+		size = ARRAY_SIZE(hsw_rates);
 	} else {
-		source_rates = default_rates;
-		size = ARRAY_SIZE(default_rates) - 1;
+		source_rates = g4x_rates;
+		size = ARRAY_SIZE(g4x_rates);
 	}
 
 	if (max_rate && vbt_max_rate)
@@ -356,7 +366,7 @@ static void intel_dp_set_common_rates(struct intel_dp *intel_dp)
 
 	/* Paranoia, there should always be something in common. */
 	if (WARN_ON(intel_dp->num_common_rates == 0)) {
-		intel_dp->common_rates[0] = default_rates[0];
+		intel_dp->common_rates[0] = 162000;
 		intel_dp->num_common_rates = 1;
 	}
 }
@@ -656,19 +666,15 @@ static int
 bxt_power_sequencer_idx(struct intel_dp *intel_dp)
 {
 	struct drm_i915_private *dev_priv = to_i915(intel_dp_to_dev(intel_dp));
+	int backlight_controller = dev_priv->vbt.backlight.controller;
 
 	lockdep_assert_held(&dev_priv->pps_mutex);
 
 	/* We should never land here with regular DP ports */
 	WARN_ON(!intel_dp_is_edp(intel_dp));
 
-	/*
-	 * TODO: BXT has 2 PPS instances. The correct port->PPS instance
-	 * mapping needs to be retrieved from VBT, for now just hard-code to
-	 * use instance #0 always.
-	 */
 	if (!intel_dp->pps_reset)
-		return 0;
+		return backlight_controller;
 
 	intel_dp->pps_reset = false;
 
@@ -678,7 +684,7 @@ bxt_power_sequencer_idx(struct intel_dp *intel_dp)
 	 */
 	intel_dp_init_panel_power_sequencer_registers(intel_dp, false);
 
-	return 0;
+	return backlight_controller;
 }
 
 typedef bool (*vlv_pipe_check)(struct drm_i915_private *dev_priv,
@@ -936,7 +942,7 @@ static uint32_t
 intel_dp_aux_wait_done(struct intel_dp *intel_dp, bool has_aux_irq)
 {
 	struct drm_i915_private *dev_priv = to_i915(intel_dp_to_dev(intel_dp));
-	i915_reg_t ch_ctl = intel_dp->aux_ch_ctl_reg;
+	i915_reg_t ch_ctl = intel_dp->aux_ch_ctl_reg(intel_dp);
 	uint32_t status;
 	bool done;
 
@@ -956,8 +962,7 @@ intel_dp_aux_wait_done(struct intel_dp *intel_dp, bool has_aux_irq)
 
 static uint32_t g4x_get_aux_clock_divider(struct intel_dp *intel_dp, int index)
 {
-	struct intel_digital_port *intel_dig_port = dp_to_dig_port(intel_dp);
-	struct drm_i915_private *dev_priv = to_i915(intel_dig_port->base.base.dev);
+	struct drm_i915_private *dev_priv = to_i915(intel_dp_to_dev(intel_dp));
 
 	if (index)
 		return 0;
@@ -971,8 +976,7 @@ static uint32_t g4x_get_aux_clock_divider(struct intel_dp *intel_dp, int index)
 
 static uint32_t ilk_get_aux_clock_divider(struct intel_dp *intel_dp, int index)
 {
-	struct intel_digital_port *intel_dig_port = dp_to_dig_port(intel_dp);
-	struct drm_i915_private *dev_priv = to_i915(intel_dig_port->base.base.dev);
+	struct drm_i915_private *dev_priv = to_i915(intel_dp_to_dev(intel_dp));
 
 	if (index)
 		return 0;
@@ -982,7 +986,7 @@ static uint32_t ilk_get_aux_clock_divider(struct intel_dp *intel_dp, int index)
 	 * like to run at 2MHz.  So, take the cdclk or PCH rawclk value and
 	 * divide by 2000 and use that
 	 */
-	if (intel_dig_port->base.port == PORT_A)
+	if (intel_dp->aux_ch == AUX_CH_A)
 		return DIV_ROUND_CLOSEST(dev_priv->cdclk.hw.cdclk, 2000);
 	else
 		return DIV_ROUND_CLOSEST(dev_priv->rawclk_freq, 2000);
@@ -990,10 +994,9 @@ static uint32_t ilk_get_aux_clock_divider(struct intel_dp *intel_dp, int index)
 
 static uint32_t hsw_get_aux_clock_divider(struct intel_dp *intel_dp, int index)
 {
-	struct intel_digital_port *intel_dig_port = dp_to_dig_port(intel_dp);
-	struct drm_i915_private *dev_priv = to_i915(intel_dig_port->base.base.dev);
+	struct drm_i915_private *dev_priv = to_i915(intel_dp_to_dev(intel_dp));
 
-	if (intel_dig_port->base.port != PORT_A && HAS_PCH_LPT_H(dev_priv)) {
+	if (intel_dp->aux_ch != AUX_CH_A && HAS_PCH_LPT_H(dev_priv)) {
 		/* Workaround for non-ULT HSW */
 		switch (index) {
 		case 0: return 63;
@@ -1089,13 +1092,17 @@ intel_dp_aux_ch(struct intel_dp *intel_dp,
 	struct intel_digital_port *intel_dig_port = dp_to_dig_port(intel_dp);
 	struct drm_i915_private *dev_priv =
 			to_i915(intel_dig_port->base.base.dev);
-	i915_reg_t ch_ctl = intel_dp->aux_ch_ctl_reg;
+	i915_reg_t ch_ctl, ch_data[5];
 	uint32_t aux_clock_divider;
 	int i, ret, recv_bytes;
 	uint32_t status;
 	int try, clock = 0;
 	bool has_aux_irq = HAS_AUX_IRQ(dev_priv);
 	bool vdd;
+
+	ch_ctl = intel_dp->aux_ch_ctl_reg(intel_dp);
+	for (i = 0; i < ARRAY_SIZE(ch_data); i++)
+		ch_data[i] = intel_dp->aux_ch_data_reg(intel_dp, i);
 
 	pps_lock(intel_dp);
 
@@ -1154,7 +1161,7 @@ intel_dp_aux_ch(struct intel_dp *intel_dp,
 		for (try = 0; try < 5; try++) {
 			/* Load the send data into the aux channel data registers */
 			for (i = 0; i < send_bytes; i += 4)
-				I915_WRITE(intel_dp->aux_ch_data_reg[i >> 2],
+				I915_WRITE(ch_data[i >> 2],
 					   intel_dp_pack_aux(send + i,
 							     send_bytes - i));
 
@@ -1170,14 +1177,14 @@ intel_dp_aux_ch(struct intel_dp *intel_dp,
 				   DP_AUX_CH_CTL_TIME_OUT_ERROR |
 				   DP_AUX_CH_CTL_RECEIVE_ERROR);
 
-			if (status & DP_AUX_CH_CTL_TIME_OUT_ERROR)
-				continue;
-
 			/* DP CTS 1.2 Core Rev 1.1, 4.2.1.1 & 4.2.1.2
 			 *   400us delay required for errors and timeouts
 			 *   Timeout errors from the HW already meet this
 			 *   requirement so skip to next iteration
 			 */
+			if (status & DP_AUX_CH_CTL_TIME_OUT_ERROR)
+				continue;
+
 			if (status & DP_AUX_CH_CTL_RECEIVE_ERROR) {
 				usleep_range(400, 500);
 				continue;
@@ -1223,14 +1230,6 @@ done:
 	if (recv_bytes == 0 || recv_bytes > 20) {
 		DRM_DEBUG_KMS("Forbidden recv_bytes = %d on aux transaction\n",
 			      recv_bytes);
-		/*
-		 * FIXME: This patch was created on top of a series that
-		 * organize the retries at drm level. There EBUSY should
-		 * also take care for 1ms wait before retrying.
-		 * That aux retries re-org is still needed and after that is
-		 * merged we remove this sleep from here.
-		 */
-		usleep_range(1000, 1500);
 		ret = -EBUSY;
 		goto out;
 	}
@@ -1239,7 +1238,7 @@ done:
 		recv_bytes = recv_size;
 
 	for (i = 0; i < recv_bytes; i += 4)
-		intel_dp_unpack_aux(I915_READ(intel_dp->aux_ch_data_reg[i >> 2]),
+		intel_dp_unpack_aux(I915_READ(ch_data[i >> 2]),
 				    recv + i, recv_bytes - i);
 
 	ret = recv_bytes;
@@ -1331,171 +1330,173 @@ intel_dp_aux_transfer(struct drm_dp_aux *aux, struct drm_dp_aux_msg *msg)
 	return ret;
 }
 
-static enum port intel_aux_port(struct drm_i915_private *dev_priv,
-				enum port port)
+static enum aux_ch intel_aux_ch(struct intel_dp *intel_dp)
 {
+	struct intel_encoder *encoder = &dp_to_dig_port(intel_dp)->base;
+	struct drm_i915_private *dev_priv = to_i915(encoder->base.dev);
+	enum port port = encoder->port;
 	const struct ddi_vbt_port_info *info =
 		&dev_priv->vbt.ddi_port_info[port];
-	enum port aux_port;
+	enum aux_ch aux_ch;
 
 	if (!info->alternate_aux_channel) {
+		aux_ch = (enum aux_ch) port;
+
 		DRM_DEBUG_KMS("using AUX %c for port %c (platform default)\n",
-			      port_name(port), port_name(port));
-		return port;
+			      aux_ch_name(aux_ch), port_name(port));
+		return aux_ch;
 	}
 
 	switch (info->alternate_aux_channel) {
 	case DP_AUX_A:
-		aux_port = PORT_A;
+		aux_ch = AUX_CH_A;
 		break;
 	case DP_AUX_B:
-		aux_port = PORT_B;
+		aux_ch = AUX_CH_B;
 		break;
 	case DP_AUX_C:
-		aux_port = PORT_C;
+		aux_ch = AUX_CH_C;
 		break;
 	case DP_AUX_D:
-		aux_port = PORT_D;
+		aux_ch = AUX_CH_D;
 		break;
 	case DP_AUX_F:
-		aux_port = PORT_F;
+		aux_ch = AUX_CH_F;
 		break;
 	default:
 		MISSING_CASE(info->alternate_aux_channel);
-		aux_port = PORT_A;
+		aux_ch = AUX_CH_A;
 		break;
 	}
 
 	DRM_DEBUG_KMS("using AUX %c for port %c (VBT)\n",
-		      port_name(aux_port), port_name(port));
+		      aux_ch_name(aux_ch), port_name(port));
 
-	return aux_port;
+	return aux_ch;
 }
 
-static i915_reg_t g4x_aux_ctl_reg(struct drm_i915_private *dev_priv,
-				  enum port port)
+static enum intel_display_power_domain
+intel_aux_power_domain(struct intel_dp *intel_dp)
 {
-	switch (port) {
-	case PORT_B:
-	case PORT_C:
-	case PORT_D:
-		return DP_AUX_CH_CTL(port);
+	switch (intel_dp->aux_ch) {
+	case AUX_CH_A:
+		return POWER_DOMAIN_AUX_A;
+	case AUX_CH_B:
+		return POWER_DOMAIN_AUX_B;
+	case AUX_CH_C:
+		return POWER_DOMAIN_AUX_C;
+	case AUX_CH_D:
+		return POWER_DOMAIN_AUX_D;
+	case AUX_CH_F:
+		return POWER_DOMAIN_AUX_F;
 	default:
-		MISSING_CASE(port);
-		return DP_AUX_CH_CTL(PORT_B);
+		MISSING_CASE(intel_dp->aux_ch);
+		return POWER_DOMAIN_AUX_A;
 	}
 }
 
-static i915_reg_t g4x_aux_data_reg(struct drm_i915_private *dev_priv,
-				   enum port port, int index)
-{
-	switch (port) {
-	case PORT_B:
-	case PORT_C:
-	case PORT_D:
-		return DP_AUX_CH_DATA(port, index);
-	default:
-		MISSING_CASE(port);
-		return DP_AUX_CH_DATA(PORT_B, index);
-	}
-}
-
-static i915_reg_t ilk_aux_ctl_reg(struct drm_i915_private *dev_priv,
-				  enum port port)
-{
-	switch (port) {
-	case PORT_A:
-		return DP_AUX_CH_CTL(port);
-	case PORT_B:
-	case PORT_C:
-	case PORT_D:
-		return PCH_DP_AUX_CH_CTL(port);
-	default:
-		MISSING_CASE(port);
-		return DP_AUX_CH_CTL(PORT_A);
-	}
-}
-
-static i915_reg_t ilk_aux_data_reg(struct drm_i915_private *dev_priv,
-				   enum port port, int index)
-{
-	switch (port) {
-	case PORT_A:
-		return DP_AUX_CH_DATA(port, index);
-	case PORT_B:
-	case PORT_C:
-	case PORT_D:
-		return PCH_DP_AUX_CH_DATA(port, index);
-	default:
-		MISSING_CASE(port);
-		return DP_AUX_CH_DATA(PORT_A, index);
-	}
-}
-
-static i915_reg_t skl_aux_ctl_reg(struct drm_i915_private *dev_priv,
-				  enum port port)
-{
-	switch (port) {
-	case PORT_A:
-	case PORT_B:
-	case PORT_C:
-	case PORT_D:
-	case PORT_F:
-		return DP_AUX_CH_CTL(port);
-	default:
-		MISSING_CASE(port);
-		return DP_AUX_CH_CTL(PORT_A);
-	}
-}
-
-static i915_reg_t skl_aux_data_reg(struct drm_i915_private *dev_priv,
-				   enum port port, int index)
-{
-	switch (port) {
-	case PORT_A:
-	case PORT_B:
-	case PORT_C:
-	case PORT_D:
-	case PORT_F:
-		return DP_AUX_CH_DATA(port, index);
-	default:
-		MISSING_CASE(port);
-		return DP_AUX_CH_DATA(PORT_A, index);
-	}
-}
-
-static i915_reg_t intel_aux_ctl_reg(struct drm_i915_private *dev_priv,
-				    enum port port)
-{
-	if (INTEL_GEN(dev_priv) >= 9)
-		return skl_aux_ctl_reg(dev_priv, port);
-	else if (HAS_PCH_SPLIT(dev_priv))
-		return ilk_aux_ctl_reg(dev_priv, port);
-	else
-		return g4x_aux_ctl_reg(dev_priv, port);
-}
-
-static i915_reg_t intel_aux_data_reg(struct drm_i915_private *dev_priv,
-				     enum port port, int index)
-{
-	if (INTEL_GEN(dev_priv) >= 9)
-		return skl_aux_data_reg(dev_priv, port, index);
-	else if (HAS_PCH_SPLIT(dev_priv))
-		return ilk_aux_data_reg(dev_priv, port, index);
-	else
-		return g4x_aux_data_reg(dev_priv, port, index);
-}
-
-static void intel_aux_reg_init(struct intel_dp *intel_dp)
+static i915_reg_t g4x_aux_ctl_reg(struct intel_dp *intel_dp)
 {
 	struct drm_i915_private *dev_priv = to_i915(intel_dp_to_dev(intel_dp));
-	enum port port = intel_aux_port(dev_priv,
-					dp_to_dig_port(intel_dp)->base.port);
-	int i;
+	enum aux_ch aux_ch = intel_dp->aux_ch;
 
-	intel_dp->aux_ch_ctl_reg = intel_aux_ctl_reg(dev_priv, port);
-	for (i = 0; i < ARRAY_SIZE(intel_dp->aux_ch_data_reg); i++)
-		intel_dp->aux_ch_data_reg[i] = intel_aux_data_reg(dev_priv, port, i);
+	switch (aux_ch) {
+	case AUX_CH_B:
+	case AUX_CH_C:
+	case AUX_CH_D:
+		return DP_AUX_CH_CTL(aux_ch);
+	default:
+		MISSING_CASE(aux_ch);
+		return DP_AUX_CH_CTL(AUX_CH_B);
+	}
+}
+
+static i915_reg_t g4x_aux_data_reg(struct intel_dp *intel_dp, int index)
+{
+	struct drm_i915_private *dev_priv = to_i915(intel_dp_to_dev(intel_dp));
+	enum aux_ch aux_ch = intel_dp->aux_ch;
+
+	switch (aux_ch) {
+	case AUX_CH_B:
+	case AUX_CH_C:
+	case AUX_CH_D:
+		return DP_AUX_CH_DATA(aux_ch, index);
+	default:
+		MISSING_CASE(aux_ch);
+		return DP_AUX_CH_DATA(AUX_CH_B, index);
+	}
+}
+
+static i915_reg_t ilk_aux_ctl_reg(struct intel_dp *intel_dp)
+{
+	struct drm_i915_private *dev_priv = to_i915(intel_dp_to_dev(intel_dp));
+	enum aux_ch aux_ch = intel_dp->aux_ch;
+
+	switch (aux_ch) {
+	case AUX_CH_A:
+		return DP_AUX_CH_CTL(aux_ch);
+	case AUX_CH_B:
+	case AUX_CH_C:
+	case AUX_CH_D:
+		return PCH_DP_AUX_CH_CTL(aux_ch);
+	default:
+		MISSING_CASE(aux_ch);
+		return DP_AUX_CH_CTL(AUX_CH_A);
+	}
+}
+
+static i915_reg_t ilk_aux_data_reg(struct intel_dp *intel_dp, int index)
+{
+	struct drm_i915_private *dev_priv = to_i915(intel_dp_to_dev(intel_dp));
+	enum aux_ch aux_ch = intel_dp->aux_ch;
+
+	switch (aux_ch) {
+	case AUX_CH_A:
+		return DP_AUX_CH_DATA(aux_ch, index);
+	case AUX_CH_B:
+	case AUX_CH_C:
+	case AUX_CH_D:
+		return PCH_DP_AUX_CH_DATA(aux_ch, index);
+	default:
+		MISSING_CASE(aux_ch);
+		return DP_AUX_CH_DATA(AUX_CH_A, index);
+	}
+}
+
+static i915_reg_t skl_aux_ctl_reg(struct intel_dp *intel_dp)
+{
+	struct drm_i915_private *dev_priv = to_i915(intel_dp_to_dev(intel_dp));
+	enum aux_ch aux_ch = intel_dp->aux_ch;
+
+	switch (aux_ch) {
+	case AUX_CH_A:
+	case AUX_CH_B:
+	case AUX_CH_C:
+	case AUX_CH_D:
+	case AUX_CH_F:
+		return DP_AUX_CH_CTL(aux_ch);
+	default:
+		MISSING_CASE(aux_ch);
+		return DP_AUX_CH_CTL(AUX_CH_A);
+	}
+}
+
+static i915_reg_t skl_aux_data_reg(struct intel_dp *intel_dp, int index)
+{
+	struct drm_i915_private *dev_priv = to_i915(intel_dp_to_dev(intel_dp));
+	enum aux_ch aux_ch = intel_dp->aux_ch;
+
+	switch (aux_ch) {
+	case AUX_CH_A:
+	case AUX_CH_B:
+	case AUX_CH_C:
+	case AUX_CH_D:
+	case AUX_CH_F:
+		return DP_AUX_CH_DATA(aux_ch, index);
+	default:
+		MISSING_CASE(aux_ch);
+		return DP_AUX_CH_DATA(AUX_CH_A, index);
+	}
 }
 
 static void
@@ -1507,14 +1508,42 @@ intel_dp_aux_fini(struct intel_dp *intel_dp)
 static void
 intel_dp_aux_init(struct intel_dp *intel_dp)
 {
-	struct intel_digital_port *intel_dig_port = dp_to_dig_port(intel_dp);
-	enum port port = intel_dig_port->base.port;
+	struct drm_i915_private *dev_priv = to_i915(intel_dp_to_dev(intel_dp));
+	struct intel_encoder *encoder = &dp_to_dig_port(intel_dp)->base;
 
-	intel_aux_reg_init(intel_dp);
+	intel_dp->aux_ch = intel_aux_ch(intel_dp);
+	intel_dp->aux_power_domain = intel_aux_power_domain(intel_dp);
+
+	if (INTEL_GEN(dev_priv) >= 9) {
+		intel_dp->aux_ch_ctl_reg = skl_aux_ctl_reg;
+		intel_dp->aux_ch_data_reg = skl_aux_data_reg;
+	} else if (HAS_PCH_SPLIT(dev_priv)) {
+		intel_dp->aux_ch_ctl_reg = ilk_aux_ctl_reg;
+		intel_dp->aux_ch_data_reg = ilk_aux_data_reg;
+	} else {
+		intel_dp->aux_ch_ctl_reg = g4x_aux_ctl_reg;
+		intel_dp->aux_ch_data_reg = g4x_aux_data_reg;
+	}
+
+	if (INTEL_GEN(dev_priv) >= 9)
+		intel_dp->get_aux_clock_divider = skl_get_aux_clock_divider;
+	else if (IS_BROADWELL(dev_priv) || IS_HASWELL(dev_priv))
+		intel_dp->get_aux_clock_divider = hsw_get_aux_clock_divider;
+	else if (HAS_PCH_SPLIT(dev_priv))
+		intel_dp->get_aux_clock_divider = ilk_get_aux_clock_divider;
+	else
+		intel_dp->get_aux_clock_divider = g4x_get_aux_clock_divider;
+
+	if (INTEL_GEN(dev_priv) >= 9)
+		intel_dp->get_aux_send_ctl = skl_get_aux_send_ctl;
+	else
+		intel_dp->get_aux_send_ctl = g4x_get_aux_send_ctl;
+
 	drm_dp_aux_init(&intel_dp->aux);
 
 	/* Failure to allocate our preferred name is not critical */
-	intel_dp->aux.name = kasprintf(GFP_KERNEL, "DPDDC-%c", port_name(port));
+	intel_dp->aux.name = kasprintf(GFP_KERNEL, "DPDDC-%c",
+				       port_name(encoder->port));
 	intel_dp->aux.transfer = intel_dp_aux_transfer;
 }
 
@@ -3172,35 +3201,6 @@ intel_dp_get_link_status(struct intel_dp *intel_dp, uint8_t link_status[DP_LINK_
 				DP_LINK_STATUS_SIZE) == DP_LINK_STATUS_SIZE;
 }
 
-static bool intel_dp_get_y_cord_status(struct intel_dp *intel_dp)
-{
-	uint8_t psr_caps = 0;
-
-	if (drm_dp_dpcd_readb(&intel_dp->aux, DP_PSR_CAPS, &psr_caps) != 1)
-		return false;
-	return psr_caps & DP_PSR2_SU_Y_COORDINATE_REQUIRED;
-}
-
-static bool intel_dp_get_colorimetry_status(struct intel_dp *intel_dp)
-{
-	uint8_t dprx = 0;
-
-	if (drm_dp_dpcd_readb(&intel_dp->aux, DP_DPRX_FEATURE_ENUMERATION_LIST,
-			      &dprx) != 1)
-		return false;
-	return dprx & DP_VSC_SDP_EXT_FOR_COLORIMETRY_SUPPORTED;
-}
-
-static bool intel_dp_get_alpm_status(struct intel_dp *intel_dp)
-{
-	uint8_t alpm_caps = 0;
-
-	if (drm_dp_dpcd_readb(&intel_dp->aux, DP_RECEIVER_ALPM_CAP,
-			      &alpm_caps) != 1)
-		return false;
-	return alpm_caps & DP_ALPM_CAP;
-}
-
 /* These are source-specific values. */
 uint8_t
 intel_dp_voltage_max(struct intel_dp *intel_dp)
@@ -3751,40 +3751,7 @@ intel_edp_init_dpcd(struct intel_dp *intel_dp)
 		dev_priv->no_aux_handshake = intel_dp->dpcd[DP_MAX_DOWNSPREAD] &
 			DP_NO_AUX_HANDSHAKE_LINK_TRAINING;
 
-	/* Check if the panel supports PSR */
-	drm_dp_dpcd_read(&intel_dp->aux, DP_PSR_SUPPORT,
-			 intel_dp->psr_dpcd,
-			 sizeof(intel_dp->psr_dpcd));
-	if (intel_dp->psr_dpcd[0] & DP_PSR_IS_SUPPORTED) {
-		dev_priv->psr.sink_support = true;
-		DRM_DEBUG_KMS("Detected EDP PSR Panel.\n");
-	}
-
-	if (INTEL_GEN(dev_priv) >= 9 &&
-	    (intel_dp->psr_dpcd[0] & DP_PSR2_IS_SUPPORTED)) {
-		uint8_t frame_sync_cap;
-
-		dev_priv->psr.sink_support = true;
-		if (drm_dp_dpcd_readb(&intel_dp->aux,
-				      DP_SINK_DEVICE_AUX_FRAME_SYNC_CAP,
-				      &frame_sync_cap) != 1)
-			frame_sync_cap = 0;
-		dev_priv->psr.aux_frame_sync = frame_sync_cap ? true : false;
-		/* PSR2 needs frame sync as well */
-		dev_priv->psr.psr2_support = dev_priv->psr.aux_frame_sync;
-		DRM_DEBUG_KMS("PSR2 %s on sink",
-			      dev_priv->psr.psr2_support ? "supported" : "not supported");
-
-		if (dev_priv->psr.psr2_support) {
-			dev_priv->psr.y_cord_support =
-				intel_dp_get_y_cord_status(intel_dp);
-			dev_priv->psr.colorimetry_support =
-				intel_dp_get_colorimetry_status(intel_dp);
-			dev_priv->psr.alpm =
-				intel_dp_get_alpm_status(intel_dp);
-		}
-
-	}
+	intel_psr_init_dpcd(intel_dp);
 
 	/*
 	 * Read the eDP display control registers.
@@ -6266,42 +6233,6 @@ out_vdd_off:
 	return false;
 }
 
-/* Set up the hotplug pin and aux power domain. */
-static void
-intel_dp_init_connector_port_info(struct intel_digital_port *intel_dig_port)
-{
-	struct intel_encoder *encoder = &intel_dig_port->base;
-	struct intel_dp *intel_dp = &intel_dig_port->dp;
-	struct intel_encoder *intel_encoder = &intel_dig_port->base;
-	struct drm_i915_private *dev_priv = to_i915(intel_encoder->base.dev);
-
-	encoder->hpd_pin = intel_hpd_pin_default(dev_priv, encoder->port);
-
-	switch (encoder->port) {
-	case PORT_A:
-		intel_dp->aux_power_domain = POWER_DOMAIN_AUX_A;
-		break;
-	case PORT_B:
-		intel_dp->aux_power_domain = POWER_DOMAIN_AUX_B;
-		break;
-	case PORT_C:
-		intel_dp->aux_power_domain = POWER_DOMAIN_AUX_C;
-		break;
-	case PORT_D:
-		intel_dp->aux_power_domain = POWER_DOMAIN_AUX_D;
-		break;
-	case PORT_E:
-		/* FIXME: Check VBT for actual wiring of PORT E */
-		intel_dp->aux_power_domain = POWER_DOMAIN_AUX_D;
-		break;
-	case PORT_F:
-		intel_dp->aux_power_domain = POWER_DOMAIN_AUX_F;
-		break;
-	default:
-		MISSING_CASE(encoder->port);
-	}
-}
-
 static void intel_dp_modeset_retry_work_fn(struct work_struct *work)
 {
 	struct intel_connector *intel_connector;
@@ -6353,20 +6284,6 @@ intel_dp_init_connector(struct intel_digital_port *intel_dig_port,
 	intel_dp->active_pipe = INVALID_PIPE;
 
 	/* intel_dp vfuncs */
-	if (INTEL_GEN(dev_priv) >= 9)
-		intel_dp->get_aux_clock_divider = skl_get_aux_clock_divider;
-	else if (IS_HASWELL(dev_priv) || IS_BROADWELL(dev_priv))
-		intel_dp->get_aux_clock_divider = hsw_get_aux_clock_divider;
-	else if (HAS_PCH_SPLIT(dev_priv))
-		intel_dp->get_aux_clock_divider = ilk_get_aux_clock_divider;
-	else
-		intel_dp->get_aux_clock_divider = g4x_get_aux_clock_divider;
-
-	if (INTEL_GEN(dev_priv) >= 9)
-		intel_dp->get_aux_send_ctl = skl_get_aux_send_ctl;
-	else
-		intel_dp->get_aux_send_ctl = g4x_get_aux_send_ctl;
-
 	if (HAS_DDI(dev_priv))
 		intel_dp->prepare_link_retrain = intel_ddi_prepare_link_retrain;
 
@@ -6407,7 +6324,7 @@ intel_dp_init_connector(struct intel_digital_port *intel_dig_port,
 		connector->interlace_allowed = true;
 	connector->doublescan_allowed = 0;
 
-	intel_dp_init_connector_port_info(intel_dig_port);
+	intel_encoder->hpd_pin = intel_hpd_pin_default(dev_priv, port);
 
 	intel_dp_aux_init(intel_dp);
 

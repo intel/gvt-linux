@@ -49,6 +49,7 @@ static int i915_capabilities(struct seq_file *m, void *data)
 
 	intel_device_info_dump_flags(info, &p);
 	intel_device_info_dump_runtime(info, &p);
+	intel_driver_caps_print(&dev_priv->caps, &p);
 
 	kernel_param_lock(THIS_MODULE);
 	i915_params_dump(&i915_modparams, &p);
@@ -149,8 +150,8 @@ describe_obj(struct seq_file *m, struct drm_i915_gem_object *obj)
 		   get_global_flag(obj),
 		   get_pin_mapped_flag(obj),
 		   obj->base.size / 1024,
-		   obj->base.read_domains,
-		   obj->base.write_domain,
+		   obj->read_domains,
+		   obj->write_domain,
 		   i915_cache_level_str(dev_priv, obj->cache_level),
 		   obj->mm.dirty ? " dirty" : "",
 		   obj->mm.madv == I915_MADV_DONTNEED ? " purgeable" : "");
@@ -988,7 +989,10 @@ i915_next_seqno_set(void *data, u64 val)
 	if (ret)
 		return ret;
 
+	intel_runtime_pm_get(dev_priv);
 	ret = i915_gem_set_global_seqno(dev, val);
+	intel_runtime_pm_put(dev_priv);
+
 	mutex_unlock(&dev->struct_mutex);
 
 	return ret;
@@ -1457,19 +1461,6 @@ static int gen6_drpc_info(struct seq_file *m)
 	struct drm_i915_private *dev_priv = node_to_i915(m->private);
 	u32 gt_core_status, rcctl1, rc6vids = 0;
 	u32 gen9_powergate_enable = 0, gen9_powergate_status = 0;
-	unsigned forcewake_count;
-	int count = 0;
-
-	forcewake_count = READ_ONCE(dev_priv->uncore.fw_domain[FW_DOMAIN_ID_RENDER].wake_count);
-	if (forcewake_count) {
-		seq_puts(m, "RC information inaccurate because somebody "
-			    "holds a forcewake reference \n");
-	} else {
-		/* NB: we cannot use forcewake, else we read the wrong values */
-		while (count++ < 50 && (I915_READ_NOTRACE(FORCEWAKE_ACK) & 1))
-			udelay(10);
-		seq_printf(m, "RC information accurate: %s\n", yesno(count < 51));
-	}
 
 	gt_core_status = I915_READ_FW(GEN6_GT_CORE_STATUS);
 	trace_i915_reg_rw(false, GEN6_GT_CORE_STATUS, gt_core_status, 4, true);
@@ -1480,9 +1471,12 @@ static int gen6_drpc_info(struct seq_file *m)
 		gen9_powergate_status = I915_READ(GEN9_PWRGT_DOMAIN_STATUS);
 	}
 
-	mutex_lock(&dev_priv->pcu_lock);
-	sandybridge_pcode_read(dev_priv, GEN6_PCODE_READ_RC6VIDS, &rc6vids);
-	mutex_unlock(&dev_priv->pcu_lock);
+	if (INTEL_GEN(dev_priv) <= 7) {
+		mutex_lock(&dev_priv->pcu_lock);
+		sandybridge_pcode_read(dev_priv, GEN6_PCODE_READ_RC6VIDS,
+				       &rc6vids);
+		mutex_unlock(&dev_priv->pcu_lock);
+	}
 
 	seq_printf(m, "RC1e Enabled: %s\n",
 		   yesno(rcctl1 & GEN6_RC_CTL_RC1e_ENABLE));
@@ -1538,12 +1532,15 @@ static int gen6_drpc_info(struct seq_file *m)
 	print_rc6_res(m, "RC6+ residency since boot:", GEN6_GT_GFX_RC6p);
 	print_rc6_res(m, "RC6++ residency since boot:", GEN6_GT_GFX_RC6pp);
 
-	seq_printf(m, "RC6   voltage: %dmV\n",
-		   GEN6_DECODE_RC6_VID(((rc6vids >> 0) & 0xff)));
-	seq_printf(m, "RC6+  voltage: %dmV\n",
-		   GEN6_DECODE_RC6_VID(((rc6vids >> 8) & 0xff)));
-	seq_printf(m, "RC6++ voltage: %dmV\n",
-		   GEN6_DECODE_RC6_VID(((rc6vids >> 16) & 0xff)));
+	if (INTEL_GEN(dev_priv) <= 7) {
+		seq_printf(m, "RC6   voltage: %dmV\n",
+			   GEN6_DECODE_RC6_VID(((rc6vids >> 0) & 0xff)));
+		seq_printf(m, "RC6+  voltage: %dmV\n",
+			   GEN6_DECODE_RC6_VID(((rc6vids >> 8) & 0xff)));
+		seq_printf(m, "RC6++ voltage: %dmV\n",
+			   GEN6_DECODE_RC6_VID(((rc6vids >> 16) & 0xff)));
+	}
+
 	return i915_forcewake_domains(m, NULL);
 }
 
@@ -1596,7 +1593,7 @@ static int i915_fbc_status(struct seq_file *m, void *unused)
 		seq_printf(m, "FBC disabled: %s\n", fbc->no_fbc_reason);
 
 	if (fbc->work.scheduled)
-		seq_printf(m, "FBC worker scheduled on vblank %u, now %llu\n",
+		seq_printf(m, "FBC worker scheduled on vblank %llu, now %llu\n",
 			   fbc->work.scheduled_vblank,
 			   drm_crtc_vblank_count(&fbc->crtc->base));
 
@@ -2335,7 +2332,6 @@ static int i915_guc_info(struct seq_file *m, void *data)
 		return -ENODEV;
 
 	GEM_BUG_ON(!guc->execbuf_client);
-	GEM_BUG_ON(!guc->preempt_client);
 
 	seq_printf(m, "Doorbell map:\n");
 	seq_printf(m, "\t%*pb\n", GUC_NUM_DOORBELLS, guc->doorbell_bitmap);
@@ -2343,8 +2339,11 @@ static int i915_guc_info(struct seq_file *m, void *data)
 
 	seq_printf(m, "\nGuC execbuf client @ %p:\n", guc->execbuf_client);
 	i915_guc_client_info(m, dev_priv, guc->execbuf_client);
-	seq_printf(m, "\nGuC preempt client @ %p:\n", guc->preempt_client);
-	i915_guc_client_info(m, dev_priv, guc->preempt_client);
+	if (guc->preempt_client) {
+		seq_printf(m, "\nGuC preempt client @ %p:\n",
+			   guc->preempt_client);
+		i915_guc_client_info(m, dev_priv, guc->preempt_client);
+	}
 
 	i915_guc_log_info(m, dev_priv);
 
@@ -2464,24 +2463,11 @@ static int i915_guc_log_control_get(void *data, u64 *val)
 static int i915_guc_log_control_set(void *data, u64 val)
 {
 	struct drm_i915_private *dev_priv = data;
-	int ret;
 
 	if (!HAS_GUC(dev_priv))
 		return -ENODEV;
 
-	if (!dev_priv->guc.log.vma)
-		return -EINVAL;
-
-	ret = mutex_lock_interruptible(&dev_priv->drm.struct_mutex);
-	if (ret)
-		return ret;
-
-	intel_runtime_pm_get(dev_priv);
-	ret = i915_guc_log_control(dev_priv, val);
-	intel_runtime_pm_put(dev_priv);
-
-	mutex_unlock(&dev_priv->drm.struct_mutex);
-	return ret;
+	return intel_guc_log_control(&dev_priv->guc, val);
 }
 
 DEFINE_SIMPLE_ATTRIBUTE(i915_guc_log_control_fops,
@@ -2518,15 +2504,19 @@ static int i915_edp_psr_status(struct seq_file *m, void *data)
 	u32 stat[3];
 	enum pipe pipe;
 	bool enabled = false;
+	bool sink_support;
 
 	if (!HAS_PSR(dev_priv))
 		return -ENODEV;
 
+	sink_support = dev_priv->psr.sink_support;
+	seq_printf(m, "Sink_Support: %s\n", yesno(sink_support));
+	if (!sink_support)
+		return 0;
+
 	intel_runtime_pm_get(dev_priv);
 
 	mutex_lock(&dev_priv->psr.lock);
-	seq_printf(m, "Sink_Support: %s\n", yesno(dev_priv->psr.sink_support));
-	seq_printf(m, "Source_OK: %s\n", yesno(dev_priv->psr.source_ok));
 	seq_printf(m, "Enabled: %s\n", yesno((bool)dev_priv->psr.enabled));
 	seq_printf(m, "Active: %s\n", yesno(dev_priv->psr.active));
 	seq_printf(m, "Busy frontbuffer bits: 0x%03x\n",
@@ -2584,9 +2574,9 @@ static int i915_edp_psr_status(struct seq_file *m, void *data)
 		seq_printf(m, "Performance_Counter: %u\n", psrperf);
 	}
 	if (dev_priv->psr.psr2_support) {
-		u32 psr2 = I915_READ(EDP_PSR2_STATUS_CTL);
+		u32 psr2 = I915_READ(EDP_PSR2_STATUS);
 
-		seq_printf(m, "EDP_PSR2_STATUS_CTL: %x [%s]\n",
+		seq_printf(m, "EDP_PSR2_STATUS: %x [%s]\n",
 			   psr2, psr2_live_status(psr2));
 	}
 	mutex_unlock(&dev_priv->psr.lock);
@@ -2710,7 +2700,8 @@ static int i915_runtime_pm_status(struct seq_file *m, void *unused)
 	if (!HAS_RUNTIME_PM(dev_priv))
 		seq_puts(m, "Runtime power management not supported\n");
 
-	seq_printf(m, "GPU idle: %s\n", yesno(!dev_priv->gt.awake));
+	seq_printf(m, "GPU idle: %s (epoch %u)\n",
+		   yesno(!dev_priv->gt.awake), dev_priv->gt.epoch);
 	seq_printf(m, "IRQs disabled: %s\n",
 		   yesno(!intel_irqs_enabled(dev_priv)));
 #ifdef CONFIG_PM
@@ -3143,8 +3134,8 @@ static int i915_engine_info(struct seq_file *m, void *unused)
 
 	intel_runtime_pm_get(dev_priv);
 
-	seq_printf(m, "GT awake? %s\n",
-		   yesno(dev_priv->gt.awake));
+	seq_printf(m, "GT awake? %s (epoch %u)\n",
+		   yesno(dev_priv->gt.awake), dev_priv->gt.epoch);
 	seq_printf(m, "Global active requests: %d\n",
 		   dev_priv->gt.active_requests);
 	seq_printf(m, "CS timestamp frequency: %u kHz\n",
@@ -3363,7 +3354,10 @@ static void drrs_status_per_crtc(struct seq_file *m,
 
 		/* disable_drrs() will make drrs->dp NULL */
 		if (!drrs->dp) {
-			seq_puts(m, "Idleness DRRS: Disabled");
+			seq_puts(m, "Idleness DRRS: Disabled\n");
+			if (dev_priv->psr.enabled)
+				seq_puts(m,
+				"\tAs PSR is enabled, DRRS is not enabled\n");
 			mutex_unlock(&drrs->mutex);
 			return;
 		}
@@ -4085,10 +4079,8 @@ i915_drop_caches_set(void *data, u64 val)
 	if (val & DROP_IDLE)
 		drain_delayed_work(&dev_priv->gt.idle_work);
 
-	if (val & DROP_FREED) {
-		synchronize_rcu();
+	if (val & DROP_FREED)
 		i915_gem_drain_freed_objects(dev_priv);
-	}
 
 	return ret;
 }
@@ -4606,6 +4598,46 @@ static const struct file_operations i915_hpd_storm_ctl_fops = {
 	.write = i915_hpd_storm_ctl_write
 };
 
+static int i915_drrs_ctl_set(void *data, u64 val)
+{
+	struct drm_i915_private *dev_priv = data;
+	struct drm_device *dev = &dev_priv->drm;
+	struct intel_crtc *intel_crtc;
+	struct intel_encoder *encoder;
+	struct intel_dp *intel_dp;
+
+	if (INTEL_GEN(dev_priv) < 7)
+		return -ENODEV;
+
+	drm_modeset_lock_all(dev);
+	for_each_intel_crtc(dev, intel_crtc) {
+		if (!intel_crtc->base.state->active ||
+					!intel_crtc->config->has_drrs)
+			continue;
+
+		for_each_encoder_on_crtc(dev, &intel_crtc->base, encoder) {
+			if (encoder->type != INTEL_OUTPUT_EDP)
+				continue;
+
+			DRM_DEBUG_DRIVER("Manually %sabling DRRS. %llu\n",
+						val ? "en" : "dis", val);
+
+			intel_dp = enc_to_intel_dp(&encoder->base);
+			if (val)
+				intel_edp_drrs_enable(intel_dp,
+							intel_crtc->config);
+			else
+				intel_edp_drrs_disable(intel_dp,
+							intel_crtc->config);
+		}
+	}
+	drm_modeset_unlock_all(dev);
+
+	return 0;
+}
+
+DEFINE_SIMPLE_ATTRIBUTE(i915_drrs_ctl_fops, NULL, i915_drrs_ctl_set, "%llu\n");
+
 static const struct drm_info_list i915_debugfs_list[] = {
 	{"i915_capabilities", i915_capabilities, 0},
 	{"i915_gem_objects", i915_gem_object_info, 0},
@@ -4683,7 +4715,8 @@ static const struct i915_debugfs_files {
 	{"i915_dp_test_active", &i915_displayport_test_active_fops},
 	{"i915_guc_log_control", &i915_guc_log_control_fops},
 	{"i915_hpd_storm_ctl", &i915_hpd_storm_ctl_fops},
-	{"i915_ipc_status", &i915_ipc_status_fops}
+	{"i915_ipc_status", &i915_ipc_status_fops},
+	{"i915_drrs_ctl", &i915_drrs_ctl_fops}
 };
 
 int i915_debugfs_register(struct drm_i915_private *dev_priv)

@@ -173,6 +173,10 @@ int drm_universal_plane_init(struct drm_device *dev, struct drm_plane *plane,
 	unsigned int format_modifier_count = 0;
 	int ret;
 
+	/* plane index is used with 32bit bitmasks */
+	if (WARN_ON(config->num_total_plane >= 32))
+		return -EINVAL;
+
 	ret = drm_mode_object_add(dev, &plane->base, DRM_MODE_OBJECT_PLANE);
 	if (ret)
 		return ret;
@@ -944,7 +948,7 @@ int drm_mode_page_flip_ioctl(struct drm_device *dev,
 		if (r)
 			return r;
 
-		current_vblank = drm_crtc_vblank_count(crtc);
+		current_vblank = (u32)drm_crtc_vblank_count(crtc);
 
 		switch (page_flip->flags & DRM_MODE_PAGE_FLIP_TARGET) {
 		case DRM_MODE_PAGE_FLIP_TARGET_ABSOLUTE:

@@ -56,6 +56,7 @@ static const char * const platform_names[] = {
 	PLATFORM_NAME(GEMINILAKE),
 	PLATFORM_NAME(COFFEELAKE),
 	PLATFORM_NAME(CANNONLAKE),
+	PLATFORM_NAME(ICELAKE),
 };
 #undef PLATFORM_NAME
 
@@ -584,4 +585,10 @@ void intel_device_info_runtime_init(struct intel_device_info *info)
 
 	/* Initialize command stream timestamp frequency */
 	info->cs_timestamp_frequency_khz = read_timestamp_frequency(dev_priv);
+}
+
+void intel_driver_caps_print(const struct intel_driver_caps *caps,
+			     struct drm_printer *p)
+{
+	drm_printf(p, "scheduler: %x\n", caps->scheduler);
 }

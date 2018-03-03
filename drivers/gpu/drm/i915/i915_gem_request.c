@@ -161,12 +161,16 @@ i915_priotree_fini(struct drm_i915_private *i915, struct i915_priotree *pt)
 
 	GEM_BUG_ON(!list_empty(&pt->link));
 
-	/* Everyone we depended upon (the fences we wait to be signaled)
+	/*
+	 * Everyone we depended upon (the fences we wait to be signaled)
 	 * should retire before us and remove themselves from our list.
 	 * However, retirement is run independently on each timeline and
 	 * so we may be called out-of-order.
 	 */
 	list_for_each_entry_safe(dep, next, &pt->signalers_list, signal_link) {
+		GEM_BUG_ON(!i915_priotree_signaled(dep->signaler));
+		GEM_BUG_ON(!list_empty(&dep->dfs_link));
+
 		list_del(&dep->wait_link);
 		if (dep->flags & I915_DEPENDENCY_ALLOC)
 			i915_dependency_free(i915, dep);
@@ -174,6 +178,9 @@ i915_priotree_fini(struct drm_i915_private *i915, struct i915_priotree *pt)
 
 	/* Remove ourselves from everyone who depends upon us */
 	list_for_each_entry_safe(dep, next, &pt->waiters_list, wait_link) {
+		GEM_BUG_ON(dep->signaler != pt);
+		GEM_BUG_ON(!list_empty(&dep->dfs_link));
+
 		list_del(&dep->signal_link);
 		if (dep->flags & I915_DEPENDENCY_ALLOC)
 			i915_dependency_free(i915, dep);
@@ -267,6 +274,8 @@ static void mark_busy(struct drm_i915_private *i915)
 	intel_display_power_get(i915, POWER_DOMAIN_GT_IRQ);
 
 	i915->gt.awake = true;
+	if (unlikely(++i915->gt.epoch == 0)) /* keep 0 as invalid */
+		i915->gt.epoch = 1;
 
 	intel_enable_gt_powersave(i915);
 	i915_update_gfx_val(i915);
@@ -434,9 +443,14 @@ static void i915_gem_request_retire(struct drm_i915_gem_request *request)
 	engine->last_retired_context = request->ctx;
 
 	spin_lock_irq(&request->lock);
-	if (request->waitboost)
+	if (!test_bit(DMA_FENCE_FLAG_SIGNALED_BIT, &request->fence.flags))
+		dma_fence_signal_locked(&request->fence);
+	if (test_bit(DMA_FENCE_FLAG_ENABLE_SIGNAL_BIT, &request->fence.flags))
+		intel_engine_cancel_signaling(request);
+	if (request->waitboost) {
+		GEM_BUG_ON(!atomic_read(&request->i915->gt_pm.rps.num_waiters));
 		atomic_dec(&request->i915->gt_pm.rps.num_waiters);
-	dma_fence_signal_locked(&request->fence);
+	}
 	spin_unlock_irq(&request->lock);
 
 	i915_priotree_fini(request->i915, &request->priotree);
@@ -530,6 +544,8 @@ void __i915_gem_request_unsubmit(struct drm_i915_gem_request *request)
 	 */
 	GEM_BUG_ON(!request->global_seqno);
 	GEM_BUG_ON(request->global_seqno != engine->timeline->seqno);
+	GEM_BUG_ON(i915_seqno_passed(intel_engine_get_seqno(engine),
+				     request->global_seqno));
 	engine->timeline->seqno--;
 
 	/* We may be recursing from the signal callback of another i915 fence */
@@ -691,6 +707,17 @@ i915_gem_request_alloc(struct intel_engine_cs *engine,
 		if (ret)
 			goto err_unreserve;
 
+		/*
+		 * We've forced the client to stall and catch up with whatever
+		 * backlog there might have been. As we are assuming that we
+		 * caused the mempressure, now is an opportune time to
+		 * recover as much memory from the request pool as is possible.
+		 * Having already penalized the client to stall, we spend
+		 * a little extra time to re-optimise page allocation.
+		 */
+		kmem_cache_shrink(dev_priv->requests);
+		rcu_barrier(); /* Recover the TYPESAFE_BY_RCU pages */
+
 		req = kmem_cache_alloc(dev_priv->requests, GFP_KERNEL);
 		if (!req) {
 			ret = -ENOMEM;
@@ -722,6 +749,7 @@ i915_gem_request_alloc(struct intel_engine_cs *engine,
 
 	/* No zalloc, must clear what we need by hand */
 	req->global_seqno = 0;
+	req->signaling.wait.seqno = 0;
 	req->file_priv = NULL;
 	req->batch = NULL;
 	req->capture_list = NULL;
@@ -890,9 +918,9 @@ i915_gem_request_await_dma_fence(struct drm_i915_gem_request *req,
 
 /**
  * i915_gem_request_await_object - set this request to (async) wait upon a bo
- *
  * @to: request we are wishing to use
  * @obj: object which may be in use on another ring.
+ * @write: whether the wait is on behalf of a writer
  *
  * This code is meant to abstract object synchronization with the GPU.
  * Conceptually we serialise writes between engines inside the GPU.
@@ -967,7 +995,8 @@ void __i915_add_request(struct drm_i915_gem_request *request, bool flush_caches)
 	lockdep_assert_held(&request->i915->drm.struct_mutex);
 	trace_i915_gem_request_add(request);
 
-	/* Make sure that no request gazumped us - if it was allocated after
+	/*
+	 * Make sure that no request gazumped us - if it was allocated after
 	 * our i915_gem_request_alloc() and called __i915_add_request() before
 	 * us, the timeline will hold its seqno which is later than ours.
 	 */
@@ -994,7 +1023,8 @@ void __i915_add_request(struct drm_i915_gem_request *request, bool flush_caches)
 		WARN(err, "engine->emit_flush() failed: %d!\n", err);
 	}
 
-	/* Record the position of the start of the breadcrumb so that
+	/*
+	 * Record the position of the start of the breadcrumb so that
 	 * should we detect the updated seqno part-way through the
 	 * GPU processing the request, we never over-estimate the
 	 * position of the ring's HEAD.
@@ -1003,7 +1033,8 @@ void __i915_add_request(struct drm_i915_gem_request *request, bool flush_caches)
 	GEM_BUG_ON(IS_ERR(cs));
 	request->postfix = intel_ring_offset(request, cs);
 
-	/* Seal the request and mark it as pending execution. Note that
+	/*
+	 * Seal the request and mark it as pending execution. Note that
 	 * we may inspect this state, without holding any locks, during
 	 * hangcheck. Hence we apply the barrier to ensure that we do not
 	 * see a more recent value in the hws than we are tracking.
@@ -1011,7 +1042,7 @@ void __i915_add_request(struct drm_i915_gem_request *request, bool flush_caches)
 
 	prev = i915_gem_active_raw(&timeline->last_request,
 				   &request->i915->drm.struct_mutex);
-	if (prev) {
+	if (prev && !i915_gem_request_completed(prev)) {
 		i915_sw_fence_await_sw_fence(&request->submit, &prev->submit,
 					     &request->submitq);
 		if (engine->schedule)
@@ -1031,7 +1062,8 @@ void __i915_add_request(struct drm_i915_gem_request *request, bool flush_caches)
 	list_add_tail(&request->ring_link, &ring->request_list);
 	request->emitted_jiffies = jiffies;
 
-	/* Let the backend know a new request has arrived that may need
+	/*
+	 * Let the backend know a new request has arrived that may need
 	 * to adjust the existing execution schedule due to a high priority
 	 * request - i.e. we may want to preempt the current request in order
 	 * to run a high priority dependency chain *before* we can execute this
@@ -1047,6 +1079,26 @@ void __i915_add_request(struct drm_i915_gem_request *request, bool flush_caches)
 	local_bh_disable();
 	i915_sw_fence_commit(&request->submit);
 	local_bh_enable(); /* Kick the execlists tasklet if just scheduled */
+
+	/*
+	 * In typical scenarios, we do not expect the previous request on
+	 * the timeline to be still tracked by timeline->last_request if it
+	 * has been completed. If the completed request is still here, that
+	 * implies that request retirement is a long way behind submission,
+	 * suggesting that we haven't been retiring frequently enough from
+	 * the combination of retire-before-alloc, waiters and the background
+	 * retirement worker. So if the last request on this timeline was
+	 * already completed, do a catch up pass, flushing the retirement queue
+	 * up to this client. Since we have now moved the heaviest operations
+	 * during retirement onto secondary workers, such as freeing objects
+	 * or contexts, retiring a bunch of requests is mostly list management
+	 * (and cache misses), and so we should not be overly penalizing this
+	 * client by performing excess work, though we may still performing
+	 * work on behalf of others -- but instead we should benefit from
+	 * improved resource management. (Well, that's the theory at least.)
+	 */
+	if (prev && i915_gem_request_completed(prev))
+		i915_gem_request_retire_upto(prev);
 }
 
 static unsigned long local_clock_us(unsigned int *cpu)

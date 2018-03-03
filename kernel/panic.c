@@ -517,14 +517,9 @@ struct warn_args {
 	va_list args;
 };
 
-void __warn(const char *file, int line, void *caller, unsigned taint,
-	    struct pt_regs *regs, struct warn_args *args)
+static void show_location(const char *file, int line, void *caller,
+			  struct warn_args *args)
 {
-	disable_trace_on_warning();
-
-	if (args)
-		pr_warn(CUT_HERE);
-
 	if (file)
 		pr_warn("WARNING: CPU: %d PID: %d at %s:%d %pS\n",
 			raw_smp_processor_id(), current->pid, file, line,
@@ -535,6 +530,17 @@ void __warn(const char *file, int line, void *caller, unsigned taint,
 
 	if (args)
 		vprintk(args->fmt, args->args);
+}
+
+void __warn(const char *file, int line, void *caller, unsigned taint,
+	    struct pt_regs *regs, struct warn_args *args)
+{
+	disable_trace_on_warning();
+
+	if (args)
+		pr_warn(CUT_HERE);
+
+	show_location(file, line, caller, args);
 
 	if (panic_on_warn) {
 		/*
@@ -553,6 +559,8 @@ void __warn(const char *file, int line, void *caller, unsigned taint,
 		show_regs(regs);
 	else
 		dump_stack();
+
+	show_location(file, line, caller, args);
 
 	print_oops_end_marker();
 

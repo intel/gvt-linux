@@ -808,7 +808,7 @@ static int i915_workqueues_init(struct drm_i915_private *dev_priv)
 	/*
 	 * The i915 workqueue is primarily used for batched retirement of
 	 * requests (and thus managing bo) once the task has been completed
-	 * by the GPU. i915_gem_retire_requests() is called directly when we
+	 * by the GPU. i915_retire_requests() is called directly when we
 	 * need high-priority retirement, such as waiting for an explicit
 	 * bo.
 	 *
@@ -1992,7 +1992,7 @@ taint:
 	add_taint(TAINT_WARN, LOCKDEP_STILL_OK);
 error:
 	i915_gem_set_wedged(i915);
-	i915_gem_retire_requests(i915);
+	i915_retire_requests(i915);
 	intel_gpu_reset(i915, ALL_ENGINES);
 	goto finish;
 }
@@ -2019,7 +2019,7 @@ static inline int intel_gt_reset_engine(struct drm_i915_private *dev_priv,
 int i915_reset_engine(struct intel_engine_cs *engine, unsigned int flags)
 {
 	struct i915_gpu_error *error = &engine->i915->gpu_error;
-	struct drm_i915_gem_request *active_request;
+	struct i915_request *active_request;
 	int ret;
 
 	GEM_BUG_ON(!test_bit(I915_RESET_ENGINE + engine->id, &error->flags));
@@ -2575,7 +2575,7 @@ static int intel_runtime_suspend(struct device *kdev)
 	 */
 	i915_gem_runtime_suspend(dev_priv);
 
-	intel_guc_suspend(dev_priv);
+	intel_uc_suspend(dev_priv);
 
 	intel_runtime_pm_disable_interrupts(dev_priv);
 
@@ -2597,7 +2597,7 @@ static int intel_runtime_suspend(struct device *kdev)
 
 		intel_runtime_pm_enable_interrupts(dev_priv);
 
-		intel_guc_resume(dev_priv);
+		intel_uc_resume(dev_priv);
 
 		i915_gem_init_swizzling(dev_priv);
 		i915_gem_restore_fences(dev_priv);
@@ -2683,7 +2683,7 @@ static int intel_runtime_resume(struct device *kdev)
 
 	intel_runtime_pm_enable_interrupts(dev_priv);
 
-	intel_guc_resume(dev_priv);
+	intel_uc_resume(dev_priv);
 
 	/*
 	 * No point of rolling back things in case of an error, as the best

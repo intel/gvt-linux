@@ -1,28 +1,12 @@
-drm-upstream drm-fixes 93dfdf9fde9f20f1c46738bf184adeebc7d7d66e
-	Merge branch 'drm-fixes-4.16' of git://people.freedesktop.org/~agd5f/linux into drm-fixes
-drm-misc drm-misc-fixes f3e5feeb92a163c935659b7222a32965276c1c23
-	drm/sun4i: Release exclusive clock lock when disabling TCON
-drm-intel drm-intel-fixes fa89782b4f9c40d40e3f7d9ad7ef14e0bb0c3ca0
-	drm/i915: Make global seqno known in i915_gem_request_execute tracepoint
-drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
-	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
-drm-upstream drm-next f073d78eeb8efd85718e611c15f9a78647751dea
-	Merge tag 'drm-intel-next-2018-02-21' of git://anongit.freedesktop.org/drm/drm-intel into drm-next
-drm-misc drm-misc-next-fixes 761e05a702f5d537ffcca1ba933f9f0a968aa022
-	drm: Check for lessee in DROP_MASTER ioctl
-drm-intel drm-intel-next-fixes 6dd3104e78943685d5183efe883d83a5f2361bf1
-	drm/i915/bios: add DP max link rate to VBT child device struct
-drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
-	Linux 4.14-rc1
-drm-misc drm-misc-next c8624ede3ed3b9f46364f5239c402393ec853e00
-	drm/i915: Add support for the YCbCr COLOR_RANGE property
-drm-intel drm-intel-next-queued 7b026763cff902debe1184ef4e0609dc148338ad
-	drm/i915/huc: Mark firmware as failed on auth failure
-drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
-	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
-sound-upstream for-linus d5078193e56bb24f4593f00102a3b5e07bb84ee0
-	ALSA: hda - Fix a wrong FIXUP for alc289 on Dell machines
-sound-upstream for-next 338e17d3f58e9868a12af7deb1edcfb40bd588b2
-	ALSA: ice1712: replace strcpy() with strlcpy()
-drm-intel topic/core-for-CI 52e7aa851c22613f9f57e01a6bdb1970e6cb3a41
-	Revert "ALSA: hda: Make use of core codec functions to sync power state"
+drm-tip/drm-tip c07ef2c77d141730de535958cf9483d269b24676
+	drm-tip: 2018y-03m-03d-08h-39m-05s UTC integration manifest
+vfio-upstream/for-linus 563b5cbe334e9503ab2b234e279d500fc4f76018
+	iommu/arm-smmu-v3: Cope with duplicated Stream IDs
+vfio-upstream/next 46ed90f157f42d956ffed17c003f089a59b76e3e
+	vfio: mdev: make a couple of functions and structure vfio_mdev_driver static
+origin/gvt-fixes 663a847749c77f853ab9cc2fe4a1f228c8ec6b96
+	drm/i915/gvt: Add runtime_pm_get/put into gvt_switch_mmio
+origin/gvt-next 40d8c7dd8ae3f92bd8fc7605bf2479a35cf2369f
+	drm/i915/gvt: Return error at the failure of finding page_track
+origin/gvt-next-fixes 3f06b012bfbff495c211567f9a0cbcedd9a473ed
+	drm/i915/gvt: Support BAR0 8-byte reads/writes

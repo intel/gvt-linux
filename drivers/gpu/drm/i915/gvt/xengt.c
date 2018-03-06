@@ -1801,6 +1801,26 @@ static unsigned long xengt_gfn_to_pfn(unsigned long handle, unsigned long gfn)
 	return pfn;
 }
 
+static int xengt_dma_map_guest_page(unsigned long handle,
+			unsigned long gfn, dma_addr_t *dma_addr)
+{
+	unsigned long pfn;
+
+	pfn = xengt_gfn_to_pfn(handle, gfn);
+
+	if (pfn < 0)
+		return -EINVAL;
+
+	*dma_addr = pfn << PAGE_SHIFT;
+
+	return 0;
+}
+
+static void xengt_dma_unmap_guest_page(unsigned long handle,
+			dma_addr_t dma_addr)
+{
+}
+
 struct intel_gvt_mpt xengt_mpt = {
 	//.detect_host = xengt_detect_host,
 	.host_init = xengt_host_init,
@@ -1814,6 +1834,8 @@ struct intel_gvt_mpt xengt_mpt = {
 	.read_gpa = xengt_read_gpa,
 	.write_gpa = xengt_write_gpa,
 	.gfn_to_mfn = xengt_gfn_to_pfn,
+	.dma_map_guest_page = xengt_dma_map_guest_page,
+	.dma_unmap_guest_page = xengt_dma_unmap_guest_page,
 	.map_gfn_to_mfn = xengt_map_gfn_to_mfn,
 	.set_trap_area = xengt_set_trap_area,
 };

@@ -1,28 +1,12 @@
-drm-upstream drm-fixes 93dfdf9fde9f20f1c46738bf184adeebc7d7d66e
-	Merge branch 'drm-fixes-4.16' of git://people.freedesktop.org/~agd5f/linux into drm-fixes
-drm-misc drm-misc-fixes f3e5feeb92a163c935659b7222a32965276c1c23
-	drm/sun4i: Release exclusive clock lock when disabling TCON
-drm-intel drm-intel-fixes 88d3dfb6a69042381161290c7ce19e1f53fc2a66
-	drm/i915: Suspend submission tasklets around wedging
-drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
-	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
-drm-upstream drm-next f073d78eeb8efd85718e611c15f9a78647751dea
-	Merge tag 'drm-intel-next-2018-02-21' of git://anongit.freedesktop.org/drm/drm-intel into drm-next
-drm-misc drm-misc-next-fixes 761e05a702f5d537ffcca1ba933f9f0a968aa022
-	drm: Check for lessee in DROP_MASTER ioctl
-drm-intel drm-intel-next-fixes 6dd3104e78943685d5183efe883d83a5f2361bf1
-	drm/i915/bios: add DP max link rate to VBT child device struct
-drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
-	Linux 4.14-rc1
-drm-misc drm-misc-next 186ca446aea19e49d2e1433dd170c6e1c211a52a
-	drm/prime: make the pages array optional for drm_prime_sg_to_page_addr_arrays
-drm-intel drm-intel-next-queued edb2e5301c4489d8c99b0f3d86a074df27f6f8ff
-	drm/i915: Track whether the DP link is trained or not
-drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
-	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
-sound-upstream for-linus e312a869cd726c698a75caca0d9e5c22fd3f1534
-	ALSA: hda/realtek - Fix dock line-out volume on Dell Precision 7520
-sound-upstream for-next 338e17d3f58e9868a12af7deb1edcfb40bd588b2
-	ALSA: ice1712: replace strcpy() with strlcpy()
-drm-intel topic/core-for-CI 52e7aa851c22613f9f57e01a6bdb1970e6cb3a41
-	Revert "ALSA: hda: Make use of core codec functions to sync power state"
+drm-tip/drm-tip 8a4eb4556f66d7ab7ad512d5c3d239da8de6b750
+	drm-tip: 2018y-03m-06d-22h-59m-29s UTC integration manifest
+vfio-upstream/for-linus 563b5cbe334e9503ab2b234e279d500fc4f76018
+	iommu/arm-smmu-v3: Cope with duplicated Stream IDs
+vfio-upstream/next 46ed90f157f42d956ffed17c003f089a59b76e3e
+	vfio: mdev: make a couple of functions and structure vfio_mdev_driver static
+origin/gvt-fixes 663a847749c77f853ab9cc2fe4a1f228c8ec6b96
+	drm/i915/gvt: Add runtime_pm_get/put into gvt_switch_mmio
+origin/gvt-next 991ecefbdd4b81719597d6c406df8d26ef5c1546
+	drm/i915/gvt: Return error at the failure of finding page_track
+origin/gvt-next-fixes 3f06b012bfbff495c211567f9a0cbcedd9a473ed
+	drm/i915/gvt: Support BAR0 8-byte reads/writes

@@ -786,6 +786,8 @@ static int vgpu_save(const void *img)
 	}
 	/* update the header with real image size */
 	node = find_migration_obj(GVT_MIGRATION_HEAD);
+	if (node == NULL)
+		return INV;
 	update_image_region_start_pos(node, n_img_actual_saved);
 	node->ops->pre_save(node);
 	return n_img_actual_saved;
@@ -806,7 +808,11 @@ static int vgpu_restore(void *img)
 	}
 
 	n_img_actual_recv += sizeof(struct gvt_region_t);
+
 	node = find_migration_obj(region.type);
+	if (node == NULL)
+		return INV;
+
 	update_image_region_start_pos(node, n_img_actual_recv);
 	n_img_actual_size = node->ops->pre_load(node, region.size);
 	if (n_img_actual_size == INV) {

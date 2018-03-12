@@ -471,6 +471,8 @@ struct parser_exec_state {
 	 * used when ret from 2nd level batch buffer
 	 */
 	int saved_buf_addr_type;
+	/* identify the workload source */
+	bool is_ctx_wa;
 
 	struct cmd_info *info;
 
@@ -1703,6 +1705,11 @@ static int perform_bb_shadow(struct parser_exec_state *s)
 	entry_obj->va = dst;
 	entry_obj->bb_start_cmd_va = s->ip_va;
 
+	if ((s->buf_type == BATCH_BUFFER_INSTRUCTION) && (!s->is_ctx_wa))
+		entry_obj->bb_offset = s->ip_va - s->rb_va;
+	else
+		entry_obj->bb_offset = 0;
+
 	/* copy batch buffer to shadow batch buffer*/
 	ret = copy_gma_to_hva(s->vgpu, s->vgpu->gtt.ggtt_mm,
 			      gma, gma + bb_size,
@@ -2570,6 +2577,7 @@ static int scan_workload(struct intel_vgpu_workload *workload)
 	s.ring_tail = gma_tail;
 	s.rb_va = workload->shadow_ring_buffer_va;
 	s.workload = workload;
+	s.is_ctx_wa = false;
 
 	if ((bypass_scan_mask & (1 << workload->ring_id)) ||
 		gma_head == gma_tail)
@@ -2622,6 +2630,7 @@ static int scan_wa_ctx(struct intel_shadow_wa_ctx *wa_ctx)
 	s.ring_tail = gma_tail;
 	s.rb_va = wa_ctx->indirect_ctx.shadow_va;
 	s.workload = workload;
+	s.is_ctx_wa = true;
 
 	if (!intel_gvt_ggtt_validate_range(s.vgpu, s.ring_start, s.ring_size)) {
 		ret = -EINVAL;

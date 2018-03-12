@@ -386,6 +386,11 @@ static int prepare_shadow_batch_buffer(struct intel_vgpu_workload *workload)
 		 * free.
 		 */
 
+		if (entry_obj->bb_offset)
+			entry_obj->bb_start_cmd_va =
+				workload->shadow_ring_buffer_va +
+				entry_obj->bb_offset;
+
 		/* update the relocate gma with shadow batch buffer*/
 		entry_obj->bb_start_cmd_va[1] = i915_ggtt_offset(vma);
 		if (gmadr_bytes == 8)

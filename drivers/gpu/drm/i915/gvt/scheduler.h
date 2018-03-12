@@ -119,6 +119,7 @@ struct intel_shadow_bb_entry {
 	void *va;
 	unsigned long len;
 	u32 *bb_start_cmd_va;
+	unsigned long bb_offset;
 };
 
 #define workload_q_head(vgpu, ring_id) \

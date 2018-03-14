@@ -441,6 +441,11 @@ static void intel_engine_init_timeline(struct intel_engine_cs *engine)
 	engine->timeline = &engine->i915->gt.global_timeline.engine[engine->id];
 }
 
+static void intel_engine_init_batch_pool(struct intel_engine_cs *engine)
+{
+	i915_gem_batch_pool_init(&engine->batch_pool, engine);
+}
+
 static bool csb_force_mmio(struct drm_i915_private *i915)
 {
 	/*
@@ -485,11 +490,9 @@ static void intel_engine_init_execlist(struct intel_engine_cs *engine)
 void intel_engine_setup_common(struct intel_engine_cs *engine)
 {
 	intel_engine_init_execlist(engine);
-
 	intel_engine_init_timeline(engine);
 	intel_engine_init_hangcheck(engine);
-	i915_gem_batch_pool_init(engine, &engine->batch_pool);
-
+	intel_engine_init_batch_pool(engine);
 	intel_engine_init_cmd_parser(engine);
 }
 
@@ -1713,13 +1716,15 @@ static void print_request(struct drm_printer *m,
 			  struct i915_request *rq,
 			  const char *prefix)
 {
+	const char *name = rq->fence.ops->get_timeline_name(&rq->fence);
+
 	drm_printf(m, "%s%x%s [%llx:%x] prio=%d @ %dms: %s\n", prefix,
 		   rq->global_seqno,
 		   i915_request_completed(rq) ? "!" : "",
 		   rq->fence.context, rq->fence.seqno,
 		   rq->priotree.priority,
 		   jiffies_to_msecs(jiffies - rq->emitted_jiffies),
-		   rq->timeline->common->name);
+		   name);
 }
 
 static void hexdump(struct drm_printer *m, const void *buf, size_t len)
@@ -1929,12 +1934,16 @@ void intel_engine_dump(struct intel_engine_cs *engine,
 			   rq->head, rq->postfix, rq->tail,
 			   rq->batch ? upper_32_bits(rq->batch->node.start) : ~0u,
 			   rq->batch ? lower_32_bits(rq->batch->node.start) : ~0u);
-		drm_printf(m, "\t\tring->start: 0x%08x\n",
+		drm_printf(m, "\t\tring->start:  0x%08x\n",
 			   i915_ggtt_offset(rq->ring->vma));
-		drm_printf(m, "\t\tring->head:  0x%08x\n",
+		drm_printf(m, "\t\tring->head:   0x%08x\n",
 			   rq->ring->head);
-		drm_printf(m, "\t\tring->tail:  0x%08x\n",
+		drm_printf(m, "\t\tring->tail:   0x%08x\n",
 			   rq->ring->tail);
+		drm_printf(m, "\t\tring->emit:   0x%08x\n",
+			   rq->ring->emit);
+		drm_printf(m, "\t\tring->space:  0x%08x\n",
+			   rq->ring->space);
 	}
 
 	rcu_read_unlock();

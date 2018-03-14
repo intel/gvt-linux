@@ -2858,6 +2858,9 @@ valid_fb:
 		return;
 	}
 
+	obj = intel_fb_obj(fb);
+	intel_fb_obj_flush(obj, ORIGIN_DIRTYFB);
+
 	plane_state->src_x = 0;
 	plane_state->src_y = 0;
 	plane_state->src_w = fb->width << 16;
@@ -2871,7 +2874,6 @@ valid_fb:
 	intel_state->base.src = drm_plane_state_src(plane_state);
 	intel_state->base.dst = drm_plane_state_dest(plane_state);
 
-	obj = intel_fb_obj(fb);
 	if (i915_gem_object_is_tiled(obj))
 		dev_priv->preserve_bios_swizzle = true;
 
@@ -12147,6 +12149,9 @@ static void intel_update_crtc(struct drm_crtc *crtc,
 	if (modeset) {
 		update_scanline_offset(intel_crtc);
 		dev_priv->display.crtc_enable(pipe_config, state);
+
+		/* vblanks work again, re-enable pipe CRC. */
+		intel_crtc_enable_pipe_crc(intel_crtc);
 	} else {
 		intel_pre_plane_update(to_intel_crtc_state(old_crtc_state),
 				       pipe_config);
@@ -12327,6 +12332,13 @@ static void intel_atomic_commit_tail(struct drm_atomic_state *state)
 
 		if (old_crtc_state->active) {
 			intel_crtc_disable_planes(crtc, old_crtc_state->plane_mask);
+
+			/*
+			 * We need to disable pipe CRC before disabling the pipe,
+			 * or we race against vblank off.
+			 */
+			intel_crtc_disable_pipe_crc(intel_crtc);
+
 			dev_priv->display.crtc_disable(to_intel_crtc_state(old_crtc_state), state);
 			intel_crtc->active = false;
 			intel_fbc_disable(intel_crtc);
@@ -12785,6 +12797,8 @@ intel_prepare_plane_fb(struct drm_plane *plane,
 	if (ret)
 		return ret;
 
+	intel_fb_obj_flush(obj, ORIGIN_DIRTYFB);
+
 	if (!new_state->fence) { /* implicit fencing */
 		struct dma_fence *fence;
 
@@ -13172,8 +13186,9 @@ intel_legacy_cursor_update(struct drm_plane *plane,
 	if (ret)
 		goto out_unlock;
 
-	old_fb = old_plane_state->fb;
+	intel_fb_obj_flush(intel_fb_obj(fb), ORIGIN_FLIP);
 
+	old_fb = old_plane_state->fb;
 	i915_gem_track_fb(intel_fb_obj(old_fb), intel_fb_obj(fb),
 			  intel_plane->frontbuffer_bit);
 

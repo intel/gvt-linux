@@ -7,6 +7,7 @@
 #include "i915_gem_batch_pool.h"
 #include "i915_gem_timeline.h"
 
+#include "i915_reg.h" /* FIXME split out i915_gpu_commands.h */
 #include "i915_pmu.h"
 #include "i915_request.h"
 #include "i915_selftest.h"
@@ -939,7 +940,7 @@ bool intel_engine_add_wait(struct intel_engine_cs *engine,
 			   struct intel_wait *wait);
 void intel_engine_remove_wait(struct intel_engine_cs *engine,
 			      struct intel_wait *wait);
-void intel_engine_enable_signaling(struct i915_request *request, bool wakeup);
+bool intel_engine_enable_signaling(struct i915_request *request, bool wakeup);
 void intel_engine_cancel_signaling(struct i915_request *request);
 
 static inline bool intel_engine_has_waiter(const struct intel_engine_cs *engine)

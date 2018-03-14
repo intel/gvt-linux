@@ -479,10 +479,11 @@ static void __fence_set_priority(struct dma_fence *fence, int prio)
 
 	rq = to_request(fence);
 	engine = rq->engine;
-	if (!engine->schedule)
-		return;
 
-	engine->schedule(rq, prio);
+	rcu_read_lock();
+	if (engine->schedule)
+		engine->schedule(rq, prio);
+	rcu_read_unlock();
 }
 
 static void fence_set_priority(struct dma_fence *fence, int prio)
@@ -2947,8 +2948,16 @@ i915_gem_reset_prepare_engine(struct intel_engine_cs *engine)
 	 * calling engine->init_hw() and also writing the ELSP.
 	 * Turning off the execlists->tasklet until the reset is over
 	 * prevents the race.
+	 *
+	 * Note that this needs to be a single atomic operation on the
+	 * tasklet (flush existing tasks, prevent new tasks) to prevent
+	 * a race between reset and set-wedged. It is not, so we do the best
+	 * we can atm and make sure we don't lock the machine up in the more
+	 * common case of recursively being called from set-wedged from inside
+	 * i915_reset.
 	 */
-	tasklet_kill(&engine->execlists.tasklet);
+	if (!atomic_read(&engine->execlists.tasklet.count))
+		tasklet_kill(&engine->execlists.tasklet);
 	tasklet_disable(&engine->execlists.tasklet);
 
 	/*
@@ -2989,6 +2998,7 @@ int i915_gem_reset_prepare(struct drm_i915_private *dev_priv)
 	}
 
 	i915_gem_revoke_fences(dev_priv);
+	intel_uc_sanitize(dev_priv);
 
 	return err;
 }
@@ -3222,8 +3232,11 @@ void i915_gem_set_wedged(struct drm_i915_private *i915)
 	 */
 	for_each_engine(engine, i915, id) {
 		i915_gem_reset_prepare_engine(engine);
+
 		engine->submit_request = nop_submit_request;
+		engine->schedule = NULL;
 	}
+	i915->caps.scheduler = 0;
 
 	/*
 	 * Make sure no one is running the old callback before we proceed with
@@ -3241,10 +3254,7 @@ void i915_gem_set_wedged(struct drm_i915_private *i915)
 		 * start to complete all requests.
 		 */
 		engine->submit_request = nop_complete_submit_request;
-		engine->schedule = NULL;
 	}
-
-	i915->caps.scheduler = 0;
 
 	/*
 	 * Make sure no request can slip through without getting completed by
@@ -3281,7 +3291,8 @@ bool i915_gem_unset_wedged(struct drm_i915_private *i915)
 	if (!test_bit(I915_WEDGED, &i915->gpu_error.flags))
 		return true;
 
-	/* Before unwedging, make sure that all pending operations
+	/*
+	 * Before unwedging, make sure that all pending operations
 	 * are flushed and errored out - we may have requests waiting upon
 	 * third party fences. We marked all inflight requests as EIO, and
 	 * every execbuf since returned EIO, for consistency we want all
@@ -3299,7 +3310,8 @@ bool i915_gem_unset_wedged(struct drm_i915_private *i915)
 			if (!rq)
 				continue;
 
-			/* We can't use our normal waiter as we want to
+			/*
+			 * We can't use our normal waiter as we want to
 			 * avoid recursively trying to handle the current
 			 * reset. The basic dma_fence_default_wait() installs
 			 * a callback for dma_fence_signal(), which is
@@ -3314,8 +3326,11 @@ bool i915_gem_unset_wedged(struct drm_i915_private *i915)
 				return false;
 		}
 	}
+	i915_retire_requests(i915);
+	GEM_BUG_ON(i915->gt.active_requests);
 
-	/* Undo nop_submit_request. We prevent all new i915 requests from
+	/*
+	 * Undo nop_submit_request. We prevent all new i915 requests from
 	 * being queued (by disallowing execbuf whilst wedged) so having
 	 * waited for all active requests above, we know the system is idle
 	 * and do not have to worry about a thread being inside
@@ -3657,16 +3672,7 @@ static int wait_for_engines(struct drm_i915_private *i915)
 	if (wait_for(intel_engines_are_idle(i915), I915_IDLE_ENGINES_TIMEOUT)) {
 		dev_err(i915->drm.dev,
 			"Failed to idle engines, declaring wedged!\n");
-		if (drm_debug & DRM_UT_DRIVER) {
-			struct drm_printer p = drm_debug_printer(__func__);
-			struct intel_engine_cs *engine;
-			enum intel_engine_id id;
-
-			for_each_engine(engine, i915, id)
-				intel_engine_dump(engine, &p,
-						  "%s\n", engine->name);
-		}
-
+		GEM_TRACE_DUMP();
 		i915_gem_set_wedged(i915);
 		return -EIO;
 	}
@@ -4079,9 +4085,10 @@ out:
 }
 
 /*
- * Prepare buffer for display plane (scanout, cursors, etc).
- * Can be called from an uninterruptible phase (modesetting) and allows
- * any flushes to be pipelined (for pageflips).
+ * Prepare buffer for display plane (scanout, cursors, etc). Can be called from
+ * an uninterruptible phase (modesetting) and allows any flushes to be pipelined
+ * (for pageflips). We only flush the caches while preparing the buffer for
+ * display, the callers are responsible for frontbuffer flush.
  */
 struct i915_vma *
 i915_gem_object_pin_to_display_plane(struct drm_i915_gem_object *obj,
@@ -4137,9 +4144,7 @@ i915_gem_object_pin_to_display_plane(struct drm_i915_gem_object *obj,
 
 	vma->display_alignment = max_t(u64, vma->display_alignment, alignment);
 
-	/* Treat this as an end-of-frame, like intel_user_framebuffer_dirty() */
 	__i915_gem_object_flush_for_display(obj);
-	intel_fb_obj_flush(obj, ORIGIN_DIRTYFB);
 
 	/* It should now be out of any other write domains, and we can update
 	 * the domain values for our changes.
@@ -4964,6 +4969,7 @@ int i915_gem_suspend(struct drm_i915_private *dev_priv)
 	 * machines is a good idea, we don't - just in case it leaves the
 	 * machine in an unusable condition.
 	 */
+	intel_uc_sanitize(dev_priv);
 	i915_gem_sanitize(dev_priv);
 
 	intel_runtime_pm_put(dev_priv);
@@ -5131,6 +5137,12 @@ int i915_gem_init_hw(struct drm_i915_private *dev_priv)
 		goto out;
 	}
 
+	ret = intel_wopcm_init_hw(&dev_priv->wopcm);
+	if (ret) {
+		DRM_ERROR("Enabling WOPCM failed (%d)\n", ret);
+		goto out;
+	}
+
 	/* We can't enable contexts until all firmware is loaded */
 	ret = intel_uc_init_hw(dev_priv);
 	if (ret) {
@@ -5285,6 +5297,10 @@ int i915_gem_init(struct drm_i915_private *dev_priv)
 	}
 
 	ret = i915_gem_init_userptr(dev_priv);
+	if (ret)
+		return ret;
+
+	ret = intel_wopcm_init(&dev_priv->wopcm);
 	if (ret)
 		return ret;
 

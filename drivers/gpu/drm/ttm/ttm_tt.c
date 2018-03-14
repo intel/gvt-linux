@@ -48,21 +48,70 @@
 #endif
 
 /**
+ * Allocates a ttm structure for the given BO.
+ */
+int ttm_tt_create(struct ttm_buffer_object *bo, bool zero_alloc)
+{
+	struct ttm_bo_device *bdev = bo->bdev;
+	uint32_t page_flags = 0;
+
+	reservation_object_assert_held(bo->resv);
+
+	if (bdev->need_dma32)
+		page_flags |= TTM_PAGE_FLAG_DMA32;
+
+	if (bdev->no_retry)
+		page_flags |= TTM_PAGE_FLAG_NO_RETRY;
+
+	switch (bo->type) {
+	case ttm_bo_type_device:
+		if (zero_alloc)
+			page_flags |= TTM_PAGE_FLAG_ZERO_ALLOC;
+		break;
+	case ttm_bo_type_kernel:
+		break;
+	case ttm_bo_type_sg:
+		page_flags |= TTM_PAGE_FLAG_SG;
+		break;
+	default:
+		bo->ttm = NULL;
+		pr_err("Illegal buffer object type\n");
+		return -EINVAL;
+	}
+
+	bo->ttm = bdev->driver->ttm_tt_create(bdev, bo->num_pages << PAGE_SHIFT,
+					      page_flags);
+	if (unlikely(bo->ttm == NULL))
+		return -ENOMEM;
+
+	if (bo->type == ttm_bo_type_sg)
+		bo->ttm->sg = bo->sg;
+
+	return 0;
+}
+
+/**
  * Allocates storage for pointers to the pages that back the ttm.
  */
-static void ttm_tt_alloc_page_directory(struct ttm_tt *ttm)
+static int ttm_tt_alloc_page_directory(struct ttm_tt *ttm)
 {
 	ttm->pages = kvmalloc_array(ttm->num_pages, sizeof(void*),
 			GFP_KERNEL | __GFP_ZERO);
+	if (!ttm->pages)
+		return -ENOMEM;
+	return 0;
 }
 
-static void ttm_dma_tt_alloc_page_directory(struct ttm_dma_tt *ttm)
+static int ttm_dma_tt_alloc_page_directory(struct ttm_dma_tt *ttm)
 {
 	ttm->ttm.pages = kvmalloc_array(ttm->ttm.num_pages,
 					  sizeof(*ttm->ttm.pages) +
 					  sizeof(*ttm->dma_address),
 					  GFP_KERNEL | __GFP_ZERO);
+	if (!ttm->ttm.pages)
+		return -ENOMEM;
 	ttm->dma_address = (void *) (ttm->ttm.pages + ttm->ttm.num_pages);
+	return 0;
 }
 
 #ifdef CONFIG_X86
@@ -185,20 +234,16 @@ void ttm_tt_destroy(struct ttm_tt *ttm)
 }
 
 int ttm_tt_init(struct ttm_tt *ttm, struct ttm_bo_device *bdev,
-		unsigned long size, uint32_t page_flags,
-		struct page *dummy_read_page)
+		unsigned long size, uint32_t page_flags)
 {
 	ttm->bdev = bdev;
-	ttm->glob = bdev->glob;
 	ttm->num_pages = (size + PAGE_SIZE - 1) >> PAGE_SHIFT;
 	ttm->caching_state = tt_cached;
 	ttm->page_flags = page_flags;
-	ttm->dummy_read_page = dummy_read_page;
 	ttm->state = tt_unpopulated;
 	ttm->swap_storage = NULL;
 
-	ttm_tt_alloc_page_directory(ttm);
-	if (!ttm->pages) {
+	if (ttm_tt_alloc_page_directory(ttm)) {
 		ttm_tt_destroy(ttm);
 		pr_err("Failed allocating page table\n");
 		return -ENOMEM;
@@ -215,23 +260,19 @@ void ttm_tt_fini(struct ttm_tt *ttm)
 EXPORT_SYMBOL(ttm_tt_fini);
 
 int ttm_dma_tt_init(struct ttm_dma_tt *ttm_dma, struct ttm_bo_device *bdev,
-		unsigned long size, uint32_t page_flags,
-		struct page *dummy_read_page)
+		    unsigned long size, uint32_t page_flags)
 {
 	struct ttm_tt *ttm = &ttm_dma->ttm;
 
 	ttm->bdev = bdev;
-	ttm->glob = bdev->glob;
 	ttm->num_pages = (size + PAGE_SIZE - 1) >> PAGE_SHIFT;
 	ttm->caching_state = tt_cached;
 	ttm->page_flags = page_flags;
-	ttm->dummy_read_page = dummy_read_page;
 	ttm->state = tt_unpopulated;
 	ttm->swap_storage = NULL;
 
 	INIT_LIST_HEAD(&ttm_dma->pages_list);
-	ttm_dma_tt_alloc_page_directory(ttm_dma);
-	if (!ttm->pages) {
+	if (ttm_dma_tt_alloc_page_directory(ttm_dma)) {
 		ttm_tt_destroy(ttm);
 		pr_err("Failed allocating page table\n");
 		return -ENOMEM;
@@ -272,7 +313,7 @@ int ttm_tt_bind(struct ttm_tt *ttm, struct ttm_mem_reg *bo_mem,
 	if (ttm->state == tt_bound)
 		return 0;
 
-	ret = ttm->bdev->driver->ttm_tt_populate(ttm, ctx);
+	ret = ttm_tt_populate(ttm, ctx);
 	if (ret)
 		return ret;
 
@@ -301,7 +342,11 @@ int ttm_tt_swapin(struct ttm_tt *ttm)
 	swap_space = swap_storage->f_mapping;
 
 	for (i = 0; i < ttm->num_pages; ++i) {
-		from_page = shmem_read_mapping_page(swap_space, i);
+		gfp_t gfp_mask = mapping_gfp_mask(swap_space);
+
+		gfp_mask |= (ttm->page_flags & TTM_PAGE_FLAG_NO_RETRY ? __GFP_RETRY_MAYFAIL : 0);
+		from_page = shmem_read_mapping_page_gfp(swap_space, i, gfp_mask);
+
 		if (IS_ERR(from_page)) {
 			ret = PTR_ERR(from_page);
 			goto out_err;
@@ -344,16 +389,22 @@ int ttm_tt_swapout(struct ttm_tt *ttm, struct file *persistent_swap_storage)
 			pr_err("Failed allocating swap storage\n");
 			return PTR_ERR(swap_storage);
 		}
-	} else
+	} else {
 		swap_storage = persistent_swap_storage;
+	}
 
 	swap_space = swap_storage->f_mapping;
 
 	for (i = 0; i < ttm->num_pages; ++i) {
+		gfp_t gfp_mask = mapping_gfp_mask(swap_space);
+
+		gfp_mask |= (ttm->page_flags & TTM_PAGE_FLAG_NO_RETRY ? __GFP_RETRY_MAYFAIL : 0);
+
 		from_page = ttm->pages[i];
 		if (unlikely(from_page == NULL))
 			continue;
-		to_page = shmem_read_mapping_page(swap_space, i);
+
+		to_page = shmem_read_mapping_page_gfp(swap_space, i, gfp_mask);
 		if (IS_ERR(to_page)) {
 			ret = PTR_ERR(to_page);
 			goto out_err;
@@ -378,6 +429,33 @@ out_err:
 	return ret;
 }
 
+static void ttm_tt_add_mapping(struct ttm_tt *ttm)
+{
+	pgoff_t i;
+
+	if (ttm->page_flags & TTM_PAGE_FLAG_SG)
+		return;
+
+	for (i = 0; i < ttm->num_pages; ++i)
+		ttm->pages[i]->mapping = ttm->bdev->dev_mapping;
+}
+
+int ttm_tt_populate(struct ttm_tt *ttm, struct ttm_operation_ctx *ctx)
+{
+	int ret;
+
+	if (ttm->state != tt_unpopulated)
+		return 0;
+
+	if (ttm->bdev->driver->ttm_tt_populate)
+		ret = ttm->bdev->driver->ttm_tt_populate(ttm, ctx);
+	else
+		ret = ttm_pool_populate(ttm, ctx);
+	if (!ret)
+		ttm_tt_add_mapping(ttm);
+	return ret;
+}
+
 static void ttm_tt_clear_mapping(struct ttm_tt *ttm)
 {
 	pgoff_t i;
@@ -398,5 +476,8 @@ void ttm_tt_unpopulate(struct ttm_tt *ttm)
 		return;
 
 	ttm_tt_clear_mapping(ttm);
-	ttm->bdev->driver->ttm_tt_unpopulate(ttm);
+	if (ttm->bdev->driver->ttm_tt_unpopulate)
+		ttm->bdev->driver->ttm_tt_unpopulate(ttm);
+	else
+		ttm_pool_unpopulate(ttm);
 }

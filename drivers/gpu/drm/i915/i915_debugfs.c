@@ -1796,9 +1796,9 @@ static int i915_ring_freq_table(struct seq_file *m, void *unused)
 {
 	struct drm_i915_private *dev_priv = node_to_i915(m->private);
 	struct intel_rps *rps = &dev_priv->gt_pm.rps;
-	int ret = 0;
-	int gpu_freq, ia_freq;
 	unsigned int max_gpu_freq, min_gpu_freq;
+	int gpu_freq, ia_freq;
+	int ret;
 
 	if (!HAS_LLC(dev_priv))
 		return -ENODEV;
@@ -1809,13 +1809,12 @@ static int i915_ring_freq_table(struct seq_file *m, void *unused)
 	if (ret)
 		goto out;
 
+	min_gpu_freq = rps->min_freq;
+	max_gpu_freq = rps->max_freq;
 	if (IS_GEN9_BC(dev_priv) || IS_CANNONLAKE(dev_priv)) {
 		/* Convert GT frequency to 50 HZ units */
-		min_gpu_freq = rps->min_freq_softlimit / GEN9_FREQ_SCALER;
-		max_gpu_freq = rps->max_freq_softlimit / GEN9_FREQ_SCALER;
-	} else {
-		min_gpu_freq = rps->min_freq_softlimit;
-		max_gpu_freq = rps->max_freq_softlimit;
+		min_gpu_freq /= GEN9_FREQ_SCALER;
+		max_gpu_freq /= GEN9_FREQ_SCALER;
 	}
 
 	seq_puts(m, "GPU freq (MHz)\tEffective CPU freq (MHz)\tEffective Ring freq (MHz)\n");
@@ -1923,8 +1922,8 @@ static int i915_gem_framebuffer_info(struct seq_file *m, void *data)
 
 static void describe_ctx_ring(struct seq_file *m, struct intel_ring *ring)
 {
-	seq_printf(m, " (ringbuffer, space: %d, head: %u, tail: %u)",
-		   ring->space, ring->head, ring->tail);
+	seq_printf(m, " (ringbuffer, space: %d, head: %u, tail: %u, emit: %u)",
+		   ring->space, ring->head, ring->tail, ring->emit);
 }
 
 static int i915_context_status(struct seq_file *m, void *unused)
@@ -2500,13 +2499,10 @@ static int i915_guc_log_control_get(void *data, u64 *val)
 {
 	struct drm_i915_private *dev_priv = data;
 
-	if (!HAS_GUC(dev_priv))
+	if (!USES_GUC(dev_priv))
 		return -ENODEV;
 
-	if (!dev_priv->guc.log.vma)
-		return -EINVAL;
-
-	*val = i915_modparams.guc_log_level;
+	*val = intel_guc_log_control_get(&dev_priv->guc);
 
 	return 0;
 }
@@ -2515,10 +2511,10 @@ static int i915_guc_log_control_set(void *data, u64 val)
 {
 	struct drm_i915_private *dev_priv = data;
 
-	if (!HAS_GUC(dev_priv))
+	if (!USES_GUC(dev_priv))
 		return -ENODEV;
 
-	return intel_guc_log_control(&dev_priv->guc, val);
+	return intel_guc_log_control_set(&dev_priv->guc, val);
 }
 
 DEFINE_SIMPLE_ATTRIBUTE(i915_guc_log_control_fops,
@@ -2569,7 +2565,6 @@ static int i915_edp_psr_status(struct seq_file *m, void *data)
 
 	mutex_lock(&dev_priv->psr.lock);
 	seq_printf(m, "Enabled: %s\n", yesno((bool)dev_priv->psr.enabled));
-	seq_printf(m, "Active: %s\n", yesno(dev_priv->psr.active));
 	seq_printf(m, "Busy frontbuffer bits: 0x%03x\n",
 		   dev_priv->psr.busy_frontbuffer_bits);
 	seq_printf(m, "Re-enable work scheduled: %s\n",
@@ -4316,9 +4311,10 @@ DEFINE_SIMPLE_ATTRIBUTE(i915_cache_sharing_fops,
 static void cherryview_sseu_device_status(struct drm_i915_private *dev_priv,
 					  struct sseu_dev_info *sseu)
 {
-	int ss_max = 2;
+#define SS_MAX 2
+	const int ss_max = SS_MAX;
+	u32 sig1[SS_MAX], sig2[SS_MAX];
 	int ss;
-	u32 sig1[ss_max], sig2[ss_max];
 
 	sig1[0] = I915_READ(CHV_POWER_SS0_SIG1);
 	sig1[1] = I915_READ(CHV_POWER_SS1_SIG1);
@@ -4342,15 +4338,16 @@ static void cherryview_sseu_device_status(struct drm_i915_private *dev_priv,
 		sseu->eu_per_subslice = max_t(unsigned int,
 					      sseu->eu_per_subslice, eu_cnt);
 	}
+#undef SS_MAX
 }
 
 static void gen10_sseu_device_status(struct drm_i915_private *dev_priv,
 				     struct sseu_dev_info *sseu)
 {
+#define SS_MAX 6
 	const struct intel_device_info *info = INTEL_INFO(dev_priv);
+	u32 s_reg[SS_MAX], eu_reg[2 * SS_MAX], eu_mask[2];
 	int s, ss;
-	u32 s_reg[info->sseu.max_slices];
-	u32 eu_reg[2 * info->sseu.max_subslices], eu_mask[2];
 
 	for (s = 0; s < info->sseu.max_slices; s++) {
 		/*
@@ -4397,15 +4394,16 @@ static void gen10_sseu_device_status(struct drm_i915_private *dev_priv,
 						      eu_cnt);
 		}
 	}
+#undef SS_MAX
 }
 
 static void gen9_sseu_device_status(struct drm_i915_private *dev_priv,
 				    struct sseu_dev_info *sseu)
 {
+#define SS_MAX 3
 	const struct intel_device_info *info = INTEL_INFO(dev_priv);
+	u32 s_reg[SS_MAX], eu_reg[2 * SS_MAX], eu_mask[2];
 	int s, ss;
-	u32 s_reg[info->sseu.max_slices];
-	u32 eu_reg[2 * info->sseu.max_subslices], eu_mask[2];
 
 	for (s = 0; s < info->sseu.max_slices; s++) {
 		s_reg[s] = I915_READ(GEN9_SLICE_PGCTL_ACK(s));
@@ -4452,6 +4450,7 @@ static void gen9_sseu_device_status(struct drm_i915_private *dev_priv,
 						      eu_cnt);
 		}
 	}
+#undef SS_MAX
 }
 
 static void broadwell_sseu_device_status(struct drm_i915_private *dev_priv,

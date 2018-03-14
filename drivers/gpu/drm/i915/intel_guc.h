@@ -125,11 +125,18 @@ int intel_guc_init(struct intel_guc *guc);
 void intel_guc_fini(struct intel_guc *guc);
 int intel_guc_send_nop(struct intel_guc *guc, const u32 *action, u32 len);
 int intel_guc_send_mmio(struct intel_guc *guc, const u32 *action, u32 len);
+void intel_guc_to_host_event_handler(struct intel_guc *guc);
 int intel_guc_sample_forcewake(struct intel_guc *guc);
 int intel_guc_auth_huc(struct intel_guc *guc, u32 rsa_offset);
 int intel_guc_suspend(struct intel_guc *guc);
 int intel_guc_resume(struct intel_guc *guc);
 struct i915_vma *intel_guc_allocate_vma(struct intel_guc *guc, u32 size);
 u32 intel_guc_wopcm_size(struct drm_i915_private *dev_priv);
+
+static inline int intel_guc_sanitize(struct intel_guc *guc)
+{
+	intel_uc_fw_sanitize(&guc->fw);
+	return 0;
+}
 
 #endif

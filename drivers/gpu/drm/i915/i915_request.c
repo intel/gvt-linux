@@ -59,11 +59,7 @@ static bool i915_fence_signaled(struct dma_fence *fence)
 
 static bool i915_fence_enable_signaling(struct dma_fence *fence)
 {
-	if (i915_fence_signaled(fence))
-		return false;
-
-	intel_engine_enable_signaling(to_request(fence), true);
-	return !i915_fence_signaled(fence);
+	return intel_engine_enable_signaling(to_request(fence), true);
 }
 
 static signed long i915_fence_wait(struct dma_fence *fence,
@@ -358,7 +354,7 @@ static void advance_ring(struct i915_request *request)
 		 * is just about to be. Either works, if we miss the last two
 		 * noops - they are safe to be replayed on a reset.
 		 */
-		tail = READ_ONCE(request->ring->tail);
+		tail = READ_ONCE(request->tail);
 	} else {
 		tail = request->postfix;
 	}
@@ -1081,8 +1077,10 @@ void __i915_request_add(struct i915_request *request, bool flush_caches)
 	 * decide whether to preempt the entire chain so that it is ready to
 	 * run at the earliest possible convenience.
 	 */
+	rcu_read_lock();
 	if (engine->schedule)
 		engine->schedule(request, request->ctx->priority);
+	rcu_read_unlock();
 
 	local_bh_disable();
 	i915_sw_fence_commit(&request->submit);

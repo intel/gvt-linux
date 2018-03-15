@@ -1,28 +1,12 @@
-drm-upstream drm-fixes b0655d668fc4faf0c1985e828820f9b9ca13abe6
-	Merge branch 'drm-fixes-4.16' of git://people.freedesktop.org/~agd5f/linux into drm-fixes
-drm-misc drm-misc-fixes 9ca8614980d4593dcff649f8aefe604079cfafe1
-	drm/sun4i: Fix an error handling path in 'sun4i_drv_bind()'
-drm-intel drm-intel-fixes f1430f145eefcab2bddb9e836d427c4aac067faa
-	drm/i915: Kick the rps worker when changing the boost frequency
-drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
-	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
-drm-upstream drm-next 963976cfe9c54d4d9e725e61c90c47a4af6b5ea2
-	Merge tag 'drm-intel-next-2018-03-08' of git://anongit.freedesktop.org/drm/drm-intel into drm-next
-drm-misc drm-misc-next-fixes 761e05a702f5d537ffcca1ba933f9f0a968aa022
-	drm: Check for lessee in DROP_MASTER ioctl
-drm-intel drm-intel-next-fixes 6dd3104e78943685d5183efe883d83a5f2361bf1
-	drm/i915/bios: add DP max link rate to VBT child device struct
-drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
-	Linux 4.14-rc1
-drm-misc drm-misc-next 25a28906ebee1b1093a6f72fb6d44b9441f48ebc
-	drm/vmwgfx: replace drm_*_unreference with drm_*_put
-drm-intel drm-intel-next-queued da9cb11f76623b99f2d5e6aa68f43d6ef714a7de
-	drm/i915/cnl: Kill _MMIO_PORT6 macro
-drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
-	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
-sound-upstream for-linus db45dc9540ea4864bb9d22eed30d3e70ed5d56d4
-	Merge tag 'asoc-fix-v4.16-rc5' of https://git.kernel.org/pub/scm/linux/kernel/git/broonie/sound into for-linus
-sound-upstream for-next 09b9ddfaa18317f463085d602cf5f60a5fa88665
-	ALSA: pcm: Use krealloc() for resizing the rules array
-drm-intel topic/core-for-CI 52e7aa851c22613f9f57e01a6bdb1970e6cb3a41
-	Revert "ALSA: hda: Make use of core codec functions to sync power state"
+drm-tip/drm-tip 178cfb9373cc2bdfcb6ca73e03369d2c37cc4b58
+	drm-tip: 2018y-03m-14d-21h-38m-09s UTC integration manifest
+vfio-upstream/for-linus 563b5cbe334e9503ab2b234e279d500fc4f76018
+	iommu/arm-smmu-v3: Cope with duplicated Stream IDs
+vfio-upstream/next 46ed90f157f42d956ffed17c003f089a59b76e3e
+	vfio: mdev: make a couple of functions and structure vfio_mdev_driver static
+origin/gvt-fixes 850555d1d31e45fc3e9a2982f81717387e8d5e1b
+	drm/i915/gvt: fix user copy warning by whitelist workload rb_tail field
+origin/gvt-next-fixes 3f06b012bfbff495c211567f9a0cbcedd9a473ed
+	drm/i915/gvt: Support BAR0 8-byte reads/writes
+origin/gvt-next 2eaa5fb5df1c7072f7c4a5e2cd8d8bcf6329b203
+	drm/i915/gvt: Add below registers to default mmio handler

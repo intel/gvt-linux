@@ -584,7 +584,7 @@ static int workload_load(const struct gvt_migration_obj_t *obj, u32 size)
 		pa = intel_vgpu_mmio_offset_to_gpa(vgpu, off);
 		for (j = 0; j < 4; j++) {
 			intel_vgpu_emulate_mmio_write(vgpu, pa,
-					&workload.elsp_dwords.data[j], 4);
+					&workload.elsp_dwords.data[3 - j], 4);
 		}
 	}
 

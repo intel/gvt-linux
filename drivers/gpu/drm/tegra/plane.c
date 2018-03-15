@@ -82,7 +82,6 @@ int tegra_plane_state_add(struct tegra_plane *plane,
 {
 	struct drm_crtc_state *crtc_state;
 	struct tegra_dc_state *tegra;
-	struct drm_rect clip;
 	int err;
 
 	/* Propagate errors from allocation or locking failures. */
@@ -90,13 +89,8 @@ int tegra_plane_state_add(struct tegra_plane *plane,
 	if (IS_ERR(crtc_state))
 		return PTR_ERR(crtc_state);
 
-	clip.x1 = 0;
-	clip.y1 = 0;
-	clip.x2 = crtc_state->mode.hdisplay;
-	clip.y2 = crtc_state->mode.vdisplay;
-
 	/* Check plane state for visibility and calculate clipping bounds */
-	err = drm_atomic_helper_check_plane_state(state, crtc_state, &clip,
+	err = drm_atomic_helper_check_plane_state(state, crtc_state,
 						  0, INT_MAX, true, true);
 	if (err < 0)
 		return err;

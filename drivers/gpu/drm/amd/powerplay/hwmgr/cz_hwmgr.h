@@ -30,7 +30,6 @@
 #define CZ_NUM_NBPSTATES               4
 #define CZ_NUM_NBPMEMORYCLOCK          2
 #define MAX_DISPLAY_CLOCK_LEVEL        8
-#define CZ_AT_DFLT                     30
 #define CZ_MAX_HARDWARE_POWERLEVELS    8
 #define PPCZ_VOTINGRIGHTSCLIENTS_DFLT0   0x3FFFC102
 #define CZ_MIN_DEEP_SLEEP_SCLK         800
@@ -172,7 +171,6 @@ struct cz_power_state {
 #define DPMFlags_Debug				0x80000000
 
 #define SMU_EnabledFeatureScoreboard_AcpDpmOn   0x00000001 /* bit 0 */
-#define SMU_EnabledFeatureScoreboard_SclkDpmOn    0x00200000
 #define SMU_EnabledFeatureScoreboard_UvdDpmOn   0x00800000 /* bit 23 */
 #define SMU_EnabledFeatureScoreboard_VceDpmOn   0x01000000 /* bit 24 */
 
@@ -185,7 +183,6 @@ struct cc6_settings {
 };
 
 struct cz_hwmgr {
-	uint32_t activity_target[CZ_MAX_HARDWARE_POWERLEVELS];
 	uint32_t dpm_interval;
 
 	uint32_t voltage_drop_threshold;

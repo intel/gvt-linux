@@ -85,47 +85,46 @@ static const struct hvs_format {
 	u32 drm; /* DRM_FORMAT_* */
 	u32 hvs; /* HVS_FORMAT_* */
 	u32 pixel_order;
-	bool has_alpha;
 } hvs_formats[] = {
 	{
 		.drm = DRM_FORMAT_XRGB8888, .hvs = HVS_PIXEL_FORMAT_RGBA8888,
-		.pixel_order = HVS_PIXEL_ORDER_ABGR, .has_alpha = false,
+		.pixel_order = HVS_PIXEL_ORDER_ABGR,
 	},
 	{
 		.drm = DRM_FORMAT_ARGB8888, .hvs = HVS_PIXEL_FORMAT_RGBA8888,
-		.pixel_order = HVS_PIXEL_ORDER_ABGR, .has_alpha = true,
+		.pixel_order = HVS_PIXEL_ORDER_ABGR,
 	},
 	{
 		.drm = DRM_FORMAT_ABGR8888, .hvs = HVS_PIXEL_FORMAT_RGBA8888,
-		.pixel_order = HVS_PIXEL_ORDER_ARGB, .has_alpha = true,
+		.pixel_order = HVS_PIXEL_ORDER_ARGB,
 	},
 	{
 		.drm = DRM_FORMAT_XBGR8888, .hvs = HVS_PIXEL_FORMAT_RGBA8888,
-		.pixel_order = HVS_PIXEL_ORDER_ARGB, .has_alpha = false,
+		.pixel_order = HVS_PIXEL_ORDER_ARGB,
 	},
 	{
 		.drm = DRM_FORMAT_RGB565, .hvs = HVS_PIXEL_FORMAT_RGB565,
-		.pixel_order = HVS_PIXEL_ORDER_XRGB, .has_alpha = false,
+		.pixel_order = HVS_PIXEL_ORDER_XRGB,
 	},
 	{
 		.drm = DRM_FORMAT_BGR565, .hvs = HVS_PIXEL_FORMAT_RGB565,
-		.pixel_order = HVS_PIXEL_ORDER_XBGR, .has_alpha = false,
+		.pixel_order = HVS_PIXEL_ORDER_XBGR,
 	},
 	{
 		.drm = DRM_FORMAT_ARGB1555, .hvs = HVS_PIXEL_FORMAT_RGBA5551,
-		.pixel_order = HVS_PIXEL_ORDER_ABGR, .has_alpha = true,
+		.pixel_order = HVS_PIXEL_ORDER_ABGR,
 	},
 	{
 		.drm = DRM_FORMAT_XRGB1555, .hvs = HVS_PIXEL_FORMAT_RGBA5551,
-		.pixel_order = HVS_PIXEL_ORDER_ABGR, .has_alpha = false,
+		.pixel_order = HVS_PIXEL_ORDER_ABGR,
 	},
 	{
 		.drm = DRM_FORMAT_RGB888, .hvs = HVS_PIXEL_FORMAT_RGB888,
-		.pixel_order = HVS_PIXEL_ORDER_XRGB, .has_alpha = false,
+		.pixel_order = HVS_PIXEL_ORDER_XRGB,
 	},
 	{
 		.drm = DRM_FORMAT_BGR888, .hvs = HVS_PIXEL_FORMAT_RGB888,
-		.pixel_order = HVS_PIXEL_ORDER_XBGR, .has_alpha = false,
+		.pixel_order = HVS_PIXEL_ORDER_XBGR,
 	},
 	{
 		.drm = DRM_FORMAT_YUV422,
@@ -622,7 +621,7 @@ static int vc4_plane_mode_set(struct drm_plane *plane,
 	/* Position Word 2: Source Image Size, Alpha Mode */
 	vc4_state->pos2_offset = vc4_state->dlist_count;
 	vc4_dlist_write(vc4_state,
-			VC4_SET_FIELD(format->has_alpha ?
+			VC4_SET_FIELD(fb->format->has_alpha ?
 				      SCALER_POS2_ALPHA_MODE_PIPELINE :
 				      SCALER_POS2_ALPHA_MODE_FIXED,
 				      SCALER_POS2_ALPHA_MODE) |
@@ -907,6 +906,32 @@ out:
 					      ctx);
 }
 
+static bool vc4_format_mod_supported(struct drm_plane *plane,
+				     uint32_t format,
+				     uint64_t modifier)
+{
+	/* Support T_TILING for RGB formats only. */
+	switch (format) {
+	case DRM_FORMAT_XRGB8888:
+	case DRM_FORMAT_ARGB8888:
+	case DRM_FORMAT_ABGR8888:
+	case DRM_FORMAT_XBGR8888:
+	case DRM_FORMAT_RGB565:
+	case DRM_FORMAT_BGR565:
+	case DRM_FORMAT_ARGB1555:
+	case DRM_FORMAT_XRGB1555:
+		return true;
+	case DRM_FORMAT_YUV422:
+	case DRM_FORMAT_YVU422:
+	case DRM_FORMAT_YUV420:
+	case DRM_FORMAT_YVU420:
+	case DRM_FORMAT_NV12:
+	case DRM_FORMAT_NV16:
+	default:
+		return (modifier == DRM_FORMAT_MOD_LINEAR);
+	}
+}
+
 static const struct drm_plane_funcs vc4_plane_funcs = {
 	.update_plane = vc4_update_plane,
 	.disable_plane = drm_atomic_helper_disable_plane,
@@ -915,6 +940,7 @@ static const struct drm_plane_funcs vc4_plane_funcs = {
 	.reset = vc4_plane_reset,
 	.atomic_duplicate_state = vc4_plane_duplicate_state,
 	.atomic_destroy_state = vc4_plane_destroy_state,
+	.format_mod_supported = vc4_format_mod_supported,
 };
 
 struct drm_plane *vc4_plane_init(struct drm_device *dev,
@@ -926,6 +952,11 @@ struct drm_plane *vc4_plane_init(struct drm_device *dev,
 	u32 num_formats = 0;
 	int ret = 0;
 	unsigned i;
+	static const uint64_t modifiers[] = {
+		DRM_FORMAT_MOD_BROADCOM_VC4_T_TILED,
+		DRM_FORMAT_MOD_LINEAR,
+		DRM_FORMAT_MOD_INVALID
+	};
 
 	vc4_plane = devm_kzalloc(dev->dev, sizeof(*vc4_plane),
 				 GFP_KERNEL);
@@ -946,7 +977,7 @@ struct drm_plane *vc4_plane_init(struct drm_device *dev,
 	ret = drm_universal_plane_init(dev, plane, 0,
 				       &vc4_plane_funcs,
 				       formats, num_formats,
-				       NULL, type, NULL);
+				       modifiers, type, NULL);
 
 	drm_plane_helper_add(plane, &vc4_plane_helper_funcs);
 

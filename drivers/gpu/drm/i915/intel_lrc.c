@@ -1666,6 +1666,10 @@ static void reset_irq(struct intel_engine_cs *engine)
 	struct drm_i915_private *dev_priv = engine->i915;
 	int i;
 
+	/* TODO: correctly reset irqs for gen11 */
+	if (WARN_ON_ONCE(INTEL_GEN(engine->i915) >= 11))
+		return;
+
 	GEM_BUG_ON(engine->id >= ARRAY_SIZE(gtiir));
 
 	/*
@@ -1677,11 +1681,11 @@ static void reset_irq(struct intel_engine_cs *engine)
 	 */
 	for (i = 0; i < 2; i++) {
 		I915_WRITE(GEN8_GT_IIR(gtiir[engine->id]),
-			   GT_CONTEXT_SWITCH_INTERRUPT << engine->irq_shift);
+			   engine->irq_keep_mask);
 		POSTING_READ(GEN8_GT_IIR(gtiir[engine->id]));
 	}
 	GEM_BUG_ON(I915_READ(GEN8_GT_IIR(gtiir[engine->id])) &
-		   (GT_CONTEXT_SWITCH_INTERRUPT << engine->irq_shift));
+		   engine->irq_keep_mask);
 
 	clear_bit(ENGINE_IRQ_EXECLIST, &engine->irq_posted);
 }
@@ -2114,7 +2118,20 @@ logical_ring_default_vfuncs(struct intel_engine_cs *engine)
 static inline void
 logical_ring_default_irqs(struct intel_engine_cs *engine)
 {
-	unsigned shift = engine->irq_shift;
+	unsigned int shift = 0;
+
+	if (INTEL_GEN(engine->i915) < 11) {
+		const u8 irq_shifts[] = {
+			[RCS]  = GEN8_RCS_IRQ_SHIFT,
+			[BCS]  = GEN8_BCS_IRQ_SHIFT,
+			[VCS]  = GEN8_VCS1_IRQ_SHIFT,
+			[VCS2] = GEN8_VCS2_IRQ_SHIFT,
+			[VECS] = GEN8_VECS_IRQ_SHIFT,
+		};
+
+		shift = irq_shifts[engine->id];
+	}
+
 	engine->irq_enable_mask = GT_RENDER_USER_INTERRUPT << shift;
 	engine->irq_keep_mask = GT_CONTEXT_SWITCH_INTERRUPT << shift;
 }

@@ -83,7 +83,7 @@ static int __get_default_guc_log_level(struct drm_i915_private *dev_priv)
 }
 
 /**
- * intel_uc_sanitize_options - sanitize uC related modparam options
+ * sanitize_options_early - sanitize uC related modparam options
  * @dev_priv: device private
  *
  * In case of "enable_guc" option this function will attempt to modify
@@ -99,7 +99,7 @@ static int __get_default_guc_log_level(struct drm_i915_private *dev_priv)
  * unless GuC is enabled on given platform and the driver is compiled with
  * debug config when this modparam will default to "enable(1..4)".
  */
-void intel_uc_sanitize_options(struct drm_i915_private *dev_priv)
+static void sanitize_options_early(struct drm_i915_private *dev_priv)
 {
 	struct intel_uc_fw *guc_fw = &dev_priv->guc.fw;
 	struct intel_uc_fw *huc_fw = &dev_priv->huc.fw;
@@ -163,6 +163,8 @@ void intel_uc_init_early(struct drm_i915_private *dev_priv)
 {
 	intel_guc_init_early(&dev_priv->guc);
 	intel_huc_init_early(&dev_priv->huc);
+
+	sanitize_options_early(dev_priv);
 }
 
 void intel_uc_init_fw(struct drm_i915_private *dev_priv)
@@ -219,6 +221,28 @@ static void guc_free_load_err_log(struct intel_guc *guc)
 		i915_gem_object_put(guc->load_err_log);
 }
 
+int intel_uc_register(struct drm_i915_private *i915)
+{
+	int ret = 0;
+
+	if (!USES_GUC(i915))
+		return 0;
+
+	if (i915_modparams.guc_log_level)
+		ret = intel_guc_log_register(&i915->guc.log);
+
+	return ret;
+}
+
+void intel_uc_unregister(struct drm_i915_private *i915)
+{
+	if (!USES_GUC(i915))
+		return;
+
+	if (i915_modparams.guc_log_level)
+		intel_guc_log_unregister(&i915->guc.log);
+}
+
 static int guc_enable_communication(struct intel_guc *guc)
 {
 	struct drm_i915_private *dev_priv = guc_to_i915(guc);
@@ -248,24 +272,13 @@ int intel_uc_init_misc(struct drm_i915_private *dev_priv)
 	if (!USES_GUC(dev_priv))
 		return 0;
 
-	ret = intel_guc_init_wq(guc);
-	if (ret) {
-		DRM_ERROR("Couldn't allocate workqueues for GuC\n");
-		goto err;
-	}
+	intel_guc_init_ggtt_pin_bias(guc);
 
-	ret = intel_guc_log_relay_create(guc);
-	if (ret) {
-		DRM_ERROR("Couldn't allocate relay for GuC log\n");
-		goto err_relay;
-	}
+	ret = intel_guc_init_wq(guc);
+	if (ret)
+		return ret;
 
 	return 0;
-
-err_relay:
-	intel_guc_fini_wq(guc);
-err:
-	return ret;
 }
 
 void intel_uc_fini_misc(struct drm_i915_private *dev_priv)
@@ -276,8 +289,6 @@ void intel_uc_fini_misc(struct drm_i915_private *dev_priv)
 		return;
 
 	intel_guc_fini_wq(guc);
-
-	intel_guc_log_relay_destroy(guc);
 }
 
 int intel_uc_init(struct drm_i915_private *dev_priv)
@@ -325,6 +336,24 @@ void intel_uc_fini(struct drm_i915_private *dev_priv)
 	intel_guc_fini(guc);
 }
 
+void intel_uc_sanitize(struct drm_i915_private *i915)
+{
+	struct intel_guc *guc = &i915->guc;
+	struct intel_huc *huc = &i915->huc;
+
+	if (!USES_GUC(i915))
+		return;
+
+	GEM_BUG_ON(!HAS_GUC(i915));
+
+	guc_disable_communication(guc);
+
+	intel_huc_sanitize(huc);
+	intel_guc_sanitize(guc);
+
+	__intel_uc_reset_hw(i915);
+}
+
 int intel_uc_init_hw(struct drm_i915_private *dev_priv)
 {
 	struct intel_guc *guc = &dev_priv->guc;
@@ -336,13 +365,7 @@ int intel_uc_init_hw(struct drm_i915_private *dev_priv)
 
 	GEM_BUG_ON(!HAS_GUC(dev_priv));
 
-	guc_disable_communication(guc);
 	gen9_reset_guc_interrupts(dev_priv);
-
-	/* init WOPCM */
-	I915_WRITE(GUC_WOPCM_SIZE, intel_guc_wopcm_size(dev_priv));
-	I915_WRITE(DMA_GUC_WOPCM_OFFSET,
-		   GUC_WOPCM_OFFSET_VALUE | HUC_LOADING_AGENT_GUC);
 
 	/* WaEnableuKernelHeaderValidFix:skl */
 	/* WaEnableGuCBootHashCheckNotSet:skl,bxt,kbl */

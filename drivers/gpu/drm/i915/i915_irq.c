@@ -1399,19 +1399,19 @@ static void snb_gt_irq_handler(struct drm_i915_private *dev_priv,
 }
 
 static void
-gen8_cs_irq_handler(struct intel_engine_cs *engine, u32 iir, int test_shift)
+gen8_cs_irq_handler(struct intel_engine_cs *engine, u32 iir)
 {
 	struct intel_engine_execlists * const execlists = &engine->execlists;
 	bool tasklet = false;
 
-	if (iir & (GT_CONTEXT_SWITCH_INTERRUPT << test_shift)) {
+	if (iir & GT_CONTEXT_SWITCH_INTERRUPT) {
 		if (READ_ONCE(engine->execlists.active)) {
 			__set_bit(ENGINE_IRQ_EXECLIST, &engine->irq_posted);
 			tasklet = true;
 		}
 	}
 
-	if (iir & (GT_RENDER_USER_INTERRUPT << test_shift)) {
+	if (iir & GT_RENDER_USER_INTERRUPT) {
 		notify_ring(engine);
 		tasklet |= USES_GUC_SUBMISSION(engine->i915);
 	}
@@ -1466,21 +1466,21 @@ static void gen8_gt_irq_handler(struct drm_i915_private *i915,
 {
 	if (master_ctl & (GEN8_GT_RCS_IRQ | GEN8_GT_BCS_IRQ)) {
 		gen8_cs_irq_handler(i915->engine[RCS],
-				    gt_iir[0], GEN8_RCS_IRQ_SHIFT);
+				    gt_iir[0] >> GEN8_RCS_IRQ_SHIFT);
 		gen8_cs_irq_handler(i915->engine[BCS],
-				    gt_iir[0], GEN8_BCS_IRQ_SHIFT);
+				    gt_iir[0] >> GEN8_BCS_IRQ_SHIFT);
 	}
 
 	if (master_ctl & (GEN8_GT_VCS1_IRQ | GEN8_GT_VCS2_IRQ)) {
 		gen8_cs_irq_handler(i915->engine[VCS],
-				    gt_iir[1], GEN8_VCS1_IRQ_SHIFT);
+				    gt_iir[1] >> GEN8_VCS1_IRQ_SHIFT);
 		gen8_cs_irq_handler(i915->engine[VCS2],
-				    gt_iir[1], GEN8_VCS2_IRQ_SHIFT);
+				    gt_iir[1] >> GEN8_VCS2_IRQ_SHIFT);
 	}
 
 	if (master_ctl & GEN8_GT_VECS_IRQ) {
 		gen8_cs_irq_handler(i915->engine[VECS],
-				    gt_iir[3], GEN8_VECS_IRQ_SHIFT);
+				    gt_iir[3] >> GEN8_VECS_IRQ_SHIFT);
 	}
 
 	if (master_ctl & (GEN8_GT_PM_IRQ | GEN8_GT_GUC_IRQ)) {
@@ -1627,7 +1627,7 @@ static void display_pipe_crc_irq_handler(struct drm_i915_private *dev_priv,
 	int head, tail;
 
 	spin_lock(&pipe_crc->lock);
-	if (pipe_crc->source) {
+	if (pipe_crc->source && !crtc->base.crc.opened) {
 		if (!pipe_crc->entries) {
 			spin_unlock(&pipe_crc->lock);
 			DRM_DEBUG_KMS("spurious interrupt\n");
@@ -1667,7 +1667,7 @@ static void display_pipe_crc_irq_handler(struct drm_i915_private *dev_priv,
 		 * On GEN8+ sometimes the second CRC is bonkers as well, so
 		 * don't trust that one either.
 		 */
-		if (pipe_crc->skipped == 0 ||
+		if (pipe_crc->skipped <= 0 ||
 		    (INTEL_GEN(dev_priv) >= 8 && pipe_crc->skipped == 1)) {
 			pipe_crc->skipped++;
 			spin_unlock(&pipe_crc->lock);
@@ -1766,37 +1766,8 @@ static void gen6_rps_irq_handler(struct drm_i915_private *dev_priv, u32 pm_iir)
 
 static void gen9_guc_irq_handler(struct drm_i915_private *dev_priv, u32 gt_iir)
 {
-	if (gt_iir & GEN9_GUC_TO_HOST_INT_EVENT) {
-		/* Sample the log buffer flush related bits & clear them out now
-		 * itself from the message identity register to minimize the
-		 * probability of losing a flush interrupt, when there are back
-		 * to back flush interrupts.
-		 * There can be a new flush interrupt, for different log buffer
-		 * type (like for ISR), whilst Host is handling one (for DPC).
-		 * Since same bit is used in message register for ISR & DPC, it
-		 * could happen that GuC sets the bit for 2nd interrupt but Host
-		 * clears out the bit on handling the 1st interrupt.
-		 */
-		u32 msg, flush;
-
-		msg = I915_READ(SOFT_SCRATCH(15));
-		flush = msg & (INTEL_GUC_RECV_MSG_CRASH_DUMP_POSTED |
-			       INTEL_GUC_RECV_MSG_FLUSH_LOG_BUFFER);
-		if (flush) {
-			/* Clear the message bits that are handled */
-			I915_WRITE(SOFT_SCRATCH(15), msg & ~flush);
-
-			/* Handle flush interrupt in bottom half */
-			queue_work(dev_priv->guc.log.runtime.flush_wq,
-				   &dev_priv->guc.log.runtime.flush_work);
-
-			dev_priv->guc.log.flush_interrupt_count++;
-		} else {
-			/* Not clearing of unhandled event bits won't result in
-			 * re-triggering of the interrupt.
-			 */
-		}
-	}
+	if (gt_iir & GEN9_GUC_TO_HOST_INT_EVENT)
+		intel_guc_to_host_event_handler(&dev_priv->guc);
 }
 
 static void i9xx_pipestat_irq_reset(struct drm_i915_private *dev_priv)
@@ -2762,12 +2733,6 @@ static void __fini_wedge(struct wedge_me *w)
 	     (W)->i915;							\
 	     __fini_wedge((W)))
 
-static __always_inline void
-gen11_cs_irq_handler(struct intel_engine_cs * const engine, const u32 iir)
-{
-	gen8_cs_irq_handler(engine, iir, 0);
-}
-
 static void
 gen11_gt_engine_irq_handler(struct drm_i915_private * const i915,
 			    const unsigned int bank,
@@ -2781,27 +2746,27 @@ gen11_gt_engine_irq_handler(struct drm_i915_private * const i915,
 		switch (engine_n) {
 
 		case GEN11_RCS0:
-			return gen11_cs_irq_handler(engine[RCS], iir);
+			return gen8_cs_irq_handler(engine[RCS], iir);
 
 		case GEN11_BCS:
-			return gen11_cs_irq_handler(engine[BCS], iir);
+			return gen8_cs_irq_handler(engine[BCS], iir);
 		}
 	case 1:
 		switch (engine_n) {
 
 		case GEN11_VCS(0):
-			return gen11_cs_irq_handler(engine[_VCS(0)], iir);
+			return gen8_cs_irq_handler(engine[_VCS(0)], iir);
 		case GEN11_VCS(1):
-			return gen11_cs_irq_handler(engine[_VCS(1)], iir);
+			return gen8_cs_irq_handler(engine[_VCS(1)], iir);
 		case GEN11_VCS(2):
-			return gen11_cs_irq_handler(engine[_VCS(2)], iir);
+			return gen8_cs_irq_handler(engine[_VCS(2)], iir);
 		case GEN11_VCS(3):
-			return gen11_cs_irq_handler(engine[_VCS(3)], iir);
+			return gen8_cs_irq_handler(engine[_VCS(3)], iir);
 
 		case GEN11_VECS(0):
-			return gen11_cs_irq_handler(engine[_VECS(0)], iir);
+			return gen8_cs_irq_handler(engine[_VECS(0)], iir);
 		case GEN11_VECS(1):
-			return gen11_cs_irq_handler(engine[_VECS(1)], iir);
+			return gen8_cs_irq_handler(engine[_VECS(1)], iir);
 		}
 	}
 }

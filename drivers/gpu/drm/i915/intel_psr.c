@@ -957,6 +957,7 @@ void intel_psr_single_frame_update(struct drm_i915_private *dev_priv,
  * intel_psr_invalidate - Invalidade PSR
  * @dev_priv: i915 device
  * @frontbuffer_bits: frontbuffer plane tracking bits
+ * @origin: which operation caused the invalidate
  *
  * Since the hardware frontbuffer tracking has gaps we need to integrate
  * with the software frontbuffer tracking. This function gets called every
@@ -966,12 +967,15 @@ void intel_psr_single_frame_update(struct drm_i915_private *dev_priv,
  * Dirty frontbuffers relevant to PSR are tracked in busy_frontbuffer_bits."
  */
 void intel_psr_invalidate(struct drm_i915_private *dev_priv,
-			  unsigned frontbuffer_bits)
+			  unsigned frontbuffer_bits, enum fb_op_origin origin)
 {
 	struct drm_crtc *crtc;
 	enum pipe pipe;
 
 	if (!CAN_PSR(dev_priv))
+		return;
+
+	if (dev_priv->psr.has_hw_tracking && origin == ORIGIN_FLIP)
 		return;
 
 	mutex_lock(&dev_priv->psr.lock);
@@ -1014,6 +1018,9 @@ void intel_psr_flush(struct drm_i915_private *dev_priv,
 	if (!CAN_PSR(dev_priv))
 		return;
 
+	if (dev_priv->psr.has_hw_tracking && origin == ORIGIN_FLIP)
+		return;
+
 	mutex_lock(&dev_priv->psr.lock);
 	if (!dev_priv->psr.enabled) {
 		mutex_unlock(&dev_priv->psr.lock);
@@ -1027,8 +1034,23 @@ void intel_psr_flush(struct drm_i915_private *dev_priv,
 	dev_priv->psr.busy_frontbuffer_bits &= ~frontbuffer_bits;
 
 	/* By definition flush = invalidate + flush */
-	if (frontbuffer_bits)
-		intel_psr_exit(dev_priv);
+	if (frontbuffer_bits) {
+		if (dev_priv->psr.psr2_support ||
+		    IS_VALLEYVIEW(dev_priv) || IS_CHERRYVIEW(dev_priv)) {
+			intel_psr_exit(dev_priv);
+		} else {
+			/*
+			 * Display WA #0884: all
+			 * This documented WA for bxt can be safely applied
+			 * broadly so we can force HW tracking to exit PSR
+			 * instead of disabling and re-enabling.
+			 * Workaround tells us to write 0 to CUR_SURFLIVE_A,
+			 * but it makes more sense write to the current active
+			 * pipe.
+			 */
+			I915_WRITE(CURSURFLIVE(pipe), 0);
+		}
+	}
 
 	if (!dev_priv->psr.active && !dev_priv->psr.busy_frontbuffer_bits)
 		if (!work_busy(&dev_priv->psr.work.work))
@@ -1090,6 +1112,7 @@ void intel_psr_init(struct drm_i915_private *dev_priv)
 		dev_priv->psr.activate = vlv_psr_activate;
 		dev_priv->psr.setup_vsc = vlv_psr_setup_vsc;
 	} else {
+		dev_priv->psr.has_hw_tracking = true;
 		dev_priv->psr.enable_source = hsw_psr_enable_source;
 		dev_priv->psr.disable_source = hsw_psr_disable;
 		dev_priv->psr.enable_sink = hsw_psr_enable_sink;

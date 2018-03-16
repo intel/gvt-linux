@@ -919,6 +919,7 @@ static int i915_driver_init_early(struct drm_i915_private *dev_priv,
 	mutex_init(&dev_priv->wm.wm_mutex);
 	mutex_init(&dev_priv->pps_mutex);
 
+	intel_wopcm_init_early(&dev_priv->wopcm);
 	intel_uc_init_early(dev_priv);
 	i915_memcpy_init_early(dev_priv);
 
@@ -1073,8 +1074,6 @@ static void intel_sanitize_options(struct drm_i915_private *dev_priv)
 		intel_sanitize_enable_ppgtt(dev_priv,
 					    i915_modparams.enable_ppgtt);
 	DRM_DEBUG_DRIVER("ppgtt mode: %i\n", i915_modparams.enable_ppgtt);
-
-	intel_uc_sanitize_options(dev_priv);
 
 	intel_gvt_sanitize_options(dev_priv);
 }
@@ -1238,8 +1237,10 @@ static void i915_driver_register(struct drm_i915_private *dev_priv)
 	/* Reveal our presence to userspace */
 	if (drm_dev_register(dev, 0) == 0) {
 		i915_debugfs_register(dev_priv);
-		i915_guc_log_register(dev_priv);
 		i915_setup_sysfs(dev_priv);
+
+		/* Depends on debugfs having been initialized */
+		intel_uc_register(dev_priv);
 
 		/* Depends on sysfs having been initialized */
 		i915_perf_register(dev_priv);
@@ -1298,7 +1299,7 @@ static void i915_driver_unregister(struct drm_i915_private *dev_priv)
 	i915_pmu_unregister(dev_priv);
 
 	i915_teardown_sysfs(dev_priv);
-	i915_guc_log_unregister(dev_priv);
+	intel_uc_unregister(dev_priv);
 	drm_dev_unregister(&dev_priv->drm);
 
 	i915_gem_shrinker_unregister(dev_priv);
@@ -1994,7 +1995,6 @@ taint:
 error:
 	i915_gem_set_wedged(i915);
 	i915_retire_requests(i915);
-	intel_gpu_reset(i915, ALL_ENGINES);
 	goto finish;
 }
 

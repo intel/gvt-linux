@@ -173,8 +173,14 @@ static int populate_shadow_context(struct intel_vgpu_workload *workload)
 #define COPY_REG(name) \
 	intel_gvt_hypervisor_read_gpa(vgpu, workload->ring_context_gpa \
 		+ RING_CTX_OFF(name.val), &shadow_ring_context->name.val, 4)
+#define COPY_REG_MASKED(name) {\
+		intel_gvt_hypervisor_read_gpa(vgpu, workload->ring_context_gpa \
+					      + RING_CTX_OFF(name.val),\
+					      &shadow_ring_context->name.val, 4);\
+		shadow_ring_context->name.val |= 0xffff << 16;\
+	}
 
-	COPY_REG(ctx_ctrl);
+	COPY_REG_MASKED(ctx_ctrl);
 	COPY_REG(ctx_timestamp);
 
 	if (ring_id == RCS) {
@@ -183,6 +189,7 @@ static int populate_shadow_context(struct intel_vgpu_workload *workload)
 		COPY_REG(rcs_indirect_ctx_offset);
 	}
 #undef COPY_REG
+#undef COPY_REG_MASKED
 
 	intel_gvt_hypervisor_read_gpa(vgpu,
 			workload->ring_context_gpa +

@@ -1,0 +1,28 @@
+drm-upstream drm-fixes fca3c46abc436a0e2b4642c8ba4727eda741fd7a
+	Merge tag 'exynos-drm-fixes-for-v4.16-rc6' of git://git.kernel.org/pub/scm/linux/kernel/git/daeinki/drm-exynos into drm-fixes
+drm-misc drm-misc-fixes b24791fe00f8b089d5b10cb7bcc4e1ae88b4831b
+	drm: Reject getfb for multi-plane framebuffers
+drm-intel drm-intel-fixes 3a088dd1b72dc0fc2e7ee1fca76e26290c5261a0
+	drm/i915: Specify which engines to reset following semaphore/event lockups
+drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
+	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
+drm-upstream drm-next 78230c46ec0a91dd4256c9e54934b3c7095a7ee3
+	Merge tag 'omapdrm-4.17' of git://git.kernel.org/pub/scm/linux/kernel/git/tomba/linux into drm-next
+drm-misc drm-misc-next-fixes 761e05a702f5d537ffcca1ba933f9f0a968aa022
+	drm: Check for lessee in DROP_MASTER ioctl
+drm-intel drm-intel-next-fixes 8c5cb3c1c5701df8b8bcefb151547148378841e5
+	Merge tag 'gvt-next-fixes-2018-03-20' of https://github.com/intel/gvt-linux into drm-intel-next-fixes
+drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
+	Linux 4.14-rc1
+drm-misc drm-misc-next 1c7095d2836baafd84e596dd34ba1a1293a4faa9
+	Merge airlied/drm-next into drm-misc-next
+drm-intel drm-intel-next-queued d544e918ff132488770ab2cb6b03e2af69497d1c
+	drm/i915/psr: Remove open-coded PSR AUX transactions for SKL+
+drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
+	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
+sound-upstream for-linus a8d7bde23e7130686b76624b099f3e22dd38aef7
+	ALSA: hda - Force polling mode on CFL for fixing codec communication
+sound-upstream for-next 9a2fe9b801f585baccf8352d82839dcd54b300cf
+	ALSA: usb: initial USB Audio Device Class 3.0 support
+drm-intel topic/core-for-CI 52e7aa851c22613f9f57e01a6bdb1970e6cb3a41
+	Revert "ALSA: hda: Make use of core codec functions to sync power state"

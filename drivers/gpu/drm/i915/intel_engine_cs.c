@@ -81,13 +81,17 @@ static const struct engine_class_info intel_engine_classes[] = {
 	},
 };
 
+#define MAX_MMIO_BASES 3
 struct engine_info {
 	unsigned int hw_id;
 	unsigned int uabi_id;
 	u8 class;
 	u8 instance;
-	u32 mmio_base;
-	unsigned irq_shift;
+	/* mmio bases table *must* be sorted in reverse gen order */
+	struct engine_mmio_base {
+		u32 gen : 8;
+		u32 base : 24;
+	} mmio_bases[MAX_MMIO_BASES];
 };
 
 static const struct engine_info intel_engines[] = {
@@ -96,64 +100,76 @@ static const struct engine_info intel_engines[] = {
 		.uabi_id = I915_EXEC_RENDER,
 		.class = RENDER_CLASS,
 		.instance = 0,
-		.mmio_base = RENDER_RING_BASE,
-		.irq_shift = GEN8_RCS_IRQ_SHIFT,
+		.mmio_bases = {
+			{ .gen = 1, .base = RENDER_RING_BASE }
+		},
 	},
 	[BCS] = {
 		.hw_id = BCS_HW,
 		.uabi_id = I915_EXEC_BLT,
 		.class = COPY_ENGINE_CLASS,
 		.instance = 0,
-		.mmio_base = BLT_RING_BASE,
-		.irq_shift = GEN8_BCS_IRQ_SHIFT,
+		.mmio_bases = {
+			{ .gen = 6, .base = BLT_RING_BASE }
+		},
 	},
 	[VCS] = {
 		.hw_id = VCS_HW,
 		.uabi_id = I915_EXEC_BSD,
 		.class = VIDEO_DECODE_CLASS,
 		.instance = 0,
-		.mmio_base = GEN6_BSD_RING_BASE,
-		.irq_shift = GEN8_VCS1_IRQ_SHIFT,
+		.mmio_bases = {
+			{ .gen = 11, .base = GEN11_BSD_RING_BASE },
+			{ .gen = 6, .base = GEN6_BSD_RING_BASE },
+			{ .gen = 4, .base = BSD_RING_BASE }
+		},
 	},
 	[VCS2] = {
 		.hw_id = VCS2_HW,
 		.uabi_id = I915_EXEC_BSD,
 		.class = VIDEO_DECODE_CLASS,
 		.instance = 1,
-		.mmio_base = GEN8_BSD2_RING_BASE,
-		.irq_shift = GEN8_VCS2_IRQ_SHIFT,
+		.mmio_bases = {
+			{ .gen = 11, .base = GEN11_BSD2_RING_BASE },
+			{ .gen = 8, .base = GEN8_BSD2_RING_BASE }
+		},
 	},
 	[VCS3] = {
 		.hw_id = VCS3_HW,
 		.uabi_id = I915_EXEC_BSD,
 		.class = VIDEO_DECODE_CLASS,
 		.instance = 2,
-		.mmio_base = GEN11_BSD3_RING_BASE,
-		.irq_shift = 0, /* not used */
+		.mmio_bases = {
+			{ .gen = 11, .base = GEN11_BSD3_RING_BASE }
+		},
 	},
 	[VCS4] = {
 		.hw_id = VCS4_HW,
 		.uabi_id = I915_EXEC_BSD,
 		.class = VIDEO_DECODE_CLASS,
 		.instance = 3,
-		.mmio_base = GEN11_BSD4_RING_BASE,
-		.irq_shift = 0, /* not used */
+		.mmio_bases = {
+			{ .gen = 11, .base = GEN11_BSD4_RING_BASE }
+		},
 	},
 	[VECS] = {
 		.hw_id = VECS_HW,
 		.uabi_id = I915_EXEC_VEBOX,
 		.class = VIDEO_ENHANCEMENT_CLASS,
 		.instance = 0,
-		.mmio_base = VEBOX_RING_BASE,
-		.irq_shift = GEN8_VECS_IRQ_SHIFT,
+		.mmio_bases = {
+			{ .gen = 11, .base = GEN11_VEBOX_RING_BASE },
+			{ .gen = 7, .base = VEBOX_RING_BASE }
+		},
 	},
 	[VECS2] = {
 		.hw_id = VECS2_HW,
 		.uabi_id = I915_EXEC_VEBOX,
 		.class = VIDEO_ENHANCEMENT_CLASS,
 		.instance = 1,
-		.mmio_base = GEN11_VEBOX2_RING_BASE,
-		.irq_shift = 0, /* not used */
+		.mmio_bases = {
+			{ .gen = 11, .base = GEN11_VEBOX2_RING_BASE }
+		},
 	},
 };
 
@@ -223,16 +239,36 @@ __intel_engine_context_size(struct drm_i915_private *dev_priv, u8 class)
 	}
 }
 
+static u32 __engine_mmio_base(struct drm_i915_private *i915,
+			      const struct engine_mmio_base *bases)
+{
+	int i;
+
+	for (i = 0; i < MAX_MMIO_BASES; i++)
+		if (INTEL_GEN(i915) >= bases[i].gen)
+			break;
+
+	GEM_BUG_ON(i == MAX_MMIO_BASES);
+	GEM_BUG_ON(!bases[i].base);
+
+	return bases[i].base;
+}
+
+static void __sprint_engine_name(char *name, const struct engine_info *info)
+{
+	WARN_ON(snprintf(name, INTEL_ENGINE_CS_MAX_NAME, "%s%u",
+			 intel_engine_classes[info->class].name,
+			 info->instance) >= INTEL_ENGINE_CS_MAX_NAME);
+}
+
 static int
 intel_engine_setup(struct drm_i915_private *dev_priv,
 		   enum intel_engine_id id)
 {
 	const struct engine_info *info = &intel_engines[id];
-	const struct engine_class_info *class_info;
 	struct intel_engine_cs *engine;
 
 	GEM_BUG_ON(info->class >= ARRAY_SIZE(intel_engine_classes));
-	class_info = &intel_engine_classes[info->class];
 
 	BUILD_BUG_ON(MAX_ENGINE_CLASS >= BIT(GEN11_ENGINE_CLASS_WIDTH));
 	BUILD_BUG_ON(MAX_ENGINE_INSTANCE >= BIT(GEN11_ENGINE_INSTANCE_WIDTH));
@@ -253,35 +289,14 @@ intel_engine_setup(struct drm_i915_private *dev_priv,
 
 	engine->id = id;
 	engine->i915 = dev_priv;
-	WARN_ON(snprintf(engine->name, sizeof(engine->name), "%s%u",
-			 class_info->name, info->instance) >=
-		sizeof(engine->name));
+	__sprint_engine_name(engine->name, info);
 	engine->hw_id = engine->guc_id = info->hw_id;
-	if (INTEL_GEN(dev_priv) >= 11) {
-		switch (engine->id) {
-		case VCS:
-			engine->mmio_base = GEN11_BSD_RING_BASE;
-			break;
-		case VCS2:
-			engine->mmio_base = GEN11_BSD2_RING_BASE;
-			break;
-		case VECS:
-			engine->mmio_base = GEN11_VEBOX_RING_BASE;
-			break;
-		default:
-			/* take the original value for all other engines  */
-			engine->mmio_base = info->mmio_base;
-			break;
-		}
-	} else {
-		engine->mmio_base = info->mmio_base;
-	}
-	engine->irq_shift = info->irq_shift;
+	engine->mmio_base = __engine_mmio_base(dev_priv, info->mmio_bases);
 	engine->class = info->class;
 	engine->instance = info->instance;
 
 	engine->uabi_id = info->uabi_id;
-	engine->uabi_class = class_info->uabi_class;
+	engine->uabi_class = intel_engine_classes[info->class].uabi_class;
 
 	engine->context_size = __intel_engine_context_size(dev_priv,
 							   engine->class);
@@ -441,6 +456,11 @@ static void intel_engine_init_timeline(struct intel_engine_cs *engine)
 	engine->timeline = &engine->i915->gt.global_timeline.engine[engine->id];
 }
 
+static void intel_engine_init_batch_pool(struct intel_engine_cs *engine)
+{
+	i915_gem_batch_pool_init(&engine->batch_pool, engine);
+}
+
 static bool csb_force_mmio(struct drm_i915_private *i915)
 {
 	/*
@@ -485,11 +505,9 @@ static void intel_engine_init_execlist(struct intel_engine_cs *engine)
 void intel_engine_setup_common(struct intel_engine_cs *engine)
 {
 	intel_engine_init_execlist(engine);
-
 	intel_engine_init_timeline(engine);
 	intel_engine_init_hangcheck(engine);
-	i915_gem_batch_pool_init(engine, &engine->batch_pool);
-
+	intel_engine_init_batch_pool(engine);
 	intel_engine_init_cmd_parser(engine);
 }
 
@@ -782,9 +800,23 @@ static inline uint32_t
 read_subslice_reg(struct drm_i915_private *dev_priv, int slice,
 		  int subslice, i915_reg_t reg)
 {
+	uint32_t mcr_slice_subslice_mask;
+	uint32_t mcr_slice_subslice_select;
 	uint32_t mcr;
 	uint32_t ret;
 	enum forcewake_domains fw_domains;
+
+	if (INTEL_GEN(dev_priv) >= 11) {
+		mcr_slice_subslice_mask = GEN11_MCR_SLICE_MASK |
+					  GEN11_MCR_SUBSLICE_MASK;
+		mcr_slice_subslice_select = GEN11_MCR_SLICE(slice) |
+					    GEN11_MCR_SUBSLICE(subslice);
+	} else {
+		mcr_slice_subslice_mask = GEN8_MCR_SLICE_MASK |
+					  GEN8_MCR_SUBSLICE_MASK;
+		mcr_slice_subslice_select = GEN8_MCR_SLICE(slice) |
+					    GEN8_MCR_SUBSLICE(subslice);
+	}
 
 	fw_domains = intel_uncore_forcewake_for_reg(dev_priv, reg,
 						    FW_REG_READ);
@@ -800,14 +832,14 @@ read_subslice_reg(struct drm_i915_private *dev_priv, int slice,
 	 * The HW expects the slice and sublice selectors to be reset to 0
 	 * after reading out the registers.
 	 */
-	WARN_ON_ONCE(mcr & (GEN8_MCR_SLICE_MASK | GEN8_MCR_SUBSLICE_MASK));
-	mcr &= ~(GEN8_MCR_SLICE_MASK | GEN8_MCR_SUBSLICE_MASK);
-	mcr |= GEN8_MCR_SLICE(slice) | GEN8_MCR_SUBSLICE(subslice);
+	WARN_ON_ONCE(mcr & mcr_slice_subslice_mask);
+	mcr &= ~mcr_slice_subslice_mask;
+	mcr |= mcr_slice_subslice_select;
 	I915_WRITE_FW(GEN8_MCR_SELECTOR, mcr);
 
 	ret = I915_READ_FW(reg);
 
-	mcr &= ~(GEN8_MCR_SLICE_MASK | GEN8_MCR_SUBSLICE_MASK);
+	mcr &= ~mcr_slice_subslice_mask;
 	I915_WRITE_FW(GEN8_MCR_SELECTOR, mcr);
 
 	intel_uncore_forcewake_put__locked(dev_priv, fw_domains);
@@ -1713,13 +1745,15 @@ static void print_request(struct drm_printer *m,
 			  struct i915_request *rq,
 			  const char *prefix)
 {
+	const char *name = rq->fence.ops->get_timeline_name(&rq->fence);
+
 	drm_printf(m, "%s%x%s [%llx:%x] prio=%d @ %dms: %s\n", prefix,
 		   rq->global_seqno,
 		   i915_request_completed(rq) ? "!" : "",
 		   rq->fence.context, rq->fence.seqno,
 		   rq->priotree.priority,
 		   jiffies_to_msecs(jiffies - rq->emitted_jiffies),
-		   rq->timeline->common->name);
+		   name);
 }
 
 static void hexdump(struct drm_printer *m, const void *buf, size_t len)
@@ -1929,12 +1963,16 @@ void intel_engine_dump(struct intel_engine_cs *engine,
 			   rq->head, rq->postfix, rq->tail,
 			   rq->batch ? upper_32_bits(rq->batch->node.start) : ~0u,
 			   rq->batch ? lower_32_bits(rq->batch->node.start) : ~0u);
-		drm_printf(m, "\t\tring->start: 0x%08x\n",
+		drm_printf(m, "\t\tring->start:  0x%08x\n",
 			   i915_ggtt_offset(rq->ring->vma));
-		drm_printf(m, "\t\tring->head:  0x%08x\n",
+		drm_printf(m, "\t\tring->head:   0x%08x\n",
 			   rq->ring->head);
-		drm_printf(m, "\t\tring->tail:  0x%08x\n",
+		drm_printf(m, "\t\tring->tail:   0x%08x\n",
 			   rq->ring->tail);
+		drm_printf(m, "\t\tring->emit:   0x%08x\n",
+			   rq->ring->emit);
+		drm_printf(m, "\t\tring->space:  0x%08x\n",
+			   rq->ring->space);
 	}
 
 	rcu_read_unlock();
@@ -2109,4 +2147,5 @@ void intel_disable_engine_stats(struct intel_engine_cs *engine)
 
 #if IS_ENABLED(CONFIG_DRM_I915_SELFTEST)
 #include "selftests/mock_engine.c"
+#include "selftests/intel_engine_cs.c"
 #endif

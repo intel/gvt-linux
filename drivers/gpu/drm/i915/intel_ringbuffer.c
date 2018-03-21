@@ -1593,6 +1593,7 @@ static noinline int wait_for_space(struct intel_ring *ring, unsigned int bytes)
 	if (intel_ring_update_space(ring) >= bytes)
 		return 0;
 
+	GEM_BUG_ON(list_empty(&ring->request_list));
 	list_for_each_entry(target, &ring->request_list, ring_link) {
 		/* Would completion of this request free enough space? */
 		if (bytes <= __intel_ring_space(target->postfix,
@@ -1692,17 +1693,18 @@ u32 *intel_ring_begin(struct i915_request *rq, unsigned int num_dwords)
 		need_wrap &= ~1;
 		GEM_BUG_ON(need_wrap > ring->space);
 		GEM_BUG_ON(ring->emit + need_wrap > ring->size);
+		GEM_BUG_ON(!IS_ALIGNED(need_wrap, sizeof(u64)));
 
 		/* Fill the tail with MI_NOOP */
-		memset(ring->vaddr + ring->emit, 0, need_wrap);
-		ring->emit = 0;
+		memset64(ring->vaddr + ring->emit, 0, need_wrap / sizeof(u64));
 		ring->space -= need_wrap;
+		ring->emit = 0;
 	}
 
 	GEM_BUG_ON(ring->emit > ring->size - bytes);
 	GEM_BUG_ON(ring->space < bytes);
 	cs = ring->vaddr + ring->emit;
-	GEM_DEBUG_EXEC(memset(cs, POISON_INUSE, bytes));
+	GEM_DEBUG_EXEC(memset32(cs, POISON_INUSE, bytes / sizeof(*cs)));
 	ring->emit += bytes;
 	ring->space -= bytes;
 
@@ -1943,8 +1945,6 @@ static void intel_ring_init_semaphores(struct drm_i915_private *dev_priv,
 static void intel_ring_init_irq(struct drm_i915_private *dev_priv,
 				struct intel_engine_cs *engine)
 {
-	engine->irq_enable_mask = GT_RENDER_USER_INTERRUPT << engine->irq_shift;
-
 	if (INTEL_GEN(dev_priv) >= 6) {
 		engine->irq_enable = gen6_irq_enable;
 		engine->irq_disable = gen6_irq_disable;
@@ -2029,6 +2029,8 @@ int intel_init_render_ring_buffer(struct intel_engine_cs *engine)
 	if (HAS_L3_DPF(dev_priv))
 		engine->irq_keep_mask = GT_RENDER_L3_PARITY_ERROR_INTERRUPT;
 
+	engine->irq_enable_mask = GT_RENDER_USER_INTERRUPT;
+
 	if (INTEL_GEN(dev_priv) >= 6) {
 		engine->init_context = intel_rcs_ctx_init;
 		engine->emit_flush = gen7_render_ring_flush;
@@ -2079,7 +2081,6 @@ int intel_init_bsd_ring_buffer(struct intel_engine_cs *engine)
 		engine->emit_flush = gen6_bsd_ring_flush;
 		engine->irq_enable_mask = GT_BSD_USER_INTERRUPT;
 	} else {
-		engine->mmio_base = BSD_RING_BASE;
 		engine->emit_flush = bsd_ring_flush;
 		if (IS_GEN5(dev_priv))
 			engine->irq_enable_mask = ILK_BSD_USER_INTERRUPT;

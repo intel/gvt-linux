@@ -831,7 +831,8 @@ static void execlists_submission_tasklet(unsigned long data)
 	struct drm_i915_private *dev_priv = engine->i915;
 	bool fw = false;
 
-	/* We can skip acquiring intel_runtime_pm_get() here as it was taken
+	/*
+	 * We can skip acquiring intel_runtime_pm_get() here as it was taken
 	 * on our behalf by the request (see i915_gem_mark_busy()) and it will
 	 * not be relinquished until the device is idle (see
 	 * i915_gem_idle_work_handler()). As a precaution, we make sure
@@ -840,7 +841,8 @@ static void execlists_submission_tasklet(unsigned long data)
 	 */
 	GEM_BUG_ON(!dev_priv->gt.awake);
 
-	/* Prefer doing test_and_clear_bit() as a two stage operation to avoid
+	/*
+	 * Prefer doing test_and_clear_bit() as a two stage operation to avoid
 	 * imposing the cost of a locked atomic transaction when submitting a
 	 * new request (outside of the context-switch interrupt).
 	 */
@@ -856,17 +858,10 @@ static void execlists_submission_tasklet(unsigned long data)
 			execlists->csb_head = -1; /* force mmio read of CSB ptrs */
 		}
 
-		/* The write will be ordered by the uncached read (itself
-		 * a memory barrier), so we do not need another in the form
-		 * of a locked instruction. The race between the interrupt
-		 * handler and the split test/clear is harmless as we order
-		 * our clear before the CSB read. If the interrupt arrived
-		 * first between the test and the clear, we read the updated
-		 * CSB and clear the bit. If the interrupt arrives as we read
-		 * the CSB or later (i.e. after we had cleared the bit) the bit
-		 * is set and we do a new loop.
-		 */
-		__clear_bit(ENGINE_IRQ_EXECLIST, &engine->irq_posted);
+		/* Clear before reading to catch new interrupts */
+		clear_bit(ENGINE_IRQ_EXECLIST, &engine->irq_posted);
+		smp_mb__after_atomic();
+
 		if (unlikely(execlists->csb_head == -1)) { /* following a reset */
 			if (!fw) {
 				intel_uncore_forcewake_get(dev_priv,
@@ -1666,6 +1661,10 @@ static void reset_irq(struct intel_engine_cs *engine)
 	struct drm_i915_private *dev_priv = engine->i915;
 	int i;
 
+	/* TODO: correctly reset irqs for gen11 */
+	if (WARN_ON_ONCE(INTEL_GEN(engine->i915) >= 11))
+		return;
+
 	GEM_BUG_ON(engine->id >= ARRAY_SIZE(gtiir));
 
 	/*
@@ -1677,11 +1676,11 @@ static void reset_irq(struct intel_engine_cs *engine)
 	 */
 	for (i = 0; i < 2; i++) {
 		I915_WRITE(GEN8_GT_IIR(gtiir[engine->id]),
-			   GT_CONTEXT_SWITCH_INTERRUPT << engine->irq_shift);
+			   engine->irq_keep_mask);
 		POSTING_READ(GEN8_GT_IIR(gtiir[engine->id]));
 	}
 	GEM_BUG_ON(I915_READ(GEN8_GT_IIR(gtiir[engine->id])) &
-		   (GT_CONTEXT_SWITCH_INTERRUPT << engine->irq_shift));
+		   engine->irq_keep_mask);
 
 	clear_bit(ENGINE_IRQ_EXECLIST, &engine->irq_posted);
 }
@@ -2114,7 +2113,20 @@ logical_ring_default_vfuncs(struct intel_engine_cs *engine)
 static inline void
 logical_ring_default_irqs(struct intel_engine_cs *engine)
 {
-	unsigned shift = engine->irq_shift;
+	unsigned int shift = 0;
+
+	if (INTEL_GEN(engine->i915) < 11) {
+		const u8 irq_shifts[] = {
+			[RCS]  = GEN8_RCS_IRQ_SHIFT,
+			[BCS]  = GEN8_BCS_IRQ_SHIFT,
+			[VCS]  = GEN8_VCS1_IRQ_SHIFT,
+			[VCS2] = GEN8_VCS2_IRQ_SHIFT,
+			[VECS] = GEN8_VECS_IRQ_SHIFT,
+		};
+
+		shift = irq_shifts[engine->id];
+	}
+
 	engine->irq_enable_mask = GT_RENDER_USER_INTERRUPT << shift;
 	engine->irq_keep_mask = GT_CONTEXT_SWITCH_INTERRUPT << shift;
 }

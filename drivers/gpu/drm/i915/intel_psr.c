@@ -228,31 +228,12 @@ static void vlv_psr_enable_sink(struct intel_dp *intel_dp)
 			   DP_PSR_ENABLE | DP_PSR_MAIN_LINK_ACTIVE);
 }
 
-static i915_reg_t psr_aux_ctl_reg(struct drm_i915_private *dev_priv,
-				       enum port port)
-{
-	if (INTEL_GEN(dev_priv) >= 9)
-		return DP_AUX_CH_CTL(port);
-	else
-		return EDP_PSR_AUX_CTL;
-}
-
-static i915_reg_t psr_aux_data_reg(struct drm_i915_private *dev_priv,
-					enum port port, int index)
-{
-	if (INTEL_GEN(dev_priv) >= 9)
-		return DP_AUX_CH_DATA(port, index);
-	else
-		return EDP_PSR_AUX_DATA(index);
-}
-
-static void hsw_psr_enable_sink(struct intel_dp *intel_dp)
+static void hsw_psr_setup_aux(struct intel_dp *intel_dp)
 {
 	struct intel_digital_port *dig_port = dp_to_dig_port(intel_dp);
-	struct drm_device *dev = dig_port->base.base.dev;
-	struct drm_i915_private *dev_priv = to_i915(dev);
-	uint32_t aux_clock_divider;
-	i915_reg_t aux_ctl_reg;
+	struct drm_i915_private *dev_priv = to_i915(dig_port->base.base.dev);
+	u32 aux_clock_divider, aux_ctl;
+	int i;
 	static const uint8_t aux_msg[] = {
 		[0] = DP_AUX_NATIVE_WRITE << 4,
 		[1] = DP_SET_POWER >> 8,
@@ -260,13 +241,33 @@ static void hsw_psr_enable_sink(struct intel_dp *intel_dp)
 		[3] = 1 - 1,
 		[4] = DP_SET_POWER_D0,
 	};
-	enum port port = dig_port->base.port;
-	u32 aux_ctl;
-	int i;
+	u32 psr_aux_mask = EDP_PSR_AUX_CTL_TIME_OUT_MASK |
+			   EDP_PSR_AUX_CTL_MESSAGE_SIZE_MASK |
+			   EDP_PSR_AUX_CTL_PRECHARGE_2US_MASK |
+			   EDP_PSR_AUX_CTL_BIT_CLOCK_2X_MASK;
 
 	BUILD_BUG_ON(sizeof(aux_msg) > 20);
+	for (i = 0; i < sizeof(aux_msg); i += 4)
+		I915_WRITE(EDP_PSR_AUX_DATA(i >> 2),
+			   intel_dp_pack_aux(&aux_msg[i], sizeof(aux_msg) - i));
 
 	aux_clock_divider = intel_dp->get_aux_clock_divider(intel_dp, 0);
+
+	/* Start with bits set for DDI_AUX_CTL register */
+	aux_ctl = intel_dp->get_aux_send_ctl(intel_dp, 0, sizeof(aux_msg),
+					     aux_clock_divider);
+
+	/* Select only valid bits for SRD_AUX_CTL */
+	aux_ctl &= psr_aux_mask;
+	I915_WRITE(EDP_PSR_AUX_CTL, aux_ctl);
+}
+
+static void hsw_psr_enable_sink(struct intel_dp *intel_dp)
+{
+	struct intel_digital_port *dig_port = dp_to_dig_port(intel_dp);
+	struct drm_device *dev = dig_port->base.base.dev;
+	struct drm_i915_private *dev_priv = to_i915(dev);
+
 
 	/* Enable AUX frame sync at sink */
 	if (dev_priv->psr.aux_frame_sync)
@@ -285,16 +286,7 @@ static void hsw_psr_enable_sink(struct intel_dp *intel_dp)
 		drm_dp_dpcd_writeb(&intel_dp->aux, DP_PSR_EN_CFG,
 				   DP_PSR_ENABLE);
 
-	aux_ctl_reg = psr_aux_ctl_reg(dev_priv, port);
-
-	/* Setup AUX registers */
-	for (i = 0; i < sizeof(aux_msg); i += 4)
-		I915_WRITE(psr_aux_data_reg(dev_priv, port, i >> 2),
-			   intel_dp_pack_aux(&aux_msg[i], sizeof(aux_msg) - i));
-
-	aux_ctl = intel_dp->get_aux_send_ctl(intel_dp, 0, sizeof(aux_msg),
-					     aux_clock_divider);
-	I915_WRITE(aux_ctl_reg, aux_ctl);
+	drm_dp_dpcd_writeb(&intel_dp->aux, DP_SET_POWER, DP_SET_POWER_D0);
 }
 
 static void vlv_psr_enable_source(struct intel_dp *intel_dp,
@@ -589,6 +581,12 @@ static void hsw_psr_enable_source(struct intel_dp *intel_dp,
 	u32 chicken;
 
 	psr_aux_io_power_get(intel_dp);
+
+	/* Only HSW and BDW have PSR AUX registers that need to be setup. SKL+
+	 * use hardcoded values PSR AUX transactions
+	 */
+	if (IS_HASWELL(dev_priv) || IS_BROADWELL(dev_priv))
+		hsw_psr_setup_aux(intel_dp);
 
 	if (dev_priv->psr.psr2_support) {
 		chicken = PSR2_VSC_ENABLE_PROG_HEADER;
@@ -957,6 +955,7 @@ void intel_psr_single_frame_update(struct drm_i915_private *dev_priv,
  * intel_psr_invalidate - Invalidade PSR
  * @dev_priv: i915 device
  * @frontbuffer_bits: frontbuffer plane tracking bits
+ * @origin: which operation caused the invalidate
  *
  * Since the hardware frontbuffer tracking has gaps we need to integrate
  * with the software frontbuffer tracking. This function gets called every
@@ -966,12 +965,15 @@ void intel_psr_single_frame_update(struct drm_i915_private *dev_priv,
  * Dirty frontbuffers relevant to PSR are tracked in busy_frontbuffer_bits."
  */
 void intel_psr_invalidate(struct drm_i915_private *dev_priv,
-			  unsigned frontbuffer_bits)
+			  unsigned frontbuffer_bits, enum fb_op_origin origin)
 {
 	struct drm_crtc *crtc;
 	enum pipe pipe;
 
 	if (!CAN_PSR(dev_priv))
+		return;
+
+	if (dev_priv->psr.has_hw_tracking && origin == ORIGIN_FLIP)
 		return;
 
 	mutex_lock(&dev_priv->psr.lock);
@@ -1014,6 +1016,9 @@ void intel_psr_flush(struct drm_i915_private *dev_priv,
 	if (!CAN_PSR(dev_priv))
 		return;
 
+	if (dev_priv->psr.has_hw_tracking && origin == ORIGIN_FLIP)
+		return;
+
 	mutex_lock(&dev_priv->psr.lock);
 	if (!dev_priv->psr.enabled) {
 		mutex_unlock(&dev_priv->psr.lock);
@@ -1027,8 +1032,23 @@ void intel_psr_flush(struct drm_i915_private *dev_priv,
 	dev_priv->psr.busy_frontbuffer_bits &= ~frontbuffer_bits;
 
 	/* By definition flush = invalidate + flush */
-	if (frontbuffer_bits)
-		intel_psr_exit(dev_priv);
+	if (frontbuffer_bits) {
+		if (dev_priv->psr.psr2_support ||
+		    IS_VALLEYVIEW(dev_priv) || IS_CHERRYVIEW(dev_priv)) {
+			intel_psr_exit(dev_priv);
+		} else {
+			/*
+			 * Display WA #0884: all
+			 * This documented WA for bxt can be safely applied
+			 * broadly so we can force HW tracking to exit PSR
+			 * instead of disabling and re-enabling.
+			 * Workaround tells us to write 0 to CUR_SURFLIVE_A,
+			 * but it makes more sense write to the current active
+			 * pipe.
+			 */
+			I915_WRITE(CURSURFLIVE(pipe), 0);
+		}
+	}
 
 	if (!dev_priv->psr.active && !dev_priv->psr.busy_frontbuffer_bits)
 		if (!work_busy(&dev_priv->psr.work.work))
@@ -1090,6 +1110,7 @@ void intel_psr_init(struct drm_i915_private *dev_priv)
 		dev_priv->psr.activate = vlv_psr_activate;
 		dev_priv->psr.setup_vsc = vlv_psr_setup_vsc;
 	} else {
+		dev_priv->psr.has_hw_tracking = true;
 		dev_priv->psr.enable_source = hsw_psr_enable_source;
 		dev_priv->psr.disable_source = hsw_psr_disable;
 		dev_priv->psr.enable_sink = hsw_psr_enable_sink;

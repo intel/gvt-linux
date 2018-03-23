@@ -2858,6 +2858,9 @@ valid_fb:
 		return;
 	}
 
+	obj = intel_fb_obj(fb);
+	intel_fb_obj_flush(obj, ORIGIN_DIRTYFB);
+
 	plane_state->src_x = 0;
 	plane_state->src_y = 0;
 	plane_state->src_w = fb->width << 16;
@@ -2871,7 +2874,6 @@ valid_fb:
 	intel_state->base.src = drm_plane_state_src(plane_state);
 	intel_state->base.dst = drm_plane_state_dest(plane_state);
 
-	obj = intel_fb_obj(fb);
 	if (i915_gem_object_is_tiled(obj))
 		dev_priv->preserve_bios_swizzle = true;
 
@@ -4762,10 +4764,13 @@ skl_update_scaler(struct intel_crtc_state *crtc_state, bool force_detach,
 
 	/* range checks */
 	if (src_w < SKL_MIN_SRC_W || src_h < SKL_MIN_SRC_H ||
-		dst_w < SKL_MIN_DST_W || dst_h < SKL_MIN_DST_H ||
-
-		src_w > SKL_MAX_SRC_W || src_h > SKL_MAX_SRC_H ||
-		dst_w > SKL_MAX_DST_W || dst_h > SKL_MAX_DST_H) {
+	    dst_w < SKL_MIN_DST_W || dst_h < SKL_MIN_DST_H ||
+	    (IS_GEN11(dev_priv) &&
+	     (src_w > ICL_MAX_SRC_W || src_h > ICL_MAX_SRC_H ||
+	      dst_w > ICL_MAX_DST_W || dst_h > ICL_MAX_DST_H)) ||
+	    (!IS_GEN11(dev_priv) &&
+	     (src_w > SKL_MAX_SRC_W || src_h > SKL_MAX_SRC_H ||
+	      dst_w > SKL_MAX_DST_W || dst_h > SKL_MAX_DST_H)))	{
 		DRM_DEBUG_KMS("scaler_user index %u.%u: src %ux%u dst %ux%u "
 			"size is out of scaler range\n",
 			intel_crtc->pipe, scaler_user, src_w, src_h, dst_w, dst_h);
@@ -12140,6 +12145,9 @@ static void intel_update_crtc(struct drm_crtc *crtc,
 	if (modeset) {
 		update_scanline_offset(intel_crtc);
 		dev_priv->display.crtc_enable(pipe_config, state);
+
+		/* vblanks work again, re-enable pipe CRC. */
+		intel_crtc_enable_pipe_crc(intel_crtc);
 	} else {
 		intel_pre_plane_update(to_intel_crtc_state(old_crtc_state),
 				       pipe_config);
@@ -12320,6 +12328,13 @@ static void intel_atomic_commit_tail(struct drm_atomic_state *state)
 
 		if (old_crtc_state->active) {
 			intel_crtc_disable_planes(crtc, old_crtc_state->plane_mask);
+
+			/*
+			 * We need to disable pipe CRC before disabling the pipe,
+			 * or we race against vblank off.
+			 */
+			intel_crtc_disable_pipe_crc(intel_crtc);
+
 			dev_priv->display.crtc_disable(to_intel_crtc_state(old_crtc_state), state);
 			intel_crtc->active = false;
 			intel_fbc_disable(intel_crtc);
@@ -12778,6 +12793,8 @@ intel_prepare_plane_fb(struct drm_plane *plane,
 	if (ret)
 		return ret;
 
+	intel_fb_obj_flush(obj, ORIGIN_DIRTYFB);
+
 	if (!new_state->fence) { /* implicit fencing */
 		struct dma_fence *fence;
 
@@ -13165,8 +13182,9 @@ intel_legacy_cursor_update(struct drm_plane *plane,
 	if (ret)
 		goto out_unlock;
 
-	old_fb = old_plane_state->fb;
+	intel_fb_obj_flush(intel_fb_obj(fb), ORIGIN_FLIP);
 
+	old_fb = old_plane_state->fb;
 	i915_gem_track_fb(intel_fb_obj(old_fb), intel_fb_obj(fb),
 			  intel_plane->frontbuffer_bit);
 
@@ -13553,10 +13571,17 @@ static int intel_crtc_init(struct drm_i915_private *dev_priv, enum pipe pipe)
 	/* initialize shared scalers */
 	intel_crtc_init_scalers(intel_crtc, crtc_state);
 
-	BUG_ON(pipe >= ARRAY_SIZE(dev_priv->plane_to_crtc_mapping) ||
-	       dev_priv->plane_to_crtc_mapping[primary->i9xx_plane] != NULL);
-	dev_priv->plane_to_crtc_mapping[primary->i9xx_plane] = intel_crtc;
-	dev_priv->pipe_to_crtc_mapping[intel_crtc->pipe] = intel_crtc;
+	BUG_ON(pipe >= ARRAY_SIZE(dev_priv->pipe_to_crtc_mapping) ||
+	       dev_priv->pipe_to_crtc_mapping[pipe] != NULL);
+	dev_priv->pipe_to_crtc_mapping[pipe] = intel_crtc;
+
+	if (INTEL_GEN(dev_priv) < 9) {
+		enum i9xx_plane_id i9xx_plane = primary->i9xx_plane;
+
+		BUG_ON(i9xx_plane >= ARRAY_SIZE(dev_priv->plane_to_crtc_mapping) ||
+		       dev_priv->plane_to_crtc_mapping[i9xx_plane] != NULL);
+		dev_priv->plane_to_crtc_mapping[i9xx_plane] = intel_crtc;
+	}
 
 	drm_crtc_helper_add(&intel_crtc->base, &intel_helper_funcs);
 

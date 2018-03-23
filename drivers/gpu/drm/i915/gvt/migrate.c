@@ -77,6 +77,8 @@ static int ppgtt_load(const struct gvt_migration_obj_t *obj, u32 size);
 static int ppgtt_save(const struct gvt_migration_obj_t *obj);
 static int opregion_load(const struct gvt_migration_obj_t *obj, u32 size);
 static int opregion_save(const struct gvt_migration_obj_t *obj);
+static int execlist_load(const struct gvt_migration_obj_t *obj, u32 size);
+static int execlist_save(const struct gvt_migration_obj_t *obj);
 
 /***********************************************
  * Internal Static Functions
@@ -137,6 +139,13 @@ struct gvt_migration_operation_t opregion_ops = {
 	.post_load = NULL,
 };
 
+struct gvt_migration_operation_t execlist_ops = {
+	.pre_copy = NULL,
+	.pre_save = execlist_save,
+	.pre_load = execlist_load,
+	.post_load = NULL,
+};
+
 /* gvt_device_objs[] are list of gvt_migration_obj_t objs
  * Each obj has its operation method to save to qemu image
  * and restore from qemu image during the migration.
@@ -191,6 +200,9 @@ static struct gvt_migration_obj_t gvt_device_objs[] = {
 	MIGRATION_UNIT(struct intel_vgpu,
 			GVT_MIGRATION_OPREGION,
 			INTEL_GVT_OPREGION_SIZE, opregion_ops),
+	MIGRATION_UNIT(struct intel_vgpu,
+			GVT_MIGRATION_EXECLIST,
+			0, execlist_ops),
 	MIGRATION_END,
 };
 
@@ -522,6 +534,59 @@ static int vreg_load(const struct gvt_migration_obj_t *obj, u32 size)
 	return n_transfer;
 }
 
+static int execlist_save(const struct gvt_migration_obj_t *obj)
+{
+	struct intel_vgpu *vgpu = (struct intel_vgpu *) obj->vgpu;
+	struct drm_i915_private *dev_priv = vgpu->gvt->dev_priv;
+	struct gvt_region_t region;
+	struct intel_engine_cs *engine;
+	u32 sz = sizeof(struct intel_vgpu_elsp_dwords);
+	unsigned int i;
+
+	void *des = obj->img + obj->offset;
+
+	for_each_engine(engine, dev_priv, i) {
+		memcpy(des + sizeof(struct gvt_region_t) + (i * sz),
+			&vgpu->execlist[engine->id].elsp_dwords, sz);
+	}
+
+	region.type = GVT_MIGRATION_EXECLIST;
+	region.size = i * sz;
+	memcpy(des, &region, sizeof(struct gvt_region_t));
+	return sizeof(struct gvt_region_t) + region.size;
+}
+
+static int execlist_load(const struct gvt_migration_obj_t *obj, u32 size)
+{
+	struct intel_vgpu *vgpu = (struct intel_vgpu *) obj->vgpu;
+	struct drm_i915_private *dev_priv = vgpu->gvt->dev_priv;
+	struct intel_engine_cs *engine;
+	u32 sz = sizeof(struct intel_vgpu_elsp_dwords);
+	void *src = obj->img + obj->offset;
+	int n_transfer = INV;
+	unsigned int i;
+
+	if (size == 0)
+		return size;
+
+	if (unlikely(size % sz) != 0) {
+		gvt_err("migration obj size isn't match between target and image!"
+		" memsize=%d imgsize=%d\n",
+		obj->region.size,
+		size);
+		return n_transfer;
+	}
+
+	for_each_engine(engine, dev_priv, i) {
+		memcpy(&vgpu->execlist[engine->id].elsp_dwords,
+			src + (i * sz), sz);
+	}
+
+	n_transfer = size;
+
+	return n_transfer;
+}
+
 static int workload_save(const struct gvt_migration_obj_t *obj)
 {
 	struct intel_vgpu *vgpu = (struct intel_vgpu *) obj->vgpu;
@@ -539,8 +604,11 @@ static int workload_save(const struct gvt_migration_obj_t *obj)
 		list_for_each_entry_safe(pos, n,
 			&vgpu->workload_q_head[engine->id], list) {
 			workload.ring_id = pos->ring_id;
-			memcpy(&workload.elsp_dwords, &pos->elsp_dwords,
-				sizeof(struct intel_vgpu_elsp_dwords));
+			workload.ctx_desc = pos->ctx_desc;
+			workload.emulate_schedule_in = pos->emulate_schedule_in;
+			workload.elsp_dwords = pos->elsp_dwords;
+			list_del_init(&pos->list);
+			free_workload(pos);
 			memcpy(des + sizeof(struct gvt_region_t) + (num * sz),
 				&workload, sz);
 			num++;
@@ -557,14 +625,11 @@ static int workload_save(const struct gvt_migration_obj_t *obj)
 static int workload_load(const struct gvt_migration_obj_t *obj, u32 size)
 {
 	struct intel_vgpu *vgpu = (struct intel_vgpu *) obj->vgpu;
-	struct drm_i915_private *dev_priv = vgpu->gvt->dev_priv;
 	int n_transfer = INV;
 	struct gvt_pending_workload_t workload;
-	struct intel_engine_cs *engine;
 	void *src = obj->img + obj->offset;
-	u64 pa, off;
 	u32 sz = sizeof(struct gvt_pending_workload_t);
-	int i, j;
+	int i;
 
 	if (size == 0)
 		return size;
@@ -579,13 +644,12 @@ static int workload_load(const struct gvt_migration_obj_t *obj, u32 size)
 
 	for (i = 0; i < size / sz; i++) {
 		memcpy(&workload, src + (i * sz), sz);
-		engine = dev_priv->engine[workload.ring_id];
-		off = i915_mmio_reg_offset(RING_ELSP(engine));
-		pa = intel_vgpu_mmio_offset_to_gpa(vgpu, off);
-		for (j = 0; j < 4; j++) {
-			intel_vgpu_emulate_mmio_write(vgpu, pa,
-					&workload.elsp_dwords.data[3 - j], 4);
+		if (workload.emulate_schedule_in) {
+			vgpu->execlist[workload.ring_id].elsp_dwords = workload.elsp_dwords;
+			vgpu->execlist[workload.ring_id].elsp_dwords.index = 0;
 		}
+		submit_context(vgpu, workload.ring_id,
+			&workload.ctx_desc, workload.emulate_schedule_in);
 	}
 
 	n_transfer = size;

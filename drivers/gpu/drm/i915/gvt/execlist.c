@@ -358,7 +358,7 @@ static int emulate_execlist_schedule_in(struct intel_vgpu_execlist *execlist,
 	return 0;
 }
 
-static void free_workload(struct intel_vgpu_workload *workload)
+void free_workload(struct intel_vgpu_workload *workload)
 {
 	intel_gvt_mm_unreference(workload->shadow_mm);
 	kmem_cache_free(workload->vgpu->workloads, workload);
@@ -653,7 +653,7 @@ static int prepare_mm(struct intel_vgpu_workload *workload)
 	(list_empty(q) ? NULL : container_of(q->prev, \
 	struct intel_vgpu_workload, list))
 
-static int submit_context(struct intel_vgpu *vgpu, int ring_id,
+int submit_context(struct intel_vgpu *vgpu, int ring_id,
 		struct execlist_ctx_descriptor_format *desc,
 		bool emulate_schedule_in)
 {

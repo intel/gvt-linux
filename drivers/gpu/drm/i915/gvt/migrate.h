@@ -43,6 +43,7 @@ enum gvt_migration_type_t {
 	GVT_MIGRATION_PPGTT,
 	GVT_MIGRATION_WORKLOAD,
 	GVT_MIGRATION_OPREGION,
+	GVT_MIGRATION_EXECLIST,
 };
 
 struct gvt_ppgtt_entry_t {
@@ -52,6 +53,8 @@ struct gvt_ppgtt_entry_t {
 
 struct gvt_pending_workload_t {
 	int ring_id;
+	bool emulate_schedule_in;
+	struct execlist_ctx_descriptor_format ctx_desc;
 	struct intel_vgpu_elsp_dwords elsp_dwords;
 };
 

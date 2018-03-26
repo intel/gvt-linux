@@ -583,6 +583,17 @@ out:
 	return ret;
 }
 
+static void intel_vgpu_release_msi_eventfd_ctx(struct intel_vgpu *vgpu)
+{
+	struct eventfd_ctx *trigger;
+
+	trigger = vgpu->vdev.msi_trigger;
+	if (trigger) {
+		eventfd_ctx_put(trigger);
+		vgpu->vdev.msi_trigger = NULL;
+	}
+}
+
 static void __intel_vgpu_release(struct intel_vgpu *vgpu)
 {
 	struct kvmgt_guest_info *info;
@@ -606,6 +617,8 @@ static void __intel_vgpu_release(struct intel_vgpu *vgpu)
 
 	info = (struct kvmgt_guest_info *)vgpu->handle;
 	kvmgt_guest_exit(info);
+
+	intel_vgpu_release_msi_eventfd_ctx(vgpu);
 
 	vgpu->vdev.kvm = NULL;
 	vgpu->handle = 0;
@@ -940,7 +953,8 @@ static int intel_vgpu_set_msi_trigger(struct intel_vgpu *vgpu,
 			return PTR_ERR(trigger);
 		}
 		vgpu->vdev.msi_trigger = trigger;
-	}
+	} else if ((flags & VFIO_IRQ_SET_DATA_NONE) && !count)
+		intel_vgpu_release_msi_eventfd_ctx(vgpu);
 
 	return 0;
 }

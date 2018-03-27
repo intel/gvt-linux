@@ -1,0 +1,28 @@
+drm-upstream drm-fixes 97130968839a2928869a2d25500b5855017aac7d
+	Merge tag 'drm-amdkfd-fixes-2018-03-25' of git://people.freedesktop.org/~gabbayo/linux into drm-fixes
+drm-misc drm-misc-fixes 5a9f698feb11b198f17b2acebbfe0e2716a3beed
+	drm/ast: Fixed 1280x800 Display Issue
+drm-intel drm-intel-fixes 3eb2ce825ea1ad89d20f7a3b5780df850e4be274
+	Linux 4.16-rc7
+drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
+	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
+drm-upstream drm-next 33d009cd889490838c5db9b9339856c9e3d3facc
+	Merge branch 'drm-next-4.17' of git://people.freedesktop.org/~agd5f/linux into drm-next
+drm-misc drm-misc-next-fixes a01c47737a9ca118ab75c6fd6e75739b824de830
+	drm: Fix uabi regression by allowing garbage mode->type from userspace
+drm-intel drm-intel-next-fixes 300efa9eea451bdcf3b5a1eb292222e06e85bb2c
+	drm/i915: Fix hibernation with ACPI S0 target state
+drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
+	Linux 4.14-rc1
+drm-misc drm-misc-next a7d2a87e99deb5481b5dd723408c42f460de25a3
+	drm/tinydrm: Use gem_free_object_unlocked
+drm-intel drm-intel-next-queued 7487508eff1fe787573aa6e0f3daaa6b12bd4520
+	drm/i915: protect macro parameters in SWING_SEL_{UPP,LO}WER
+drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
+	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
+sound-upstream for-linus 9066ae7ff5d89c0b5daa271e2d573540097a94fa
+	ALSA: pcm: Use dma_bytes as size parameter in dma_mmap_coherent()
+sound-upstream for-next 306a4f3ca7f3c7dfa473ebd19d66e40e59d99734
+	ALSA: aloop: Mark paused device as inactive
+drm-intel topic/core-for-CI 0162204f7aa1db746262eb2b68d294c25e5be36c
+	RFC: debugobjects: capture stack traces at _init() time

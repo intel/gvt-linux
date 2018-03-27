@@ -12,7 +12,7 @@
 # Note the danger in using -Wall -Wextra is that when CI updates gcc we
 # will most likely get a sudden build breakage... Hopefully we will fix
 # new warnings before CI updates!
-subdir-ccflags-y := -Wall -Wextra
+subdir-ccflags-y := -Wall -Wextra -Wvla
 subdir-ccflags-y += $(call cc-disable-warning, unused-parameter)
 subdir-ccflags-y += $(call cc-disable-warning, type-limits)
 subdir-ccflags-y += $(call cc-disable-warning, missing-field-initializers)
@@ -79,7 +79,8 @@ i915-y += i915_cmd_parser.o \
 	  intel_lrc.o \
 	  intel_mocs.o \
 	  intel_ringbuffer.o \
-	  intel_uncore.o
+	  intel_uncore.o \
+	  intel_wopcm.o
 
 # general-purpose microcontroller (GuC) support
 i915-y += intel_uc.o \

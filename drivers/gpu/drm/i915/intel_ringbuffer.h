@@ -7,9 +7,11 @@
 #include "i915_gem_batch_pool.h"
 #include "i915_gem_timeline.h"
 
+#include "i915_reg.h"
 #include "i915_pmu.h"
 #include "i915_request.h"
 #include "i915_selftest.h"
+#include "intel_gpu_commands.h"
 
 struct drm_printer;
 
@@ -84,7 +86,7 @@ hangcheck_action_to_str(const enum intel_engine_hangcheck_action a)
 }
 
 #define I915_MAX_SLICES	3
-#define I915_MAX_SUBSLICES 3
+#define I915_MAX_SUBSLICES 8
 
 #define instdone_slice_mask(dev_priv__) \
 	(INTEL_GEN(dev_priv__) == 7 ? \
@@ -330,7 +332,6 @@ struct intel_engine_cs {
 	u8 instance;
 	u32 context_size;
 	u32 mmio_base;
-	unsigned int irq_shift;
 
 	struct intel_ring *buffer;
 	struct intel_timeline *timeline;
@@ -939,7 +940,7 @@ bool intel_engine_add_wait(struct intel_engine_cs *engine,
 			   struct intel_wait *wait);
 void intel_engine_remove_wait(struct intel_engine_cs *engine,
 			      struct intel_wait *wait);
-void intel_engine_enable_signaling(struct i915_request *request, bool wakeup);
+bool intel_engine_enable_signaling(struct i915_request *request, bool wakeup);
 void intel_engine_cancel_signaling(struct i915_request *request);
 
 static inline bool intel_engine_has_waiter(const struct intel_engine_cs *engine)

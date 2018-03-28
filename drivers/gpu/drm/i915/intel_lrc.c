@@ -784,7 +784,8 @@ static void execlists_submission_tasklet(unsigned long data)
 	struct execlist_port * const port = execlists->port;
 	struct drm_i915_private *dev_priv = engine->i915;
 
-	/* We can skip acquiring intel_runtime_pm_get() here as it was taken
+	/*
+	 * We can skip acquiring intel_runtime_pm_get() here as it was taken
 	 * on our behalf by the request (see i915_gem_mark_busy()) and it will
 	 * not be relinquished until the device is idle (see
 	 * i915_gem_idle_work_handler()). As a precaution, we make sure
@@ -795,7 +796,8 @@ static void execlists_submission_tasklet(unsigned long data)
 
 	intel_uncore_forcewake_get(dev_priv, execlists->fw_domains);
 
-	/* Prefer doing test_and_clear_bit() as a two stage operation to avoid
+	/*
+	 * Prefer doing test_and_clear_bit() as a two stage operation to avoid
 	 * imposing the cost of a locked atomic transaction when submitting a
 	 * new request (outside of the context-switch interrupt).
 	 */
@@ -811,17 +813,10 @@ static void execlists_submission_tasklet(unsigned long data)
 			execlists->csb_head = -1; /* force mmio read of CSB ptrs */
 		}
 
-		/* The write will be ordered by the uncached read (itself
-		 * a memory barrier), so we do not need another in the form
-		 * of a locked instruction. The race between the interrupt
-		 * handler and the split test/clear is harmless as we order
-		 * our clear before the CSB read. If the interrupt arrived
-		 * first between the test and the clear, we read the updated
-		 * CSB and clear the bit. If the interrupt arrives as we read
-		 * the CSB or later (i.e. after we had cleared the bit) the bit
-		 * is set and we do a new loop.
-		 */
-		__clear_bit(ENGINE_IRQ_EXECLIST, &engine->irq_posted);
+		/* Clear before reading to catch new interrupts */
+		clear_bit(ENGINE_IRQ_EXECLIST, &engine->irq_posted);
+		smp_mb__after_atomic();
+
 		if (unlikely(execlists->csb_head == -1)) { /* following a reset */
 			head = readl(dev_priv->regs + i915_mmio_reg_offset(RING_CONTEXT_STATUS_PTR(engine)));
 			tail = GEN8_CSB_WRITE_PTR(head);

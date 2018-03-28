@@ -204,6 +204,18 @@ static inline bool need_preempt(const struct intel_engine_cs *engine,
  *      bits 32-52:    ctx ID, a globally unique tag
  *      bits 53-54:    mbz, reserved for use by hardware
  *      bits 55-63:    group ID, currently unused and set to 0
+ *
+ * Starting from Gen11, the upper dword of the descriptor has a new format:
+ *
+ *      bits 32-36:    reserved
+ *      bits 37-47:    SW context ID
+ *      bits 48:53:    engine instance
+ *      bit 54:        mbz, reserved for use by hardware
+ *      bits 55-60:    SW counter
+ *      bits 61-63:    engine class
+ *
+ * engine info, SW context ID and SW counter need to form a unique number
+ * (Context ID) per lrc.
  */
 static void
 intel_lr_context_descriptor_update(struct i915_gem_context *ctx,
@@ -212,12 +224,32 @@ intel_lr_context_descriptor_update(struct i915_gem_context *ctx,
 	struct intel_context *ce = &ctx->engine[engine->id];
 	u64 desc;
 
-	BUILD_BUG_ON(MAX_CONTEXT_HW_ID > (1<<GEN8_CTX_ID_WIDTH));
+	BUILD_BUG_ON(MAX_CONTEXT_HW_ID > (BIT(GEN8_CTX_ID_WIDTH)));
+	BUILD_BUG_ON(GEN11_MAX_CONTEXT_HW_ID > (BIT(GEN11_SW_CTX_ID_WIDTH)));
 
 	desc = ctx->desc_template;				/* bits  0-11 */
+	GEM_BUG_ON(desc & GENMASK_ULL(63, 12));
+
 	desc |= i915_ggtt_offset(ce->state) + LRC_HEADER_PAGES * PAGE_SIZE;
 								/* bits 12-31 */
-	desc |= (u64)ctx->hw_id << GEN8_CTX_ID_SHIFT;		/* bits 32-52 */
+	GEM_BUG_ON(desc & GENMASK_ULL(63, 32));
+
+	if (INTEL_GEN(ctx->i915) >= 11) {
+		GEM_BUG_ON(ctx->hw_id >= BIT(GEN11_SW_CTX_ID_WIDTH));
+		desc |= (u64)ctx->hw_id << GEN11_SW_CTX_ID_SHIFT;
+								/* bits 37-47 */
+
+		desc |= (u64)engine->instance << GEN11_ENGINE_INSTANCE_SHIFT;
+								/* bits 48-53 */
+
+		/* TODO: decide what to do with SW counter (bits 55-60) */
+
+		desc |= (u64)engine->class << GEN11_ENGINE_CLASS_SHIFT;
+								/* bits 61-63 */
+	} else {
+		GEM_BUG_ON(ctx->hw_id >= BIT(GEN8_CTX_ID_WIDTH));
+		desc |= (u64)ctx->hw_id << GEN8_CTX_ID_SHIFT;	/* bits 32-52 */
+	}
 
 	ce->lrc_desc = desc;
 }
@@ -385,18 +417,30 @@ static u64 execlists_update_context(struct i915_request *rq)
 	return ce->lrc_desc;
 }
 
-static inline void elsp_write(u64 desc, u32 __iomem *elsp)
+static inline void write_desc(struct intel_engine_execlists *execlists, u64 desc, u32 port)
 {
-	writel(upper_32_bits(desc), elsp);
-	writel(lower_32_bits(desc), elsp);
+	if (execlists->ctrl_reg) {
+		writel(lower_32_bits(desc), execlists->submit_reg + port * 2);
+		writel(upper_32_bits(desc), execlists->submit_reg + port * 2 + 1);
+	} else {
+		writel(upper_32_bits(desc), execlists->submit_reg);
+		writel(lower_32_bits(desc), execlists->submit_reg);
+	}
 }
 
 static void execlists_submit_ports(struct intel_engine_cs *engine)
 {
-	struct execlist_port *port = engine->execlists.port;
+	struct intel_engine_execlists *execlists = &engine->execlists;
+	struct execlist_port *port = execlists->port;
 	unsigned int n;
 
-	for (n = execlists_num_ports(&engine->execlists); n--; ) {
+	/*
+	 * ELSQ note: the submit queue is not cleared after being submitted
+	 * to the HW so we need to make sure we always clean it up. This is
+	 * currently ensured by the fact that we always write the same number
+	 * of elsq entries, keep this in mind before changing the loop below.
+	 */
+	for (n = execlists_num_ports(execlists); n--; ) {
 		struct i915_request *rq;
 		unsigned int count;
 		u64 desc;
@@ -420,9 +464,14 @@ static void execlists_submit_ports(struct intel_engine_cs *engine)
 			desc = 0;
 		}
 
-		elsp_write(desc, engine->execlists.elsp);
+		write_desc(execlists, desc, n);
 	}
-	execlists_clear_active(&engine->execlists, EXECLISTS_ACTIVE_HWACK);
+
+	/* we need to manually load the submit queue */
+	if (execlists->ctrl_reg)
+		writel(EL_CTRL_LOAD, execlists->ctrl_reg);
+
+	execlists_clear_active(execlists, EXECLISTS_ACTIVE_HWACK);
 }
 
 static bool ctx_single_port_submission(const struct i915_gem_context *ctx)
@@ -455,11 +504,12 @@ static void port_assign(struct execlist_port *port, struct i915_request *rq)
 
 static void inject_preempt_context(struct intel_engine_cs *engine)
 {
+	struct intel_engine_execlists *execlists = &engine->execlists;
 	struct intel_context *ce =
 		&engine->i915->preempt_context->engine[engine->id];
 	unsigned int n;
 
-	GEM_BUG_ON(engine->execlists.preempt_complete_status !=
+	GEM_BUG_ON(execlists->preempt_complete_status !=
 		   upper_32_bits(ce->lrc_desc));
 	GEM_BUG_ON((ce->lrc_reg_state[CTX_CONTEXT_CONTROL + 1] &
 		    _MASKED_BIT_ENABLE(CTX_CTRL_ENGINE_CTX_RESTORE_INHIBIT |
@@ -472,10 +522,15 @@ static void inject_preempt_context(struct intel_engine_cs *engine)
 	 * the state of the GPU is known (idle).
 	 */
 	GEM_TRACE("%s\n", engine->name);
-	for (n = execlists_num_ports(&engine->execlists); --n; )
-		elsp_write(0, engine->execlists.elsp);
+	for (n = execlists_num_ports(execlists); --n; )
+		write_desc(execlists, 0, n);
 
-	elsp_write(ce->lrc_desc, engine->execlists.elsp);
+	write_desc(execlists, ce->lrc_desc, n);
+
+	/* we need to manually load the submit queue */
+	if (execlists->ctrl_reg)
+		writel(EL_CTRL_LOAD, execlists->ctrl_reg);
+
 	execlists_clear_active(&engine->execlists, EXECLISTS_ACTIVE_HWACK);
 	execlists_set_active(&engine->execlists, EXECLISTS_ACTIVE_PREEMPT);
 }
@@ -672,7 +727,12 @@ execlists_cancel_port_requests(struct intel_engine_execlists * const execlists)
 
 		GEM_BUG_ON(!execlists->active);
 		intel_engine_context_out(rq->engine);
-		execlists_context_status_change(rq, INTEL_CONTEXT_SCHEDULE_PREEMPTED);
+
+		execlists_context_status_change(rq,
+						i915_request_completed(rq) ?
+						INTEL_CONTEXT_SCHEDULE_OUT :
+						INTEL_CONTEXT_SCHEDULE_PREEMPTED);
+
 		i915_request_put(rq);
 
 		memset(port, 0, sizeof(*port));
@@ -2037,8 +2097,17 @@ logical_ring_default_vfuncs(struct intel_engine_cs *engine)
 
 	engine->set_default_submission = execlists_set_default_submission;
 
-	engine->irq_enable = gen8_logical_ring_enable_irq;
-	engine->irq_disable = gen8_logical_ring_disable_irq;
+	if (INTEL_GEN(engine->i915) < 11) {
+		engine->irq_enable = gen8_logical_ring_enable_irq;
+		engine->irq_disable = gen8_logical_ring_disable_irq;
+	} else {
+		/*
+		 * TODO: On Gen11 interrupt masks need to be clear
+		 * to allow C6 entry. Keep interrupts enabled at
+		 * and take the hit of generating extra interrupts
+		 * until a more refined solution exists.
+		 */
+	}
 	engine->emit_bb_start = gen8_emit_bb_start;
 }
 
@@ -2090,8 +2159,15 @@ static int logical_ring_init(struct intel_engine_cs *engine)
 	if (ret)
 		goto error;
 
-	engine->execlists.elsp =
-		engine->i915->regs + i915_mmio_reg_offset(RING_ELSP(engine));
+	if (HAS_LOGICAL_RING_ELSQ(engine->i915)) {
+		engine->execlists.submit_reg = engine->i915->regs +
+			i915_mmio_reg_offset(RING_EXECLIST_SQ_CONTENTS(engine));
+		engine->execlists.ctrl_reg = engine->i915->regs +
+			i915_mmio_reg_offset(RING_EXECLIST_CONTROL(engine));
+	} else {
+		engine->execlists.submit_reg = engine->i915->regs +
+			i915_mmio_reg_offset(RING_ELSP(engine));
+	}
 
 	engine->execlists.preempt_complete_status = ~0u;
 	if (engine->i915->preempt_context)
@@ -2177,7 +2253,7 @@ make_rpcs(struct drm_i915_private *dev_priv)
 
 	if (INTEL_INFO(dev_priv)->sseu.has_subslice_pg) {
 		rpcs |= GEN8_RPCS_SS_CNT_ENABLE;
-		rpcs |= hweight8(INTEL_INFO(dev_priv)->sseu.subslice_mask) <<
+		rpcs |= hweight8(INTEL_INFO(dev_priv)->sseu.subslice_mask[0]) <<
 			GEN8_RPCS_SS_CNT_SHIFT;
 		rpcs |= GEN8_RPCS_ENABLE;
 	}
@@ -2201,6 +2277,10 @@ static u32 intel_lr_indirect_ctx_offset(struct intel_engine_cs *engine)
 	default:
 		MISSING_CASE(INTEL_GEN(engine->i915));
 		/* fall through */
+	case 11:
+		indirect_ctx_offset =
+			GEN11_CTX_RCS_INDIRECT_CTX_OFFSET_DEFAULT;
+		break;
 	case 10:
 		indirect_ctx_offset =
 			GEN10_CTX_RCS_INDIRECT_CTX_OFFSET_DEFAULT;
@@ -2360,7 +2440,7 @@ populate_lr_context(struct i915_gem_context *ctx,
 	if (!engine->default_state)
 		regs[CTX_CONTEXT_CONTROL + 1] |=
 			_MASKED_BIT_ENABLE(CTX_CTRL_ENGINE_CTX_RESTORE_INHIBIT);
-	if (ctx == ctx->i915->preempt_context)
+	if (ctx == ctx->i915->preempt_context && INTEL_GEN(engine->i915) < 11)
 		regs[CTX_CONTEXT_CONTROL + 1] |=
 			_MASKED_BIT_ENABLE(CTX_CTRL_ENGINE_CTX_RESTORE_INHIBIT |
 					   CTX_CTRL_ENGINE_CTX_SAVE_INHIBIT);

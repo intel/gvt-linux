@@ -92,7 +92,7 @@ hangcheck_action_to_str(const enum intel_engine_hangcheck_action a)
 
 #define instdone_subslice_mask(dev_priv__) \
 	(INTEL_GEN(dev_priv__) == 7 ? \
-	 1 : INTEL_INFO(dev_priv__)->sseu.subslice_mask)
+	 1 : INTEL_INFO(dev_priv__)->sseu.subslice_mask[0])
 
 #define for_each_instdone_slice_subslice(dev_priv__, slice__, subslice__) \
 	for ((slice__) = 0, (subslice__) = 0; \
@@ -209,9 +209,17 @@ struct intel_engine_execlists {
 	bool no_priolist;
 
 	/**
-	 * @elsp: the ExecList Submission Port register
+	 * @submit_reg: gen-specific execlist submission register
+	 * set to the ExecList Submission Port (elsp) register pre-Gen11 and to
+	 * the ExecList Submission Queue Contents register array for Gen11+
 	 */
-	u32 __iomem *elsp;
+	u32 __iomem *submit_reg;
+
+	/**
+	 * @ctrl_reg: the enhanced execlists control register, used to load the
+	 * submit queue on the HW and to request preemptions to idle
+	 */
+	u32 __iomem *ctrl_reg;
 
 	/**
 	 * @port: execlist port states
@@ -356,9 +364,9 @@ struct intel_engine_cs {
 
 		spinlock_t rb_lock; /* protects the rb and wraps irq_lock */
 		struct rb_root waiters; /* sorted by retirement, priority */
-		struct rb_root signals; /* sorted by retirement */
+		struct list_head signals; /* sorted by retirement */
 		struct task_struct *signaler; /* used for fence signalling */
-		struct i915_request __rcu *first_signal;
+
 		struct timer_list fake_irq; /* used after a missed interrupt */
 		struct timer_list hangcheck; /* detect missed interrupts */
 
@@ -951,7 +959,6 @@ void intel_engine_disarm_breadcrumbs(struct intel_engine_cs *engine);
 
 void intel_engine_reset_breadcrumbs(struct intel_engine_cs *engine);
 void intel_engine_fini_breadcrumbs(struct intel_engine_cs *engine);
-bool intel_breadcrumbs_busy(struct intel_engine_cs *engine);
 
 static inline u32 *gen8_emit_pipe_control(u32 *batch, u32 flags, u32 offset)
 {

@@ -8492,7 +8492,7 @@ static void cnp_init_clock_gating(struct drm_i915_private *dev_priv)
 	if (!HAS_PCH_CNP(dev_priv))
 		return;
 
-	/* Display WA #1181: cnp */
+	/* Display WA #1181 WaSouthDisplayDisablePWMCGEGating: cnp */
 	I915_WRITE(SOUTH_DSPCLK_GATE_D, I915_READ(SOUTH_DSPCLK_GATE_D) |
 		   CNP_PWM_CGE_GATING_DISABLE);
 }
@@ -8522,7 +8522,13 @@ static void cnl_init_clock_gating(struct drm_i915_private *dev_priv)
 		val |= SARBUNIT_CLKGATE_DIS;
 	I915_WRITE(SLICE_UNIT_LEVEL_CLKGATE, val);
 
+	/* Wa_2201832410:cnl */
+	val = I915_READ(SUBSLICE_UNIT_LEVEL_CLKGATE);
+	val |= GWUNIT_CLKGATE_DIS;
+	I915_WRITE(SUBSLICE_UNIT_LEVEL_CLKGATE, val);
+
 	/* WaDisableVFclkgate:cnl */
+	/* WaVFUnitClockGatingDisable:cnl */
 	val = I915_READ(UNSLICE_UNIT_LEVEL_CLKGATE);
 	val |= VFUNIT_CLKGATE_DIS;
 	I915_WRITE(UNSLICE_UNIT_LEVEL_CLKGATE, val);

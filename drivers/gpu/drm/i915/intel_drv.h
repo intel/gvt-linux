@@ -215,7 +215,8 @@ struct intel_encoder {
 	enum intel_output_type type;
 	enum port port;
 	unsigned int cloneable;
-	void (*hot_plug)(struct intel_encoder *);
+	bool (*hotplug)(struct intel_encoder *encoder,
+			struct intel_connector *connector);
 	enum intel_output_type (*compute_output_type)(struct intel_encoder *,
 						      struct intel_crtc_state *,
 						      struct drm_connector_state *);
@@ -1047,9 +1048,9 @@ struct intel_dp {
 	uint8_t lane_count;
 	uint8_t sink_count;
 	bool link_mst;
+	bool link_trained;
 	bool has_audio;
 	bool detect_done;
-	bool channel_eq_status;
 	bool reset_link_params;
 	enum aux_ch aux_ch;
 	uint8_t dpcd[DP_RECEIVER_CAP_SIZE];
@@ -1625,6 +1626,8 @@ int intel_dp_get_link_train_fallback_values(struct intel_dp *intel_dp,
 					    int link_rate, uint8_t lane_count);
 void intel_dp_start_link_train(struct intel_dp *intel_dp);
 void intel_dp_stop_link_train(struct intel_dp *intel_dp);
+int intel_dp_retrain_link(struct intel_encoder *encoder,
+			  struct drm_modeset_acquire_ctx *ctx);
 void intel_dp_sink_dpms(struct intel_dp *intel_dp, int mode);
 void intel_dp_encoder_reset(struct drm_encoder *encoder);
 void intel_dp_encoder_suspend(struct intel_encoder *intel_encoder);
@@ -1704,7 +1707,8 @@ int intel_dsi_dcs_init_backlight_funcs(struct intel_connector *intel_connector);
 void intel_dvo_init(struct drm_i915_private *dev_priv);
 /* intel_hotplug.c */
 void intel_hpd_poll_init(struct drm_i915_private *dev_priv);
-
+bool intel_encoder_hotplug(struct intel_encoder *encoder,
+			   struct intel_connector *connector);
 
 /* legacy fbdev emulation in intel_fbdev.c */
 #ifdef CONFIG_DRM_FBDEV_EMULATION

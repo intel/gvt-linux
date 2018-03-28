@@ -83,8 +83,8 @@
 
 #define DRIVER_NAME		"i915"
 #define DRIVER_DESC		"Intel Graphics"
-#define DRIVER_DATE		"20180305"
-#define DRIVER_TIMESTAMP	1520243775
+#define DRIVER_DATE		"20180308"
+#define DRIVER_TIMESTAMP	1520513379
 
 /* Use I915_STATE_WARN(x) and I915_STATE_WARN_ON() (rather than WARN() and
  * WARN_ON()) for hw state sanity checks to check for unexpected conditions
@@ -2103,6 +2103,7 @@ struct drm_i915_private {
 		 */
 		struct ida hw_ida;
 #define MAX_CONTEXT_HW_ID (1<<21) /* exclusive */
+#define GEN11_MAX_CONTEXT_HW_ID (1<<11) /* exclusive */
 	} contexts;
 
 	u32 fdi_rx_config;
@@ -2771,6 +2772,8 @@ intel_info(const struct drm_i915_private *dev_priv)
 
 #define HAS_LOGICAL_RING_CONTEXTS(dev_priv) \
 		((dev_priv)->info.has_logical_ring_contexts)
+#define HAS_LOGICAL_RING_ELSQ(dev_priv) \
+		((dev_priv)->info.has_logical_ring_elsq)
 #define HAS_LOGICAL_RING_PREEMPTION(dev_priv) \
 		((dev_priv)->info.has_logical_ring_preemption)
 

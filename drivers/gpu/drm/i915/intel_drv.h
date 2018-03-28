@@ -548,6 +548,10 @@ struct intel_initial_plane_config {
 #define SKL_MAX_DST_W 4096
 #define SKL_MIN_DST_H 8
 #define SKL_MAX_DST_H 4096
+#define ICL_MAX_SRC_W 5120
+#define ICL_MAX_SRC_H 4096
+#define ICL_MAX_DST_W 5120
+#define ICL_MAX_DST_H 4096
 
 struct intel_scaler {
 	int in_use;
@@ -1783,7 +1787,7 @@ struct intel_hdmi *enc_to_intel_hdmi(struct drm_encoder *encoder);
 bool intel_hdmi_compute_config(struct intel_encoder *encoder,
 			       struct intel_crtc_state *pipe_config,
 			       struct drm_connector_state *conn_state);
-void intel_hdmi_handle_sink_scrambling(struct intel_encoder *intel_encoder,
+bool intel_hdmi_handle_sink_scrambling(struct intel_encoder *encoder,
 				       struct drm_connector *connector,
 				       bool high_tmds_clock_ratio,
 				       bool scrambling);
@@ -1877,7 +1881,8 @@ void intel_psr_enable(struct intel_dp *intel_dp,
 void intel_psr_disable(struct intel_dp *intel_dp,
 		      const struct intel_crtc_state *old_crtc_state);
 void intel_psr_invalidate(struct drm_i915_private *dev_priv,
-			  unsigned frontbuffer_bits);
+			  unsigned frontbuffer_bits,
+			  enum fb_op_origin origin);
 void intel_psr_flush(struct drm_i915_private *dev_priv,
 		     unsigned frontbuffer_bits,
 		     enum fb_op_origin origin);
@@ -2138,8 +2143,17 @@ int intel_pipe_crc_create(struct drm_minor *minor);
 #ifdef CONFIG_DEBUG_FS
 int intel_crtc_set_crc_source(struct drm_crtc *crtc, const char *source_name,
 			      size_t *values_cnt);
+void intel_crtc_disable_pipe_crc(struct intel_crtc *crtc);
+void intel_crtc_enable_pipe_crc(struct intel_crtc *crtc);
 #else
 #define intel_crtc_set_crc_source NULL
+static inline void intel_crtc_disable_pipe_crc(struct intel_crtc *crtc)
+{
+}
+
+static inline void intel_crtc_enable_pipe_crc(struct intel_crtc *crtc)
+{
+}
 #endif
 extern const struct file_operations i915_display_crc_ctl_fops;
 #endif /* __INTEL_DRV_H__ */

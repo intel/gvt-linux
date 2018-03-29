@@ -454,10 +454,11 @@ static void execlists_submit_ports(struct intel_engine_cs *engine)
 			desc = execlists_update_context(rq);
 			GEM_DEBUG_EXEC(port[n].context_id = upper_32_bits(desc));
 
-			GEM_TRACE("%s in[%d]:  ctx=%d.%d, seqno=%x, prio=%d\n",
+			GEM_TRACE("%s in[%d]:  ctx=%d.%d, seqno=%d (current %d), prio=%d\n",
 				  engine->name, n,
 				  port[n].context_id, count,
 				  rq->global_seqno,
+				  intel_engine_get_seqno(engine),
 				  rq_prio(rq));
 		} else {
 			GEM_BUG_ON(!n);
@@ -577,6 +578,8 @@ static void execlists_dequeue(struct intel_engine_cs *engine)
 		 * know the next preemption status we see corresponds
 		 * to this ELSP update.
 		 */
+		GEM_BUG_ON(!execlists_is_active(execlists,
+						EXECLISTS_ACTIVE_USER));
 		GEM_BUG_ON(!port_count(&port[0]));
 		if (port_count(&port[0]) > 1)
 			goto unlock;
@@ -738,6 +741,59 @@ execlists_cancel_port_requests(struct intel_engine_execlists * const execlists)
 		memset(port, 0, sizeof(*port));
 		port++;
 	}
+
+	execlists_clear_active(execlists, EXECLISTS_ACTIVE_USER);
+}
+
+static void clear_gtiir(struct intel_engine_cs *engine)
+{
+	static const u8 gtiir[] = {
+		[RCS]  = 0,
+		[BCS]  = 0,
+		[VCS]  = 1,
+		[VCS2] = 1,
+		[VECS] = 3,
+	};
+	struct drm_i915_private *dev_priv = engine->i915;
+	int i;
+
+	/* TODO: correctly reset irqs for gen11 */
+	if (WARN_ON_ONCE(INTEL_GEN(engine->i915) >= 11))
+		return;
+
+	GEM_BUG_ON(engine->id >= ARRAY_SIZE(gtiir));
+
+	/*
+	 * Clear any pending interrupt state.
+	 *
+	 * We do it twice out of paranoia that some of the IIR are
+	 * double buffered, and so if we only reset it once there may
+	 * still be an interrupt pending.
+	 */
+	for (i = 0; i < 2; i++) {
+		I915_WRITE(GEN8_GT_IIR(gtiir[engine->id]),
+			   engine->irq_keep_mask);
+		POSTING_READ(GEN8_GT_IIR(gtiir[engine->id]));
+	}
+	GEM_BUG_ON(I915_READ(GEN8_GT_IIR(gtiir[engine->id])) &
+		   engine->irq_keep_mask);
+}
+
+static void reset_irq(struct intel_engine_cs *engine)
+{
+	/* Mark all CS interrupts as complete */
+	smp_store_mb(engine->execlists.active, 0);
+	synchronize_hardirq(engine->i915->drm.irq);
+
+	clear_gtiir(engine);
+
+	/*
+	 * The port is checked prior to scheduling a tasklet, but
+	 * just in case we have suspended the tasklet to do the
+	 * wedging make sure that when it wakes, it decides there
+	 * is no work to do by clearing the irq_posted bit.
+	 */
+	clear_bit(ENGINE_IRQ_EXECLIST, &engine->irq_posted);
 }
 
 static void execlists_cancel_requests(struct intel_engine_cs *engine)
@@ -767,6 +823,7 @@ static void execlists_cancel_requests(struct intel_engine_cs *engine)
 
 	/* Cancel the requests on the HW and clear the ELSP tracker. */
 	execlists_cancel_port_requests(execlists);
+	reset_irq(engine);
 
 	spin_lock(&engine->timeline->lock);
 
@@ -804,17 +861,6 @@ static void execlists_cancel_requests(struct intel_engine_cs *engine)
 	GEM_BUG_ON(port_isset(execlists->port));
 
 	spin_unlock(&engine->timeline->lock);
-
-	/*
-	 * The port is checked prior to scheduling a tasklet, but
-	 * just in case we have suspended the tasklet to do the
-	 * wedging make sure that when it wakes, it decides there
-	 * is no work to do by clearing the irq_posted bit.
-	 */
-	clear_bit(ENGINE_IRQ_EXECLIST, &engine->irq_posted);
-
-	/* Mark all CS interrupts as complete */
-	execlists->active = 0;
 
 	local_irq_restore(flags);
 }
@@ -954,10 +1000,11 @@ static void execlists_submission_tasklet(unsigned long data)
 							EXECLISTS_ACTIVE_USER));
 
 			rq = port_unpack(port, &count);
-			GEM_TRACE("%s out[0]: ctx=%d.%d, seqno=%x, prio=%d\n",
+			GEM_TRACE("%s out[0]: ctx=%d.%d, seqno=%d (current %d), prio=%d\n",
 				  engine->name,
 				  port->context_id, count,
 				  rq ? rq->global_seqno : 0,
+				  intel_engine_get_seqno(engine),
 				  rq ? rq_prio(rq) : 0);
 
 			/* Check the context/desc id for this event matches */
@@ -1001,6 +1048,11 @@ static void execlists_submission_tasklet(unsigned long data)
 
 	if (fw)
 		intel_uncore_forcewake_put(dev_priv, execlists->fw_domains);
+
+	/* If the engine is now idle, so should be the flag; and vice versa. */
+	GEM_BUG_ON(execlists_is_active(&engine->execlists,
+				       EXECLISTS_ACTIVE_USER) ==
+		   !port_isset(engine->execlists.port));
 }
 
 static void queue_request(struct intel_engine_cs *engine,
@@ -1010,12 +1062,16 @@ static void queue_request(struct intel_engine_cs *engine,
 	list_add_tail(&pt->link, &lookup_priolist(engine, pt, prio)->requests);
 }
 
+static void __submit_queue(struct intel_engine_cs *engine, int prio)
+{
+	engine->execlists.queue_priority = prio;
+	tasklet_hi_schedule(&engine->execlists.tasklet);
+}
+
 static void submit_queue(struct intel_engine_cs *engine, int prio)
 {
-	if (prio > engine->execlists.queue_priority) {
-		engine->execlists.queue_priority = prio;
-		tasklet_hi_schedule(&engine->execlists.tasklet);
-	}
+	if (prio > engine->execlists.queue_priority)
+		__submit_queue(engine, prio);
 }
 
 static void execlists_submit_request(struct i915_request *request)
@@ -1148,7 +1204,10 @@ static void execlists_schedule(struct i915_request *request, int prio)
 			__list_del_entry(&pt->link);
 			queue_request(engine, pt, prio);
 		}
-		submit_queue(engine, prio);
+
+		if (prio > engine->execlists.queue_priority &&
+		    i915_sw_fence_done(&pt_to_request(pt)->submit))
+			__submit_queue(engine, prio);
 	}
 
 	spin_unlock_irq(&engine->timeline->lock);
@@ -1215,6 +1274,7 @@ execlists_context_pin(struct intel_engine_cs *engine,
 	ce->lrc_reg_state = vaddr + LRC_STATE_PN * PAGE_SIZE;
 	ce->lrc_reg_state[CTX_RING_BUFFER_START+1] =
 		i915_ggtt_offset(ce->ring->vma);
+	ce->lrc_reg_state[CTX_RING_HEAD+1] = ce->ring->head;
 
 	ce->state->obj->pin_global++;
 	i915_gem_context_get(ctx);
@@ -1565,14 +1625,6 @@ static int intel_init_workaround_bb(struct intel_engine_cs *engine)
 	return ret;
 }
 
-static u8 gtiir[] = {
-	[RCS] = 0,
-	[BCS] = 0,
-	[VCS] = 1,
-	[VCS2] = 1,
-	[VECS] = 3,
-};
-
 static void enable_execlists(struct intel_engine_cs *engine)
 {
 	struct drm_i915_private *dev_priv = engine->i915;
@@ -1656,31 +1708,6 @@ static int gen9_init_render_ring(struct intel_engine_cs *engine)
 	return init_workarounds_ring(engine);
 }
 
-static void reset_irq(struct intel_engine_cs *engine)
-{
-	struct drm_i915_private *dev_priv = engine->i915;
-	int i;
-
-	GEM_BUG_ON(engine->id >= ARRAY_SIZE(gtiir));
-
-	/*
-	 * Clear any pending interrupt state.
-	 *
-	 * We do it twice out of paranoia that some of the IIR are double
-	 * buffered, and if we only reset it once there may still be
-	 * an interrupt pending.
-	 */
-	for (i = 0; i < 2; i++) {
-		I915_WRITE(GEN8_GT_IIR(gtiir[engine->id]),
-			   GT_CONTEXT_SWITCH_INTERRUPT << engine->irq_shift);
-		POSTING_READ(GEN8_GT_IIR(gtiir[engine->id]));
-	}
-	GEM_BUG_ON(I915_READ(GEN8_GT_IIR(gtiir[engine->id])) &
-		   (GT_CONTEXT_SWITCH_INTERRUPT << engine->irq_shift));
-
-	clear_bit(ENGINE_IRQ_EXECLIST, &engine->irq_posted);
-}
-
 static void reset_common_ring(struct intel_engine_cs *engine,
 			      struct i915_request *request)
 {
@@ -1694,8 +1721,6 @@ static void reset_common_ring(struct intel_engine_cs *engine,
 	/* See execlists_cancel_requests() for the irq/spinlock split. */
 	local_irq_save(flags);
 
-	reset_irq(engine);
-
 	/*
 	 * Catch up with any missed context-switch interrupts.
 	 *
@@ -1706,14 +1731,12 @@ static void reset_common_ring(struct intel_engine_cs *engine,
 	 * requests were completed.
 	 */
 	execlists_cancel_port_requests(execlists);
+	reset_irq(engine);
 
 	/* Push back any incomplete requests for replay after the reset. */
 	spin_lock(&engine->timeline->lock);
 	__unwind_incomplete_requests(engine);
 	spin_unlock(&engine->timeline->lock);
-
-	/* Mark all CS interrupts as complete */
-	execlists->active = 0;
 
 	local_irq_restore(flags);
 
@@ -2109,7 +2132,20 @@ logical_ring_default_vfuncs(struct intel_engine_cs *engine)
 static inline void
 logical_ring_default_irqs(struct intel_engine_cs *engine)
 {
-	unsigned shift = engine->irq_shift;
+	unsigned int shift = 0;
+
+	if (INTEL_GEN(engine->i915) < 11) {
+		const u8 irq_shifts[] = {
+			[RCS]  = GEN8_RCS_IRQ_SHIFT,
+			[BCS]  = GEN8_BCS_IRQ_SHIFT,
+			[VCS]  = GEN8_VCS1_IRQ_SHIFT,
+			[VCS2] = GEN8_VCS2_IRQ_SHIFT,
+			[VECS] = GEN8_VECS_IRQ_SHIFT,
+		};
+
+		shift = irq_shifts[engine->id];
+	}
+
 	engine->irq_enable_mask = GT_RENDER_USER_INTERRUPT << shift;
 	engine->irq_keep_mask = GT_CONTEXT_SWITCH_INTERRUPT << shift;
 }

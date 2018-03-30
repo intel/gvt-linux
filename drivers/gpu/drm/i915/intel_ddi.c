@@ -493,6 +493,125 @@ static const struct cnl_ddi_buf_trans cnl_ddi_translations_edp_1_05V[] = {
 	{ 0x2, 0x7F, 0x3F, 0x00, 0x00 },	/* 400   400      0.0   */
 };
 
+struct icl_combo_phy_ddi_buf_trans {
+	u32 dw2_swing_select;
+	u32 dw2_swing_scalar;
+	u32 dw4_scaling;
+};
+
+/* Voltage Swing Programming for VccIO 0.85V for DP */
+static const struct icl_combo_phy_ddi_buf_trans icl_combo_phy_ddi_translations_dp_hdmi_0_85V[] = {
+				/* Voltage mV  db    */
+	{ 0x2, 0x98, 0x0018 },	/* 400         0.0   */
+	{ 0x2, 0x98, 0x3015 },	/* 400         3.5   */
+	{ 0x2, 0x98, 0x6012 },	/* 400         6.0   */
+	{ 0x2, 0x98, 0x900F },	/* 400         9.5   */
+	{ 0xB, 0x70, 0x0018 },	/* 600         0.0   */
+	{ 0xB, 0x70, 0x3015 },	/* 600         3.5   */
+	{ 0xB, 0x70, 0x6012 },	/* 600         6.0   */
+	{ 0x5, 0x00, 0x0018 },	/* 800         0.0   */
+	{ 0x5, 0x00, 0x3015 },	/* 800         3.5   */
+	{ 0x6, 0x98, 0x0018 },	/* 1200        0.0   */
+};
+
+/* FIXME - After table is updated in Bspec */
+/* Voltage Swing Programming for VccIO 0.85V for eDP */
+static const struct icl_combo_phy_ddi_buf_trans icl_combo_phy_ddi_translations_edp_0_85V[] = {
+				/* Voltage mV  db    */
+	{ 0x0, 0x00, 0x00 },	/* 200         0.0   */
+	{ 0x0, 0x00, 0x00 },	/* 200         1.5   */
+	{ 0x0, 0x00, 0x00 },	/* 200         4.0   */
+	{ 0x0, 0x00, 0x00 },	/* 200         6.0   */
+	{ 0x0, 0x00, 0x00 },	/* 250         0.0   */
+	{ 0x0, 0x00, 0x00 },	/* 250         1.5   */
+	{ 0x0, 0x00, 0x00 },	/* 250         4.0   */
+	{ 0x0, 0x00, 0x00 },	/* 300         0.0   */
+	{ 0x0, 0x00, 0x00 },	/* 300         1.5   */
+	{ 0x0, 0x00, 0x00 },	/* 350         0.0   */
+};
+
+/* Voltage Swing Programming for VccIO 0.95V for DP */
+static const struct icl_combo_phy_ddi_buf_trans icl_combo_phy_ddi_translations_dp_hdmi_0_95V[] = {
+				/* Voltage mV  db    */
+	{ 0x2, 0x98, 0x0018 },	/* 400         0.0   */
+	{ 0x2, 0x98, 0x3015 },	/* 400         3.5   */
+	{ 0x2, 0x98, 0x6012 },	/* 400         6.0   */
+	{ 0x2, 0x98, 0x900F },	/* 400         9.5   */
+	{ 0x4, 0x98, 0x0018 },	/* 600         0.0   */
+	{ 0x4, 0x98, 0x3015 },	/* 600         3.5   */
+	{ 0x4, 0x98, 0x6012 },	/* 600         6.0   */
+	{ 0x5, 0x76, 0x0018 },	/* 800         0.0   */
+	{ 0x5, 0x76, 0x3015 },	/* 800         3.5   */
+	{ 0x6, 0x98, 0x0018 },	/* 1200        0.0   */
+};
+
+/* FIXME - After table is updated in Bspec */
+/* Voltage Swing Programming for VccIO 0.95V for eDP */
+static const struct icl_combo_phy_ddi_buf_trans icl_combo_phy_ddi_translations_edp_0_95V[] = {
+				/* Voltage mV  db    */
+	{ 0x0, 0x00, 0x00 },	/* 200         0.0   */
+	{ 0x0, 0x00, 0x00 },	/* 200         1.5   */
+	{ 0x0, 0x00, 0x00 },	/* 200         4.0   */
+	{ 0x0, 0x00, 0x00 },	/* 200         6.0   */
+	{ 0x0, 0x00, 0x00 },	/* 250         0.0   */
+	{ 0x0, 0x00, 0x00 },	/* 250         1.5   */
+	{ 0x0, 0x00, 0x00 },	/* 250         4.0   */
+	{ 0x0, 0x00, 0x00 },	/* 300         0.0   */
+	{ 0x0, 0x00, 0x00 },	/* 300         1.5   */
+	{ 0x0, 0x00, 0x00 },	/* 350         0.0   */
+};
+
+/* Voltage Swing Programming for VccIO 1.05V for DP */
+static const struct icl_combo_phy_ddi_buf_trans icl_combo_phy_ddi_translations_dp_hdmi_1_05V[] = {
+				/* Voltage mV  db    */
+	{ 0x2, 0x98, 0x0018 },	/* 400         0.0   */
+	{ 0x2, 0x98, 0x3015 },	/* 400         3.5   */
+	{ 0x2, 0x98, 0x6012 },	/* 400         6.0   */
+	{ 0x2, 0x98, 0x900F },	/* 400         9.5   */
+	{ 0x4, 0x98, 0x0018 },	/* 600         0.0   */
+	{ 0x4, 0x98, 0x3015 },	/* 600         3.5   */
+	{ 0x4, 0x98, 0x6012 },	/* 600         6.0   */
+	{ 0x5, 0x71, 0x0018 },	/* 800         0.0   */
+	{ 0x5, 0x71, 0x3015 },	/* 800         3.5   */
+	{ 0x6, 0x98, 0x0018 },	/* 1200        0.0   */
+};
+
+/* FIXME - After table is updated in Bspec */
+/* Voltage Swing Programming for VccIO 1.05V for eDP */
+static const struct icl_combo_phy_ddi_buf_trans icl_combo_phy_ddi_translations_edp_1_05V[] = {
+				/* Voltage mV  db    */
+	{ 0x0, 0x00, 0x00 },	/* 200         0.0   */
+	{ 0x0, 0x00, 0x00 },	/* 200         1.5   */
+	{ 0x0, 0x00, 0x00 },	/* 200         4.0   */
+	{ 0x0, 0x00, 0x00 },	/* 200         6.0   */
+	{ 0x0, 0x00, 0x00 },	/* 250         0.0   */
+	{ 0x0, 0x00, 0x00 },	/* 250         1.5   */
+	{ 0x0, 0x00, 0x00 },	/* 250         4.0   */
+	{ 0x0, 0x00, 0x00 },	/* 300         0.0   */
+	{ 0x0, 0x00, 0x00 },	/* 300         1.5   */
+	{ 0x0, 0x00, 0x00 },	/* 350         0.0   */
+};
+
+struct icl_mg_phy_ddi_buf_trans {
+	u32 cri_txdeemph_override_5_0;
+	u32 cri_txdeemph_override_11_6;
+	u32 cri_txdeemph_override_17_12;
+};
+
+static const struct icl_mg_phy_ddi_buf_trans icl_mg_phy_ddi_translations[] = {
+				/* Voltage swing  pre-emphasis */
+	{ 0x0, 0x1B, 0x00 },	/* 0              0   */
+	{ 0x0, 0x23, 0x08 },	/* 0              1   */
+	{ 0x0, 0x2D, 0x12 },	/* 0              2   */
+	{ 0x0, 0x00, 0x00 },	/* 0              3   */
+	{ 0x0, 0x23, 0x00 },	/* 1              0   */
+	{ 0x0, 0x2B, 0x09 },	/* 1              1   */
+	{ 0x0, 0x2E, 0x11 },	/* 1              2   */
+	{ 0x0, 0x2F, 0x00 },	/* 2              0   */
+	{ 0x0, 0x33, 0x0C },	/* 2              1   */
+	{ 0x0, 0x00, 0x00 },	/* 3              0   */
+};
+
 static const struct ddi_buf_trans *
 bdw_get_buf_trans_edp(struct drm_i915_private *dev_priv, int *n_entries)
 {
@@ -875,7 +994,7 @@ static void intel_wait_ddi_buf_idle(struct drm_i915_private *dev_priv,
 
 static uint32_t hsw_pll_to_ddi_pll_sel(const struct intel_shared_dpll *pll)
 {
-	switch (pll->id) {
+	switch (pll->info->id) {
 	case DPLL_ID_WRPLL1:
 		return PORT_CLK_SEL_WRPLL1;
 	case DPLL_ID_WRPLL2:
@@ -889,7 +1008,7 @@ static uint32_t hsw_pll_to_ddi_pll_sel(const struct intel_shared_dpll *pll)
 	case DPLL_ID_LCPLL_2700:
 		return PORT_CLK_SEL_LCPLL_2700;
 	default:
-		MISSING_CASE(pll->id);
+		MISSING_CASE(pll->info->id);
 		return PORT_CLK_SEL_NONE;
 	}
 }
@@ -2131,7 +2250,7 @@ static void intel_ddi_clk_select(struct intel_encoder *encoder,
 		/* Configure DPCLKA_CFGCR0 to map the DPLL to the DDI. */
 		val = I915_READ(DPCLKA_CFGCR0);
 		val &= ~DPCLKA_CFGCR0_DDI_CLK_SEL_MASK(port);
-		val |= DPCLKA_CFGCR0_DDI_CLK_SEL(pll->id, port);
+		val |= DPCLKA_CFGCR0_DDI_CLK_SEL(pll->info->id, port);
 		I915_WRITE(DPCLKA_CFGCR0, val);
 
 		/*
@@ -2148,7 +2267,7 @@ static void intel_ddi_clk_select(struct intel_encoder *encoder,
 
 		val &= ~(DPLL_CTRL2_DDI_CLK_OFF(port) |
 			 DPLL_CTRL2_DDI_CLK_SEL_MASK(port));
-		val |= (DPLL_CTRL2_DDI_CLK_SEL(pll->id, port) |
+		val |= (DPLL_CTRL2_DDI_CLK_SEL(pll->info->id, port) |
 			DPLL_CTRL2_DDI_SEL_OVERRIDE(port));
 
 		I915_WRITE(DPLL_CTRL2, val);
@@ -2424,12 +2543,14 @@ static void intel_enable_ddi_hdmi(struct intel_encoder *encoder,
 {
 	struct drm_i915_private *dev_priv = to_i915(encoder->base.dev);
 	struct intel_digital_port *dig_port = enc_to_dig_port(&encoder->base);
+	struct drm_connector *connector = conn_state->connector;
 	enum port port = encoder->port;
 
-	intel_hdmi_handle_sink_scrambling(encoder,
-					  conn_state->connector,
-					  crtc_state->hdmi_high_tmds_clock_ratio,
-					  crtc_state->hdmi_scrambling);
+	if (!intel_hdmi_handle_sink_scrambling(encoder, connector,
+					       crtc_state->hdmi_high_tmds_clock_ratio,
+					       crtc_state->hdmi_scrambling))
+		DRM_ERROR("[CONNECTOR:%d:%s] Failed to configure sink scrambling/TMDS bit clock ratio\n",
+			  connector->base.id, connector->name);
 
 	/* Display WA #1143: skl,kbl,cfl */
 	if (IS_GEN9_BC(dev_priv)) {
@@ -2520,13 +2641,16 @@ static void intel_disable_ddi_hdmi(struct intel_encoder *encoder,
 				   const struct intel_crtc_state *old_crtc_state,
 				   const struct drm_connector_state *old_conn_state)
 {
+	struct drm_connector *connector = old_conn_state->connector;
+
 	if (old_crtc_state->has_audio)
 		intel_audio_codec_disable(encoder,
 					  old_crtc_state, old_conn_state);
 
-	intel_hdmi_handle_sink_scrambling(encoder,
-					  old_conn_state->connector,
-					  false, false);
+	if (!intel_hdmi_handle_sink_scrambling(encoder, connector,
+					       false, false))
+		DRM_DEBUG_KMS("[CONNECTOR:%d:%s] Failed to reset sink scrambling/TMDS bit clock ratio\n",
+			      connector->base.id, connector->name);
 }
 
 static void intel_disable_ddi(struct intel_encoder *encoder,

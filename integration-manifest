@@ -1,0 +1,28 @@
+drm-upstream drm-fixes 97130968839a2928869a2d25500b5855017aac7d
+	Merge tag 'drm-amdkfd-fixes-2018-03-25' of git://people.freedesktop.org/~gabbayo/linux into drm-fixes
+drm-misc drm-misc-fixes 5a9f698feb11b198f17b2acebbfe0e2716a3beed
+	drm/ast: Fixed 1280x800 Display Issue
+drm-intel drm-intel-fixes 3eb2ce825ea1ad89d20f7a3b5780df850e4be274
+	Linux 4.16-rc7
+drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
+	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
+drm-upstream drm-next 694f54f680f7fd8e9561928fbfc537d9afbc3d79
+	Merge branch 'drm-misc-next-fixes' of git://anongit.freedesktop.org/drm/drm-misc into drm-next
+drm-misc drm-misc-next-fixes 41613a1a7df27a0aa34bf77d51278bbe8e108a8f
+	drm/omap: fix crash if there's no video PLL
+drm-intel drm-intel-next-fixes 38057aa1639b74d5c1e0dc1ca7c22bc7a31de714
+	drm/i915/execlists: Clear user-active flag on preemption completion
+drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
+	Linux 4.14-rc1
+drm-misc drm-misc-next c9fea6f4379c72b7c59e1efceab09a35bc7eac43
+	drm/sti: Depend on OF rather than selecting it
+drm-intel drm-intel-next-queued be1c63c8017bb00a4041abace6cc1e9f0bf26aa9
+	drm/i915/dp: Send DPCD ON for MST before phy_up
+drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
+	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
+sound-upstream for-linus e15dc99dbb9cf99f6432e8e3c0b3a8f7a3403a86
+	ALSA: pcm: Fix endless loop for XRUN recovery in OSS emulation
+sound-upstream for-next e15dc99dbb9cf99f6432e8e3c0b3a8f7a3403a86
+	ALSA: pcm: Fix endless loop for XRUN recovery in OSS emulation
+drm-intel topic/core-for-CI eaf328ff6661fa9be7d3d2ea3a9dff2eeb91348e
+	trace: Mention trace_clock=global when warning about unstable clocks

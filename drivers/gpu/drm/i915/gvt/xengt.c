@@ -507,35 +507,6 @@ static int xen_get_max_gpfn(domid_t vm_id)
 	return max_gpfn;
 }
 
-static int xen_pause_domain(domid_t vm_id)
-{
-	int rc;
-	struct xen_domctl domctl;
-
-	domctl.domain = vm_id;
-	domctl.cmd = XEN_DOMCTL_pausedomain;
-	domctl.interface_version = XEN_DOMCTL_INTERFACE_VERSION;
-
-	rc = HYPERVISOR_domctl(&domctl);
-	if (rc != 0)
-		gvt_dbg_core("xen_pause_domain fail: %d!\n", rc);
-
-	return rc;
-}
-
-static int xen_shutdown_domain(domid_t  vm_id)
-{
-	int rc;
-	struct sched_remote_shutdown r;
-
-	r.reason = SHUTDOWN_crash;
-	r.domain_id = vm_id;
-	rc = HYPERVISOR_sched_op(SCHEDOP_remote_shutdown, &r);
-	if (rc != 0)
-		gvt_dbg_core("xen_shutdown_domain failed: %d\n", rc);
-	return rc;
-}
-
 static int xen_domain_iomem_perm(domid_t domain_id, uint64_t first_mfn,
 							uint64_t nr_mfns, uint8_t allow_access)
 {
@@ -1383,10 +1354,8 @@ static int xengt_emulation_thread(void *priv)
 			if (ioreq == NULL)
 				continue;
 
-			if (xengt_do_ioreq(vgpu, ioreq)) {
-				xen_pause_domain(info->vm_id);
-				xen_shutdown_domain(info->vm_id);
-			}
+			if (xengt_do_ioreq(vgpu, ioreq))
+				gvt_err("Please note fatal ioreq failure\n");
 
 			ioreq->state = STATE_IORESP_READY;
 

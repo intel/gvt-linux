@@ -1,28 +1,12 @@
-drm-upstream drm-fixes 97130968839a2928869a2d25500b5855017aac7d
-	Merge tag 'drm-amdkfd-fixes-2018-03-25' of git://people.freedesktop.org/~gabbayo/linux into drm-fixes
-drm-misc drm-misc-fixes c0db1b677e1d584fab5d7ac76a32e1c0157542e0
-	drm/vc4: Fix memory leak during BO teardown
-drm-intel drm-intel-fixes 3eb2ce825ea1ad89d20f7a3b5780df850e4be274
-	Linux 4.16-rc7
-drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
-	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
-drm-upstream drm-next a10beabba213924d876f2d10ca9351aeab93f58a
-	Merge branch 'drm-next-4.17' of git://people.freedesktop.org/~agd5f/linux into drm-next
-drm-misc drm-misc-next-fixes 3131f209468d1514af378dd46eb34123d0af84ff
-	drm/vc4: Fix leak of the file_priv that stored the perfmon.
-drm-intel drm-intel-next-fixes 38057aa1639b74d5c1e0dc1ca7c22bc7a31de714
-	drm/i915/execlists: Clear user-active flag on preemption completion
-drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
-	Linux 4.14-rc1
-drm-misc drm-misc-next a08fc7c8056e75b08285a2ad955228002dcd86bc
-	drm/sun4i: Tie the DSI controller in the TCON
-drm-intel drm-intel-next-queued 9f172f6fbd243759c808d97bd83c95e49325b2c9
-	drm/i915: Call i915_perf_fini() on init_hw error unwind
-drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
-	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
-sound-upstream for-linus 7ecb46e9ee9af18e304eb9e7d6804c59a408e846
-	ALSA: line6: Use correct endpoint type for midi output
-sound-upstream for-next 7ecb46e9ee9af18e304eb9e7d6804c59a408e846
-	ALSA: line6: Use correct endpoint type for midi output
-drm-intel topic/core-for-CI eaf328ff6661fa9be7d3d2ea3a9dff2eeb91348e
-	trace: Mention trace_clock=global when warning about unstable clocks
+drm-tip/drm-tip a0e39233b88795009de32094efa8a2135f34338f
+	drm-tip: 2018y-04m-14d-18h-15m-07s UTC integration manifest
+vfio-upstream/for-linus 834814e80268c818f354c8f402e0c6604ed75589
+	Revert: "vfio-pci: Mask INTx if a device is not capabable of enabling it"
+vfio-upstream/next da9147140fe3de5a3a3fe5fe7f69739d4f39bea1
+	MAINTAINERS: vfio/platform: Update sub-maintainer
+origin/gvt-fixes d54e79340ff8d65b6c63ac278158add2fe211fd0
+	drm/i915/gvt: Dereference msi eventfd_ctx when it isn't used anymore
+origin/gvt-next 4068a5d64f98e138101a0c763f11fd9bba5a6a82
+	drm/i915/gvt: Update time slice more frequently
+origin/gvt-next-fixes 10996f802109c83421ca30556cfe36ffc3bebae3
+	drm/i915/gvt: Add drm_format_mod update

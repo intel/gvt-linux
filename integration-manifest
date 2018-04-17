@@ -1,28 +1,12 @@
-drm-upstream drm-fixes 97130968839a2928869a2d25500b5855017aac7d
-	Merge tag 'drm-amdkfd-fixes-2018-03-25' of git://people.freedesktop.org/~gabbayo/linux into drm-fixes
-drm-misc drm-misc-fixes b8e47d87be65aec931846ced9a34a22d2021c311
-	drm: Fix HDCP downstream dev count read
-drm-intel drm-intel-fixes 60cc43fc888428bb2f18f08997432d426a243338
-	Linux 4.17-rc1
-drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
-	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
-drm-upstream drm-next a10beabba213924d876f2d10ca9351aeab93f58a
-	Merge branch 'drm-next-4.17' of git://people.freedesktop.org/~agd5f/linux into drm-next
-drm-misc drm-misc-next-fixes 3131f209468d1514af378dd46eb34123d0af84ff
-	drm/vc4: Fix leak of the file_priv that stored the perfmon.
-drm-intel drm-intel-next-fixes 38057aa1639b74d5c1e0dc1ca7c22bc7a31de714
-	drm/i915/execlists: Clear user-active flag on preemption completion
-drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
-	Linux 4.14-rc1
-drm-misc drm-misc-next 2d078c2d04a535c2f342beb84c59cdade5cfe3d3
-	drm/rockchip: fix VOP vblank race
-drm-intel drm-intel-next-queued 94f8dfc6cdfc3c48c3aea59ce528fa93cb54a69f
-	drm/i915/selftests: Handle a potential failure of intel_ring_begin
-drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
-	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
-sound-upstream for-linus af52f9982e410edac21ca4b49563053ffc9da1eb
-	ALSA: hda - New VIA controller suppor no-snoop path
-sound-upstream for-next 057666b69b1d51feb389a17ec73722b001aaf3d0
-	ALSA: emu10k1: Reduce GFP_ATOMIC allocation
-drm-intel topic/core-for-CI eaf328ff6661fa9be7d3d2ea3a9dff2eeb91348e
-	trace: Mention trace_clock=global when warning about unstable clocks
+drm-tip/drm-tip c1645edc253f2b52a8c94565a75b479a6782e75f
+	drm-tip: 2018y-04m-17d-10h-41m-38s UTC integration manifest
+vfio-upstream/for-linus 834814e80268c818f354c8f402e0c6604ed75589
+	Revert: "vfio-pci: Mask INTx if a device is not capabable of enabling it"
+vfio-upstream/next da9147140fe3de5a3a3fe5fe7f69739d4f39bea1
+	MAINTAINERS: vfio/platform: Update sub-maintainer
+origin/gvt-fixes 39b4cbadb9a95bf3f13ea102d6ec841940916ee2
+	drm/i915/kvmgt: Check the pfn got from vfio_pin_pages
+origin/gvt-next 842bf081736f13db8fee9ce1b5b4a3c8da62ae3d
+	drm/i915/gvt: Mark expected switch fall-through in handle_g2v_notification
+origin/gvt-next-fixes 10996f802109c83421ca30556cfe36ffc3bebae3
+	drm/i915/gvt: Add drm_format_mod update

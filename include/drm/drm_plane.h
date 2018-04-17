@@ -43,6 +43,7 @@ struct drm_modeset_acquire_ctx;
  *	plane (in 16.16)
  * @src_w: width of visible portion of plane (in 16.16)
  * @src_h: height of visible portion of plane (in 16.16)
+ * @alpha: opacity of the plane
  * @rotation: rotation of the plane
  * @zpos: priority of the given plane on crtc (optional)
  *	Note that multiple active planes on the same crtc can have an identical
@@ -51,8 +52,8 @@ struct drm_modeset_acquire_ctx;
  *	plane with a lower ID.
  * @normalized_zpos: normalized value of zpos: unique, range from 0 to N-1
  *	where N is the number of active planes for given crtc. Note that
- *	the driver must call drm_atomic_normalize_zpos() to update this before
- *	it can be trusted.
+ *	the driver must set drm_mode_config.normalize_zpos or call
+ *	drm_atomic_normalize_zpos() to update this before it can be trusted.
  * @src: clipped source coordinates of the plane (in 16.16)
  * @dst: clipped destination coordinates of the plane
  * @state: backpointer to global drm_atomic_state
@@ -105,6 +106,9 @@ struct drm_plane_state {
 	/* Source values are 16.16 fixed point */
 	uint32_t src_x, src_y;
 	uint32_t src_h, src_w;
+
+	/* Plane opacity */
+	u16 alpha;
 
 	/* Plane rotation */
 	unsigned int rotation;
@@ -496,6 +500,7 @@ enum drm_plane_type {
  * @funcs: helper functions
  * @properties: property tracking for this plane
  * @type: type of plane (overlay, primary, cursor)
+ * @alpha_property: alpha property for this plane
  * @zpos_property: zpos property for this plane
  * @rotation_property: rotation property for this plane
  * @helper_private: mid-layer private data
@@ -571,6 +576,7 @@ struct drm_plane {
 	 */
 	struct drm_plane_state *state;
 
+	struct drm_property *alpha_property;
 	struct drm_property *zpos_property;
 	struct drm_property *rotation_property;
 

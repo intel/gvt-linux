@@ -1,28 +1,12 @@
-drm-upstream drm-fixes 24d9092c8b7de0a0f630adbe3504bef8d3a618af
-	Merge tag 'drm-intel-fixes-2018-04-26' of git://anongit.freedesktop.org/drm/drm-intel into drm-fixes
-drm-misc drm-misc-fixes 1f6b8eef11c3d097bc8a6b2bbb868eb47ec6f7d8
-	drm/edid: Reset more of the display info
-drm-intel drm-intel-fixes 0b551f1e0fc50ee4e3cde2dd639cb010dae5b997
-	drm/i915/fbdev: Enable late fbdev initial configuration
-drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
-	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
-drm-upstream drm-next 6d08b06e67cd117f6992c46611dfb4ce267cd71e
-	Linux 4.17-rc2
-drm-misc drm-misc-next-fixes 3131f209468d1514af378dd46eb34123d0af84ff
-	drm/vc4: Fix leak of the file_priv that stored the perfmon.
-drm-intel drm-intel-next-fixes 6d08b06e67cd117f6992c46611dfb4ce267cd71e
-	Linux 4.17-rc2
-drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
-	Linux 4.14-rc1
-drm-misc drm-misc-next 30e9db6d046ba667070e5a011a13951830d60a6e
-	drm: Don't pass the index to drm_property_add_enum()
-drm-intel drm-intel-next-queued 78b60ce7b96cf1869b51cee916a40041e400d6ce
-	drm/i915/icl: add definitions for the ICL PLL registers
-drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
-	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
-sound-upstream for-linus 8f22e52528cc372b218b5f100457469615c733ce
-	ALSA: seq: Fix races at MIDI encoding in snd_virmidi_output_trigger()
-sound-upstream for-next 4d31c6e41ed2f95f97a19766812797dabd82a5ee
-	Merge branch 'for-linus' into for-next
-drm-intel topic/core-for-CI 153328a3eb70e885212ac6ce84f6fcee5097e16c
-	Documentation: typec.rst: Use literal-block element with ascii art
+drm-tip/drm-tip e701a0e6315dc85615f83b2ee14d9cb2f425d97d
+	drm-tip: 2018y-04m-28d-00h-24m-35s UTC integration manifest
+vfio-upstream/for-linus 834814e80268c818f354c8f402e0c6604ed75589
+	Revert: "vfio-pci: Mask INTx if a device is not capabable of enabling it"
+vfio-upstream/next da9147140fe3de5a3a3fe5fe7f69739d4f39bea1
+	MAINTAINERS: vfio/platform: Update sub-maintainer
+origin/gvt-fixes 39b4cbadb9a95bf3f13ea102d6ec841940916ee2
+	drm/i915/kvmgt: Check the pfn got from vfio_pin_pages
+origin/gvt-next 8f1f8a00c0ab8b9c8ac7b850a5e0742eb7a750f2
+	Revert "drm/i915/gvt: set max priority for gvt context"
+origin/gvt-next-fixes 10996f802109c83421ca30556cfe36ffc3bebae3
+	drm/i915/gvt: Add drm_format_mod update

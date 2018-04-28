@@ -32,6 +32,7 @@
 #include <linux/zlib.h>
 #include <drm/drm_print.h>
 
+#include "i915_gpu_error.h"
 #include "i915_drv.h"
 
 static inline const struct intel_engine_cs *
@@ -410,7 +411,7 @@ static void error_print_request(struct drm_i915_error_state_buf *m,
 
 	err_printf(m, "%s pid %d, ban score %d, seqno %8x:%08x, prio %d, emitted %dms ago, head %08x, tail %08x\n",
 		   prefix, erq->pid, erq->ban_score,
-		   erq->context, erq->seqno, erq->priority,
+		   erq->context, erq->seqno, erq->sched_attr.priority,
 		   jiffies_to_msecs(jiffies - erq->jiffies),
 		   erq->head, erq->tail);
 }
@@ -421,7 +422,7 @@ static void error_print_context(struct drm_i915_error_state_buf *m,
 {
 	err_printf(m, "%s%s[%d] user_handle %d hw_id %d, prio %d, ban score %d%s guilty %d active %d\n",
 		   header, ctx->comm, ctx->pid, ctx->handle, ctx->hw_id,
-		   ctx->priority, ctx->ban_score, bannable(ctx),
+		   ctx->sched_attr.priority, ctx->ban_score, bannable(ctx),
 		   ctx->guilty, ctx->active);
 }
 
@@ -1277,7 +1278,7 @@ static void record_request(struct i915_request *request,
 			   struct drm_i915_error_request *erq)
 {
 	erq->context = request->ctx->hw_id;
-	erq->priority = request->priotree.priority;
+	erq->sched_attr = request->sched.attr;
 	erq->ban_score = atomic_read(&request->ctx->ban_score);
 	erq->seqno = request->global_seqno;
 	erq->jiffies = request->emitted_jiffies;
@@ -1371,7 +1372,7 @@ static void record_context(struct drm_i915_error_context *e,
 
 	e->handle = ctx->user_handle;
 	e->hw_id = ctx->hw_id;
-	e->priority = ctx->priority;
+	e->sched_attr = ctx->sched;
 	e->ban_score = atomic_read(&ctx->ban_score);
 	e->bannable = i915_gem_context_is_bannable(ctx);
 	e->guilty = atomic_read(&ctx->guilty_count);

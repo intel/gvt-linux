@@ -1,0 +1,28 @@
+drm-upstream drm-fixes 24d9092c8b7de0a0f630adbe3504bef8d3a618af
+	Merge tag 'drm-intel-fixes-2018-04-26' of git://anongit.freedesktop.org/drm/drm-intel into drm-fixes
+drm-misc drm-misc-fixes 49ceda9de2da4d1827941d06701f3017c27c1855
+	drm/bridge: vga-dac: Fix edid memory leak
+drm-intel drm-intel-fixes b607990c76ceda0a7a7ceacabab174cdc8b9beee
+	drm/i915/glk: Add MODULE_FIRMWARE for Geminilake
+drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
+	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
+drm drm-next 0ab390262c4920f26f8202063a268d5fc829728e
+	Merge tag 'drm-misc-next-2018-04-26' of git://anongit.freedesktop.org/drm/drm-misc into drm-next
+drm-misc drm-misc-next-fixes 3131f209468d1514af378dd46eb34123d0af84ff
+	drm/vc4: Fix leak of the file_priv that stored the perfmon.
+drm-intel drm-intel-next-fixes 6d08b06e67cd117f6992c46611dfb4ce267cd71e
+	Linux 4.17-rc2
+drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
+	Linux 4.14-rc1
+drm-misc drm-misc-next ec66723197103eebd7f7099df6d5ea23deff679b
+	drm/rect: Fix drm_rect_rotation_inv() docs
+drm-intel drm-intel-next-queued a89d1f921c15932b4c9a70861d134290f1a14a10
+	drm/i915: Split i915_gem_timeline into individual timelines
+drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
+	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
+sound-upstream for-linus f13876e2c33a657a71bcbb10f767c0951b165020
+	ALSA: pcm: Check PCM state at xfern compat ioctl
+sound-upstream for-next 6455abb43374346f10b4842a9bc9b7f4d10fa038
+	ALSA: usb-audio: Give proper vendor/product name for Dell WD15 Dock
+drm-intel topic/core-for-CI 153328a3eb70e885212ac6ce84f6fcee5097e16c
+	Documentation: typec.rst: Use literal-block element with ascii art

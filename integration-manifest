@@ -1,28 +1,12 @@
-drm-upstream drm-fixes 24d9092c8b7de0a0f630adbe3504bef8d3a618af
-	Merge tag 'drm-intel-fixes-2018-04-26' of git://anongit.freedesktop.org/drm/drm-intel into drm-fixes
-drm-misc drm-misc-fixes 49ceda9de2da4d1827941d06701f3017c27c1855
-	drm/bridge: vga-dac: Fix edid memory leak
-drm-intel drm-intel-fixes b607990c76ceda0a7a7ceacabab174cdc8b9beee
-	drm/i915/glk: Add MODULE_FIRMWARE for Geminilake
-drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
-	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
-drm drm-next 0ab390262c4920f26f8202063a268d5fc829728e
-	Merge tag 'drm-misc-next-2018-04-26' of git://anongit.freedesktop.org/drm/drm-misc into drm-next
-drm-misc drm-misc-next-fixes 3131f209468d1514af378dd46eb34123d0af84ff
-	drm/vc4: Fix leak of the file_priv that stored the perfmon.
-drm-intel drm-intel-next-fixes 6d08b06e67cd117f6992c46611dfb4ce267cd71e
-	Linux 4.17-rc2
-drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
-	Linux 4.14-rc1
-drm-misc drm-misc-next ec66723197103eebd7f7099df6d5ea23deff679b
-	drm/rect: Fix drm_rect_rotation_inv() docs
-drm-intel drm-intel-next-queued a89d1f921c15932b4c9a70861d134290f1a14a10
-	drm/i915: Split i915_gem_timeline into individual timelines
-drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
-	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
-sound-upstream for-linus f13876e2c33a657a71bcbb10f767c0951b165020
-	ALSA: pcm: Check PCM state at xfern compat ioctl
-sound-upstream for-next 6455abb43374346f10b4842a9bc9b7f4d10fa038
-	ALSA: usb-audio: Give proper vendor/product name for Dell WD15 Dock
-drm-intel topic/core-for-CI 153328a3eb70e885212ac6ce84f6fcee5097e16c
-	Documentation: typec.rst: Use literal-block element with ascii art
+drm-tip/drm-tip c49cbe0d1eb8d4c0ad477b8c7fdc5fbd82617674
+	drm-tip: 2018y-05m-02d-22h-59m-02s UTC integration manifest
+vfio-upstream/for-linus 834814e80268c818f354c8f402e0c6604ed75589
+	Revert: "vfio-pci: Mask INTx if a device is not capabable of enabling it"
+vfio-upstream/next da9147140fe3de5a3a3fe5fe7f69739d4f39bea1
+	MAINTAINERS: vfio/platform: Update sub-maintainer
+origin/gvt-fixes 39b4cbadb9a95bf3f13ea102d6ec841940916ee2
+	drm/i915/kvmgt: Check the pfn got from vfio_pin_pages
+origin/gvt-next 8f1f8a00c0ab8b9c8ac7b850a5e0742eb7a750f2
+	Revert "drm/i915/gvt: set max priority for gvt context"
+origin/gvt-next-fixes 10996f802109c83421ca30556cfe36ffc3bebae3
+	drm/i915/gvt: Add drm_format_mod update

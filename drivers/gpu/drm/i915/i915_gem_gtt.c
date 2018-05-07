@@ -2111,8 +2111,6 @@ static void i915_address_space_init(struct i915_address_space *vm,
 				    struct drm_i915_private *dev_priv,
 				    const char *name)
 {
-	i915_gem_timeline_init(dev_priv, &vm->timeline, name);
-
 	drm_mm_init(&vm->mm, 0, vm->total);
 	vm->mm.head_node.color = I915_COLOR_UNEVICTABLE;
 
@@ -2129,7 +2127,6 @@ static void i915_address_space_fini(struct i915_address_space *vm)
 	if (pagevec_count(&vm->free_pages))
 		vm_free_pages_release(vm, true);
 
-	i915_gem_timeline_fini(&vm->timeline);
 	drm_mm_takedown(&vm->mm);
 	list_del(&vm->global_link);
 }
@@ -2222,6 +2219,12 @@ i915_ppgtt_create(struct drm_i915_private *dev_priv,
 
 void i915_ppgtt_close(struct i915_address_space *vm)
 {
+	GEM_BUG_ON(vm->closed);
+	vm->closed = true;
+}
+
+static void ppgtt_destroy_vma(struct i915_address_space *vm)
+{
 	struct list_head *phases[] = {
 		&vm->active_list,
 		&vm->inactive_list,
@@ -2229,15 +2232,12 @@ void i915_ppgtt_close(struct i915_address_space *vm)
 		NULL,
 	}, **phase;
 
-	GEM_BUG_ON(vm->closed);
 	vm->closed = true;
-
 	for (phase = phases; *phase; phase++) {
 		struct i915_vma *vma, *vn;
 
 		list_for_each_entry_safe(vma, vn, *phase, vm_link)
-			if (!i915_vma_is_closed(vma))
-				i915_vma_close(vma);
+			i915_vma_destroy(vma);
 	}
 }
 
@@ -2248,7 +2248,8 @@ void i915_ppgtt_release(struct kref *kref)
 
 	trace_i915_ppgtt_release(&ppgtt->base);
 
-	/* vmas should already be unbound and destroyed */
+	ppgtt_destroy_vma(&ppgtt->base);
+
 	GEM_BUG_ON(!list_empty(&ppgtt->base.active_list));
 	GEM_BUG_ON(!list_empty(&ppgtt->base.inactive_list));
 	GEM_BUG_ON(!list_empty(&ppgtt->base.unbound_list));
@@ -3325,14 +3326,10 @@ static int gen8_gmch_probe(struct i915_ggtt *ggtt)
 		DRM_ERROR("Can't set DMA mask/consistent mask (%d)\n", err);
 
 	pci_read_config_word(pdev, SNB_GMCH_CTRL, &snb_gmch_ctl);
-
-	if (INTEL_GEN(dev_priv) >= 9) {
-		size = gen8_get_total_gtt_size(snb_gmch_ctl);
-	} else if (IS_CHERRYVIEW(dev_priv)) {
+	if (IS_CHERRYVIEW(dev_priv))
 		size = chv_get_total_gtt_size(snb_gmch_ctl);
-	} else {
+	else
 		size = gen8_get_total_gtt_size(snb_gmch_ctl);
-	}
 
 	ggtt->base.total = (size / sizeof(gen8_pte_t)) << PAGE_SHIFT;
 	ggtt->base.cleanup = gen6_gmch_remove;

@@ -1,0 +1,28 @@
+drm-upstream drm-fixes a02cbe2e34c576cdc5e7846a3cd55245ab81db47
+	Merge branch 'vmwgfx-fixes-4.17' of git://people.freedesktop.org/~thomash/linux into drm-fixes
+drm-misc drm-misc-fixes 7a109673899b6d5b147307999efe2392181acee3
+	drm/bridge/sii8620: add Kconfig dependency on extcon
+drm-intel drm-intel-fixes e8f48f96db7e482995743f461b3e8a5c1a102533
+	drm/i915: Fix drm:intel_enable_lvds ERROR message in kernel log
+drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
+	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
+drm drm-next 8eb008c80841e3410ef2c043093478ea36bb5ff1
+	Merge tag 'drm-intel-next-2018-04-13' of git://anongit.freedesktop.org/drm/drm-intel into drm-next
+drm-misc drm-misc-next-fixes 3131f209468d1514af378dd46eb34123d0af84ff
+	drm/vc4: Fix leak of the file_priv that stored the perfmon.
+drm-intel drm-intel-next-fixes 6d08b06e67cd117f6992c46611dfb4ce267cd71e
+	Linux 4.17-rc2
+drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
+	Linux 4.14-rc1
+drm-misc drm-misc-next 2f065d8ae918159791474049ab67a0cb85723b81
+	drm/dp: Correctly mask DP_TRAINING_AUX_RD_INTERVAL values for DP 1.4
+drm-intel drm-intel-next-queued 0adb90d330bb5f0d7fba511af5af3fc1ba93fb7a
+	drm/i915: Annotate timeline lock nesting
+drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
+	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
+sound-upstream for-linus f13876e2c33a657a71bcbb10f767c0951b165020
+	ALSA: pcm: Check PCM state at xfern compat ioctl
+sound-upstream for-next 10aa7cad37d330dbff6a285af56dc4a7153a8f00
+	ALSA: pcm: Hide local_irq_disable/enable() and local_irqsave/restore()
+drm-intel topic/core-for-CI 153328a3eb70e885212ac6ce84f6fcee5097e16c
+	Documentation: typec.rst: Use literal-block element with ascii art

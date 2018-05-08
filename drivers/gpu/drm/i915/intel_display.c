@@ -3623,11 +3623,15 @@ u32 skl_plane_ctl(const struct intel_crtc_state *crtc_state,
 u32 glk_plane_color_ctl(const struct intel_crtc_state *crtc_state,
 			const struct intel_plane_state *plane_state)
 {
+	struct drm_i915_private *dev_priv =
+		to_i915(plane_state->base.plane->dev);
 	const struct drm_framebuffer *fb = plane_state->base.fb;
 	u32 plane_color_ctl = 0;
 
-	plane_color_ctl |= PLANE_COLOR_PIPE_GAMMA_ENABLE;
-	plane_color_ctl |= PLANE_COLOR_PIPE_CSC_ENABLE;
+	if (INTEL_GEN(dev_priv) < 11) {
+		plane_color_ctl |= PLANE_COLOR_PIPE_GAMMA_ENABLE;
+		plane_color_ctl |= PLANE_COLOR_PIPE_CSC_ENABLE;
+	}
 	plane_color_ctl |= PLANE_COLOR_PLANE_GAMMA_DISABLE;
 	plane_color_ctl |= glk_plane_color_ctl_alpha(fb->format->format);
 
@@ -5555,6 +5559,9 @@ static void haswell_crtc_enable(struct intel_crtc_state *pipe_config,
 	if (intel_crtc->config->shared_dpll)
 		intel_enable_shared_dpll(intel_crtc);
 
+	if (INTEL_GEN(dev_priv) >= 11)
+		icl_map_plls_to_ports(crtc, pipe_config, old_state);
+
 	if (intel_crtc_has_dp_encoder(intel_crtc->config))
 		intel_dp_set_m_n(intel_crtc, M1_N1);
 
@@ -5752,6 +5759,9 @@ static void haswell_crtc_disable(struct intel_crtc_state *old_crtc_state,
 		intel_ddi_disable_pipe_clock(intel_crtc->config);
 
 	intel_encoders_post_disable(crtc, old_crtc_state, old_state);
+
+	if (INTEL_GEN(dev_priv) >= 11)
+		icl_unmap_plls_to_ports(crtc, old_crtc_state, old_state);
 }
 
 static void i9xx_pfit_enable(struct intel_crtc *crtc)
@@ -11143,39 +11153,42 @@ intel_pipe_config_compare(struct drm_i915_private *dev_priv,
 		(current_config->base.mode.private_flags & I915_MODE_FLAG_INHERITED) &&
 		!(pipe_config->base.mode.private_flags & I915_MODE_FLAG_INHERITED);
 
-#define PIPE_CONF_CHECK_X(name)	\
+#define PIPE_CONF_CHECK_X(name) do { \
 	if (current_config->name != pipe_config->name) { \
 		pipe_config_err(adjust, __stringify(name), \
 			  "(expected 0x%08x, found 0x%08x)\n", \
 			  current_config->name, \
 			  pipe_config->name); \
 		ret = false; \
-	}
+	} \
+} while (0)
 
-#define PIPE_CONF_CHECK_I(name)	\
+#define PIPE_CONF_CHECK_I(name) do { \
 	if (current_config->name != pipe_config->name) { \
 		pipe_config_err(adjust, __stringify(name), \
 			  "(expected %i, found %i)\n", \
 			  current_config->name, \
 			  pipe_config->name); \
 		ret = false; \
-	}
+	} \
+} while (0)
 
-#define PIPE_CONF_CHECK_BOOL(name)	\
+#define PIPE_CONF_CHECK_BOOL(name) do { \
 	if (current_config->name != pipe_config->name) { \
 		pipe_config_err(adjust, __stringify(name), \
 			  "(expected %s, found %s)\n", \
 			  yesno(current_config->name), \
 			  yesno(pipe_config->name)); \
 		ret = false; \
-	}
+	} \
+} while (0)
 
 /*
  * Checks state where we only read out the enabling, but not the entire
  * state itself (like full infoframes or ELD for audio). These states
  * require a full modeset on bootup to fix up.
  */
-#define PIPE_CONF_CHECK_BOOL_INCOMPLETE(name) \
+#define PIPE_CONF_CHECK_BOOL_INCOMPLETE(name) do { \
 	if (!fixup_inherited || (!current_config->name && !pipe_config->name)) { \
 		PIPE_CONF_CHECK_BOOL(name); \
 	} else { \
@@ -11184,18 +11197,20 @@ intel_pipe_config_compare(struct drm_i915_private *dev_priv,
 			  yesno(current_config->name), \
 			  yesno(pipe_config->name)); \
 		ret = false; \
-	}
+	} \
+} while (0)
 
-#define PIPE_CONF_CHECK_P(name)	\
+#define PIPE_CONF_CHECK_P(name) do { \
 	if (current_config->name != pipe_config->name) { \
 		pipe_config_err(adjust, __stringify(name), \
 			  "(expected %p, found %p)\n", \
 			  current_config->name, \
 			  pipe_config->name); \
 		ret = false; \
-	}
+	} \
+} while (0)
 
-#define PIPE_CONF_CHECK_M_N(name) \
+#define PIPE_CONF_CHECK_M_N(name) do { \
 	if (!intel_compare_link_m_n(&current_config->name, \
 				    &pipe_config->name,\
 				    adjust)) { \
@@ -11213,14 +11228,15 @@ intel_pipe_config_compare(struct drm_i915_private *dev_priv,
 			  pipe_config->name.link_m, \
 			  pipe_config->name.link_n); \
 		ret = false; \
-	}
+	} \
+} while (0)
 
 /* This is required for BDW+ where there is only one set of registers for
  * switching between high and low RR.
  * This macro can be used whenever a comparison has to be made between one
  * hw state and multiple sw state variables.
  */
-#define PIPE_CONF_CHECK_M_N_ALT(name, alt_name) \
+#define PIPE_CONF_CHECK_M_N_ALT(name, alt_name) do { \
 	if (!intel_compare_link_m_n(&current_config->name, \
 				    &pipe_config->name, adjust) && \
 	    !intel_compare_link_m_n(&current_config->alt_name, \
@@ -11245,9 +11261,10 @@ intel_pipe_config_compare(struct drm_i915_private *dev_priv,
 			  pipe_config->name.link_m, \
 			  pipe_config->name.link_n); \
 		ret = false; \
-	}
+	} \
+} while (0)
 
-#define PIPE_CONF_CHECK_FLAGS(name, mask)	\
+#define PIPE_CONF_CHECK_FLAGS(name, mask) do { \
 	if ((current_config->name ^ pipe_config->name) & (mask)) { \
 		pipe_config_err(adjust, __stringify(name), \
 			  "(%x) (expected %i, found %i)\n", \
@@ -11255,16 +11272,18 @@ intel_pipe_config_compare(struct drm_i915_private *dev_priv,
 			  current_config->name & (mask), \
 			  pipe_config->name & (mask)); \
 		ret = false; \
-	}
+	} \
+} while (0)
 
-#define PIPE_CONF_CHECK_CLOCK_FUZZY(name) \
+#define PIPE_CONF_CHECK_CLOCK_FUZZY(name) do { \
 	if (!intel_fuzzy_clock_check(current_config->name, pipe_config->name)) { \
 		pipe_config_err(adjust, __stringify(name), \
 			  "(expected %i, found %i)\n", \
 			  current_config->name, \
 			  pipe_config->name); \
 		ret = false; \
-	}
+	} \
+} while (0)
 
 #define PIPE_CONF_QUIRK(quirk)	\
 	((current_config->quirks | pipe_config->quirks) & (quirk))
@@ -11373,6 +11392,16 @@ intel_pipe_config_compare(struct drm_i915_private *dev_priv,
 	PIPE_CONF_CHECK_X(dpll_hw_state.pll9);
 	PIPE_CONF_CHECK_X(dpll_hw_state.pll10);
 	PIPE_CONF_CHECK_X(dpll_hw_state.pcsdw12);
+	PIPE_CONF_CHECK_X(dpll_hw_state.mg_refclkin_ctl);
+	PIPE_CONF_CHECK_X(dpll_hw_state.mg_clktop2_coreclkctl1);
+	PIPE_CONF_CHECK_X(dpll_hw_state.mg_clktop2_hsclkctl);
+	PIPE_CONF_CHECK_X(dpll_hw_state.mg_pll_div0);
+	PIPE_CONF_CHECK_X(dpll_hw_state.mg_pll_div1);
+	PIPE_CONF_CHECK_X(dpll_hw_state.mg_pll_lf);
+	PIPE_CONF_CHECK_X(dpll_hw_state.mg_pll_frac_lock);
+	PIPE_CONF_CHECK_X(dpll_hw_state.mg_pll_ssc);
+	PIPE_CONF_CHECK_X(dpll_hw_state.mg_pll_bias);
+	PIPE_CONF_CHECK_X(dpll_hw_state.mg_pll_tdc_coldst_bias);
 
 	PIPE_CONF_CHECK_X(dsi_pll.ctrl);
 	PIPE_CONF_CHECK_X(dsi_pll.div);
@@ -11436,6 +11465,11 @@ static void verify_wm_state(struct drm_crtc *crtc,
 	skl_ddb_get_hw_state(dev_priv, &hw_ddb);
 	sw_ddb = &dev_priv->wm.skl_hw.ddb;
 
+	if (INTEL_GEN(dev_priv) >= 11)
+		if (hw_ddb.enabled_slices != sw_ddb->enabled_slices)
+			DRM_ERROR("mismatch in DBUF Slices (expected %u, got %u)\n",
+				  sw_ddb->enabled_slices,
+				  hw_ddb.enabled_slices);
 	/* planes */
 	for_each_universal_plane(dev_priv, pipe, plane) {
 		hw_plane_wm = &hw_wm.planes[plane];
@@ -12242,6 +12276,8 @@ static void skl_update_crtcs(struct drm_atomic_state *state)
 	bool progress;
 	enum pipe pipe;
 	int i;
+	u8 hw_enabled_slices = dev_priv->wm.skl_hw.ddb.enabled_slices;
+	u8 required_slices = intel_state->wm_results.ddb.enabled_slices;
 
 	const struct skl_ddb_entry *entries[I915_MAX_PIPES] = {};
 
@@ -12249,6 +12285,10 @@ static void skl_update_crtcs(struct drm_atomic_state *state)
 		/* ignore allocations for crtc's that have been turned off. */
 		if (new_crtc_state->active)
 			entries[i] = &to_intel_crtc_state(old_crtc_state)->wm.skl.ddb;
+
+	/* If 2nd DBuf slice required, enable it here */
+	if (INTEL_GEN(dev_priv) >= 11 && required_slices > hw_enabled_slices)
+		icl_dbuf_slices_update(dev_priv, required_slices);
 
 	/*
 	 * Whenever the number of active pipes changes, we need to make sure we
@@ -12300,6 +12340,10 @@ static void skl_update_crtcs(struct drm_atomic_state *state)
 			progress = true;
 		}
 	} while (progress);
+
+	/* If 2nd DBuf slice is no more required disable it */
+	if (INTEL_GEN(dev_priv) >= 11 && required_slices < hw_enabled_slices)
+		icl_dbuf_slices_update(dev_priv, required_slices);
 }
 
 static void intel_atomic_helper_free_state(struct drm_i915_private *dev_priv)
@@ -12763,6 +12807,15 @@ static void intel_plane_unpin_fb(struct intel_plane_state *old_plane_state)
 		intel_unpin_fb_vma(vma, old_plane_state->flags);
 }
 
+static void fb_obj_bump_render_priority(struct drm_i915_gem_object *obj)
+{
+	struct i915_sched_attr attr = {
+		.priority = I915_PRIORITY_DISPLAY,
+	};
+
+	i915_gem_object_wait_priority(obj, 0, &attr);
+}
+
 /**
  * intel_prepare_plane_fb - Prepare fb for usage on plane
  * @plane: drm plane to prepare for
@@ -12839,7 +12892,7 @@ intel_prepare_plane_fb(struct drm_plane *plane,
 
 	ret = intel_plane_pin_fb(to_intel_plane_state(new_state));
 
-	i915_gem_object_wait_priority(obj, 0, I915_PRIORITY_DISPLAY);
+	fb_obj_bump_render_priority(obj);
 
 	mutex_unlock(&dev_priv->drm.struct_mutex);
 	i915_gem_object_unpin_pages(obj);

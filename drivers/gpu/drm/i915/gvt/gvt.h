@@ -693,6 +693,9 @@ int intel_gvt_debugfs_add_vgpu(struct intel_vgpu *vgpu);
 void intel_gvt_debugfs_remove_vgpu(struct intel_vgpu *vgpu);
 int intel_gvt_debugfs_init(struct intel_gvt *gvt);
 void intel_gvt_debugfs_clean(struct intel_gvt *gvt);
+int submit_context(struct intel_vgpu *vgpu, int ring_id,
+		struct execlist_ctx_descriptor_format *desc,
+		bool emulate_schedule_in);
 
 
 #include "trace.h"

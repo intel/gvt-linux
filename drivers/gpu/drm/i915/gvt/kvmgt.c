@@ -585,7 +585,7 @@ static int kvmgt_init_migration(struct intel_vgpu *vgpu)
 		return -ENOMEM;
 
 	ret = intel_vgpu_register_reg(vgpu,
-			PCI_VENDOR_ID_INTEL | VFIO_REGION_TYPE_PCI_VENDOR_TYPE,
+			VFIO_REGION_TYPE_DEVICE_STATE,
 			VFIO_REGION_SUBTYPE_DEVICE_STATE,
 			&intel_vgpu_regops_device_state, MIGRATION_IMG_MAX_SIZE,
 			VFIO_REGION_INFO_FLAG_READ |

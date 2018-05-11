@@ -434,7 +434,7 @@ static size_t intel_vgpu_reg_rw_opregion(struct intel_vgpu *vgpu, char *buf,
 	count = min(count, (size_t)(vgpu->vdev.region[i].size - pos));
 	memcpy(buf, base + pos, count);
 
-	return count;
+	return 0;
 }
 
 static void intel_vgpu_reg_release_opregion(struct intel_vgpu *vgpu,
@@ -871,7 +871,7 @@ static ssize_t intel_vgpu_rw(struct mdev_device *mdev, char *buf,
 			return -EINVAL;
 
 		index -= VFIO_PCI_NUM_REGIONS;
-		return vgpu->vdev.region[index].ops->rw(vgpu, buf, count,
+		ret = vgpu->vdev.region[index].ops->rw(vgpu, buf, count,
 				ppos, is_write);
 	}
 

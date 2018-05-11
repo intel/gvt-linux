@@ -274,6 +274,9 @@ static int vgpu_get_plane_info(struct drm_device *dev,
 		return -EFAULT;
 	}
 
+	/* Apply g2h adjust to buffer start gma for display */
+	intel_gvt_ggtt_gmadr_g2h(vgpu, info->start, &info->start);
+
 	return 0;
 }
 

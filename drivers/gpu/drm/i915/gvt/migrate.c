@@ -428,7 +428,7 @@ static int ppgtt_save(const struct gvt_migration_obj_t *obj)
 			continue;
 
 		entry.page_table_level = mm->ppgtt_mm.root_entry_type;
-		memcpy(entry.pdp, mm->ppgtt_mm.shadow_pdps, 32);
+		memcpy(entry.pdp, mm->ppgtt_mm.guest_pdps, 32);
 
 		memcpy(des + sizeof(struct gvt_region_t) + (num * sz),
 			&entry, sz);
@@ -537,8 +537,11 @@ static int workload_save(const struct gvt_migration_obj_t *obj)
 		list_for_each_entry_safe(pos, n,
 			&vgpu->submission.workload_q_head[engine->id], list) {
 			workload.ring_id = pos->ring_id;
-			memcpy(&workload.elsp_dwords, &pos->elsp_dwords,
-				sizeof(struct intel_vgpu_elsp_dwords));
+			workload.ctx_desc = pos->ctx_desc;
+			workload.emulate_schedule_in = pos->emulate_schedule_in;
+			workload.elsp_dwords = pos->elsp_dwords;
+			list_del_init(&pos->list);
+			intel_vgpu_destroy_workload(pos);
 			memcpy(des + sizeof(struct gvt_region_t) + (num * sz),
 				&workload, sz);
 			num++;
@@ -555,14 +558,11 @@ static int workload_save(const struct gvt_migration_obj_t *obj)
 static int workload_load(const struct gvt_migration_obj_t *obj, u32 size)
 {
 	struct intel_vgpu *vgpu = (struct intel_vgpu *) obj->vgpu;
-	struct drm_i915_private *dev_priv = vgpu->gvt->dev_priv;
 	int n_transfer = INV;
 	struct gvt_pending_workload_t workload;
-	struct intel_engine_cs *engine;
 	void *src = obj->img + obj->offset;
-	u64 pa, off;
 	u32 sz = sizeof(struct gvt_pending_workload_t);
-	int i, j;
+	int i;
 
 	if (size == 0)
 		return size;
@@ -574,16 +574,14 @@ static int workload_load(const struct gvt_migration_obj_t *obj, u32 size)
 		size);
 		return n_transfer;
 	}
-
 	for (i = 0; i < size / sz; i++) {
 		memcpy(&workload, src + (i * sz), sz);
-		engine = dev_priv->engine[workload.ring_id];
-		off = i915_mmio_reg_offset(RING_ELSP(engine));
-		pa = intel_vgpu_mmio_offset_to_gpa(vgpu, off);
-		for (j = 0; j < 4; j++) {
-			intel_vgpu_emulate_mmio_write(vgpu, pa,
-					&workload.elsp_dwords.data[j], 4);
+		if (workload.emulate_schedule_in) {
+			vgpu->submission.execlist[workload.ring_id].elsp_dwords = workload.elsp_dwords;
+			vgpu->submission.execlist[workload.ring_id].elsp_dwords.index = 0;
 		}
+		submit_context(vgpu, workload.ring_id,
+			&workload.ctx_desc, workload.emulate_schedule_in);
 	}
 
 	n_transfer = size;

@@ -144,9 +144,11 @@ device_state_read(struct file *filp, struct kobject *kobj,
 	if (info->dev_state == NULL)
 		return -EINVAL;
 
-	if (intel_gvt_ops->vgpu_save_restore(vgpu,
-			buf, count, base, 0, false) != 0)
-		return -EINVAL;
+	if (off == 0) {
+		if (intel_gvt_ops->vgpu_save_restore(vgpu,
+				buf, count, base, 0, false) != 0)
+			return -EINVAL;
+	}
 
 	memcpy(buf, base + off, count);
 

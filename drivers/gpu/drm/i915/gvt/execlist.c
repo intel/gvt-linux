@@ -437,7 +437,7 @@ out:
 	return ret;
 }
 
-static int submit_context(struct intel_vgpu *vgpu, int ring_id,
+int submit_context(struct intel_vgpu *vgpu, int ring_id,
 		struct execlist_ctx_descriptor_format *desc,
 		bool emulate_schedule_in)
 {

@@ -401,9 +401,12 @@ static int opregion_load(const struct gvt_migration_obj_t *obj, u32 size)
 		size);
 		return n_transfer;
 	} else {
-		vgpu_opregion(vgpu)->va = (void *)__get_free_pages(GFP_KERNEL |
-			__GFP_ZERO,
-			get_order(INTEL_GVT_OPREGION_SIZE));
+		if (vgpu_opregion(vgpu)->va == NULL) {
+			vgpu_opregion(vgpu)->va = (void *)__get_free_pages(GFP_KERNEL |
+				__GFP_ZERO,
+				get_order(INTEL_GVT_OPREGION_SIZE));
+		}
+
 		n_transfer = obj->region.size;
 		memcpy(vgpu_opregion(vgpu)->va, obj->img + obj->offset, n_transfer);
 	}

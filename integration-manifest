@@ -1,0 +1,28 @@
+drm-upstream drm-fixes 72777fe79768ec30ac2163d26de68a89edc9849f
+	Merge branch 'drm-fixes-4.17' of git://people.freedesktop.org/~agd5f/linux into drm-fixes
+drm-misc drm-misc-fixes 7f6df440b8623c441c42d070bf592e2d2c1fa9bb
+	drm: Match sysfs name in link removal to link creation
+drm-intel drm-intel-fixes e8f48f96db7e482995743f461b3e8a5c1a102533
+	drm/i915: Fix drm:intel_enable_lvds ERROR message in kernel log
+drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
+	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
+drm drm-next 8eb008c80841e3410ef2c043093478ea36bb5ff1
+	Merge tag 'drm-intel-next-2018-04-13' of git://anongit.freedesktop.org/drm/drm-intel into drm-next
+drm-misc drm-misc-next-fixes 3131f209468d1514af378dd46eb34123d0af84ff
+	drm/vc4: Fix leak of the file_priv that stored the perfmon.
+drm-intel drm-intel-next-fixes 6d08b06e67cd117f6992c46611dfb4ce267cd71e
+	Linux 4.17-rc2
+drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
+	Linux 4.14-rc1
+drm-misc drm-misc-next 94cc2fde365fb4484080ea6675bb1e0c933f8002
+	Merge remote-tracking branch 'drm/drm-next' into drm-misc-next
+drm-intel drm-intel-next-queued 0c79f9cb77eae28d48a4f9fc1b3341aacbbd260c
+	drm/i915/gen9: Add WaClearHIZ_WM_CHICKEN3 for bxt and glk
+drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
+	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
+sound-upstream for-linus 3f12888dfae2a48741c4caa9214885b3aaf350f9
+	ALSA: control: fix a redundant-copy issue
+sound-upstream for-next 47cdf76e44e87d25b91c0f0d0539944c932941ba
+	ALSA: hda/ca0132: Add new control changes for SBZ + R3Di
+drm-intel topic/core-for-CI 153328a3eb70e885212ac6ce84f6fcee5097e16c
+	Documentation: typec.rst: Use literal-block element with ascii art

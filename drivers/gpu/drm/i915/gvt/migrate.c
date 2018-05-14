@@ -515,6 +515,8 @@ static int vreg_load(const struct gvt_migration_obj_t *obj, u32 size)
 	void *dest = vgpu->mmio.vreg;
 	int n_transfer = INV;
 	struct drm_i915_private *dev_priv = vgpu->gvt->dev_priv;
+	struct intel_engine_cs *engine;
+	enum intel_engine_id id;
 	enum pipe pipe;
 
 	if (unlikely(size != obj->region.size)) {
@@ -532,6 +534,11 @@ static int vreg_load(const struct gvt_migration_obj_t *obj, u32 size)
 	for (pipe = PIPE_A; pipe < I915_MAX_PIPES; ++pipe)
 		MIG_VREG_RESTORE(vgpu, i915_mmio_reg_offset(PIPECONF(pipe)));
 
+	//restore ring mode register for execlist init
+	for_each_engine(engine, dev_priv, id)
+		MIG_VREG_RESTORE(vgpu, i915_mmio_reg_offset(RING_MODE_GEN7(engine)));
+
+	memcpy(dest, obj->img + obj->offset, n_transfer);
 	return n_transfer;
 }
 

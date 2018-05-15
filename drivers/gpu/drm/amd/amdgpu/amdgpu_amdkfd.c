@@ -92,6 +92,10 @@ void amdgpu_amdkfd_device_probe(struct amdgpu_device *adev)
 	case CHIP_POLARIS11:
 		kfd2kgd = amdgpu_amdkfd_gfx_8_0_get_functions();
 		break;
+	case CHIP_VEGA10:
+	case CHIP_RAVEN:
+		kfd2kgd = amdgpu_amdkfd_gfx_9_0_get_functions();
+		break;
 	default:
 		dev_dbg(adev->dev, "kfd not supported on this ASIC\n");
 		return;
@@ -175,6 +179,28 @@ void amdgpu_amdkfd_device_init(struct amdgpu_device *adev)
 				&gpu_resources.doorbell_physical_address,
 				&gpu_resources.doorbell_aperture_size,
 				&gpu_resources.doorbell_start_offset);
+		if (adev->asic_type >= CHIP_VEGA10) {
+			/* On SOC15 the BIF is involved in routing
+			 * doorbells using the low 12 bits of the
+			 * address. Communicate the assignments to
+			 * KFD. KFD uses two doorbell pages per
+			 * process in case of 64-bit doorbells so we
+			 * can use each doorbell assignment twice.
+			 */
+			gpu_resources.sdma_doorbell[0][0] =
+				AMDGPU_DOORBELL64_sDMA_ENGINE0;
+			gpu_resources.sdma_doorbell[0][1] =
+				AMDGPU_DOORBELL64_sDMA_ENGINE0 + 0x200;
+			gpu_resources.sdma_doorbell[1][0] =
+				AMDGPU_DOORBELL64_sDMA_ENGINE1;
+			gpu_resources.sdma_doorbell[1][1] =
+				AMDGPU_DOORBELL64_sDMA_ENGINE1 + 0x200;
+			/* Doorbells 0x0f0-0ff and 0x2f0-2ff are reserved for
+			 * SDMA, IH and VCN. So don't use them for the CP.
+			 */
+			gpu_resources.reserved_doorbell_mask = 0x1f0;
+			gpu_resources.reserved_doorbell_val  = 0x0f0;
+		}
 
 		kgd2kfd->device_init(adev->kfd, &gpu_resources);
 	}
@@ -217,13 +243,19 @@ int alloc_gtt_mem(struct kgd_dev *kgd, size_t size,
 {
 	struct amdgpu_device *adev = (struct amdgpu_device *)kgd;
 	struct amdgpu_bo *bo = NULL;
+	struct amdgpu_bo_param bp;
 	int r;
 	uint64_t gpu_addr_tmp = 0;
 	void *cpu_ptr_tmp = NULL;
 
-	r = amdgpu_bo_create(adev, size, PAGE_SIZE, AMDGPU_GEM_DOMAIN_GTT,
-			     AMDGPU_GEM_CREATE_CPU_GTT_USWC, ttm_bo_type_kernel,
-			     NULL, &bo);
+	memset(&bp, 0, sizeof(bp));
+	bp.size = size;
+	bp.byte_align = PAGE_SIZE;
+	bp.domain = AMDGPU_GEM_DOMAIN_GTT;
+	bp.flags = AMDGPU_GEM_CREATE_CPU_GTT_USWC;
+	bp.type = ttm_bo_type_kernel;
+	bp.resv = NULL;
+	r = amdgpu_bo_create(adev, &bp, &bo);
 	if (r) {
 		dev_err(adev->dev,
 			"failed to allocate BO for amdkfd (%d)\n", r);

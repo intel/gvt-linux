@@ -1,30 +1,12 @@
-drm-upstream drm-fixes 76ef6b28ea4f81c3d511866a9b31392caa833126
-	drm: set FMODE_UNSIGNED_OFFSET for drm files
-drm-misc drm-misc-fixes 72cb0d893343cd33e6ab62cf26f2625d5d3532c9
-	drm/vc4: Fix leak of the file_priv that stored the perfmon.
-drm-intel drm-intel-fixes c102b80147147ff51ec5c2e40c80d410a89a579a
-	drm/i915/gen9: Add WaClearHIZ_WM_CHICKEN3 for bxt and glk
-drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
-	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
-drm drm-next 95d2c3e15da613afd53b4b8f2cdb352dc7d12221
-	Merge branch 'drm-next-4.18' of git://people.freedesktop.org/~agd5f/linux into drm-next
-drm-misc drm-misc-next-fixes 2045b22461c07a88dc3d2bab3cbfc6dc0c602fd4
-	Merge tag 'drm-misc-next-2018-05-15' of git://anongit.freedesktop.org/drm/drm-misc into drm-next
-drm-intel drm-intel-next-fixes 6d08b06e67cd117f6992c46611dfb4ce267cd71e
-	Linux 4.17-rc2
-drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
-	Linux 4.14-rc1
-drm-misc drm-misc-next 584a0146ec4989f30d0aef46ce1ea6f6ba22a690
-	drm: clarify adjusted_mode documentation for bridges
-drm-intel drm-intel-next-queued 01f83786f9ab9c8883ce634cb9a0de51086ad7ea
-	drm/i915: Update DRIVER_DATE to 20180514
-drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
-	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
-sound-upstream for-linus c99f0802e42fcd38e84ee4d306691805ebed204f
-	ALSA: usb-audio: Use Class Specific EP for UAC3 devices.
-sound-upstream for-next 862154bbd7d7f9c70eabd0e72b00a39673df71e5
-	ALSA: hda/ca0132: constify parameter table for effects
-drm-intel topic/core-for-CI 153328a3eb70e885212ac6ce84f6fcee5097e16c
-	Documentation: typec.rst: Use literal-block element with ascii art
-drm-misc topic/vkms 774be26947dc00b64d09131f5edf9ead1ddb9f40
-	drm/vkms: vkms_driver can be static
+drm-tip/drm-tip 7113411949dfdeab859728aa0b57465eeb3d18d6
+	drm-tip: 2018y-05m-15d-22h-48m-47s UTC integration manifest
+vfio-upstream/for-linus 834814e80268c818f354c8f402e0c6604ed75589
+	Revert: "vfio-pci: Mask INTx if a device is not capabable of enabling it"
+vfio-upstream/next e506d953550af394f04ca7beac8fad5c1b449d45
+	vfio: platform: Make printed error messages more consistent
+origin/gvt-fixes 39b4cbadb9a95bf3f13ea102d6ec841940916ee2
+	drm/i915/kvmgt: Check the pfn got from vfio_pin_pages
+origin/gvt-next 1c6ccad8a4b110bac3f9ff6db954ab5a74c2e861
+	drm/i915/gvt: Deliver guest cursor hotspot info
+origin/gvt-next-fixes 10996f802109c83421ca30556cfe36ffc3bebae3
+	drm/i915/gvt: Add drm_format_mod update

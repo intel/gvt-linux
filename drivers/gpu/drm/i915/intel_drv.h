@@ -1377,6 +1377,8 @@ void gen9_enable_guc_interrupts(struct drm_i915_private *dev_priv);
 void gen9_disable_guc_interrupts(struct drm_i915_private *dev_priv);
 
 /* intel_crt.c */
+bool intel_crt_port_enabled(struct drm_i915_private *dev_priv,
+			    i915_reg_t adpa_reg, enum pipe *pipe);
 void intel_crt_init(struct drm_i915_private *dev_priv);
 void intel_crt_reset(struct drm_encoder *encoder);
 
@@ -1822,6 +1824,8 @@ void intel_infoframe_init(struct intel_digital_port *intel_dig_port);
 
 
 /* intel_lvds.c */
+bool intel_lvds_port_enabled(struct drm_i915_private *dev_priv,
+			     i915_reg_t lvds_reg, enum pipe *pipe);
 void intel_lvds_init(struct drm_i915_private *dev_priv);
 struct intel_encoder *intel_get_lvds_encoder(struct drm_device *dev);
 bool intel_is_dual_link_lvds(struct drm_device *dev);
@@ -2060,6 +2064,8 @@ void intel_init_ipc(struct drm_i915_private *dev_priv);
 void intel_enable_ipc(struct drm_i915_private *dev_priv);
 
 /* intel_sdvo.c */
+bool intel_sdvo_port_enabled(struct drm_i915_private *dev_priv,
+			     i915_reg_t sdvo_reg, enum pipe *pipe);
 bool intel_sdvo_init(struct drm_i915_private *dev_priv,
 		     i915_reg_t reg, enum port port);
 

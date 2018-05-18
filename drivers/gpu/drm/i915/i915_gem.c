@@ -3004,7 +3004,7 @@ i915_gem_find_active_request(struct intel_engine_cs *engine)
 struct i915_request *
 i915_gem_reset_prepare_engine(struct intel_engine_cs *engine)
 {
-	struct i915_request *request = NULL;
+	struct i915_request *request;
 
 	/*
 	 * During the reset sequence, we must prevent the engine from
@@ -3015,52 +3015,7 @@ i915_gem_reset_prepare_engine(struct intel_engine_cs *engine)
 	 */
 	intel_uncore_forcewake_get(engine->i915, FORCEWAKE_ALL);
 
-	/*
-	 * Prevent the signaler thread from updating the request
-	 * state (by calling dma_fence_signal) as we are processing
-	 * the reset. The write from the GPU of the seqno is
-	 * asynchronous and the signaler thread may see a different
-	 * value to us and declare the request complete, even though
-	 * the reset routine have picked that request as the active
-	 * (incomplete) request. This conflict is not handled
-	 * gracefully!
-	 */
-	kthread_park(engine->breadcrumbs.signaler);
-
-	/*
-	 * Prevent request submission to the hardware until we have
-	 * completed the reset in i915_gem_reset_finish(). If a request
-	 * is completed by one engine, it may then queue a request
-	 * to a second via its execlists->tasklet *just* as we are
-	 * calling engine->init_hw() and also writing the ELSP.
-	 * Turning off the execlists->tasklet until the reset is over
-	 * prevents the race.
-	 *
-	 * Note that this needs to be a single atomic operation on the
-	 * tasklet (flush existing tasks, prevent new tasks) to prevent
-	 * a race between reset and set-wedged. It is not, so we do the best
-	 * we can atm and make sure we don't lock the machine up in the more
-	 * common case of recursively being called from set-wedged from inside
-	 * i915_reset.
-	 */
-	if (!atomic_read(&engine->execlists.tasklet.count))
-		tasklet_kill(&engine->execlists.tasklet);
-	tasklet_disable(&engine->execlists.tasklet);
-
-	/*
-	 * We're using worker to queue preemption requests from the tasklet in
-	 * GuC submission mode.
-	 * Even though tasklet was disabled, we may still have a worker queued.
-	 * Let's make sure that all workers scheduled before disabling the
-	 * tasklet are completed before continuing with the reset.
-	 */
-	if (engine->i915->guc.preempt_wq)
-		flush_workqueue(engine->i915->guc.preempt_wq);
-
-	if (engine->irq_seqno_barrier)
-		engine->irq_seqno_barrier(engine);
-
-	request = i915_gem_find_active_request(engine);
+	request = engine->reset.prepare(engine);
 	if (request && request->fence.error == -EIO)
 		request = ERR_PTR(-EIO); /* Previous reset failed! */
 
@@ -3211,13 +3166,8 @@ void i915_gem_reset_engine(struct intel_engine_cs *engine,
 	if (request)
 		request = i915_gem_reset_request(engine, request, stalled);
 
-	if (request) {
-		DRM_DEBUG_DRIVER("resetting %s to restart from tail of request 0x%x\n",
-				 engine->name, request->global_seqno);
-	}
-
 	/* Setup the CS to resume from the breadcrumb of the hung request */
-	engine->reset_hw(engine, request);
+	engine->reset.reset(engine, request);
 }
 
 void i915_gem_reset(struct drm_i915_private *dev_priv,
@@ -3265,8 +3215,7 @@ void i915_gem_reset(struct drm_i915_private *dev_priv,
 
 void i915_gem_reset_finish_engine(struct intel_engine_cs *engine)
 {
-	tasklet_enable(&engine->execlists.tasklet);
-	kthread_unpark(engine->breadcrumbs.signaler);
+	engine->reset.finish(engine);
 
 	intel_uncore_forcewake_put(engine->i915, FORCEWAKE_ALL);
 }

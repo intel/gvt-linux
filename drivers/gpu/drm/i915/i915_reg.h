@@ -4133,11 +4133,12 @@ enum {
 
 #define   ADPA_DAC_ENABLE	(1<<31)
 #define   ADPA_DAC_DISABLE	0
-#define   ADPA_PIPE_SELECT_MASK	(1<<30)
-#define   ADPA_PIPE_A_SELECT	0
-#define   ADPA_PIPE_B_SELECT	(1<<30)
-#define   ADPA_PIPE_SELECT(pipe) ((pipe) << 30)
-/* CPT uses bits 29:30 for pch transcoder select */
+#define   ADPA_PIPE_SEL_SHIFT		30
+#define   ADPA_PIPE_SEL_MASK		(1<<30)
+#define   ADPA_PIPE_SEL(pipe)		((pipe) << 30)
+#define   ADPA_PIPE_SEL_SHIFT_CPT	29
+#define   ADPA_PIPE_SEL_MASK_CPT	(3<<29)
+#define   ADPA_PIPE_SEL_CPT(pipe)	((pipe) << 29)
 #define   ADPA_CRT_HOTPLUG_MASK  0x03ff0000 /* bit 25-16 */
 #define   ADPA_CRT_HOTPLUG_MONITOR_NONE  (0<<24)
 #define   ADPA_CRT_HOTPLUG_MONITOR_MASK  (3<<24)
@@ -4296,9 +4297,9 @@ enum {
 
 /* Gen 3 SDVO bits: */
 #define   SDVO_ENABLE				(1 << 31)
-#define   SDVO_PIPE_SEL(pipe)			((pipe) << 30)
+#define   SDVO_PIPE_SEL_SHIFT			30
 #define   SDVO_PIPE_SEL_MASK			(1 << 30)
-#define   SDVO_PIPE_B_SELECT			(1 << 30)
+#define   SDVO_PIPE_SEL(pipe)			((pipe) << 30)
 #define   SDVO_STALL_SELECT			(1 << 29)
 #define   SDVO_INTERRUPT_ENABLE			(1 << 26)
 /*
@@ -4338,12 +4339,14 @@ enum {
 #define   SDVOB_HOTPLUG_ENABLE			(1 << 23) /* SDVO only */
 
 /* Gen 6 (CPT) SDVO/HDMI bits: */
-#define   SDVO_PIPE_SEL_CPT(pipe)		((pipe) << 29)
+#define   SDVO_PIPE_SEL_SHIFT_CPT		29
 #define   SDVO_PIPE_SEL_MASK_CPT		(3 << 29)
+#define   SDVO_PIPE_SEL_CPT(pipe)		((pipe) << 29)
 
 /* CHV SDVO/HDMI bits: */
-#define   SDVO_PIPE_SEL_CHV(pipe)		((pipe) << 24)
+#define   SDVO_PIPE_SEL_SHIFT_CHV		24
 #define   SDVO_PIPE_SEL_MASK_CHV		(3 << 24)
+#define   SDVO_PIPE_SEL_CHV(pipe)		((pipe) << 24)
 
 
 /* DVO port control */
@@ -4354,7 +4357,9 @@ enum {
 #define _DVOC			0x61160
 #define DVOC			_MMIO(_DVOC)
 #define   DVO_ENABLE			(1 << 31)
-#define   DVO_PIPE_B_SELECT		(1 << 30)
+#define   DVO_PIPE_SEL_SHIFT		30
+#define   DVO_PIPE_SEL_MASK		(1 << 30)
+#define   DVO_PIPE_SEL(pipe)		((pipe) << 30)
 #define   DVO_PIPE_STALL_UNUSED		(0 << 28)
 #define   DVO_PIPE_STALL		(1 << 28)
 #define   DVO_PIPE_STALL_TV		(2 << 28)
@@ -4391,9 +4396,12 @@ enum {
  */
 #define   LVDS_PORT_EN			(1 << 31)
 /* Selects pipe B for LVDS data.  Must be set on pre-965. */
-#define   LVDS_PIPEB_SELECT		(1 << 30)
-#define   LVDS_PIPE_MASK		(1 << 30)
-#define   LVDS_PIPE(pipe)		((pipe) << 30)
+#define   LVDS_PIPE_SEL_SHIFT		30
+#define   LVDS_PIPE_SEL_MASK		(1 << 30)
+#define   LVDS_PIPE_SEL(pipe)		((pipe) << 30)
+#define   LVDS_PIPE_SEL_SHIFT_CPT	29
+#define   LVDS_PIPE_SEL_MASK_CPT	(3 << 29)
+#define   LVDS_PIPE_SEL_CPT(pipe)	((pipe) << 29)
 /* LVDS dithering flag on 965/g4x platform */
 #define   LVDS_ENABLE_DITHER		(1 << 25)
 /* LVDS sync polarity flags. Set to invert (i.e. negative) */
@@ -4690,7 +4698,9 @@ enum {
 /* Enables the TV encoder */
 # define TV_ENC_ENABLE			(1 << 31)
 /* Sources the TV encoder input from pipe B instead of A. */
-# define TV_ENC_PIPEB_SELECT		(1 << 30)
+# define TV_ENC_PIPE_SEL_SHIFT		30
+# define TV_ENC_PIPE_SEL_MASK		(1 << 30)
+# define TV_ENC_PIPE_SEL(pipe)		((pipe) << 30)
 /* Outputs composite video (DAC A only) */
 # define TV_ENC_OUTPUT_COMPOSITE	(0 << 28)
 /* Outputs SVideo video (DAC B/C) */

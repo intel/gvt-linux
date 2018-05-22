@@ -1,0 +1,30 @@
+drm-upstream drm-fixes 35904d6e9683e8d0ea742d6889d93bea2e79888a
+	Merge branch 'drm/du/fixes' of git://linuxtv.org/pinchartl/media into drm-fixes
+drm-misc drm-misc-fixes 2b6207291b7b277a5df9d1aab44b56815a292dba
+	drm/dumb-buffers: Integer overflow in drm_mode_create_ioctl()
+drm-intel drm-intel-fixes b579f924a90f42fa561afd8201514fc216b71949
+	drm/i915/gen9: Add WaClearHIZ_WM_CHICKEN3 for bxt and glk
+drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
+	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
+drm drm-next ce234ccc03cfee004e168a1ae4b9d0cfb1974a32
+	Merge tag 'drm/tegra/for-4.18-rc1' of git://anongit.freedesktop.org/tegra/linux into drm-next
+drm-misc drm-misc-next-fixes 2045b22461c07a88dc3d2bab3cbfc6dc0c602fd4
+	Merge tag 'drm-misc-next-2018-05-15' of git://anongit.freedesktop.org/drm/drm-misc into drm-next
+drm-intel drm-intel-next-fixes 315852b422972e6ebb1dfddaadada09e46a2681a
+	drm: rcar-du: Fix build failure
+drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
+	Linux 4.14-rc1
+drm-misc drm-misc-next 17e23993f297467bae946a46e44f945d8dae93f8
+	drm/v3d: Checking for NULL vs IS_ERR()
+drm-intel drm-intel-next-queued 6bb2a2af8b1b38a5e33984f5fdda2638317ed8fd
+	drm/i915/gvt: Fix crash after request->hw_context change
+drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
+	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
+sound-upstream for-linus 3ae180972564846e6d794e3615e1ab0a1e6c4ef9
+	ALSA: timer: Fix pause event notification
+sound-upstream for-next 96382b4f560becdd79ac19f0b17f6d611c81ccb1
+	Merge branch 'topic/xen' into for-next
+drm-intel topic/core-for-CI 153328a3eb70e885212ac6ce84f6fcee5097e16c
+	Documentation: typec.rst: Use literal-block element with ascii art
+drm-misc topic/vkms 774be26947dc00b64d09131f5edf9ead1ddb9f40
+	drm/vkms: vkms_driver can be static

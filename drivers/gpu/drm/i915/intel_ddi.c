@@ -1243,35 +1243,6 @@ intel_ddi_get_crtc_encoder(struct intel_crtc *crtc)
 	return ret;
 }
 
-/* Finds the only possible encoder associated with the given CRTC. */
-struct intel_encoder *
-intel_ddi_get_crtc_new_encoder(struct intel_crtc_state *crtc_state)
-{
-	struct intel_crtc *crtc = to_intel_crtc(crtc_state->base.crtc);
-	struct intel_encoder *ret = NULL;
-	struct drm_atomic_state *state;
-	struct drm_connector *connector;
-	struct drm_connector_state *connector_state;
-	int num_encoders = 0;
-	int i;
-
-	state = crtc_state->base.state;
-
-	for_each_new_connector_in_state(state, connector, connector_state, i) {
-		if (connector_state->crtc != crtc_state->base.crtc)
-			continue;
-
-		ret = to_intel_encoder(connector_state->best_encoder);
-		num_encoders++;
-	}
-
-	WARN(num_encoders != 1, "%d encoders on crtc for pipe %c\n", num_encoders,
-	     pipe_name(crtc->pipe));
-
-	BUG_ON(ret == NULL);
-	return ret;
-}
-
 #define LC_FREQ 2700
 
 static int hsw_ddi_calc_wrpll_link(struct drm_i915_private *dev_priv,
@@ -2113,6 +2084,26 @@ u8 intel_ddi_dp_voltage_max(struct intel_encoder *encoder)
 
 	return index_to_dp_signal_levels[n_entries - 1] &
 		DP_TRAIN_VOLTAGE_SWING_MASK;
+}
+
+/*
+ * We assume that the full set of pre-emphasis values can be
+ * used on all DDI platforms. Should that change we need to
+ * rethink this code.
+ */
+u8 intel_ddi_dp_pre_emphasis_max(struct intel_encoder *encoder, u8 voltage_swing)
+{
+	switch (voltage_swing & DP_TRAIN_VOLTAGE_SWING_MASK) {
+	case DP_TRAIN_VOLTAGE_SWING_LEVEL_0:
+		return DP_TRAIN_PRE_EMPH_LEVEL_3;
+	case DP_TRAIN_VOLTAGE_SWING_LEVEL_1:
+		return DP_TRAIN_PRE_EMPH_LEVEL_2;
+	case DP_TRAIN_VOLTAGE_SWING_LEVEL_2:
+		return DP_TRAIN_PRE_EMPH_LEVEL_1;
+	case DP_TRAIN_VOLTAGE_SWING_LEVEL_3:
+	default:
+		return DP_TRAIN_PRE_EMPH_LEVEL_0;
+	}
 }
 
 static void cnl_ddi_vswing_program(struct intel_encoder *encoder,

@@ -267,8 +267,6 @@ parse_lfp_panel_data(struct drm_i915_private *dev_priv,
 	if (!lvds_lfp_data_ptrs)
 		return;
 
-	dev_priv->vbt.lvds_vbt = 1;
-
 	panel_dvo_timing = get_lvds_dvo_timing(lvds_lfp_data,
 					       lvds_lfp_data_ptrs,
 					       panel_type);
@@ -518,8 +516,9 @@ parse_driver_features(struct drm_i915_private *dev_priv,
 	if (!driver)
 		return;
 
-	if (driver->lvds_config == BDB_DRIVER_FEATURE_EDP)
-		dev_priv->vbt.edp.support = 1;
+	if (INTEL_GEN(dev_priv) >= 5 &&
+	    driver->lvds_config == BDB_DRIVER_FEATURE_EDP)
+		dev_priv->vbt.int_lvds_support = 0;
 
 	DRM_DEBUG_KMS("DRRS State Enabled:%d\n", driver->drrs_enabled);
 	/*
@@ -542,11 +541,8 @@ parse_edp(struct drm_i915_private *dev_priv, const struct bdb_header *bdb)
 	int panel_type = dev_priv->vbt.panel_type;
 
 	edp = find_section(bdb, BDB_EDP);
-	if (!edp) {
-		if (dev_priv->vbt.edp.support)
-			DRM_DEBUG_KMS("No eDP BDB found but eDP panel supported.\n");
+	if (!edp)
 		return;
-	}
 
 	switch ((edp->color_depth >> (panel_type * 2)) & 3) {
 	case EDP_18BPP:
@@ -1504,7 +1500,6 @@ init_vbt_defaults(struct drm_i915_private *dev_priv)
 
 	/* LFP panel data */
 	dev_priv->vbt.lvds_dither = 1;
-	dev_priv->vbt.lvds_vbt = 0;
 
 	/* SDVO panel data */
 	dev_priv->vbt.sdvo_lvds_vbt_mode = NULL;
@@ -1512,6 +1507,9 @@ init_vbt_defaults(struct drm_i915_private *dev_priv)
 	/* general features */
 	dev_priv->vbt.int_tv_support = 1;
 	dev_priv->vbt.int_crt_support = 1;
+
+	/* driver features */
+	dev_priv->vbt.int_lvds_support = 1;
 
 	/* Default to using SSC */
 	dev_priv->vbt.lvds_use_ssc = 1;

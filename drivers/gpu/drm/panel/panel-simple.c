@@ -364,7 +364,6 @@ static int panel_simple_remove(struct device *dev)
 {
 	struct panel_simple *panel = dev_get_drvdata(dev);
 
-	drm_panel_detach(&panel->base);
 	drm_panel_remove(&panel->base);
 
 	panel_simple_disable(&panel->base);
@@ -687,7 +686,7 @@ static const struct panel_desc auo_p320hvn03 = {
 		.enable = 450,
 		.unprepare = 500,
 	},
-	.bus_format = MEDIA_BUS_FMT_RGB888_1X7X4_JEIDA,
+	.bus_format = MEDIA_BUS_FMT_RGB888_1X7X4_SPWG,
 };
 
 static const struct drm_display_mode auo_t215hvn01_mode = {
@@ -1217,6 +1216,30 @@ static const struct panel_desc innolux_n156bge_l21 = {
 	},
 };
 
+static const struct drm_display_mode innolux_tv123wam_mode = {
+	.clock = 206016,
+	.hdisplay = 2160,
+	.hsync_start = 2160 + 48,
+	.hsync_end = 2160 + 48 + 32,
+	.htotal = 2160 + 48 + 32 + 80,
+	.vdisplay = 1440,
+	.vsync_start = 1440 + 3,
+	.vsync_end = 1440 + 3 + 10,
+	.vtotal = 1440 + 3 + 10 + 27,
+	.vrefresh = 60,
+	.flags = DRM_MODE_FLAG_PHSYNC | DRM_MODE_FLAG_PVSYNC,
+};
+
+static const struct panel_desc innolux_tv123wam = {
+	.modes = &innolux_tv123wam_mode,
+	.num_modes = 1,
+	.bpc = 8,
+	.size = {
+		.width = 259,
+		.height = 173,
+	},
+};
+
 static const struct drm_display_mode innolux_zj070na_01p_mode = {
 	.clock = 51501,
 	.hdisplay = 1024,
@@ -1247,8 +1270,8 @@ static const struct display_timing koe_tx31d200vm0baa_timing = {
 	.hback_porch = { 16, 36, 56 },
 	.hsync_len = { 8, 8, 8 },
 	.vactive = { 480, 480, 480 },
-	.vfront_porch = { 6, 21, 33.5 },
-	.vback_porch = { 6, 21, 33.5 },
+	.vfront_porch = { 6, 21, 33 },
+	.vback_porch = { 6, 21, 33 },
 	.vsync_len = { 8, 8, 8 },
 	.flags = DISPLAY_FLAGS_DE_HIGH,
 };
@@ -2169,6 +2192,9 @@ static const struct of_device_id platform_of_match[] = {
 	}, {
 		.compatible = "innolux,n156bge-l21",
 		.data = &innolux_n156bge_l21,
+	}, {
+		.compatible = "innolux,tv123wam",
+		.data = &innolux_tv123wam,
 	}, {
 		.compatible = "innolux,zj070na-01p",
 		.data = &innolux_zj070na_01p,

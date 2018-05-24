@@ -630,8 +630,7 @@ static int vfio_platform_of_probe(struct vfio_platform_device *vdev,
 	ret = device_property_read_string(dev, "compatible",
 					  &vdev->compat);
 	if (ret)
-		pr_err("VFIO: cannot retrieve compat for %s\n",
-			vdev->name);
+		pr_err("VFIO: Cannot retrieve compat for %s\n", vdev->name);
 
 	return ret;
 }
@@ -673,7 +672,7 @@ int vfio_platform_probe_common(struct vfio_platform_device *vdev,
 
 	ret = vfio_platform_get_reset(vdev);
 	if (ret && vdev->reset_required) {
-		pr_err("vfio: no reset function found for device %s\n",
+		pr_err("VFIO: No reset function found for device %s\n",
 		       vdev->name);
 		return ret;
 	}
@@ -681,18 +680,23 @@ int vfio_platform_probe_common(struct vfio_platform_device *vdev,
 	group = vfio_iommu_group_get(dev);
 	if (!group) {
 		pr_err("VFIO: No IOMMU group for device %s\n", vdev->name);
-		return -EINVAL;
+		ret = -EINVAL;
+		goto put_reset;
 	}
 
 	ret = vfio_add_group_dev(dev, &vfio_platform_ops, vdev);
-	if (ret) {
-		vfio_iommu_group_put(group, dev);
-		return ret;
-	}
+	if (ret)
+		goto put_iommu;
 
 	mutex_init(&vdev->igate);
 
 	return 0;
+
+put_iommu:
+	vfio_iommu_group_put(group, dev);
+put_reset:
+	vfio_platform_put_reset(vdev);
+	return ret;
 }
 EXPORT_SYMBOL_GPL(vfio_platform_probe_common);
 

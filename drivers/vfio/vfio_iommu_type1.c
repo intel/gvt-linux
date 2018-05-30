@@ -60,6 +60,7 @@ MODULE_PARM_DESC(disable_hugepages,
 
 struct vfio_iommu {
 	struct list_head	domain_list;
+	struct list_head	iova_list;
 	struct vfio_domain	*external_domain; /* domain for external user */
 	struct mutex		lock;
 	struct rb_root		dma_list;
@@ -83,6 +84,7 @@ struct vfio_dma {
 	size_t			size;		/* Map size (bytes) */
 	int			prot;		/* IOMMU_READ/WRITE */
 	bool			iommu_mapped;
+	bool			lock_cap;	/* capable(CAP_IPC_LOCK) */
 	struct task_struct	*task;
 	struct rb_root		pfn_list;	/* Ex-user pinned pfn list */
 };
@@ -90,6 +92,12 @@ struct vfio_dma {
 struct vfio_group {
 	struct iommu_group	*iommu_group;
 	struct list_head	next;
+};
+
+struct vfio_iova {
+	struct list_head	list;
+	dma_addr_t		start;
+	dma_addr_t		end;
 };
 
 /*
@@ -253,29 +261,25 @@ static int vfio_iova_put_vfio_pfn(struct vfio_dma *dma, struct vfio_pfn *vpfn)
 	return ret;
 }
 
-static int vfio_lock_acct(struct task_struct *task, long npage, bool *lock_cap)
+static int vfio_lock_acct(struct vfio_dma *dma, long npage, bool async)
 {
 	struct mm_struct *mm;
-	bool is_current;
 	int ret;
 
 	if (!npage)
 		return 0;
 
-	is_current = (task->mm == current->mm);
-
-	mm = is_current ? task->mm : get_task_mm(task);
+	mm = async ? get_task_mm(dma->task) : dma->task->mm;
 	if (!mm)
 		return -ESRCH; /* process exited */
 
 	ret = down_write_killable(&mm->mmap_sem);
 	if (!ret) {
 		if (npage > 0) {
-			if (lock_cap ? !*lock_cap :
-			    !has_capability(task, CAP_IPC_LOCK)) {
+			if (!dma->lock_cap) {
 				unsigned long limit;
 
-				limit = task_rlimit(task,
+				limit = task_rlimit(dma->task,
 						RLIMIT_MEMLOCK) >> PAGE_SHIFT;
 
 				if (mm->locked_vm + npage > limit)
@@ -289,7 +293,7 @@ static int vfio_lock_acct(struct task_struct *task, long npage, bool *lock_cap)
 		up_write(&mm->mmap_sem);
 	}
 
-	if (!is_current)
+	if (async)
 		mmput(mm);
 
 	return ret;
@@ -400,7 +404,7 @@ static int vaddr_get_pfn(struct mm_struct *mm, unsigned long vaddr,
  */
 static long vfio_pin_pages_remote(struct vfio_dma *dma, unsigned long vaddr,
 				  long npage, unsigned long *pfn_base,
-				  bool lock_cap, unsigned long limit)
+				  unsigned long limit)
 {
 	unsigned long pfn = 0;
 	long ret, pinned = 0, lock_acct = 0;
@@ -431,7 +435,7 @@ static long vfio_pin_pages_remote(struct vfio_dma *dma, unsigned long vaddr,
 	 * pages are already counted against the user.
 	 */
 	if (!vfio_find_vpfn(dma, iova)) {
-		if (!lock_cap && current->mm->locked_vm + 1 > limit) {
+		if (!dma->lock_cap && current->mm->locked_vm + 1 > limit) {
 			put_pfn(*pfn_base, dma->prot);
 			pr_warn("%s: RLIMIT_MEMLOCK (%ld) exceeded\n", __func__,
 					limit << PAGE_SHIFT);
@@ -456,7 +460,7 @@ static long vfio_pin_pages_remote(struct vfio_dma *dma, unsigned long vaddr,
 		}
 
 		if (!vfio_find_vpfn(dma, iova)) {
-			if (!lock_cap &&
+			if (!dma->lock_cap &&
 			    current->mm->locked_vm + lock_acct + 1 > limit) {
 				put_pfn(pfn, dma->prot);
 				pr_warn("%s: RLIMIT_MEMLOCK (%ld) exceeded\n",
@@ -469,7 +473,7 @@ static long vfio_pin_pages_remote(struct vfio_dma *dma, unsigned long vaddr,
 	}
 
 out:
-	ret = vfio_lock_acct(current, lock_acct, &lock_cap);
+	ret = vfio_lock_acct(dma, lock_acct, false);
 
 unpin_out:
 	if (ret) {
@@ -498,7 +502,7 @@ static long vfio_unpin_pages_remote(struct vfio_dma *dma, dma_addr_t iova,
 	}
 
 	if (do_accounting)
-		vfio_lock_acct(dma->task, locked - unlocked, NULL);
+		vfio_lock_acct(dma, locked - unlocked, true);
 
 	return unlocked;
 }
@@ -515,7 +519,7 @@ static int vfio_pin_page_external(struct vfio_dma *dma, unsigned long vaddr,
 
 	ret = vaddr_get_pfn(mm, vaddr, dma->prot, pfn_base);
 	if (!ret && do_accounting && !is_invalid_reserved_pfn(*pfn_base)) {
-		ret = vfio_lock_acct(dma->task, 1, NULL);
+		ret = vfio_lock_acct(dma, 1, true);
 		if (ret) {
 			put_pfn(*pfn_base, dma->prot);
 			if (ret == -ENOMEM)
@@ -542,7 +546,7 @@ static int vfio_unpin_page_external(struct vfio_dma *dma, dma_addr_t iova,
 	unlocked = vfio_iova_put_vfio_pfn(dma, vpfn);
 
 	if (do_accounting)
-		vfio_lock_acct(dma->task, -unlocked, NULL);
+		vfio_lock_acct(dma, -unlocked, true);
 
 	return unlocked;
 }
@@ -834,7 +838,7 @@ static long vfio_unmap_unpin(struct vfio_iommu *iommu, struct vfio_dma *dma,
 		unlocked += vfio_sync_unpin(dma, domain, &unmapped_region_list);
 
 	if (do_accounting) {
-		vfio_lock_acct(dma->task, -unlocked, NULL);
+		vfio_lock_acct(dma, -unlocked, true);
 		return 0;
 	}
 	return unlocked;
@@ -1049,14 +1053,12 @@ static int vfio_pin_map_dma(struct vfio_iommu *iommu, struct vfio_dma *dma,
 	size_t size = map_size;
 	long npage;
 	unsigned long pfn, limit = rlimit(RLIMIT_MEMLOCK) >> PAGE_SHIFT;
-	bool lock_cap = capable(CAP_IPC_LOCK);
 	int ret = 0;
 
 	while (size) {
 		/* Pin a contiguous chunk of memory */
 		npage = vfio_pin_pages_remote(dma, vaddr + dma->size,
-					      size >> PAGE_SHIFT, &pfn,
-					      lock_cap, limit);
+					      size >> PAGE_SHIFT, &pfn, limit);
 		if (npage <= 0) {
 			WARN_ON(!npage);
 			ret = (int)npage;
@@ -1082,6 +1084,23 @@ static int vfio_pin_map_dma(struct vfio_iommu *iommu, struct vfio_dma *dma,
 		vfio_remove_dma(iommu, dma);
 
 	return ret;
+}
+
+/*
+ * Check dma map request is within a valid iova range
+ */
+static bool vfio_iommu_iova_dma_valid(struct vfio_iommu *iommu,
+				dma_addr_t start, dma_addr_t end)
+{
+	struct list_head *iova = &iommu->iova_list;
+	struct vfio_iova *node;
+
+	list_for_each_entry(node, iova, list) {
+		if ((start >= node->start) && (end <= node->end))
+			return true;
+	}
+
+	return list_empty(&iommu->iova_list);
 }
 
 static int vfio_dma_do_map(struct vfio_iommu *iommu,
@@ -1122,6 +1141,11 @@ static int vfio_dma_do_map(struct vfio_iommu *iommu,
 		goto out_unlock;
 	}
 
+	if (!vfio_iommu_iova_dma_valid(iommu, iova, iova + size - 1)) {
+		ret = -EINVAL;
+		goto out_unlock;
+	}
+
 	dma = kzalloc(sizeof(*dma), GFP_KERNEL);
 	if (!dma) {
 		ret = -ENOMEM;
@@ -1131,8 +1155,36 @@ static int vfio_dma_do_map(struct vfio_iommu *iommu,
 	dma->iova = iova;
 	dma->vaddr = vaddr;
 	dma->prot = prot;
-	get_task_struct(current);
-	dma->task = current;
+
+	/*
+	 * We need to be able to both add to a task's locked memory and test
+	 * against the locked memory limit and we need to be able to do both
+	 * outside of this call path as pinning can be asynchronous via the
+	 * external interfaces for mdev devices.  RLIMIT_MEMLOCK requires a
+	 * task_struct and VM locked pages requires an mm_struct, however
+	 * holding an indefinite mm reference is not recommended, therefore we
+	 * only hold a reference to a task.  We could hold a reference to
+	 * current, however QEMU uses this call path through vCPU threads,
+	 * which can be killed resulting in a NULL mm and failure in the unmap
+	 * path when called via a different thread.  Avoid this problem by
+	 * using the group_leader as threads within the same group require
+	 * both CLONE_THREAD and CLONE_VM and will therefore use the same
+	 * mm_struct.
+	 *
+	 * Previously we also used the task for testing CAP_IPC_LOCK at the
+	 * time of pinning and accounting, however has_capability() makes use
+	 * of real_cred, a copy-on-write field, so we can't guarantee that it
+	 * matches group_leader, or in fact that it might not change by the
+	 * time it's evaluated.  If a process were to call MAP_DMA with
+	 * CAP_IPC_LOCK but later drop it, it doesn't make sense that they
+	 * possibly see different results for an iommu_mapped vfio_dma vs
+	 * externally mapped.  Therefore track CAP_IPC_LOCK in vfio_dma at the
+	 * time of calling MAP_DMA.
+	 */
+	get_task_struct(current->group_leader);
+	dma->task = current->group_leader;
+	dma->lock_cap = capable(CAP_IPC_LOCK);
+
 	dma->pfn_list = RB_ROOT;
 
 	/* Insert zero-sized and grow as we map chunks of it */
@@ -1167,7 +1219,6 @@ static int vfio_iommu_replay(struct vfio_iommu *iommu,
 	struct vfio_domain *d;
 	struct rb_node *n;
 	unsigned long limit = rlimit(RLIMIT_MEMLOCK) >> PAGE_SHIFT;
-	bool lock_cap = capable(CAP_IPC_LOCK);
 	int ret;
 
 	/* Arbitrarily pick the first domain in the list for lookups */
@@ -1214,8 +1265,7 @@ static int vfio_iommu_replay(struct vfio_iommu *iommu,
 
 				npage = vfio_pin_pages_remote(dma, vaddr,
 							      n >> PAGE_SHIFT,
-							      &pfn, lock_cap,
-							      limit);
+							      &pfn, limit);
 				if (npage <= 0) {
 					WARN_ON(!npage);
 					ret = (int)npage;
@@ -1284,15 +1334,13 @@ static struct vfio_group *find_iommu_group(struct vfio_domain *domain,
 	return NULL;
 }
 
-static bool vfio_iommu_has_sw_msi(struct iommu_group *group, phys_addr_t *base)
+static bool vfio_iommu_has_sw_msi(struct list_head *group_resv_regions,
+						phys_addr_t *base)
 {
-	struct list_head group_resv_regions;
-	struct iommu_resv_region *region, *next;
+	struct iommu_resv_region *region;
 	bool ret = false;
 
-	INIT_LIST_HEAD(&group_resv_regions);
-	iommu_get_group_resv_regions(group, &group_resv_regions);
-	list_for_each_entry(region, &group_resv_regions, list) {
+	list_for_each_entry(region, group_resv_regions, list) {
 		/*
 		 * The presence of any 'real' MSI regions should take
 		 * precedence over the software-managed one if the
@@ -1308,9 +1356,227 @@ static bool vfio_iommu_has_sw_msi(struct iommu_group *group, phys_addr_t *base)
 			ret = true;
 		}
 	}
-	list_for_each_entry_safe(region, next, &group_resv_regions, list)
-		kfree(region);
+
 	return ret;
+}
+
+/*
+ * This is a helper function to insert an address range to iova list.
+ * The list starts with a single entry corresponding to the IOMMU
+ * domain geometry to which the device group is attached. The list
+ * aperture gets modified when a new domain is added to the container
+ * if the new aperture doesn't conflict with the current one or with
+ * any existing dma mappings. The list is also modified to exclude
+ * any reserved regions associated with the device group.
+ */
+static int vfio_iommu_iova_insert(struct list_head *head,
+				  dma_addr_t start, dma_addr_t end)
+{
+	struct vfio_iova *region;
+
+	region = kmalloc(sizeof(*region), GFP_KERNEL);
+	if (!region)
+		return -ENOMEM;
+
+	INIT_LIST_HEAD(&region->list);
+	region->start = start;
+	region->end = end;
+
+	list_add_tail(&region->list, head);
+	return 0;
+}
+
+/*
+ * Check the new iommu aperture conflicts with existing aper or with any
+ * existing dma mappings.
+ */
+static bool vfio_iommu_aper_conflict(struct vfio_iommu *iommu,
+				     dma_addr_t start, dma_addr_t end)
+{
+	struct vfio_iova *first, *last;
+	struct list_head *iova = &iommu->iova_list;
+
+	if (list_empty(iova))
+		return false;
+
+	/* Disjoint sets, return conflict */
+	first = list_first_entry(iova, struct vfio_iova, list);
+	last = list_last_entry(iova, struct vfio_iova, list);
+	if ((start > last->end) || (end < first->start))
+		return true;
+
+	/* Check for any existing dma mappings outside the new start */
+	if (start > first->start) {
+		if (vfio_find_dma(iommu, first->start, start - first->start))
+			return true;
+	}
+
+	/* Check for any existing dma mappings outside the new end */
+	if (end < last->end) {
+		if (vfio_find_dma(iommu, end + 1, last->end - end))
+			return true;
+	}
+
+	return false;
+}
+
+/*
+ * Resize iommu iova aperture window. This is called only if the new
+ * aperture has no conflict with existing aperture and dma mappings.
+ */
+static int vfio_iommu_aper_resize(struct list_head *iova,
+				      dma_addr_t start,
+				      dma_addr_t end)
+{
+	struct vfio_iova *node, *next;
+
+	if (list_empty(iova))
+		return vfio_iommu_iova_insert(iova, start, end);
+
+	/* Adjust iova list start */
+	list_for_each_entry_safe(node, next, iova, list) {
+		if (start < node->start)
+			break;
+		if ((start >= node->start) && (start < node->end)) {
+			node->start = start;
+			break;
+		}
+		/* Delete nodes before new start */
+		list_del(&node->list);
+		kfree(node);
+	}
+
+	/* Adjust iova list end */
+	list_for_each_entry_safe(node, next, iova, list) {
+		if (end > node->end)
+			continue;
+		if ((end > node->start) && (end <= node->end)) {
+			node->end = end;
+			continue;
+		}
+		/* Delete nodes after new end */
+		list_del(&node->list);
+		kfree(node);
+	}
+
+	return 0;
+}
+
+/*
+ * Check reserved region conflicts with existing dma mappings
+ */
+static bool vfio_iommu_resv_conflict(struct vfio_iommu *iommu,
+				struct list_head *resv_regions)
+{
+	struct iommu_resv_region *region;
+
+	/* Check for conflict with existing dma mappings */
+	list_for_each_entry(region, resv_regions, list) {
+		if (vfio_find_dma(iommu, region->start, region->length))
+			return true;
+	}
+
+	return false;
+}
+
+/*
+ * Check iova region overlap with  reserved regions and
+ * exclude them from the iommu iova range
+ */
+static int vfio_iommu_resv_exclude(struct list_head *iova,
+					struct list_head *resv_regions)
+{
+	struct iommu_resv_region *resv;
+	struct vfio_iova *n, *next;
+
+	list_for_each_entry(resv, resv_regions, list) {
+		phys_addr_t start, end;
+
+		start = resv->start;
+		end = resv->start + resv->length - 1;
+
+		list_for_each_entry_safe(n, next, iova, list) {
+			int ret = 0;
+
+			/* No overlap */
+			if ((start > n->end) || (end < n->start))
+				continue;
+			/*
+			 * Insert a new node if current node overlaps with the
+			 * reserve region to exlude that from valid iova range.
+			 * Note that, new node is inserted before the current
+			 * node and finally the current node is deleted keeping
+			 * the list updated and sorted.
+			 */
+			if (start > n->start)
+				ret = vfio_iommu_iova_insert(&n->list,
+							n->start, start - 1);
+			if (!ret && end < n->end)
+				ret = vfio_iommu_iova_insert(&n->list,
+							end + 1, n->end);
+			if (ret)
+				return ret;
+
+			list_del(&n->list);
+			kfree(n);
+		}
+	}
+
+	if (list_empty(iova))
+		return -EINVAL;
+
+	return 0;
+}
+
+static void vfio_iommu_resv_free(struct list_head *resv_regions)
+{
+	struct iommu_resv_region *n, *next;
+
+	list_for_each_entry_safe(n, next, resv_regions, list) {
+		list_del(&n->list);
+		kfree(n);
+	}
+}
+
+static void vfio_iommu_iova_free(struct list_head *iova)
+{
+	struct vfio_iova *n, *next;
+
+	list_for_each_entry_safe(n, next, iova, list) {
+		list_del(&n->list);
+		kfree(n);
+	}
+}
+
+static int vfio_iommu_iova_get_copy(struct vfio_iommu *iommu,
+				    struct list_head *iova_copy)
+{
+
+	struct list_head *iova = &iommu->iova_list;
+	struct vfio_iova *n;
+	int ret;
+
+	list_for_each_entry(n, iova, list) {
+		ret = vfio_iommu_iova_insert(iova_copy, n->start, n->end);
+		if (ret)
+			goto out_free;
+	}
+
+	return 0;
+
+out_free:
+	vfio_iommu_iova_free(iova_copy);
+	return ret;
+}
+
+static void vfio_iommu_iova_insert_copy(struct vfio_iommu *iommu,
+					struct list_head *iova_copy)
+{
+	struct list_head *iova = &iommu->iova_list;
+
+	vfio_iommu_iova_free(iova);
+
+	list_splice_tail(iova_copy, iova);
 }
 
 static int vfio_iommu_type1_attach_group(void *iommu_data,
@@ -1323,6 +1589,9 @@ static int vfio_iommu_type1_attach_group(void *iommu_data,
 	int ret;
 	bool resv_msi, msi_remap;
 	phys_addr_t resv_msi_base;
+	struct iommu_domain_geometry geo;
+	LIST_HEAD(iova_copy);
+	LIST_HEAD(group_resv_regions);
 
 	mutex_lock(&iommu->lock);
 
@@ -1392,7 +1661,37 @@ static int vfio_iommu_type1_attach_group(void *iommu_data,
 	if (ret)
 		goto out_domain;
 
-	resv_msi = vfio_iommu_has_sw_msi(iommu_group, &resv_msi_base);
+	/* Get aperture info */
+	iommu_domain_get_attr(domain->domain, DOMAIN_ATTR_GEOMETRY, &geo);
+
+	if (vfio_iommu_aper_conflict(iommu, geo.aperture_start,
+					    geo.aperture_end)) {
+		ret = -EINVAL;
+		goto out_detach;
+	}
+
+	iommu_get_group_resv_regions(iommu_group, &group_resv_regions);
+
+	if (vfio_iommu_resv_conflict(iommu, &group_resv_regions)) {
+		ret = -EINVAL;
+		goto out_detach;
+	}
+
+	/* Get a copy of the current iova list and work on it */
+	ret = vfio_iommu_iova_get_copy(iommu, &iova_copy);
+	if (ret)
+		goto out_detach;
+
+	ret = vfio_iommu_aper_resize(&iova_copy, geo.aperture_start,
+						 geo.aperture_end);
+	if (ret)
+		goto out_detach;
+
+	ret = vfio_iommu_resv_exclude(&iova_copy, &group_resv_regions);
+	if (ret)
+		goto out_detach;
+
+	resv_msi = vfio_iommu_has_sw_msi(&group_resv_regions, &resv_msi_base);
 
 	INIT_LIST_HEAD(&domain->group_list);
 	list_add(&group->next, &domain->group_list);
@@ -1425,8 +1724,7 @@ static int vfio_iommu_type1_attach_group(void *iommu_data,
 				list_add(&group->next, &d->group_list);
 				iommu_domain_free(domain->domain);
 				kfree(domain);
-				mutex_unlock(&iommu->lock);
-				return 0;
+				goto done;
 			}
 
 			ret = iommu_attach_group(domain->domain, iommu_group);
@@ -1449,8 +1747,11 @@ static int vfio_iommu_type1_attach_group(void *iommu_data,
 	}
 
 	list_add(&domain->next, &iommu->domain_list);
-
+done:
+	/* Delete the old one and insert new iova list */
+	vfio_iommu_iova_insert_copy(iommu, &iova_copy);
 	mutex_unlock(&iommu->lock);
+	vfio_iommu_resv_free(&group_resv_regions);
 
 	return 0;
 
@@ -1458,6 +1759,8 @@ out_detach:
 	iommu_detach_group(domain->domain, iommu_group);
 out_domain:
 	iommu_domain_free(domain->domain);
+	vfio_iommu_iova_free(&iova_copy);
+	vfio_iommu_resv_free(&group_resv_regions);
 out_free:
 	kfree(domain);
 	kfree(group);
@@ -1492,7 +1795,7 @@ static void vfio_iommu_unmap_unpin_reaccount(struct vfio_iommu *iommu)
 			if (!is_invalid_reserved_pfn(vpfn->pfn))
 				locked++;
 		}
-		vfio_lock_acct(dma->task, locked - unlocked, NULL);
+		vfio_lock_acct(dma, locked - unlocked, true);
 	}
 }
 
@@ -1513,12 +1816,88 @@ static void vfio_sanity_check_pfn_list(struct vfio_iommu *iommu)
 	WARN_ON(iommu->notifier.head);
 }
 
+/*
+ * Called when a domain is removed in detach. It is possible that
+ * the removed domain decided the iova aperture window. Modify the
+ * iova aperture with the smallest window among existing domains.
+ */
+static void vfio_iommu_aper_expand(struct vfio_iommu *iommu,
+				   struct list_head *iova_copy)
+{
+	struct vfio_domain *domain;
+	struct iommu_domain_geometry geo;
+	struct vfio_iova *node;
+	dma_addr_t start = 0;
+	dma_addr_t end = (dma_addr_t)~0;
+
+	list_for_each_entry(domain, &iommu->domain_list, next) {
+		iommu_domain_get_attr(domain->domain, DOMAIN_ATTR_GEOMETRY,
+				      &geo);
+		if (geo.aperture_start > start)
+			start = geo.aperture_start;
+		if (geo.aperture_end < end)
+			end = geo.aperture_end;
+	}
+
+	/* Modify aperture limits. The new aper is either same or bigger */
+	node = list_first_entry(iova_copy, struct vfio_iova, list);
+	node->start = start;
+	node = list_last_entry(iova_copy, struct vfio_iova, list);
+	node->end = end;
+}
+
+/*
+ * Called when a group is detached. The reserved regions for that
+ * group can be part of valid iova now. But since reserved regions
+ * may be duplicated among groups, populate the iova valid regions
+ * list again.
+ */
+static int vfio_iommu_resv_refresh(struct vfio_iommu *iommu,
+				   struct list_head *iova_copy)
+{
+	struct vfio_domain *d;
+	struct vfio_group *g;
+	struct vfio_iova *node;
+	dma_addr_t start, end;
+	LIST_HEAD(resv_regions);
+	int ret;
+
+	list_for_each_entry(d, &iommu->domain_list, next) {
+		list_for_each_entry(g, &d->group_list, next)
+			iommu_get_group_resv_regions(g->iommu_group,
+							 &resv_regions);
+	}
+
+	if (list_empty(&resv_regions))
+		return 0;
+
+	node = list_first_entry(iova_copy, struct vfio_iova, list);
+	start = node->start;
+	node = list_last_entry(iova_copy, struct vfio_iova, list);
+	end = node->end;
+
+	/* purge the iova list and create new one */
+	vfio_iommu_iova_free(iova_copy);
+
+	ret = vfio_iommu_aper_resize(iova_copy, start, end);
+	if (ret)
+		goto done;
+
+	/* Exclude current reserved regions from iova ranges */
+	ret = vfio_iommu_resv_exclude(iova_copy, &resv_regions);
+done:
+	vfio_iommu_resv_free(&resv_regions);
+	return ret;
+}
+
 static void vfio_iommu_type1_detach_group(void *iommu_data,
 					  struct iommu_group *iommu_group)
 {
 	struct vfio_iommu *iommu = iommu_data;
 	struct vfio_domain *domain;
 	struct vfio_group *group;
+	bool iova_copy_fail;
+	LIST_HEAD(iova_copy);
 
 	mutex_lock(&iommu->lock);
 
@@ -1540,6 +1919,12 @@ static void vfio_iommu_type1_detach_group(void *iommu_data,
 			goto detach_group_done;
 		}
 	}
+
+	/*
+	 * Get a copy of iova list. If success, use copy to update the
+	 * list and to replace the current one.
+	 */
+	iova_copy_fail = !!vfio_iommu_iova_get_copy(iommu, &iova_copy);
 
 	list_for_each_entry(domain, &iommu->domain_list, next) {
 		group = find_iommu_group(domain, iommu_group);
@@ -1566,8 +1951,17 @@ static void vfio_iommu_type1_detach_group(void *iommu_data,
 			iommu_domain_free(domain->domain);
 			list_del(&domain->next);
 			kfree(domain);
+			if (!iova_copy_fail && !list_empty(&iommu->domain_list))
+				vfio_iommu_aper_expand(iommu, &iova_copy);
 		}
 		break;
+	}
+
+	if (!iova_copy_fail && !list_empty(&iommu->domain_list)) {
+		if (!vfio_iommu_resv_refresh(iommu, &iova_copy))
+			vfio_iommu_iova_insert_copy(iommu, &iova_copy);
+		else
+			vfio_iommu_iova_free(&iova_copy);
 	}
 
 detach_group_done:
@@ -1596,6 +1990,7 @@ static void *vfio_iommu_type1_open(unsigned long arg)
 	}
 
 	INIT_LIST_HEAD(&iommu->domain_list);
+	INIT_LIST_HEAD(&iommu->iova_list);
 	iommu->dma_list = RB_ROOT;
 	mutex_init(&iommu->lock);
 	BLOCKING_INIT_NOTIFIER_HEAD(&iommu->notifier);
@@ -1638,6 +2033,9 @@ static void vfio_iommu_type1_release(void *iommu_data)
 		list_del(&domain->next);
 		kfree(domain);
 	}
+
+	vfio_iommu_iova_free(&iommu->iova_list);
+
 	kfree(iommu);
 }
 
@@ -1655,6 +2053,68 @@ static int vfio_domains_have_iommu_cache(struct vfio_iommu *iommu)
 	}
 	mutex_unlock(&iommu->lock);
 
+	return ret;
+}
+
+static int vfio_iommu_iova_add_cap(struct vfio_info_cap *caps,
+		 struct vfio_iommu_type1_info_cap_iova_range *cap_iovas,
+		 size_t size)
+{
+	struct vfio_info_cap_header *header;
+	struct vfio_iommu_type1_info_cap_iova_range *iova_cap;
+
+	header = vfio_info_cap_add(caps, size,
+				VFIO_IOMMU_TYPE1_INFO_CAP_IOVA_RANGE, 1);
+	if (IS_ERR(header))
+		return PTR_ERR(header);
+
+	iova_cap = container_of(header,
+			struct vfio_iommu_type1_info_cap_iova_range, header);
+	iova_cap->nr_iovas = cap_iovas->nr_iovas;
+	memcpy(iova_cap->iova_ranges, cap_iovas->iova_ranges,
+		cap_iovas->nr_iovas * sizeof(*cap_iovas->iova_ranges));
+	return 0;
+}
+
+static int vfio_iommu_iova_build_caps(struct vfio_iommu *iommu,
+				struct vfio_info_cap *caps)
+{
+	struct vfio_iommu_type1_info_cap_iova_range *cap_iovas;
+	struct vfio_iova *iova;
+	size_t size;
+	int iovas = 0, i = 0, ret;
+
+	mutex_lock(&iommu->lock);
+
+	list_for_each_entry(iova, &iommu->iova_list, list)
+		iovas++;
+
+	if (!iovas) {
+		ret = 0;
+		goto out_unlock;
+	}
+
+	size = sizeof(*cap_iovas) + (iovas * sizeof(*cap_iovas->iova_ranges));
+
+	cap_iovas = kzalloc(size, GFP_KERNEL);
+	if (!cap_iovas) {
+		ret = -ENOMEM;
+		goto out_unlock;
+	}
+
+	cap_iovas->nr_iovas = iovas;
+
+	list_for_each_entry(iova, &iommu->iova_list, list) {
+		cap_iovas->iova_ranges[i].start = iova->start;
+		cap_iovas->iova_ranges[i].end = iova->end;
+		i++;
+	}
+
+	ret = vfio_iommu_iova_add_cap(caps, cap_iovas, size);
+
+	kfree(cap_iovas);
+out_unlock:
+	mutex_unlock(&iommu->lock);
 	return ret;
 }
 
@@ -1679,8 +2139,14 @@ static long vfio_iommu_type1_ioctl(void *iommu_data,
 		}
 	} else if (cmd == VFIO_IOMMU_GET_INFO) {
 		struct vfio_iommu_type1_info info;
+		struct vfio_info_cap caps = { .buf = NULL, .size = 0 };
+		unsigned long capsz;
+		int ret;
 
 		minsz = offsetofend(struct vfio_iommu_type1_info, iova_pgsizes);
+
+		/* For backward compatibility, cannot require this */
+		capsz = offsetofend(struct vfio_iommu_type1_info, cap_offset);
 
 		if (copy_from_user(&info, (void __user *)arg, minsz))
 			return -EFAULT;
@@ -1688,9 +2154,37 @@ static long vfio_iommu_type1_ioctl(void *iommu_data,
 		if (info.argsz < minsz)
 			return -EINVAL;
 
+		if (info.argsz >= capsz) {
+			minsz = capsz;
+			info.cap_offset = 0; /* output, no-recopy necessary */
+		}
+
 		info.flags = VFIO_IOMMU_INFO_PGSIZES;
 
 		info.iova_pgsizes = vfio_pgsize_bitmap(iommu);
+
+		ret = vfio_iommu_iova_build_caps(iommu, &caps);
+		if (ret)
+			return ret;
+
+		if (caps.size) {
+			info.flags |= VFIO_IOMMU_INFO_CAPS;
+
+			if (info.argsz < sizeof(info) + caps.size) {
+				info.argsz = sizeof(info) + caps.size;
+			} else {
+				vfio_info_cap_shift(&caps, sizeof(info));
+				if (copy_to_user((void __user *)arg +
+						sizeof(info), caps.buf,
+						caps.size)) {
+					kfree(caps.buf);
+					return -EFAULT;
+				}
+				info.cap_offset = sizeof(info);
+			}
+
+			kfree(caps.buf);
+		}
 
 		return copy_to_user((void __user *)arg, &info, minsz) ?
 			-EFAULT : 0;

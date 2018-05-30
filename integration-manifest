@@ -1,0 +1,30 @@
+drm-upstream drm-fixes 2b85352e3b08159c9d5c82144d05767a00169f9d
+	Merge branch 'drm-fixes-4.17' of git://people.freedesktop.org/~agd5f/linux into drm-fixes
+drm-misc drm-misc-fixes 2bc5ff0bdc00d81d719dad74589317a260d583ed
+	drm/omap: fix NULL deref crash with SDI displays
+drm-intel drm-intel-fixes 65b3bdc807ac7bd83f5b27bc2c29a3c631eed7dd
+	drm/i915/query: nospec expects no more than an unsigned long
+drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
+	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
+drm drm-next 568cf2e6aa0c762f14d2d0d481a006f93c63ab7a
+	Merge tag 'drm-amdkfd-next-2018-05-28' of git://people.freedesktop.org/~gabbayo/linux into drm-next
+drm-misc drm-misc-next-fixes 2045b22461c07a88dc3d2bab3cbfc6dc0c602fd4
+	Merge tag 'drm-misc-next-2018-05-15' of git://anongit.freedesktop.org/drm/drm-misc into drm-next
+drm-intel drm-intel-next-fixes 315852b422972e6ebb1dfddaadada09e46a2681a
+	drm: rcar-du: Fix build failure
+drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
+	Linux 4.14-rc1
+drm-misc drm-misc-next bccfaffb76a8974ca275b99e9293a2594ae75f31
+	display: panel: Add AUO g070vvn01 display support (800x480)
+drm-intel drm-intel-next-queued a3db142829e68e2619207306a7b83e8ed47466a6
+	drm/i915/psr: Set idle frame count based on sink synchronization latency
+drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
+	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
+sound-upstream for-linus 009f8c90f571d87855914dbc20e6c0ea2a3b19ae
+	ALSA: hda - Fix runtime PM
+sound-upstream for-next bbf8ff6b1d2ae749d962fd9ff743164fe13abf5d
+	ALSA: hda/realtek - Fixup for HP x360 laptops with B&O speakers
+drm-intel topic/core-for-CI e76900bc7b26784df4edc61163e8eda0a9f5acbd
+	mei: discard messages from not connected client during power down.
+drm-misc topic/vkms 7040e5f347d4d7f242776e239670c6e2ada3b146
+	drm/vkms: Add extra information about vkms

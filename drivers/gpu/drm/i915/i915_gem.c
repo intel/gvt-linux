@@ -3004,7 +3004,7 @@ i915_gem_find_active_request(struct intel_engine_cs *engine)
 struct i915_request *
 i915_gem_reset_prepare_engine(struct intel_engine_cs *engine)
 {
-	struct i915_request *request = NULL;
+	struct i915_request *request;
 
 	/*
 	 * During the reset sequence, we must prevent the engine from
@@ -3015,52 +3015,7 @@ i915_gem_reset_prepare_engine(struct intel_engine_cs *engine)
 	 */
 	intel_uncore_forcewake_get(engine->i915, FORCEWAKE_ALL);
 
-	/*
-	 * Prevent the signaler thread from updating the request
-	 * state (by calling dma_fence_signal) as we are processing
-	 * the reset. The write from the GPU of the seqno is
-	 * asynchronous and the signaler thread may see a different
-	 * value to us and declare the request complete, even though
-	 * the reset routine have picked that request as the active
-	 * (incomplete) request. This conflict is not handled
-	 * gracefully!
-	 */
-	kthread_park(engine->breadcrumbs.signaler);
-
-	/*
-	 * Prevent request submission to the hardware until we have
-	 * completed the reset in i915_gem_reset_finish(). If a request
-	 * is completed by one engine, it may then queue a request
-	 * to a second via its execlists->tasklet *just* as we are
-	 * calling engine->init_hw() and also writing the ELSP.
-	 * Turning off the execlists->tasklet until the reset is over
-	 * prevents the race.
-	 *
-	 * Note that this needs to be a single atomic operation on the
-	 * tasklet (flush existing tasks, prevent new tasks) to prevent
-	 * a race between reset and set-wedged. It is not, so we do the best
-	 * we can atm and make sure we don't lock the machine up in the more
-	 * common case of recursively being called from set-wedged from inside
-	 * i915_reset.
-	 */
-	if (!atomic_read(&engine->execlists.tasklet.count))
-		tasklet_kill(&engine->execlists.tasklet);
-	tasklet_disable(&engine->execlists.tasklet);
-
-	/*
-	 * We're using worker to queue preemption requests from the tasklet in
-	 * GuC submission mode.
-	 * Even though tasklet was disabled, we may still have a worker queued.
-	 * Let's make sure that all workers scheduled before disabling the
-	 * tasklet are completed before continuing with the reset.
-	 */
-	if (engine->i915->guc.preempt_wq)
-		flush_workqueue(engine->i915->guc.preempt_wq);
-
-	if (engine->irq_seqno_barrier)
-		engine->irq_seqno_barrier(engine);
-
-	request = i915_gem_find_active_request(engine);
+	request = engine->reset.prepare(engine);
 	if (request && request->fence.error == -EIO)
 		request = ERR_PTR(-EIO); /* Previous reset failed! */
 
@@ -3112,7 +3067,7 @@ static void skip_request(struct i915_request *request)
 static void engine_skip_context(struct i915_request *request)
 {
 	struct intel_engine_cs *engine = request->engine;
-	struct i915_gem_context *hung_ctx = request->ctx;
+	struct i915_gem_context *hung_ctx = request->gem_context;
 	struct i915_timeline *timeline = request->timeline;
 	unsigned long flags;
 
@@ -3122,7 +3077,7 @@ static void engine_skip_context(struct i915_request *request)
 	spin_lock_nested(&timeline->lock, SINGLE_DEPTH_NESTING);
 
 	list_for_each_entry_continue(request, &engine->timeline.requests, link)
-		if (request->ctx == hung_ctx)
+		if (request->gem_context == hung_ctx)
 			skip_request(request);
 
 	list_for_each_entry(request, &timeline->requests, link)
@@ -3168,11 +3123,11 @@ i915_gem_reset_request(struct intel_engine_cs *engine,
 	}
 
 	if (stalled) {
-		i915_gem_context_mark_guilty(request->ctx);
+		i915_gem_context_mark_guilty(request->gem_context);
 		skip_request(request);
 
 		/* If this context is now banned, skip all pending requests. */
-		if (i915_gem_context_is_banned(request->ctx))
+		if (i915_gem_context_is_banned(request->gem_context))
 			engine_skip_context(request);
 	} else {
 		/*
@@ -3182,7 +3137,7 @@ i915_gem_reset_request(struct intel_engine_cs *engine,
 		 */
 		request = i915_gem_find_active_request(engine);
 		if (request) {
-			i915_gem_context_mark_innocent(request->ctx);
+			i915_gem_context_mark_innocent(request->gem_context);
 			dma_fence_set_error(&request->fence, -EAGAIN);
 
 			/* Rewind the engine to replay the incomplete rq */
@@ -3211,13 +3166,8 @@ void i915_gem_reset_engine(struct intel_engine_cs *engine,
 	if (request)
 		request = i915_gem_reset_request(engine, request, stalled);
 
-	if (request) {
-		DRM_DEBUG_DRIVER("resetting %s to restart from tail of request 0x%x\n",
-				 engine->name, request->global_seqno);
-	}
-
 	/* Setup the CS to resume from the breadcrumb of the hung request */
-	engine->reset_hw(engine, request);
+	engine->reset.reset(engine, request);
 }
 
 void i915_gem_reset(struct drm_i915_private *dev_priv,
@@ -3231,14 +3181,14 @@ void i915_gem_reset(struct drm_i915_private *dev_priv,
 	i915_retire_requests(dev_priv);
 
 	for_each_engine(engine, dev_priv, id) {
-		struct i915_gem_context *ctx;
+		struct intel_context *ce;
 
 		i915_gem_reset_engine(engine,
 				      engine->hangcheck.active_request,
 				      stalled_mask & ENGINE_MASK(id));
-		ctx = fetch_and_zero(&engine->last_retired_context);
-		if (ctx)
-			intel_context_unpin(ctx, engine);
+		ce = fetch_and_zero(&engine->last_retired_context);
+		if (ce)
+			intel_context_unpin(ce);
 
 		/*
 		 * Ostensibily, we always want a context loaded for powersaving,
@@ -3265,8 +3215,7 @@ void i915_gem_reset(struct drm_i915_private *dev_priv,
 
 void i915_gem_reset_finish_engine(struct intel_engine_cs *engine)
 {
-	tasklet_enable(&engine->execlists.tasklet);
-	kthread_unpark(engine->breadcrumbs.signaler);
+	engine->reset.finish(engine);
 
 	intel_uncore_forcewake_put(engine->i915, FORCEWAKE_ALL);
 }
@@ -3754,6 +3703,9 @@ static int wait_for_engines(struct drm_i915_private *i915)
 
 int i915_gem_wait_for_idle(struct drm_i915_private *i915, unsigned int flags)
 {
+	GEM_TRACE("flags=%x (%s)\n",
+		  flags, flags & I915_WAIT_LOCKED ? "locked" : "unlocked");
+
 	/* If the device is asleep, we have no requests outstanding */
 	if (!READ_ONCE(i915->gt.awake))
 		return 0;
@@ -3770,6 +3722,7 @@ int i915_gem_wait_for_idle(struct drm_i915_private *i915, unsigned int flags)
 				return err;
 		}
 		i915_retire_requests(i915);
+		GEM_BUG_ON(i915->gt.active_requests);
 
 		return wait_for_engines(i915);
 	} else {
@@ -4948,13 +4901,14 @@ void __i915_gem_object_release_unless_active(struct drm_i915_gem_object *obj)
 
 static void assert_kernel_context_is_current(struct drm_i915_private *i915)
 {
-	struct i915_gem_context *kernel_context = i915->kernel_context;
+	struct i915_gem_context *kctx = i915->kernel_context;
 	struct intel_engine_cs *engine;
 	enum intel_engine_id id;
 
+	GEM_BUG_ON(i915->gt.active_requests);
 	for_each_engine(engine, i915, id) {
 		GEM_BUG_ON(__i915_gem_active_peek(&engine->timeline.last_request));
-		GEM_BUG_ON(engine->last_retired_context != kernel_context);
+		GEM_BUG_ON(engine->last_retired_context->gem_context != kctx);
 	}
 }
 
@@ -4982,6 +4936,8 @@ int i915_gem_suspend(struct drm_i915_private *dev_priv)
 {
 	struct drm_device *dev = &dev_priv->drm;
 	int ret;
+
+	GEM_TRACE("\n");
 
 	intel_runtime_pm_get(dev_priv);
 	intel_suspend_gt_powersave(dev_priv);

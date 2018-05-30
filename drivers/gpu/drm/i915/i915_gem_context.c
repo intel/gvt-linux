@@ -127,14 +127,8 @@ static void i915_gem_context_free(struct i915_gem_context *ctx)
 	for (n = 0; n < ARRAY_SIZE(ctx->__engine); n++) {
 		struct intel_context *ce = &ctx->__engine[n];
 
-		if (!ce->state)
-			continue;
-
-		WARN_ON(ce->pin_count);
-		if (ce->ring)
-			intel_ring_free(ce->ring);
-
-		__i915_gem_object_release_unless_active(ce->state->obj);
+		if (ce->ops)
+			ce->ops->destroy(ce);
 	}
 
 	kfree(ctx->name);
@@ -266,6 +260,7 @@ __create_hw_context(struct drm_i915_private *dev_priv,
 		    struct drm_i915_file_private *file_priv)
 {
 	struct i915_gem_context *ctx;
+	unsigned int n;
 	int ret;
 
 	ctx = kzalloc(sizeof(*ctx), GFP_KERNEL);
@@ -282,6 +277,12 @@ __create_hw_context(struct drm_i915_private *dev_priv,
 	list_add_tail(&ctx->link, &dev_priv->contexts.list);
 	ctx->i915 = dev_priv;
 	ctx->sched.priority = I915_PRIORITY_NORMAL;
+
+	for (n = 0; n < ARRAY_SIZE(ctx->__engine); n++) {
+		struct intel_context *ce = &ctx->__engine[n];
+
+		ce->gem_context = ctx;
+	}
 
 	INIT_RADIX_TREE(&ctx->handles_vma, GFP_KERNEL);
 	INIT_LIST_HEAD(&ctx->handles_list);
@@ -514,16 +515,8 @@ void i915_gem_contexts_lost(struct drm_i915_private *dev_priv)
 
 	lockdep_assert_held(&dev_priv->drm.struct_mutex);
 
-	for_each_engine(engine, dev_priv, id) {
-		engine->legacy_active_context = NULL;
-		engine->legacy_active_ppgtt = NULL;
-
-		if (!engine->last_retired_context)
-			continue;
-
-		intel_context_unpin(engine->last_retired_context, engine);
-		engine->last_retired_context = NULL;
-	}
+	for_each_engine(engine, dev_priv, id)
+		intel_engine_lost_context(engine);
 }
 
 void i915_gem_contexts_fini(struct drm_i915_private *i915)
@@ -583,58 +576,119 @@ last_request_on_engine(struct i915_timeline *timeline,
 {
 	struct i915_request *rq;
 
-	if (timeline == &engine->timeline)
-		return NULL;
+	GEM_BUG_ON(timeline == &engine->timeline);
 
 	rq = i915_gem_active_raw(&timeline->last_request,
 				 &engine->i915->drm.struct_mutex);
-	if (rq && rq->engine == engine)
+	if (rq && rq->engine == engine) {
+		GEM_TRACE("last request for %s on engine %s: %llx:%d\n",
+			  timeline->name, engine->name,
+			  rq->fence.context, rq->fence.seqno);
+		GEM_BUG_ON(rq->timeline != timeline);
 		return rq;
+	}
 
 	return NULL;
 }
 
-static bool engine_has_idle_kernel_context(struct intel_engine_cs *engine)
+static bool engine_has_kernel_context_barrier(struct intel_engine_cs *engine)
 {
-	struct i915_timeline *timeline;
+	struct drm_i915_private *i915 = engine->i915;
+	const struct intel_context * const ce =
+		to_intel_context(i915->kernel_context, engine);
+	struct i915_timeline *barrier = ce->ring->timeline;
+	struct intel_ring *ring;
+	bool any_active = false;
 
-	list_for_each_entry(timeline, &engine->i915->gt.timelines, link) {
-		if (last_request_on_engine(timeline, engine))
-			return false;
-	}
-
-	return intel_engine_has_kernel_context(engine);
-}
-
-int i915_gem_switch_to_kernel_context(struct drm_i915_private *dev_priv)
-{
-	struct intel_engine_cs *engine;
-	struct i915_timeline *timeline;
-	enum intel_engine_id id;
-
-	lockdep_assert_held(&dev_priv->drm.struct_mutex);
-
-	i915_retire_requests(dev_priv);
-
-	for_each_engine(engine, dev_priv, id) {
+	lockdep_assert_held(&i915->drm.struct_mutex);
+	list_for_each_entry(ring, &i915->gt.active_rings, active_link) {
 		struct i915_request *rq;
 
-		if (engine_has_idle_kernel_context(engine))
+		rq = last_request_on_engine(ring->timeline, engine);
+		if (!rq)
 			continue;
 
-		rq = i915_request_alloc(engine, dev_priv->kernel_context);
+		any_active = true;
+
+		if (rq->gem_context == i915->kernel_context)
+			continue;
+
+		/*
+		 * Was this request submitted after the previous
+		 * switch-to-kernel-context?
+		 */
+		if (!i915_timeline_sync_is_later(barrier, &rq->fence)) {
+			GEM_TRACE("%s needs barrier for %llx:%d\n",
+				  ring->timeline->name,
+				  rq->fence.context,
+				  rq->fence.seqno);
+			return false;
+		}
+
+		GEM_TRACE("%s has barrier after %llx:%d\n",
+			  ring->timeline->name,
+			  rq->fence.context,
+			  rq->fence.seqno);
+	}
+
+	/*
+	 * If any other timeline was still active and behind the last barrier,
+	 * then our last switch-to-kernel-context must still be queued and
+	 * will run last (leaving the engine in the kernel context when it
+	 * eventually idles).
+	 */
+	if (any_active)
+		return true;
+
+	/* The engine is idle; check that it is idling in the kernel context. */
+	return engine->last_retired_context == ce;
+}
+
+int i915_gem_switch_to_kernel_context(struct drm_i915_private *i915)
+{
+	struct intel_engine_cs *engine;
+	enum intel_engine_id id;
+
+	GEM_TRACE("\n");
+
+	lockdep_assert_held(&i915->drm.struct_mutex);
+	GEM_BUG_ON(!i915->kernel_context);
+
+	i915_retire_requests(i915);
+
+	for_each_engine(engine, i915, id) {
+		struct intel_ring *ring;
+		struct i915_request *rq;
+
+		GEM_BUG_ON(!to_intel_context(i915->kernel_context, engine));
+		if (engine_has_kernel_context_barrier(engine))
+			continue;
+
+		GEM_TRACE("emit barrier on %s\n", engine->name);
+
+		rq = i915_request_alloc(engine, i915->kernel_context);
 		if (IS_ERR(rq))
 			return PTR_ERR(rq);
 
 		/* Queue this switch after all other activity */
-		list_for_each_entry(timeline, &dev_priv->gt.timelines, link) {
+		list_for_each_entry(ring, &i915->gt.active_rings, active_link) {
 			struct i915_request *prev;
 
-			prev = last_request_on_engine(timeline, engine);
-			if (prev)
-				i915_sw_fence_await_sw_fence_gfp(&rq->submit,
-								 &prev->submit,
-								 I915_FENCE_GFP);
+			prev = last_request_on_engine(ring->timeline, engine);
+			if (!prev)
+				continue;
+
+			if (prev->gem_context == i915->kernel_context)
+				continue;
+
+			GEM_TRACE("add barrier on %s for %llx:%d\n",
+				  engine->name,
+				  prev->fence.context,
+				  prev->fence.seqno);
+			i915_sw_fence_await_sw_fence_gfp(&rq->submit,
+							 &prev->submit,
+							 I915_FENCE_GFP);
+			i915_timeline_sync_set(rq->timeline, &prev->fence);
 		}
 
 		/*

@@ -93,8 +93,9 @@ struct i915_request {
 	 * i915_request_free() will then decrement the refcount on the
 	 * context.
 	 */
-	struct i915_gem_context *ctx;
+	struct i915_gem_context *gem_context;
 	struct intel_engine_cs *engine;
+	struct intel_context *hw_context;
 	struct intel_ring *ring;
 	struct i915_timeline *timeline;
 	struct intel_signal_node signaling;

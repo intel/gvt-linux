@@ -607,7 +607,6 @@ struct i915_psr {
 	bool link_standby;
 	bool colorimetry_support;
 	bool alpm;
-	bool has_hw_tracking;
 	bool psr2_enabled;
 	u8 sink_sync_latency;
 	bool debug;
@@ -1049,9 +1048,9 @@ struct intel_vbt_data {
 	/* Feature bits */
 	unsigned int int_tv_support:1;
 	unsigned int lvds_dither:1;
-	unsigned int lvds_vbt:1;
 	unsigned int int_crt_support:1;
 	unsigned int lvds_use_ssc:1;
+	unsigned int int_lvds_support:1;
 	unsigned int display_clock_mode:1;
 	unsigned int fdi_rx_polarity_inverted:1;
 	unsigned int panel_type:4;
@@ -1067,7 +1066,6 @@ struct intel_vbt_data {
 		int vswing;
 		bool low_vswing;
 		bool initialized;
-		bool support;
 		int bpp;
 		struct edp_power_seq pps;
 	} edp;
@@ -1078,8 +1076,8 @@ struct intel_vbt_data {
 		bool require_aux_wakeup;
 		int idle_frames;
 		enum psr_lines_to_wait lines_to_wait;
-		int tp1_wakeup_time;
-		int tp2_tp3_wakeup_time;
+		int tp1_wakeup_time_us;
+		int tp2_tp3_wakeup_time_us;
 	} psr;
 
 	struct {
@@ -1950,6 +1948,7 @@ struct drm_i915_private {
 			 */
 			struct i915_perf_stream *exclusive_stream;
 
+			struct intel_context *pinned_ctx;
 			u32 specific_ctx_id;
 
 			struct hrtimer poll_check_timer;
@@ -2742,6 +2741,8 @@ int vlv_force_gfx_clock(struct drm_i915_private *dev_priv, bool on);
 
 int intel_engines_init_mmio(struct drm_i915_private *dev_priv);
 int intel_engines_init(struct drm_i915_private *dev_priv);
+
+u32 intel_calculate_mcr_s_ss_select(struct drm_i915_private *dev_priv);
 
 /* intel_hotplug.c */
 void intel_hpd_irq_handler(struct drm_i915_private *dev_priv,

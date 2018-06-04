@@ -4,6 +4,7 @@
 
 #include <linux/list.h>
 #include <linux/spinlock.h>
+#include <linux/stackdepot.h>
 
 enum debug_obj_state {
 	ODEBUG_STATE_NONE,
@@ -31,6 +32,7 @@ struct debug_obj {
 	unsigned int		astate;
 	void			*object;
 	struct debug_obj_descr	*descr;
+	depot_stack_handle_t	stack;
 };
 
 /**

@@ -1,0 +1,30 @@
+drm-upstream drm-fixes 012cfaced00b7a9498227504c4d37a1c4619403d
+	Merge branch 'drm-fixes-4.17' of git://people.freedesktop.org/~agd5f/linux into drm-fixes
+drm-misc drm-misc-fixes 889ad63d41eea20184b0483e7e585e5b20fb6cfe
+	drm/qxl: Call qxl_bo_unref outside atomic context
+drm-intel drm-intel-fixes 65b3bdc807ac7bd83f5b27bc2c29a3c631eed7dd
+	drm/i915/query: nospec expects no more than an unsigned long
+drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
+	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
+drm drm-next 568cf2e6aa0c762f14d2d0d481a006f93c63ab7a
+	Merge tag 'drm-amdkfd-next-2018-05-28' of git://people.freedesktop.org/~gabbayo/linux into drm-next
+drm-misc drm-misc-next-fixes 069035c5db3459b9b5f12caf3bffed9a863fa5c4
+	drm: Fix possible race conditions while unplugging DRM device
+drm-intel drm-intel-next-fixes bc61ec46e83f84b7f42bd775e18567471f1aaaa6
+	drm/i915: Remove stale asserts from i915_gem_find_active_request()
+drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
+	Linux 4.14-rc1
+drm-misc drm-misc-next 6931317c714885f2d792e8150ef6715d416ac681
+	drm/edid: Quirk Vive Pro VR headset non-desktop.
+drm-intel drm-intel-next-queued 14c3f8425080a1ff97df7b81f7c339bf42c427a3
+	drm/i915: Update DRIVER_DATE to 20180606
+drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
+	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
+sound-upstream for-linus d4d5a1cd298e67cb68cca8dc7dd1ea3942cce3ff
+	Merge tag 'asoc-v4.18' of git://git.kernel.org/pub/scm/linux/kernel/git/broonie/sound into for-linus
+sound-upstream for-next d4d5a1cd298e67cb68cca8dc7dd1ea3942cce3ff
+	Merge tag 'asoc-v4.18' of git://git.kernel.org/pub/scm/linux/kernel/git/broonie/sound into for-linus
+drm-intel topic/core-for-CI 7d94a8e74a759c96d6feb6c438f5254f209fddf6
+	net/sch_generic: Shut up noise
+drm-misc topic/vkms 7040e5f347d4d7f242776e239670c6e2ada3b146
+	drm/vkms: Add extra information about vkms

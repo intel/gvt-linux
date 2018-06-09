@@ -58,6 +58,7 @@
 
 struct drm_i915_file_private;
 struct drm_i915_fence_reg;
+struct i915_vma;
 
 typedef u32 gen6_pte_t;
 typedef u64 gen8_pte_t;
@@ -65,7 +66,7 @@ typedef u64 gen8_pde_t;
 typedef u64 gen8_ppgtt_pdpe_t;
 typedef u64 gen8_ppgtt_pml4e_t;
 
-#define ggtt_total_entries(ggtt) ((ggtt)->base.total >> PAGE_SHIFT)
+#define ggtt_total_entries(ggtt) ((ggtt)->vm.total >> PAGE_SHIFT)
 
 /* gen6-hsw has bit 11-4 for physical addr bit 39-32 */
 #define GEN6_GTT_ADDR_ENCODE(addr)	((addr) | (((addr) >> 28) & 0xff0))
@@ -254,6 +255,21 @@ struct i915_pml4 {
 	struct i915_page_directory_pointer *pdps[GEN8_PML4ES_PER_PML4];
 };
 
+struct i915_vma_ops {
+	/* Map an object into an address space with the given cache flags. */
+	int (*bind_vma)(struct i915_vma *vma,
+			enum i915_cache_level cache_level,
+			u32 flags);
+	/*
+	 * Unmap an object from an address space. This usually consists of
+	 * setting the valid PTE entries to a reserved scratch page.
+	 */
+	void (*unbind_vma)(struct i915_vma *vma);
+
+	int (*set_pages)(struct i915_vma *vma);
+	void (*clear_pages)(struct i915_vma *vma);
+};
+
 struct i915_address_space {
 	struct drm_mm mm;
 	struct drm_i915_private *i915;
@@ -331,15 +347,8 @@ struct i915_address_space {
 			       enum i915_cache_level cache_level,
 			       u32 flags);
 	void (*cleanup)(struct i915_address_space *vm);
-	/** Unmap an object from an address space. This usually consists of
-	 * setting the valid PTE entries to a reserved scratch page. */
-	void (*unbind_vma)(struct i915_vma *vma);
-	/* Map an object into an address space with the given cache flags. */
-	int (*bind_vma)(struct i915_vma *vma,
-			enum i915_cache_level cache_level,
-			u32 flags);
-	int (*set_pages)(struct i915_vma *vma);
-	void (*clear_pages)(struct i915_vma *vma);
+
+	struct i915_vma_ops vma_ops;
 
 	I915_SELFTEST_DECLARE(struct fault_attr fault_attr);
 	I915_SELFTEST_DECLARE(bool scrub_64K);
@@ -367,7 +376,7 @@ i915_vm_has_scratch_64K(struct i915_address_space *vm)
  * the spec.
  */
 struct i915_ggtt {
-	struct i915_address_space base;
+	struct i915_address_space vm;
 
 	struct io_mapping iomap;	/* Mapping to our CPU mappable region */
 	struct resource gmadr;          /* GMADR resource */
@@ -385,7 +394,7 @@ struct i915_ggtt {
 };
 
 struct i915_hw_ppgtt {
-	struct i915_address_space base;
+	struct i915_address_space vm;
 	struct kref ref;
 	struct drm_mm_node node;
 	unsigned long pd_dirty_rings;
@@ -543,7 +552,7 @@ static inline struct i915_ggtt *
 i915_vm_to_ggtt(struct i915_address_space *vm)
 {
 	GEM_BUG_ON(!i915_is_ggtt(vm));
-	return container_of(vm, struct i915_ggtt, base);
+	return container_of(vm, struct i915_ggtt, vm);
 }
 
 #define INTEL_MAX_PPAT_ENTRIES 8

@@ -49,6 +49,7 @@ struct i915_vma {
 	struct drm_mm_node node;
 	struct drm_i915_gem_object *obj;
 	struct i915_address_space *vm;
+	const struct i915_vma_ops *ops;
 	struct drm_i915_fence_reg *fence;
 	struct reservation_object *resv; /** Alias of obj->resv */
 	struct sg_table *pages;
@@ -407,7 +408,7 @@ static inline void __i915_vma_unpin_fence(struct i915_vma *vma)
 static inline void
 i915_vma_unpin_fence(struct i915_vma *vma)
 {
-	lockdep_assert_held(&vma->obj->base.dev->struct_mutex);
+	/* lockdep_assert_held(&vma->vm->i915->drm.struct_mutex); */
 	if (vma->fence)
 		__i915_vma_unpin_fence(vma);
 }

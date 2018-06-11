@@ -561,19 +561,20 @@ int drm_plane_check_pixel_format(struct drm_plane *plane,
 	if (i == plane->format_count)
 		return -EINVAL;
 
-	if (!plane->modifier_count)
-		return 0;
+	if (plane->funcs->format_mod_supported) {
+		if (!plane->funcs->format_mod_supported(plane, format, modifier))
+			return -EINVAL;
+	} else {
+		if (!plane->modifier_count)
+			return 0;
 
-	for (i = 0; i < plane->modifier_count; i++) {
-		if (modifier == plane->modifiers[i])
-			break;
+		for (i = 0; i < plane->modifier_count; i++) {
+			if (modifier == plane->modifiers[i])
+				break;
+		}
+		if (i == plane->modifier_count)
+			return -EINVAL;
 	}
-	if (i == plane->modifier_count)
-		return -EINVAL;
-
-	if (plane->funcs->format_mod_supported &&
-	    !plane->funcs->format_mod_supported(plane, format, modifier))
-		return -EINVAL;
 
 	return 0;
 }
@@ -650,9 +651,11 @@ static int __setplane_internal(struct drm_plane *plane,
 					 crtc_x, crtc_y, crtc_w, crtc_h,
 					 src_x, src_y, src_w, src_h, ctx);
 	if (!ret) {
-		plane->crtc = crtc;
-		plane->fb = fb;
-		drm_framebuffer_get(plane->fb);
+		if (!plane->state) {
+			plane->crtc = crtc;
+			plane->fb = fb;
+			drm_framebuffer_get(plane->fb);
+		}
 	} else {
 		plane->old_fb = NULL;
 	}
@@ -1092,8 +1095,10 @@ retry:
 		/* Keep the old fb, don't unref it. */
 		plane->old_fb = NULL;
 	} else {
-		plane->fb = fb;
-		drm_framebuffer_get(fb);
+		if (!plane->state) {
+			plane->fb = fb;
+			drm_framebuffer_get(fb);
+		}
 	}
 
 out:

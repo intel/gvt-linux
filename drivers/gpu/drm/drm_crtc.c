@@ -469,23 +469,32 @@ static int __drm_mode_set_config_internal(struct drm_mode_set *set,
 	 * connectors from it), hence we need to refcount the fbs across all
 	 * crtcs. Atomic modeset will have saner semantics ...
 	 */
-	drm_for_each_crtc(tmp, crtc->dev)
-		tmp->primary->old_fb = tmp->primary->fb;
+	drm_for_each_crtc(tmp, crtc->dev) {
+		struct drm_plane *plane = tmp->primary;
+
+		plane->old_fb = plane->fb;
+	}
 
 	fb = set->fb;
 
 	ret = crtc->funcs->set_config(set, ctx);
 	if (ret == 0) {
-		crtc->primary->crtc = fb ? crtc : NULL;
-		crtc->primary->fb = fb;
+		struct drm_plane *plane = crtc->primary;
+
+		if (!plane->state) {
+			plane->crtc = fb ? crtc : NULL;
+			plane->fb = fb;
+		}
 	}
 
 	drm_for_each_crtc(tmp, crtc->dev) {
-		if (tmp->primary->fb)
-			drm_framebuffer_get(tmp->primary->fb);
-		if (tmp->primary->old_fb)
-			drm_framebuffer_put(tmp->primary->old_fb);
-		tmp->primary->old_fb = NULL;
+		struct drm_plane *plane = tmp->primary;
+
+		if (plane->fb)
+			drm_framebuffer_get(plane->fb);
+		if (plane->old_fb)
+			drm_framebuffer_put(plane->old_fb);
+		plane->old_fb = NULL;
 	}
 
 	return ret;

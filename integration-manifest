@@ -1,30 +1,12 @@
-drm-upstream drm-fixes 012cfaced00b7a9498227504c4d37a1c4619403d
-	Merge branch 'drm-fixes-4.17' of git://people.freedesktop.org/~agd5f/linux into drm-fixes
-drm-misc drm-misc-fixes 889ad63d41eea20184b0483e7e585e5b20fb6cfe
-	drm/qxl: Call qxl_bo_unref outside atomic context
-drm-intel drm-intel-fixes 65b3bdc807ac7bd83f5b27bc2c29a3c631eed7dd
-	drm/i915/query: nospec expects no more than an unsigned long
-drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
-	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
-drm drm-next 33ce21d6a2491ef9adb8dc395e3f5bbbfcdc95b5
-	Merge tag 'drm-intel-next-fixes-2018-06-08-2' of git://anongit.freedesktop.org/drm/drm-intel into drm-next
-drm-misc drm-misc-next-fixes 069035c5db3459b9b5f12caf3bffed9a863fa5c4
-	drm: Fix possible race conditions while unplugging DRM device
-drm-intel drm-intel-next-fixes 807cba6559cf333a74df1fbd74f0597e8e7fa020
-	Merge tag 'gvt-fixes-2018-04-19' of https://github.com/intel/gvt-linux into drm-intel-next-fixes
-drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
-	Linux 4.14-rc1
-drm-misc drm-misc-next e00fb8564ee98c5c3a72c74b1a27e441abff6cca
-	drm: Stop updating plane->crtc/fb/old_fb on atomic drivers
-drm-intel drm-intel-next-queued 467d35789e5a4f47428b65ef711b30fdabbb0fd4
-	drm/i915/execlists: Avoid putting the error pointer
-drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
-	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
-sound-upstream for-linus 6d531e7b972cb62ded011c2dfcc2d9f72ea6c421
-	ALSA: emu10k1: add error handling for snd_ctl_add
-sound-upstream for-next 6d531e7b972cb62ded011c2dfcc2d9f72ea6c421
-	ALSA: emu10k1: add error handling for snd_ctl_add
-drm-intel topic/core-for-CI 08ea82f27f7d5e32cc0b2c54e9b29dd7dc14caac
-	RFT mm/oomkill: Don't skip the reaper
-drm-misc topic/vkms 7040e5f347d4d7f242776e239670c6e2ada3b146
-	drm/vkms: Add extra information about vkms
+drm-tip/drm-tip 2313a1dc588ef63d9650ccbaaf576bc4b47dc255
+	drm-tip: 2018y-06m-11d-17h-51m-35s UTC integration manifest
+vfio-upstream/for-linus 89c29def6b0101fff66a3d74d0178b844f88d732
+	Revert "vfio/type1: Improve memory pinning process for raw PFN mapping"
+vfio-upstream/next c1abca96b252a9627f99f39215b84e5de92bf1e3
+	samples: mbochs: add DMA_SHARED_BUFFER dependency
+origin/gvt-fixes 39b4cbadb9a95bf3f13ea102d6ec841940916ee2
+	drm/i915/kvmgt: Check the pfn got from vfio_pin_pages
+origin/gvt-next 1417fad75cb4eddc8d50604be88ca9a8a8de4c71
+	drm/i915/gvt: use array to avoid potential buffer overflow
+origin/gvt-next-fixes 10996f802109c83421ca30556cfe36ffc3bebae3
+	drm/i915/gvt: Add drm_format_mod update

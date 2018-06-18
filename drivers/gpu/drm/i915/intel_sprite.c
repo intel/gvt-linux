@@ -284,13 +284,35 @@ skl_update_plane(struct intel_plane *plane,
 	/* program plane scaler */
 	if (plane_state->scaler_id >= 0) {
 		int scaler_id = plane_state->scaler_id;
-		const struct intel_scaler *scaler;
+		const struct intel_scaler *scaler =
+			&crtc_state->scaler_state.scalers[scaler_id];
+		u16 y_hphase, uv_rgb_hphase;
+		u16 y_vphase, uv_rgb_vphase;
 
-		scaler = &crtc_state->scaler_state.scalers[scaler_id];
+		/* TODO: handle sub-pixel coordinates */
+		if (fb->format->format == DRM_FORMAT_NV12) {
+			y_hphase = skl_scaler_calc_phase(1, false);
+			y_vphase = skl_scaler_calc_phase(1, false);
+
+			/* MPEG2 chroma siting convention */
+			uv_rgb_hphase = skl_scaler_calc_phase(2, true);
+			uv_rgb_vphase = skl_scaler_calc_phase(2, false);
+		} else {
+			/* not used */
+			y_hphase = 0;
+			y_vphase = 0;
+
+			uv_rgb_hphase = skl_scaler_calc_phase(1, false);
+			uv_rgb_vphase = skl_scaler_calc_phase(1, false);
+		}
 
 		I915_WRITE_FW(SKL_PS_CTRL(pipe, scaler_id),
 			      PS_SCALER_EN | PS_PLANE_SEL(plane_id) | scaler->mode);
 		I915_WRITE_FW(SKL_PS_PWR_GATE(pipe, scaler_id), 0);
+		I915_WRITE_FW(SKL_PS_VPHASE(pipe, scaler_id),
+			      PS_Y_PHASE(y_vphase) | PS_UV_RGB_PHASE(uv_rgb_vphase));
+		I915_WRITE_FW(SKL_PS_HPHASE(pipe, scaler_id),
+			      PS_Y_PHASE(y_hphase) | PS_UV_RGB_PHASE(uv_rgb_hphase));
 		I915_WRITE_FW(SKL_PS_WIN_POS(pipe, scaler_id), (crtc_x << 16) | crtc_y);
 		I915_WRITE_FW(SKL_PS_WIN_SZ(pipe, scaler_id),
 			      ((crtc_w + 1) << 16)|(crtc_h + 1));
@@ -327,19 +349,21 @@ skl_disable_plane(struct intel_plane *plane, struct intel_crtc *crtc)
 }
 
 bool
-skl_plane_get_hw_state(struct intel_plane *plane)
+skl_plane_get_hw_state(struct intel_plane *plane,
+		       enum pipe *pipe)
 {
 	struct drm_i915_private *dev_priv = to_i915(plane->base.dev);
 	enum intel_display_power_domain power_domain;
 	enum plane_id plane_id = plane->id;
-	enum pipe pipe = plane->pipe;
 	bool ret;
 
-	power_domain = POWER_DOMAIN_PIPE(pipe);
+	power_domain = POWER_DOMAIN_PIPE(plane->pipe);
 	if (!intel_display_power_get_if_enabled(dev_priv, power_domain))
 		return false;
 
-	ret = I915_READ(PLANE_CTL(pipe, plane_id)) & PLANE_CTL_ENABLE;
+	ret = I915_READ(PLANE_CTL(plane->pipe, plane_id)) & PLANE_CTL_ENABLE;
+
+	*pipe = plane->pipe;
 
 	intel_display_power_put(dev_priv, power_domain);
 
@@ -588,19 +612,21 @@ vlv_disable_plane(struct intel_plane *plane, struct intel_crtc *crtc)
 }
 
 static bool
-vlv_plane_get_hw_state(struct intel_plane *plane)
+vlv_plane_get_hw_state(struct intel_plane *plane,
+		       enum pipe *pipe)
 {
 	struct drm_i915_private *dev_priv = to_i915(plane->base.dev);
 	enum intel_display_power_domain power_domain;
 	enum plane_id plane_id = plane->id;
-	enum pipe pipe = plane->pipe;
 	bool ret;
 
-	power_domain = POWER_DOMAIN_PIPE(pipe);
+	power_domain = POWER_DOMAIN_PIPE(plane->pipe);
 	if (!intel_display_power_get_if_enabled(dev_priv, power_domain))
 		return false;
 
-	ret = I915_READ(SPCNTR(pipe, plane_id)) & SP_ENABLE;
+	ret = I915_READ(SPCNTR(plane->pipe, plane_id)) & SP_ENABLE;
+
+	*pipe = plane->pipe;
 
 	intel_display_power_put(dev_priv, power_domain);
 
@@ -754,18 +780,20 @@ ivb_disable_plane(struct intel_plane *plane, struct intel_crtc *crtc)
 }
 
 static bool
-ivb_plane_get_hw_state(struct intel_plane *plane)
+ivb_plane_get_hw_state(struct intel_plane *plane,
+		       enum pipe *pipe)
 {
 	struct drm_i915_private *dev_priv = to_i915(plane->base.dev);
 	enum intel_display_power_domain power_domain;
-	enum pipe pipe = plane->pipe;
 	bool ret;
 
-	power_domain = POWER_DOMAIN_PIPE(pipe);
+	power_domain = POWER_DOMAIN_PIPE(plane->pipe);
 	if (!intel_display_power_get_if_enabled(dev_priv, power_domain))
 		return false;
 
-	ret =  I915_READ(SPRCTL(pipe)) & SPRITE_ENABLE;
+	ret =  I915_READ(SPRCTL(plane->pipe)) & SPRITE_ENABLE;
+
+	*pipe = plane->pipe;
 
 	intel_display_power_put(dev_priv, power_domain);
 
@@ -910,18 +938,20 @@ g4x_disable_plane(struct intel_plane *plane, struct intel_crtc *crtc)
 }
 
 static bool
-g4x_plane_get_hw_state(struct intel_plane *plane)
+g4x_plane_get_hw_state(struct intel_plane *plane,
+		       enum pipe *pipe)
 {
 	struct drm_i915_private *dev_priv = to_i915(plane->base.dev);
 	enum intel_display_power_domain power_domain;
-	enum pipe pipe = plane->pipe;
 	bool ret;
 
-	power_domain = POWER_DOMAIN_PIPE(pipe);
+	power_domain = POWER_DOMAIN_PIPE(plane->pipe);
 	if (!intel_display_power_get_if_enabled(dev_priv, power_domain))
 		return false;
 
-	ret = I915_READ(DVSCNTR(pipe)) & DVS_ENABLE;
+	ret = I915_READ(DVSCNTR(plane->pipe)) & DVS_ENABLE;
+
+	*pipe = plane->pipe;
 
 	intel_display_power_put(dev_priv, power_domain);
 
@@ -1071,6 +1101,37 @@ intel_check_sprite_plane(struct intel_plane *plane,
 	return 0;
 }
 
+static bool has_dst_key_in_primary_plane(struct drm_i915_private *dev_priv)
+{
+	return INTEL_GEN(dev_priv) >= 9;
+}
+
+static void intel_plane_set_ckey(struct intel_plane_state *plane_state,
+				 const struct drm_intel_sprite_colorkey *set)
+{
+	struct intel_plane *plane = to_intel_plane(plane_state->base.plane);
+	struct drm_i915_private *dev_priv = to_i915(plane->base.dev);
+	struct drm_intel_sprite_colorkey *key = &plane_state->ckey;
+
+	*key = *set;
+
+	/*
+	 * We want src key enabled on the
+	 * sprite and not on the primary.
+	 */
+	if (plane->id == PLANE_PRIMARY &&
+	    set->flags & I915_SET_COLORKEY_SOURCE)
+		key->flags = 0;
+
+	/*
+	 * On SKL+ we want dst key enabled on
+	 * the primary and not on the sprite.
+	 */
+	if (INTEL_GEN(dev_priv) >= 9 && plane->id != PLANE_PRIMARY &&
+	    set->flags & I915_SET_COLORKEY_DESTINATION)
+		key->flags = 0;
+}
+
 int intel_sprite_set_colorkey_ioctl(struct drm_device *dev, void *data,
 				    struct drm_file *file_priv)
 {
@@ -1100,6 +1161,16 @@ int intel_sprite_set_colorkey_ioctl(struct drm_device *dev, void *data,
 	if (!plane || plane->type != DRM_PLANE_TYPE_OVERLAY)
 		return -ENOENT;
 
+	/*
+	 * SKL+ only plane 2 can do destination keying against plane 1.
+	 * Also multiple planes can't do destination keying on the same
+	 * pipe simultaneously.
+	 */
+	if (INTEL_GEN(dev_priv) >= 9 &&
+	    to_intel_plane(plane)->id >= PLANE_SPRITE1 &&
+	    set->flags & I915_SET_COLORKEY_DESTINATION)
+		return -EINVAL;
+
 	drm_modeset_acquire_init(&ctx, 0);
 
 	state = drm_atomic_state_alloc(plane->dev);
@@ -1112,10 +1183,27 @@ int intel_sprite_set_colorkey_ioctl(struct drm_device *dev, void *data,
 	while (1) {
 		plane_state = drm_atomic_get_plane_state(state, plane);
 		ret = PTR_ERR_OR_ZERO(plane_state);
-		if (!ret) {
-			to_intel_plane_state(plane_state)->ckey = *set;
-			ret = drm_atomic_commit(state);
+		if (!ret)
+			intel_plane_set_ckey(to_intel_plane_state(plane_state), set);
+
+		/*
+		 * On some platforms we have to configure
+		 * the dst colorkey on the primary plane.
+		 */
+		if (!ret && has_dst_key_in_primary_plane(dev_priv)) {
+			struct intel_crtc *crtc =
+				intel_get_crtc_for_pipe(dev_priv,
+							to_intel_plane(plane)->pipe);
+
+			plane_state = drm_atomic_get_plane_state(state,
+								 crtc->base.primary);
+			ret = PTR_ERR_OR_ZERO(plane_state);
+			if (!ret)
+				intel_plane_set_ckey(to_intel_plane_state(plane_state), set);
 		}
+
+		if (!ret)
+			ret = drm_atomic_commit(state);
 
 		if (ret != -EDEADLK)
 			break;

@@ -40,6 +40,7 @@
 #include <linux/hash.h>
 #include <linux/intel-iommu.h>
 #include <linux/kref.h>
+#include <linux/mm_types.h>
 #include <linux/perf_event.h>
 #include <linux/pm_qos.h>
 #include <linux/reservation.h>
@@ -85,8 +86,8 @@
 
 #define DRIVER_NAME		"i915"
 #define DRIVER_DESC		"Intel Graphics"
-#define DRIVER_DATE		"20180514"
-#define DRIVER_TIMESTAMP	1526300884
+#define DRIVER_DATE		"20180606"
+#define DRIVER_TIMESTAMP	1528323047
 
 /* Use I915_STATE_WARN(x) and I915_STATE_WARN_ON() (rather than WARN() and
  * WARN_ON()) for hw state sanity checks to check for unexpected conditions
@@ -107,12 +108,23 @@
 	I915_STATE_WARN((x), "%s", "WARN_ON(" __stringify(x) ")")
 
 #if IS_ENABLED(CONFIG_DRM_I915_DEBUG)
+
 bool __i915_inject_load_failure(const char *func, int line);
 #define i915_inject_load_failure() \
 	__i915_inject_load_failure(__func__, __LINE__)
+
+bool i915_error_injected(void);
+
 #else
+
 #define i915_inject_load_failure() false
+#define i915_error_injected() false
+
 #endif
+
+#define i915_load_error(i915, fmt, ...)					 \
+	__i915_printk(i915, i915_error_injected() ? KERN_DEBUG : KERN_ERR, \
+		      fmt, ##__VA_ARGS__)
 
 typedef struct {
 	uint32_t val;
@@ -340,14 +352,21 @@ struct drm_i915_file_private {
 
 	unsigned int bsd_engine;
 
-/* Client can have a maximum of 3 contexts banned before
- * it is denied of creating new contexts. As one context
- * ban needs 4 consecutive hangs, and more if there is
- * progress in between, this is a last resort stop gap measure
- * to limit the badly behaving clients access to gpu.
+/*
+ * Every context ban increments per client ban score. Also
+ * hangs in short succession increments ban score. If ban threshold
+ * is reached, client is considered banned and submitting more work
+ * will fail. This is a stop gap measure to limit the badly behaving
+ * clients access to gpu. Note that unbannable contexts never increment
+ * the client ban score.
  */
-#define I915_MAX_CLIENT_CONTEXT_BANS 3
-	atomic_t context_bans;
+#define I915_CLIENT_SCORE_HANG_FAST	1
+#define   I915_CLIENT_FAST_HANG_JIFFIES (60 * HZ)
+#define I915_CLIENT_SCORE_CONTEXT_BAN   3
+#define I915_CLIENT_SCORE_BANNED	9
+	/** ban_score: Accumulated score of all ctx bans and fast hangs. */
+	atomic_t ban_score;
+	unsigned long hang_timestamp;
 };
 
 /* Interface history:
@@ -601,13 +620,12 @@ struct i915_psr {
 	bool sink_support;
 	struct intel_dp *enabled;
 	bool active;
-	struct delayed_work work;
+	struct work_struct work;
 	unsigned busy_frontbuffer_bits;
 	bool sink_psr2_support;
 	bool link_standby;
 	bool colorimetry_support;
 	bool alpm;
-	bool has_hw_tracking;
 	bool psr2_enabled;
 	u8 sink_sync_latency;
 	bool debug;
@@ -632,7 +650,7 @@ enum intel_pch {
 	PCH_KBP,        /* Kaby Lake PCH */
 	PCH_CNP,        /* Cannon Lake PCH */
 	PCH_ICP,	/* Ice Lake PCH */
-	PCH_NOP,
+	PCH_NOP,	/* PCH without south display */
 };
 
 enum intel_sbi_destination {
@@ -995,6 +1013,8 @@ struct i915_gem_mm {
 #define I915_ENGINE_DEAD_TIMEOUT  (4 * HZ)  /* Seqno, head and subunits dead */
 #define I915_SEQNO_DEAD_TIMEOUT   (12 * HZ) /* Seqno dead with active head */
 
+#define I915_ENGINE_WEDGED_TIMEOUT  (60 * HZ)  /* Reset but no recovery? */
+
 enum modeset_restore {
 	MODESET_ON_LID_OPEN,
 	MODESET_DONE,
@@ -1005,6 +1025,7 @@ enum modeset_restore {
 #define DP_AUX_B 0x10
 #define DP_AUX_C 0x20
 #define DP_AUX_D 0x30
+#define DP_AUX_E 0x50
 #define DP_AUX_F 0x60
 
 #define DDC_PIN_B  0x05
@@ -1049,9 +1070,9 @@ struct intel_vbt_data {
 	/* Feature bits */
 	unsigned int int_tv_support:1;
 	unsigned int lvds_dither:1;
-	unsigned int lvds_vbt:1;
 	unsigned int int_crt_support:1;
 	unsigned int lvds_use_ssc:1;
+	unsigned int int_lvds_support:1;
 	unsigned int display_clock_mode:1;
 	unsigned int fdi_rx_polarity_inverted:1;
 	unsigned int panel_type:4;
@@ -1067,7 +1088,6 @@ struct intel_vbt_data {
 		int vswing;
 		bool low_vswing;
 		bool initialized;
-		bool support;
 		int bpp;
 		struct edp_power_seq pps;
 	} edp;
@@ -1078,8 +1098,8 @@ struct intel_vbt_data {
 		bool require_aux_wakeup;
 		int idle_frames;
 		enum psr_lines_to_wait lines_to_wait;
-		int tp1_wakeup_time;
-		int tp2_tp3_wakeup_time;
+		int tp1_wakeup_time_us;
+		int tp2_tp3_wakeup_time_us;
 	} psr;
 
 	struct {
@@ -1292,7 +1312,7 @@ struct i915_frontbuffer_tracking {
 };
 
 struct i915_wa_reg {
-	i915_reg_t addr;
+	u32 addr;
 	u32 value;
 	/* bitmask representing WA bits */
 	u32 mask;
@@ -1843,6 +1863,7 @@ struct drm_i915_private {
 		 */
 		struct ida hw_ida;
 #define MAX_CONTEXT_HW_ID (1<<21) /* exclusive */
+#define MAX_GUC_CONTEXT_HW_ID (1 << 20) /* exclusive */
 #define GEN11_MAX_CONTEXT_HW_ID (1<<11) /* exclusive */
 	} contexts;
 
@@ -1950,7 +1971,9 @@ struct drm_i915_private {
 			 */
 			struct i915_perf_stream *exclusive_stream;
 
+			struct intel_context *pinned_ctx;
 			u32 specific_ctx_id;
+			u32 specific_ctx_id_mask;
 
 			struct hrtimer poll_check_timer;
 			wait_queue_head_t poll_wq;
@@ -2743,6 +2766,8 @@ int vlv_force_gfx_clock(struct drm_i915_private *dev_priv, bool on);
 int intel_engines_init_mmio(struct drm_i915_private *dev_priv);
 int intel_engines_init(struct drm_i915_private *dev_priv);
 
+u32 intel_calculate_mcr_s_ss_select(struct drm_i915_private *dev_priv);
+
 /* intel_hotplug.c */
 void intel_hpd_irq_handler(struct drm_i915_private *dev_priv,
 			   u32 pin_mask, u32 long_mask);
@@ -3164,12 +3189,14 @@ void i915_gem_init_mmio(struct drm_i915_private *i915);
 int __must_check i915_gem_init(struct drm_i915_private *dev_priv);
 int __must_check i915_gem_init_hw(struct drm_i915_private *dev_priv);
 void i915_gem_init_swizzling(struct drm_i915_private *dev_priv);
+void i915_gem_fini(struct drm_i915_private *dev_priv);
 void i915_gem_cleanup_engines(struct drm_i915_private *dev_priv);
 int i915_gem_wait_for_idle(struct drm_i915_private *dev_priv,
 			   unsigned int flags);
 int __must_check i915_gem_suspend(struct drm_i915_private *dev_priv);
+void i915_gem_suspend_late(struct drm_i915_private *dev_priv);
 void i915_gem_resume(struct drm_i915_private *dev_priv);
-int i915_gem_fault(struct vm_fault *vmf);
+vm_fault_t i915_gem_fault(struct vm_fault *vmf);
 int i915_gem_object_wait(struct drm_i915_gem_object *obj,
 			 unsigned int flags,
 			 long timeout,
@@ -3208,7 +3235,7 @@ struct dma_buf *i915_gem_prime_export(struct drm_device *dev,
 static inline struct i915_hw_ppgtt *
 i915_vm_to_ppgtt(struct i915_address_space *vm)
 {
-	return container_of(vm, struct i915_hw_ppgtt, base);
+	return container_of(vm, struct i915_hw_ppgtt, vm);
 }
 
 /* i915_gem_fence_reg.c */

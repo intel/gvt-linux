@@ -489,7 +489,9 @@ eb_validate_vma(struct i915_execbuffer *eb,
 }
 
 static int
-eb_add_vma(struct i915_execbuffer *eb, unsigned int i, struct i915_vma *vma)
+eb_add_vma(struct i915_execbuffer *eb,
+	   unsigned int i, unsigned batch_idx,
+	   struct i915_vma *vma)
 {
 	struct drm_i915_gem_exec_object2 *entry = &eb->exec[i];
 	int err;
@@ -521,6 +523,24 @@ eb_add_vma(struct i915_execbuffer *eb, unsigned int i, struct i915_vma *vma)
 	eb->vma[i] = vma;
 	eb->flags[i] = entry->flags;
 	vma->exec_flags = &eb->flags[i];
+
+	/*
+	 * SNA is doing fancy tricks with compressing batch buffers, which leads
+	 * to negative relocation deltas. Usually that works out ok since the
+	 * relocate address is still positive, except when the batch is placed
+	 * very low in the GTT. Ensure this doesn't happen.
+	 *
+	 * Note that actual hangs have only been observed on gen7, but for
+	 * paranoia do it everywhere.
+	 */
+	if (i == batch_idx) {
+		if (!(eb->flags[i] & EXEC_OBJECT_PINNED))
+			eb->flags[i] |= __EXEC_OBJECT_NEEDS_BIAS;
+		if (eb->reloc_cache.has_fence)
+			eb->flags[i] |= EXEC_OBJECT_NEEDS_FENCE;
+
+		eb->batch = vma;
+	}
 
 	err = 0;
 	if (eb_pin_vma(eb, entry, vma)) {
@@ -703,7 +723,7 @@ static int eb_select_context(struct i915_execbuffer *eb)
 		return -ENOENT;
 
 	eb->ctx = ctx;
-	eb->vm = ctx->ppgtt ? &ctx->ppgtt->base : &eb->i915->ggtt.base;
+	eb->vm = ctx->ppgtt ? &ctx->ppgtt->vm : &eb->i915->ggtt.vm;
 
 	eb->context_flags = 0;
 	if (ctx->flags & CONTEXT_NO_ZEROMAP)
@@ -716,7 +736,7 @@ static int eb_lookup_vmas(struct i915_execbuffer *eb)
 {
 	struct radix_tree_root *handles_vma = &eb->ctx->handles_vma;
 	struct drm_i915_gem_object *obj;
-	unsigned int i;
+	unsigned int i, batch;
 	int err;
 
 	if (unlikely(i915_gem_context_is_closed(eb->ctx)))
@@ -727,6 +747,8 @@ static int eb_lookup_vmas(struct i915_execbuffer *eb)
 
 	INIT_LIST_HEAD(&eb->relocs);
 	INIT_LIST_HEAD(&eb->unbound);
+
+	batch = eb_batch_index(eb);
 
 	for (i = 0; i < eb->buffer_count; i++) {
 		u32 handle = eb->exec[i].handle;
@@ -770,32 +792,15 @@ static int eb_lookup_vmas(struct i915_execbuffer *eb)
 		lut->handle = handle;
 
 add_vma:
-		err = eb_add_vma(eb, i, vma);
+		err = eb_add_vma(eb, i, batch, vma);
 		if (unlikely(err))
 			goto err_vma;
 
 		GEM_BUG_ON(vma != eb->vma[i]);
 		GEM_BUG_ON(vma->exec_flags != &eb->flags[i]);
+		GEM_BUG_ON(drm_mm_node_allocated(&vma->node) &&
+			   eb_vma_misplaced(&eb->exec[i], vma, eb->flags[i]));
 	}
-
-	/* take note of the batch buffer before we might reorder the lists */
-	i = eb_batch_index(eb);
-	eb->batch = eb->vma[i];
-	GEM_BUG_ON(eb->batch->exec_flags != &eb->flags[i]);
-
-	/*
-	 * SNA is doing fancy tricks with compressing batch buffers, which leads
-	 * to negative relocation deltas. Usually that works out ok since the
-	 * relocate address is still positive, except when the batch is placed
-	 * very low in the GTT. Ensure this doesn't happen.
-	 *
-	 * Note that actual hangs have only been observed on gen7, but for
-	 * paranoia do it everywhere.
-	 */
-	if (!(eb->flags[i] & EXEC_OBJECT_PINNED))
-		eb->flags[i] |= __EXEC_OBJECT_NEEDS_BIAS;
-	if (eb->reloc_cache.has_fence)
-		eb->flags[i] |= EXEC_OBJECT_NEEDS_FENCE;
 
 	eb->args->flags |= __EXEC_VALIDATED;
 	return eb_reserve(eb);
@@ -916,7 +921,7 @@ static void reloc_gpu_flush(struct reloc_cache *cache)
 	i915_gem_object_unpin_map(cache->rq->batch->obj);
 	i915_gem_chipset_flush(cache->rq->i915);
 
-	__i915_request_add(cache->rq, true);
+	i915_request_add(cache->rq);
 	cache->rq = NULL;
 }
 
@@ -943,9 +948,9 @@ static void reloc_cache_reset(struct reloc_cache *cache)
 		if (cache->node.allocated) {
 			struct i915_ggtt *ggtt = cache_to_ggtt(cache);
 
-			ggtt->base.clear_range(&ggtt->base,
-					       cache->node.start,
-					       cache->node.size);
+			ggtt->vm.clear_range(&ggtt->vm,
+					     cache->node.start,
+					     cache->node.size);
 			drm_mm_remove_node(&cache->node);
 		} else {
 			i915_vma_unpin((struct i915_vma *)cache->node.mm);
@@ -1016,7 +1021,7 @@ static void *reloc_iomap(struct drm_i915_gem_object *obj,
 		if (IS_ERR(vma)) {
 			memset(&cache->node, 0, sizeof(cache->node));
 			err = drm_mm_insert_node_in_range
-				(&ggtt->base.mm, &cache->node,
+				(&ggtt->vm.mm, &cache->node,
 				 PAGE_SIZE, 0, I915_COLOR_UNEVICTABLE,
 				 0, ggtt->mappable_end,
 				 DRM_MM_INSERT_LOW);
@@ -1037,9 +1042,9 @@ static void *reloc_iomap(struct drm_i915_gem_object *obj,
 	offset = cache->node.start;
 	if (cache->node.allocated) {
 		wmb();
-		ggtt->base.insert_page(&ggtt->base,
-				       i915_gem_object_get_dma_address(obj, page),
-				       offset, I915_CACHE_NONE, 0);
+		ggtt->vm.insert_page(&ggtt->vm,
+				     i915_gem_object_get_dma_address(obj, page),
+				     offset, I915_CACHE_NONE, 0);
 	} else {
 		offset += page << PAGE_SHIFT;
 	}
@@ -2433,7 +2438,7 @@ i915_gem_do_execbuffer(struct drm_device *dev,
 	trace_i915_request_queue(eb.request, eb.batch_flags);
 	err = eb_submit(&eb);
 err_request:
-	__i915_request_add(eb.request, err == 0);
+	i915_request_add(eb.request);
 	add_to_client(eb.request, file);
 
 	if (fences)

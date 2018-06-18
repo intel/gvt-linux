@@ -33,7 +33,7 @@ read_nonprivs(struct i915_gem_context *ctx, struct intel_engine_cs *engine)
 	memset(cs, 0xc5, PAGE_SIZE);
 	i915_gem_object_unpin_map(result);
 
-	vma = i915_vma_instance(result, &engine->i915->ggtt.base, NULL);
+	vma = i915_vma_instance(result, &engine->i915->ggtt.vm, NULL);
 	if (IS_ERR(vma)) {
 		err = PTR_ERR(vma);
 		goto err_obj;
@@ -75,7 +75,7 @@ read_nonprivs(struct i915_gem_context *ctx, struct intel_engine_cs *engine)
 	i915_gem_object_get(result);
 	i915_gem_object_set_active_reference(result);
 
-	__i915_request_add(rq, true);
+	i915_request_add(rq);
 	i915_vma_unpin(vma);
 
 	return result;

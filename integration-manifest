@@ -1,30 +1,12 @@
-drm drm-fixes ce397d215ccd07b8ae3f71db689aedb85d56ab40
-	Linux 4.18-rc1
-drm-misc drm-misc-fixes 58b3d02f066e5b1480d80bd308c545526eea3250
-	Revert "drm/sun4i: Handle DRM_BUS_FLAG_PIXDATA_*EDGE"
-drm-intel drm-intel-fixes ce397d215ccd07b8ae3f71db689aedb85d56ab40
-	Linux 4.18-rc1
-drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
-	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
-drm drm-next daf0678c2036c918f01e4aa6035629d2debc2f30
-	Merge branch 'drm-next-4.18' of git://people.freedesktop.org/~agd5f/linux into drm-next
-drm-misc drm-misc-next-fixes 069035c5db3459b9b5f12caf3bffed9a863fa5c4
-	drm: Fix possible race conditions while unplugging DRM device
-drm-intel drm-intel-next-fixes 807cba6559cf333a74df1fbd74f0597e8e7fa020
-	Merge tag 'gvt-fixes-2018-04-19' of https://github.com/intel/gvt-linux into drm-intel-next-fixes
-drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
-	Linux 4.14-rc1
-drm-misc drm-misc-next 6456314ff1de246414a43e3132075b70b3e050ac
-	drm/rockchip: vop: fix irq disabled after vop driver probed
-drm-intel drm-intel-next-queued b796b9710fd52d7f406f606697322fb5c7f562f3
-	drm/i915/icl: Handle hotplug interrupts for DP over TBT
-drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
-	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
-sound-upstream for-linus a57a46b93244a0a916b894d8b2ca2a6cfe1904d3
-	ALSA: hda/ca0132: Fix DMic data rate for Alienware M17x R4
-sound-upstream for-next a8eaad7b04eaab3df6b8db722d4418286815b46c
-	ALSA: line6: stop using get_seconds()
-drm-intel topic/core-for-CI 08ea82f27f7d5e32cc0b2c54e9b29dd7dc14caac
-	RFT mm/oomkill: Don't skip the reaper
-drm-misc topic/vkms 7040e5f347d4d7f242776e239670c6e2ada3b146
-	drm/vkms: Add extra information about vkms
+drm-tip/drm-tip 1ae7a58d270bad4b7051d3808b00cae86f624696
+	drm-tip: 2018y-06m-18d-23h-10m-23s UTC integration manifest
+vfio-upstream/for-linus 08ca1b52f69b4dfa8703d54e26e2c6e11aa453eb
+	vfio/pci: Make IGD support a configurable option
+vfio-upstream/next c1abca96b252a9627f99f39215b84e5de92bf1e3
+	samples: mbochs: add DMA_SHARED_BUFFER dependency
+origin/gvt-fixes 39b4cbadb9a95bf3f13ea102d6ec841940916ee2
+	drm/i915/kvmgt: Check the pfn got from vfio_pin_pages
+origin/gvt-next 57c8a484a9cbf1315b5299702d12aef04867eeee
+	drm/i915: Enable KVMGT for BXT.
+origin/gvt-next-fixes 10996f802109c83421ca30556cfe36ffc3bebae3
+	drm/i915/gvt: Add drm_format_mod update

@@ -1,0 +1,30 @@
+drm drm-fixes 012cfaced00b7a9498227504c4d37a1c4619403d
+	Merge branch 'drm-fixes-4.17' of git://people.freedesktop.org/~agd5f/linux into drm-fixes
+drm-misc drm-misc-fixes 7daf201d7fe8334e2d2364d4e8ed3394ec9af819
+	Linux 4.18-rc2
+drm-intel drm-intel-fixes 7daf201d7fe8334e2d2364d4e8ed3394ec9af819
+	Linux 4.18-rc2
+drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
+	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
+drm drm-next 6d08b06e67cd117f6992c46611dfb4ce267cd71e
+	Linux 4.17-rc2
+drm-misc drm-misc-next-fixes 069035c5db3459b9b5f12caf3bffed9a863fa5c4
+	drm: Fix possible race conditions while unplugging DRM device
+drm-intel drm-intel-next-fixes 807cba6559cf333a74df1fbd74f0597e8e7fa020
+	Merge tag 'gvt-fixes-2018-04-19' of https://github.com/intel/gvt-linux into drm-intel-next-fixes
+drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
+	Linux 4.14-rc1
+drm-misc drm-misc-next 26aec25593c2ee2e24f9facabcf85abba54bdb37
+	drm/panel: Add Ilitek ILI9881c panel driver
+drm-intel drm-intel-next-queued efe79d48a7debf57ad156a43a9215f8b0c9210d4
+	drm/i915: Context objects can never be active when freed
+drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
+	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
+sound-upstream for-linus c9a4c63888dbb79ce4d068ca1dd8b05bc3f156b1
+	ALSA: seq: Fix UBSAN warning at SNDRV_SEQ_IOCTL_QUERY_NEXT_CLIENT ioctl
+sound-upstream for-next efe557320ab6cea12205794fd4062e6e850b7e1c
+	ALSA: hda/realtek - Apply PRE_PROBE fixup after ALC269 codec variant setups
+drm-intel topic/core-for-CI c2f87be45e2a338b71fbd2547631bbf87e6552f0
+	RFT mm/oomkill: Don't skip the reaper
+drm-misc topic/vkms 7040e5f347d4d7f242776e239670c6e2ada3b146
+	drm/vkms: Add extra information about vkms

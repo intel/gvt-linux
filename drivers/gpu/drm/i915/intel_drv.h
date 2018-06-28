@@ -254,7 +254,8 @@ struct intel_encoder {
 			   struct intel_crtc_state *pipe_config);
 	/* Returns a mask of power domains that need to be referenced as part
 	 * of the hardware state readout code. */
-	u64 (*get_power_domains)(struct intel_encoder *encoder);
+	u64 (*get_power_domains)(struct intel_encoder *encoder,
+				 struct intel_crtc_state *crtc_state);
 	/*
 	 * Called during system suspend after all pending requests for the
 	 * encoder are flushed (for example for DP AUX transactions) and
@@ -1133,7 +1134,6 @@ struct intel_dp {
 	 * register with to kick off an AUX transaction.
 	 */
 	uint32_t (*get_aux_send_ctl)(struct intel_dp *dp,
-				     bool has_aux_irq,
 				     int send_bytes,
 				     uint32_t aux_clock_divider);
 
@@ -1921,6 +1921,7 @@ void intel_psr_compute_config(struct intel_dp *intel_dp,
 			      struct intel_crtc_state *crtc_state);
 void intel_psr_irq_control(struct drm_i915_private *dev_priv, bool debug);
 void intel_psr_irq_handler(struct drm_i915_private *dev_priv, u32 psr_iir);
+void intel_psr_short_pulse(struct intel_dp *intel_dp);
 
 /* intel_runtime_pm.c */
 int intel_power_domains_init(struct drm_i915_private *);

@@ -3810,10 +3810,13 @@ int i915_gem_wait_for_idle(struct drm_i915_private *i915, unsigned int flags)
 			if (err)
 				return err;
 		}
+
+		err = wait_for_engines(i915);
+		if (err)
+			return err;
+
 		i915_retire_requests(i915);
 		GEM_BUG_ON(i915->gt.active_requests);
-
-		return wait_for_engines(i915);
 	} else {
 		struct intel_engine_cs *engine;
 		enum intel_engine_id id;
@@ -3824,9 +3827,9 @@ int i915_gem_wait_for_idle(struct drm_i915_private *i915, unsigned int flags)
 			if (err)
 				return err;
 		}
-
-		return 0;
 	}
+
+	return 0;
 }
 
 static void __i915_gem_object_flush_for_display(struct drm_i915_gem_object *obj)
@@ -5456,13 +5459,13 @@ int i915_gem_init(struct drm_i915_private *dev_priv)
 	if (ret)
 		return ret;
 
-	ret = intel_wopcm_init(&dev_priv->wopcm);
-	if (ret)
-		return ret;
-
 	ret = intel_uc_init_misc(dev_priv);
 	if (ret)
 		return ret;
+
+	ret = intel_wopcm_init(&dev_priv->wopcm);
+	if (ret)
+		goto err_uc_misc;
 
 	/* This is just a security blanket to placate dragons.
 	 * On some systems, we very sporadically observe that the first TLBs
@@ -5560,6 +5563,7 @@ err_unlock:
 	intel_uncore_forcewake_put(dev_priv, FORCEWAKE_ALL);
 	mutex_unlock(&dev_priv->drm.struct_mutex);
 
+err_uc_misc:
 	intel_uc_fini_misc(dev_priv);
 
 	if (ret != -EIO)

@@ -1045,13 +1045,13 @@ enum i915_power_well_id {
 
 	/*
 	 * HSW/BDW
-	 *  - HSW_PWR_WELL_CTL_DRIVER(0) (status bit: id*2, req bit: id*2+1)
+	 *  - _HSW_PWR_WELL_CTL1-4 (status bit: id*2, req bit: id*2+1)
 	 */
 	HSW_DISP_PW_GLOBAL = 15,
 
 	/*
 	 * GEN9+
-	 *  - HSW_PWR_WELL_CTL_DRIVER(0) (status bit: id*2, req bit: id*2+1)
+	 *  - _HSW_PWR_WELL_CTL1-4 (status bit: id*2, req bit: id*2+1)
 	 */
 	SKL_DISP_PW_MISC_IO = 0,
 	SKL_DISP_PW_DDI_A_E,
@@ -1075,17 +1075,54 @@ enum i915_power_well_id {
 	SKL_DISP_PW_2,
 
 	/* - custom power wells */
-	SKL_DISP_PW_DC_OFF,
 	BXT_DPIO_CMN_A,
 	BXT_DPIO_CMN_BC,
-	GLK_DPIO_CMN_C,			/* 19 */
+	GLK_DPIO_CMN_C,			/* 18 */
+
+	/*
+	 * GEN11+
+	 *  - _HSW_PWR_WELL_CTL1-4
+	 *    (status bit: (id&15)*2, req bit:(id&15)*2+1)
+	 */
+	ICL_DISP_PW_1 = 0,
+	ICL_DISP_PW_2,
+	ICL_DISP_PW_3,
+	ICL_DISP_PW_4,
+
+	/*
+	 *  - _HSW_PWR_WELL_CTL_AUX1/2/4
+	 *    (status bit: (id&15)*2, req bit:(id&15)*2+1)
+	 */
+	ICL_DISP_PW_AUX_A = 16,
+	ICL_DISP_PW_AUX_B,
+	ICL_DISP_PW_AUX_C,
+	ICL_DISP_PW_AUX_D,
+	ICL_DISP_PW_AUX_E,
+	ICL_DISP_PW_AUX_F,
+
+	ICL_DISP_PW_AUX_TBT1 = 24,
+	ICL_DISP_PW_AUX_TBT2,
+	ICL_DISP_PW_AUX_TBT3,
+	ICL_DISP_PW_AUX_TBT4,
+
+	/*
+	 *  - _HSW_PWR_WELL_CTL_DDI1/2/4
+	 *    (status bit: (id&15)*2, req bit:(id&15)*2+1)
+	 */
+	ICL_DISP_PW_DDI_A = 32,
+	ICL_DISP_PW_DDI_B,
+	ICL_DISP_PW_DDI_C,
+	ICL_DISP_PW_DDI_D,
+	ICL_DISP_PW_DDI_E,
+	ICL_DISP_PW_DDI_F,                      /* 37 */
 
 	/*
 	 * Multiple platforms.
 	 * Must start following the highest ID of any platform.
 	 * - custom power wells
 	 */
-	I915_DISP_PW_ALWAYS_ON = 20,
+	SKL_DISP_PW_DC_OFF = 38,
+	I915_DISP_PW_ALWAYS_ON,
 };
 
 #define PUNIT_REG_PWRGT_CTRL			0x60
@@ -1678,6 +1715,13 @@ enum i915_power_well_id {
 #define   IREF1RC_OFFSET_SHIFT		8
 #define   IREF1RC_OFFSET_MASK		(0xFF << IREF1RC_OFFSET_SHIFT)
 #define BXT_PORT_CL1CM_DW10(phy)	_BXT_PHY((phy), _PORT_CL1CM_DW10_BC)
+
+#define _ICL_PORT_CL_DW12_A		0x162030
+#define _ICL_PORT_CL_DW12_B		0x6C030
+#define   ICL_LANE_ENABLE_AUX		(1 << 0)
+#define ICL_PORT_CL_DW12(port)		_MMIO_PORT((port),		\
+						   _ICL_PORT_CL_DW12_A, \
+						   _ICL_PORT_CL_DW12_B)
 
 #define _PORT_CL1CM_DW28_A		0x162070
 #define _PORT_CL1CM_DW28_BC		0x6C070
@@ -4044,6 +4088,7 @@ enum {
 #define   EDP_PSR_SKIP_AUX_EXIT			(1 << 12)
 #define   EDP_PSR_TP1_TP2_SEL			(0 << 11)
 #define   EDP_PSR_TP1_TP3_SEL			(1 << 11)
+#define   EDP_PSR_CRC_ENABLE			(1 << 10) /* BDW+ */
 #define   EDP_PSR_TP2_TP3_TIME_500us		(0 << 8)
 #define   EDP_PSR_TP2_TP3_TIME_100us		(1 << 8)
 #define   EDP_PSR_TP2_TP3_TIME_2500us		(2 << 8)
@@ -7366,6 +7411,14 @@ enum {
 #define BDW_SCRATCH1					_MMIO(0xb11c)
 #define  GEN9_LBS_SLA_RETRY_TIMER_DECREMENT_ENABLE	(1 << 2)
 
+/*GEN11 chicken */
+#define _PIPEA_CHICKEN			0x70038
+#define _PIPEB_CHICKEN			0x71038
+#define _PIPEC_CHICKEN			0x72038
+#define  PER_PIXEL_ALPHA_BYPASS_EN	(1 << 7)
+#define PIPE_CHICKEN(pipe)		_MMIO_PIPE(pipe, _PIPEA_CHICKEN,\
+						   _PIPEB_CHICKEN)
+
 /* PCH */
 
 /* south display engine interrupt: IBX */
@@ -7409,7 +7462,7 @@ enum {
 #define SDE_TRANSA_FIFO_UNDER	(1 << 0)
 #define SDE_TRANS_MASK		(0x3f)
 
-/* south display engine interrupt: CPT/PPT */
+/* south display engine interrupt: CPT - CNP */
 #define SDE_AUDIO_POWER_D_CPT	(1 << 31)
 #define SDE_AUDIO_POWER_C_CPT	(1 << 30)
 #define SDE_AUDIO_POWER_B_CPT	(1 << 29)
@@ -7456,6 +7509,21 @@ enum {
 #define SDE_FDI_MASK_CPT	(SDE_FDI_RXC_CPT | \
 				 SDE_FDI_RXB_CPT | \
 				 SDE_FDI_RXA_CPT)
+
+/* south display engine interrupt: ICP */
+#define SDE_TC4_HOTPLUG_ICP		(1 << 27)
+#define SDE_TC3_HOTPLUG_ICP		(1 << 26)
+#define SDE_TC2_HOTPLUG_ICP		(1 << 25)
+#define SDE_TC1_HOTPLUG_ICP		(1 << 24)
+#define SDE_GMBUS_ICP			(1 << 23)
+#define SDE_DDIB_HOTPLUG_ICP		(1 << 17)
+#define SDE_DDIA_HOTPLUG_ICP		(1 << 16)
+#define SDE_DDI_MASK_ICP		(SDE_DDIB_HOTPLUG_ICP |	\
+					 SDE_DDIA_HOTPLUG_ICP)
+#define SDE_TC_MASK_ICP			(SDE_TC4_HOTPLUG_ICP |	\
+					 SDE_TC3_HOTPLUG_ICP |	\
+					 SDE_TC2_HOTPLUG_ICP |	\
+					 SDE_TC1_HOTPLUG_ICP)
 
 #define SDEISR  _MMIO(0xc4000)
 #define SDEIMR  _MMIO(0xc4004)
@@ -7516,6 +7584,30 @@ enum {
 #define  PORTE_HOTPLUG_NO_DETECT	(0 << 0)
 #define  PORTE_HOTPLUG_SHORT_DETECT	(1 << 0)
 #define  PORTE_HOTPLUG_LONG_DETECT	(2 << 0)
+
+/* This register is a reuse of PCH_PORT_HOTPLUG register. The
+ * functionality covered in PCH_PORT_HOTPLUG is split into
+ * SHOTPLUG_CTL_DDI and SHOTPLUG_CTL_TC.
+ */
+
+#define SHOTPLUG_CTL_DDI			_MMIO(0xc4030)
+#define   ICP_DDIB_HPD_ENABLE			(1 << 7)
+#define   ICP_DDIB_HPD_STATUS_MASK		(3 << 4)
+#define   ICP_DDIB_HPD_NO_DETECT		(0 << 4)
+#define   ICP_DDIB_HPD_SHORT_DETECT		(1 << 4)
+#define   ICP_DDIB_HPD_LONG_DETECT		(2 << 4)
+#define   ICP_DDIB_HPD_SHORT_LONG_DETECT	(3 << 4)
+#define   ICP_DDIA_HPD_ENABLE			(1 << 3)
+#define   ICP_DDIA_HPD_STATUS_MASK		(3 << 0)
+#define   ICP_DDIA_HPD_NO_DETECT		(0 << 0)
+#define   ICP_DDIA_HPD_SHORT_DETECT		(1 << 0)
+#define   ICP_DDIA_HPD_LONG_DETECT		(2 << 0)
+#define   ICP_DDIA_HPD_SHORT_LONG_DETECT	(3 << 0)
+
+#define SHOTPLUG_CTL_TC				_MMIO(0xc4034)
+#define   ICP_TC_HPD_ENABLE(tc_port)		(8 << (tc_port) * 4)
+#define   ICP_TC_HPD_LONG_DETECT(tc_port)	(2 << (tc_port) * 4)
+#define   ICP_TC_HPD_SHORT_DETECT(tc_port)	(1 << (tc_port) * 4)
 
 #define PCH_GPIOA               _MMIO(0xc5010)
 #define PCH_GPIOB               _MMIO(0xc5014)
@@ -8555,6 +8647,14 @@ enum {
 #define _HSW_PWR_WELL_CTL3			0x45408
 #define _HSW_PWR_WELL_CTL4			0x4540C
 
+#define _ICL_PWR_WELL_CTL_AUX1			0x45440
+#define _ICL_PWR_WELL_CTL_AUX2			0x45444
+#define _ICL_PWR_WELL_CTL_AUX4			0x4544C
+
+#define _ICL_PWR_WELL_CTL_DDI1			0x45450
+#define _ICL_PWR_WELL_CTL_DDI2			0x45454
+#define _ICL_PWR_WELL_CTL_DDI4			0x4545C
+
 /*
  * Each power well control register contains up to 16 (request, status) HW
  * flag tuples. The register index and HW flag shift is determined by the
@@ -8564,14 +8664,20 @@ enum {
  */
 #define _HSW_PW_REG_IDX(pw)			((pw) >> 4)
 #define _HSW_PW_SHIFT(pw)			(((pw) & 0xf) * 2)
-/* TODO: Add all PWR_WELL_CTL registers below for new platforms */
 #define HSW_PWR_WELL_CTL_BIOS(pw)	_MMIO(_PICK(_HSW_PW_REG_IDX(pw),       \
-						    _HSW_PWR_WELL_CTL1))
+						    _HSW_PWR_WELL_CTL1,	       \
+						    _ICL_PWR_WELL_CTL_AUX1,    \
+						    _ICL_PWR_WELL_CTL_DDI1))
 #define HSW_PWR_WELL_CTL_DRIVER(pw)	_MMIO(_PICK(_HSW_PW_REG_IDX(pw),       \
-						    _HSW_PWR_WELL_CTL2))
+						    _HSW_PWR_WELL_CTL2,	       \
+						    _ICL_PWR_WELL_CTL_AUX2,    \
+						    _ICL_PWR_WELL_CTL_DDI2))
+/* KVMR doesn't have a reg for AUX or DDI power well control */
 #define HSW_PWR_WELL_CTL_KVMR		_MMIO(_HSW_PWR_WELL_CTL3)
 #define HSW_PWR_WELL_CTL_DEBUG(pw)	_MMIO(_PICK(_HSW_PW_REG_IDX(pw),       \
-						    _HSW_PWR_WELL_CTL4))
+						    _HSW_PWR_WELL_CTL4,	       \
+						    _ICL_PWR_WELL_CTL_AUX4,    \
+						    _ICL_PWR_WELL_CTL_DDI4))
 
 #define   HSW_PWR_WELL_CTL_REQ(pw)		(1 << (_HSW_PW_SHIFT(pw) + 1))
 #define   HSW_PWR_WELL_CTL_STATE(pw)		(1 << _HSW_PW_SHIFT(pw))
@@ -8592,6 +8698,8 @@ enum skl_power_gate {
 #define  SKL_FUSE_DOWNLOAD_STATUS		(1 << 31)
 /* PG0 (HW control->no power well ID), PG1..PG2 (SKL_DISP_PW1..SKL_DISP_PW2) */
 #define  SKL_PW_TO_PG(pw)			((pw) - SKL_DISP_PW_1 + SKL_PG1)
+/* PG0 (HW control->no power well ID), PG1..PG4 (ICL_DISP_PW1..ICL_DISP_PW4) */
+#define  ICL_PW_TO_PG(pw)			((pw) - ICL_DISP_PW_1 + SKL_PG1)
 #define  SKL_FUSE_PG_DIST_STATUS(pg)		(1 << (27 - (pg)))
 
 #define _CNL_AUX_REG_IDX(pw)		((pw) - 9)
@@ -9047,6 +9155,7 @@ enum skl_power_gate {
 #define _MG_REFCLKIN_CTL_PORT3				0x16A92C
 #define _MG_REFCLKIN_CTL_PORT4				0x16B92C
 #define   MG_REFCLKIN_CTL_OD_2_MUX(x)			((x) << 8)
+#define   MG_REFCLKIN_CTL_OD_2_MUX_MASK			(0x7 << 8)
 #define MG_REFCLKIN_CTL(port) _MMIO_PORT((port) - PORT_C, \
 					 _MG_REFCLKIN_CTL_PORT1, \
 					 _MG_REFCLKIN_CTL_PORT2)
@@ -9056,7 +9165,9 @@ enum skl_power_gate {
 #define _MG_CLKTOP2_CORECLKCTL1_PORT3			0x16A8D8
 #define _MG_CLKTOP2_CORECLKCTL1_PORT4			0x16B8D8
 #define   MG_CLKTOP2_CORECLKCTL1_B_DIVRATIO(x)		((x) << 16)
+#define   MG_CLKTOP2_CORECLKCTL1_B_DIVRATIO_MASK	(0xff << 16)
 #define   MG_CLKTOP2_CORECLKCTL1_A_DIVRATIO(x)		((x) << 8)
+#define   MG_CLKTOP2_CORECLKCTL1_A_DIVRATIO_MASK	(0xff << 8)
 #define MG_CLKTOP2_CORECLKCTL1(port) _MMIO_PORT((port) - PORT_C, \
 						_MG_CLKTOP2_CORECLKCTL1_PORT1, \
 						_MG_CLKTOP2_CORECLKCTL1_PORT2)
@@ -9066,9 +9177,13 @@ enum skl_power_gate {
 #define _MG_CLKTOP2_HSCLKCTL_PORT3			0x16A8D4
 #define _MG_CLKTOP2_HSCLKCTL_PORT4			0x16B8D4
 #define   MG_CLKTOP2_HSCLKCTL_CORE_INPUTSEL(x)		((x) << 16)
+#define   MG_CLKTOP2_HSCLKCTL_CORE_INPUTSEL_MASK	(0x1 << 16)
 #define   MG_CLKTOP2_HSCLKCTL_TLINEDRV_CLKSEL(x)	((x) << 14)
+#define   MG_CLKTOP2_HSCLKCTL_TLINEDRV_CLKSEL_MASK	(0x3 << 14)
 #define   MG_CLKTOP2_HSCLKCTL_HSDIV_RATIO(x)		((x) << 12)
+#define   MG_CLKTOP2_HSCLKCTL_HSDIV_RATIO_MASK		(0x3 << 12)
 #define   MG_CLKTOP2_HSCLKCTL_DSDIV_RATIO(x)		((x) << 8)
+#define   MG_CLKTOP2_HSCLKCTL_DSDIV_RATIO_MASK		(0xf << 8)
 #define MG_CLKTOP2_HSCLKCTL(port) _MMIO_PORT((port) - PORT_C, \
 					     _MG_CLKTOP2_HSCLKCTL_PORT1, \
 					     _MG_CLKTOP2_HSCLKCTL_PORT2)
@@ -9142,12 +9257,18 @@ enum skl_power_gate {
 #define _MG_PLL_BIAS_PORT3				0x16AA14
 #define _MG_PLL_BIAS_PORT4				0x16BA14
 #define   MG_PLL_BIAS_BIAS_GB_SEL(x)			((x) << 30)
+#define   MG_PLL_BIAS_BIAS_GB_SEL_MASK			(0x3 << 30)
 #define   MG_PLL_BIAS_INIT_DCOAMP(x)			((x) << 24)
+#define   MG_PLL_BIAS_INIT_DCOAMP_MASK			(0x3f << 24)
 #define   MG_PLL_BIAS_BIAS_BONUS(x)			((x) << 16)
+#define   MG_PLL_BIAS_BIAS_BONUS_MASK			(0xff << 16)
 #define   MG_PLL_BIAS_BIASCAL_EN			(1 << 15)
 #define   MG_PLL_BIAS_CTRIM(x)				((x) << 8)
+#define   MG_PLL_BIAS_CTRIM_MASK			(0x1f << 8)
 #define   MG_PLL_BIAS_VREF_RDAC(x)			((x) << 5)
+#define   MG_PLL_BIAS_VREF_RDAC_MASK			(0x7 << 5)
 #define   MG_PLL_BIAS_IREFTRIM(x)			((x) << 0)
+#define   MG_PLL_BIAS_IREFTRIM_MASK			(0x1f << 0)
 #define MG_PLL_BIAS(port) _MMIO_PORT((port) - PORT_C, _MG_PLL_BIAS_PORT1, \
 				     _MG_PLL_BIAS_PORT2)
 

@@ -2498,7 +2498,7 @@ static void intel_pin_eld_notify(void *audio_ptr, int port, int pipe)
 	if (snd_power_get_state(codec->card) != SNDRV_CTL_POWER_D0)
 		return;
 	/* ditto during suspend/resume process itself */
-	if (atomic_read(&(codec)->core.in_pm))
+	if (snd_hdac_is_in_pm(&codec->core))
 		return;
 
 	snd_hdac_i915_set_bclk(&codec->bus->core);
@@ -2551,6 +2551,8 @@ static int alloc_intel_hdmi(struct hda_codec *codec)
 	/* requires i915 binding */
 	if (!codec->bus->core.audio_component) {
 		codec_info(codec, "No i915 binding for Intel HDMI/DP codec\n");
+		/* set probe_id here to prevent generic fallback binding */
+		codec->probe_id = HDA_CODEC_ID_SKIP_PROBE;
 		return -ENODEV;
 	}
 

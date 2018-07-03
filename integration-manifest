@@ -1,30 +1,12 @@
-drm drm-fixes 2d8aa4ef6aac566617052640e9bb07ecb9c45183
-	Merge tag 'drm-misc-fixes-2018-06-28' of git://anongit.freedesktop.org/drm/drm-misc into drm-fixes
-drm-misc drm-misc-fixes 718b5406cd76f1aa6434311241b7febf0e8571ff
-	drm: Use kvzalloc for allocating blob property memory
-drm-intel drm-intel-fixes 021c91791a5e7e85c567452f1be3e4c2c6cb6063
-	Linux 4.18-rc3
-drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
-	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
-drm drm-next eab976693153b9854bfa83d131374748f6ca4280
-	Merge tag 'drm-misc-next-2018-06-27' of git://anongit.freedesktop.org/drm/drm-misc into drm-next
-drm-misc drm-misc-next-fixes 069035c5db3459b9b5f12caf3bffed9a863fa5c4
-	drm: Fix possible race conditions while unplugging DRM device
-drm-intel drm-intel-next-fixes 807cba6559cf333a74df1fbd74f0597e8e7fa020
-	Merge tag 'gvt-fixes-2018-04-19' of https://github.com/intel/gvt-linux into drm-intel-next-fixes
-drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
-	Linux 4.14-rc1
-drm-misc drm-misc-next ba6096311ba6aed28fec237038ec986c9bf9b8e9
-	drm: Fix hdmi connector content type property docs
-drm-intel drm-intel-next-queued a608987970b929e250957e4e3fb891f1f10eff6f
-	drm/i915: Wait for PSR exit before checking for vblank evasion
-drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
-	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
-sound-upstream for-linus aaa23f86001bdb82d2f937c5c7bce0a1e11a6c5b
-	ALSA: hda - Handle pm failure during hotplug
-sound-upstream for-next 1259d239799bf9c898091d92adc4317f2c3d74ad
-	ALSA: usb-midi: use irqsave() in USB's complete callback
-drm-intel topic/core-for-CI b1ee8b0d945633e4165f9e160af4cda8be6497f5
-	Documentation: e100: Fix docs build error
-drm-misc topic/vkms 7040e5f347d4d7f242776e239670c6e2ada3b146
-	drm/vkms: Add extra information about vkms
+drm-tip/drm-tip 1b4261461fc3fc25b77f32dd3c80e21d676a2a16
+	drm-tip: 2018y-07m-03d-07h-01m-50s UTC integration manifest
+vfio-upstream/for-linus 7733e05b34f5d855c5590d816b41ddfee972d188
+	sample/mdev/mbochs: add mbochs_kunmap_dmabuf
+vfio-upstream/next c1abca96b252a9627f99f39215b84e5de92bf1e3
+	samples: mbochs: add DMA_SHARED_BUFFER dependency
+origin/gvt-fixes a4cae23cc05ccec749c2fc70fa9d8cda7c582319
+	drm/i915/gvt: changed DDI mode emulation type
+origin/gvt-next 57c8a484a9cbf1315b5299702d12aef04867eeee
+	drm/i915: Enable KVMGT for BXT.
+origin/gvt-next-fixes 10996f802109c83421ca30556cfe36ffc3bebae3
+	drm/i915/gvt: Add drm_format_mod update

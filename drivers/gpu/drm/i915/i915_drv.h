@@ -512,6 +512,7 @@ struct intel_fbc {
 
 	bool enabled;
 	bool active;
+	bool flip_pending;
 
 	bool underrun_detected;
 	struct work_struct underrun_work;
@@ -579,12 +580,6 @@ struct intel_fbc {
 		unsigned int gen9_wa_cfb_stride;
 	} params;
 
-	struct intel_fbc_work {
-		bool scheduled;
-		u64 scheduled_vblank;
-		struct work_struct work;
-	} work;
-
 	const char *no_fbc_reason;
 };
 
@@ -631,14 +626,6 @@ struct i915_psr {
 	bool debug;
 	ktime_t last_entry_attempt;
 	ktime_t last_exit;
-
-	void (*enable_source)(struct intel_dp *,
-			      const struct intel_crtc_state *);
-	void (*disable_source)(struct intel_dp *,
-			       const struct intel_crtc_state *);
-	void (*enable_sink)(struct intel_dp *);
-	void (*activate)(struct intel_dp *);
-	void (*setup_vsc)(struct intel_dp *, const struct intel_crtc_state *);
 };
 
 enum intel_pch {
@@ -2578,16 +2565,6 @@ intel_info(const struct drm_i915_private *dev_priv)
 	(IS_CANNONLAKE(dev_priv) || \
 	 IS_SKL_GT3(dev_priv) || IS_SKL_GT4(dev_priv))
 
-/*
- * dp aux and gmbus irq on gen4 seems to be able to generate legacy interrupts
- * even when in MSI mode. This results in spurious interrupt warnings if the
- * legacy irq no. is shared with another device. The kernel then disables that
- * interrupt source and so prevents the other device from working properly.
- *
- * Since we don't enable MSI anymore on gen4, we can always use GMBUS/AUX
- * interrupts.
- */
-#define HAS_AUX_IRQ(dev_priv)   true
 #define HAS_GMBUS_IRQ(dev_priv) (INTEL_GEN(dev_priv) >= 4)
 
 /* With the 945 and later, Y tiling got adjusted so that it was 32 128-byte

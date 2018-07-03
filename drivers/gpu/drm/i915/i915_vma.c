@@ -21,7 +21,7 @@
  * IN THE SOFTWARE.
  *
  */
- 
+
 #include "i915_vma.h"
 
 #include "i915_drv.h"
@@ -29,6 +29,39 @@
 #include "intel_frontbuffer.h"
 
 #include <drm/drm_gem.h>
+
+#if IS_ENABLED(CONFIG_DRM_I915_DEBUG_GEM) && IS_ENABLED(CONFIG_DRM_DEBUG_MM)
+
+#include <linux/stackdepot.h>
+
+static void vma_print_allocator(struct i915_vma *vma, const char *reason)
+{
+	unsigned long entries[12];
+	struct stack_trace trace = {
+		.entries = entries,
+		.max_entries = ARRAY_SIZE(entries),
+	};
+	char buf[512];
+
+	if (!vma->node.stack) {
+		DRM_DEBUG_DRIVER("vma.node [%08llx + %08llx] %s: unknown owner\n",
+				 vma->node.start, vma->node.size, reason);
+		return;
+	}
+
+	depot_fetch_stack(vma->node.stack, &trace);
+	snprint_stack_trace(buf, sizeof(buf), &trace, 0);
+	DRM_DEBUG_DRIVER("vma.node [%08llx + %08llx] %s: inserted at %s\n",
+			 vma->node.start, vma->node.size, reason, buf);
+}
+
+#else
+
+static void vma_print_allocator(struct i915_vma *vma, const char *reason)
+{
+}
+
+#endif
 
 static void
 i915_vma_retire(struct i915_gem_active *active, struct i915_request *rq)
@@ -110,7 +143,7 @@ vma_create(struct drm_i915_gem_object *obj,
 						     obj->base.size >> PAGE_SHIFT));
 			vma->size = view->partial.size;
 			vma->size <<= PAGE_SHIFT;
-			GEM_BUG_ON(vma->size >= obj->base.size);
+			GEM_BUG_ON(vma->size > obj->base.size);
 		} else if (view->type == I915_GGTT_VIEW_ROTATED) {
 			vma->size = intel_rotation_info_size(&view->rotated);
 			vma->size <<= PAGE_SHIFT;
@@ -875,8 +908,10 @@ int i915_vma_unbind(struct i915_vma *vma)
 	}
 	GEM_BUG_ON(i915_vma_is_active(vma));
 
-	if (i915_vma_is_pinned(vma))
+	if (i915_vma_is_pinned(vma)) {
+		vma_print_allocator(vma, "is pinned");
 		return -EBUSY;
+	}
 
 	if (!drm_mm_node_allocated(&vma->node))
 		return 0;

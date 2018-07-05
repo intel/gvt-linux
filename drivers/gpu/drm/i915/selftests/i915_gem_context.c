@@ -175,7 +175,7 @@ static int gpu_fill(struct drm_i915_gem_object *obj,
 	i915_vma_unpin(batch);
 	i915_vma_close(batch);
 
-	i915_vma_move_to_active(vma, rq, 0);
+	i915_vma_move_to_active(vma, rq, EXEC_OBJECT_WRITE);
 	i915_vma_unpin(vma);
 
 	reservation_object_lock(obj->resv, NULL);
@@ -586,7 +586,7 @@ int i915_gem_context_mock_selftests(void)
 
 	err = i915_subtests(tests, i915);
 
-	drm_dev_unref(&i915->drm);
+	drm_dev_put(&i915->drm);
 	return err;
 }
 

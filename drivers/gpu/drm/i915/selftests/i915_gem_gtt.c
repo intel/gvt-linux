@@ -32,6 +32,20 @@
 #include "mock_drm.h"
 #include "mock_gem_device.h"
 
+static void cleanup_freed_objects(struct drm_i915_private *i915)
+{
+	/*
+	 * As we may hold onto the struct_mutex for inordinate lengths of
+	 * time, the NMI khungtaskd detector may fire for the free objects
+	 * worker.
+	 */
+	mutex_unlock(&i915->drm.struct_mutex);
+
+	i915_gem_drain_freed_objects(i915);
+
+	mutex_lock(&i915->drm.struct_mutex);
+}
+
 static void fake_free_pages(struct drm_i915_gem_object *obj,
 			    struct sg_table *pages)
 {
@@ -142,12 +156,9 @@ static int igt_ppgtt_alloc(void *arg)
 	if (!USES_PPGTT(dev_priv))
 		return 0;
 
-	mutex_lock(&dev_priv->drm.struct_mutex);
 	ppgtt = __hw_ppgtt_create(dev_priv);
-	if (IS_ERR(ppgtt)) {
-		err = PTR_ERR(ppgtt);
-		goto err_unlock;
-	}
+	if (IS_ERR(ppgtt))
+		return PTR_ERR(ppgtt);
 
 	if (!ppgtt->vm.allocate_va_range)
 		goto err_ppgtt_cleanup;
@@ -166,6 +177,8 @@ static int igt_ppgtt_alloc(void *arg)
 			goto err_ppgtt_cleanup;
 		}
 
+		cond_resched();
+
 		ppgtt->vm.clear_range(&ppgtt->vm, 0, size);
 	}
 
@@ -183,13 +196,15 @@ static int igt_ppgtt_alloc(void *arg)
 			}
 			goto err_ppgtt_cleanup;
 		}
+
+		cond_resched();
 	}
 
 err_ppgtt_cleanup:
+	mutex_lock(&dev_priv->drm.struct_mutex);
 	ppgtt->vm.cleanup(&ppgtt->vm);
-	kfree(ppgtt);
-err_unlock:
 	mutex_unlock(&dev_priv->drm.struct_mutex);
+	kfree(ppgtt);
 	return err;
 }
 
@@ -291,6 +306,8 @@ static int lowlevel_hole(struct drm_i915_private *i915,
 		i915_gem_object_put(obj);
 
 		kfree(order);
+
+		cleanup_freed_objects(i915);
 	}
 
 	return 0;
@@ -519,6 +536,7 @@ static int fill_hole(struct drm_i915_private *i915,
 		}
 
 		close_object_list(&objects, vm);
+		cleanup_freed_objects(i915);
 	}
 
 	return 0;
@@ -605,6 +623,8 @@ err_put:
 		i915_gem_object_put(obj);
 		if (err)
 			return err;
+
+		cleanup_freed_objects(i915);
 	}
 
 	return 0;
@@ -789,6 +809,8 @@ err_obj:
 		kfree(order);
 		if (err)
 			return err;
+
+		cleanup_freed_objects(i915);
 	}
 
 	return 0;
@@ -857,6 +879,7 @@ static int __shrink_hole(struct drm_i915_private *i915,
 	}
 
 	close_object_list(&objects, vm);
+	cleanup_freed_objects(i915);
 	return err;
 }
 
@@ -949,6 +972,7 @@ static int shrink_boom(struct drm_i915_private *i915,
 		i915_gem_object_put(explode);
 
 		memset(&vm->fault_attr, 0, sizeof(vm->fault_attr));
+		cleanup_freed_objects(i915);
 	}
 
 	return 0;
@@ -980,7 +1004,7 @@ static int exercise_ppgtt(struct drm_i915_private *dev_priv,
 		return PTR_ERR(file);
 
 	mutex_lock(&dev_priv->drm.struct_mutex);
-	ppgtt = i915_ppgtt_create(dev_priv, file->driver_priv, "mock");
+	ppgtt = i915_ppgtt_create(dev_priv, file->driver_priv);
 	if (IS_ERR(ppgtt)) {
 		err = PTR_ERR(ppgtt);
 		goto out_unlock;
@@ -1644,7 +1668,7 @@ int i915_gem_gtt_mock_selftests(void)
 	err = i915_subtests(tests, i915);
 	mutex_unlock(&i915->drm.struct_mutex);
 
-	drm_dev_unref(&i915->drm);
+	drm_dev_put(&i915->drm);
 	return err;
 }
 

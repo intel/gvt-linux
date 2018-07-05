@@ -66,6 +66,15 @@ enum {
 #define __I915_EXEC_ILLEGAL_FLAGS \
 	(__I915_EXEC_UNKNOWN_FLAGS | I915_EXEC_CONSTANTS_MASK)
 
+/* Catch emission of unexpected errors for CI! */
+#if IS_ENABLED(CONFIG_DRM_I915_DEBUG_GEM)
+#undef EINVAL
+#define EINVAL ({ \
+	DRM_DEBUG_DRIVER("EINVAL at %s:%d\n", __func__, __LINE__); \
+	22; \
+})
+#endif
+
 /**
  * DOC: User command execution
  *
@@ -534,7 +543,8 @@ eb_add_vma(struct i915_execbuffer *eb,
 	 * paranoia do it everywhere.
 	 */
 	if (i == batch_idx) {
-		if (!(eb->flags[i] & EXEC_OBJECT_PINNED))
+		if (entry->relocation_count &&
+		    !(eb->flags[i] & EXEC_OBJECT_PINNED))
 			eb->flags[i] |= __EXEC_OBJECT_NEEDS_BIAS;
 		if (eb->reloc_cache.has_fence)
 			eb->flags[i] |= EXEC_OBJECT_NEEDS_FENCE;

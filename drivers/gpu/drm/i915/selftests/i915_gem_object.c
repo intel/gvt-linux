@@ -454,7 +454,12 @@ static int make_obj_busy(struct drm_i915_gem_object *obj)
 		return PTR_ERR(rq);
 	}
 
-	i915_vma_move_to_active(vma, rq, 0);
+	i915_vma_move_to_active(vma, rq, EXEC_OBJECT_WRITE);
+
+	reservation_object_lock(vma->resv, NULL);
+	reservation_object_add_excl_fence(vma->resv, &rq->fence);
+	reservation_object_unlock(vma->resv);
+
 	i915_request_add(rq);
 
 	i915_gem_object_set_active_reference(obj);
@@ -586,7 +591,7 @@ int i915_gem_object_mock_selftests(void)
 
 	err = i915_subtests(tests, i915);
 
-	drm_dev_unref(&i915->drm);
+	drm_dev_put(&i915->drm);
 	return err;
 }
 

@@ -1,0 +1,30 @@
+drm drm-fixes 021c91791a5e7e85c567452f1be3e4c2c6cb6063
+	Linux 4.18-rc3
+drm-misc drm-misc-fixes 44f9a4b0dc7563669772198e5b226cab58a00167
+	drm/bridge/sii8620: Fix link mode selection
+drm-intel drm-intel-fixes 3030deda09711e5d81eabf5cd95a567576601343
+	Merge tag 'gvt-fixes-2018-07-03' of https://github.com/intel/gvt-linux into drm-intel-fixes
+drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
+	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
+drm drm-next f29135ee4e0d4e01911ed569f731bfdb841cea6d
+	Merge v4.18-rc3 into drm-next
+drm-misc drm-misc-next-fixes 069035c5db3459b9b5f12caf3bffed9a863fa5c4
+	drm: Fix possible race conditions while unplugging DRM device
+drm-intel drm-intel-next-fixes 807cba6559cf333a74df1fbd74f0597e8e7fa020
+	Merge tag 'gvt-fixes-2018-04-19' of https://github.com/intel/gvt-linux into drm-intel-next-fixes
+drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
+	Linux 4.14-rc1
+drm-misc drm-misc-next 968d72e6a5105a18fe17c0a8b4ef2951d0eb42dd
+	drm/savage: off by one in savage_bci_cmdbuf()
+drm-intel drm-intel-next-queued 63fd659fb1a52262a37293a9a034a912a2406b26
+	drm/i915/gtt: Pull global wc page stash under its own locking
+drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
+	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
+sound-upstream for-linus aaa23f86001bdb82d2f937c5c7bce0a1e11a6c5b
+	ALSA: hda - Handle pm failure during hotplug
+sound-upstream for-next 51d7d35817aad6f4dd0f60b80063206f1761b69b
+	Merge branch 'topic/hda-core-intel' into for-next
+drm-intel topic/core-for-CI e3aa13f8269f5966e0b1ab1684b7576c35a14dba
+	usb/icl: Work around ACPI boottime crash
+drm-misc topic/vkms 7040e5f347d4d7f242776e239670c6e2ada3b146
+	drm/vkms: Add extra information about vkms

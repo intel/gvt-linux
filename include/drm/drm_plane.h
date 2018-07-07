@@ -288,6 +288,8 @@ struct drm_plane_funcs {
 	 * cleaned up by calling the @atomic_destroy_state hook in this
 	 * structure.
 	 *
+	 * This callback is mandatory for atomic drivers.
+	 *
 	 * Atomic drivers which don't subclass &struct drm_plane_state should use
 	 * drm_atomic_helper_plane_duplicate_state(). Drivers that subclass the
 	 * state structure to extend it with driver-private state should use
@@ -314,6 +316,8 @@ struct drm_plane_funcs {
 	 *
 	 * Destroy a state duplicated with @atomic_duplicate_state and release
 	 * or unreference all resources it references
+	 *
+	 * This callback is mandatory for atomic drivers.
 	 */
 	void (*atomic_destroy_state)(struct drm_plane *plane,
 				     struct drm_plane_state *state);
@@ -431,7 +435,10 @@ struct drm_plane_funcs {
 	 * This optional hook is used for the DRM to determine if the given
 	 * format/modifier combination is valid for the plane. This allows the
 	 * DRM to generate the correct format bitmask (which formats apply to
-	 * which modifier).
+	 * which modifier), and to valdiate modifiers at atomic_check time.
+	 *
+	 * If not present, then any modifier in the plane's modifier
+	 * list is allowed with any of the plane's formats.
 	 *
 	 * Returns:
 	 *
@@ -632,10 +639,20 @@ void drm_plane_cleanup(struct drm_plane *plane);
  * Given a registered plane, return the index of that plane within a DRM
  * device's list of planes.
  */
-static inline unsigned int drm_plane_index(struct drm_plane *plane)
+static inline unsigned int drm_plane_index(const struct drm_plane *plane)
 {
 	return plane->index;
 }
+
+/**
+ * drm_plane_mask - find the mask of a registered plane
+ * @plane: plane to find mask for
+ */
+static inline u32 drm_plane_mask(const struct drm_plane *plane)
+{
+	return 1 << drm_plane_index(plane);
+}
+
 struct drm_plane * drm_plane_from_index(struct drm_device *dev, int idx);
 void drm_plane_force_disable(struct drm_plane *plane);
 
@@ -671,7 +688,7 @@ static inline struct drm_plane *drm_plane_find(struct drm_device *dev,
  */
 #define drm_for_each_plane_mask(plane, dev, plane_mask) \
 	list_for_each_entry((plane), &(dev)->mode_config.plane_list, head) \
-		for_each_if ((plane_mask) & (1 << drm_plane_index(plane)))
+		for_each_if ((plane_mask) & drm_plane_mask(plane))
 
 /**
  * drm_for_each_legacy_plane - iterate over all planes for legacy userspace

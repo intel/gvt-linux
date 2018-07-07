@@ -862,7 +862,6 @@ static int vc4_async_page_flip(struct drm_crtc *crtc,
 	 * is released.
 	 */
 	drm_atomic_set_fb_for_plane(plane->state, fb);
-	plane->fb = fb;
 
 	vc4_queue_seqno_cb(dev, &flip_state->cb, bo->seqno,
 			   vc4_async_page_flip_complete);
@@ -1057,7 +1056,6 @@ static int vc4_crtc_bind(struct device *dev, struct device *master, void *data)
 	drm_crtc_init_with_planes(drm, crtc, primary_plane, NULL,
 				  &vc4_crtc_funcs, NULL);
 	drm_crtc_helper_add(crtc, &vc4_crtc_helper_funcs);
-	primary_plane->crtc = crtc;
 	vc4_crtc->channel = vc4_crtc->data->hvs_channel;
 	drm_mode_crtc_set_gamma_size(crtc, ARRAY_SIZE(vc4_crtc->lut_r));
 	drm_crtc_enable_color_mgmt(crtc, 0, false, crtc->gamma_size);
@@ -1083,7 +1081,7 @@ static int vc4_crtc_bind(struct device *dev, struct device *master, void *data)
 		if (IS_ERR(plane))
 			continue;
 
-		plane->possible_crtcs = 1 << drm_crtc_index(crtc);
+		plane->possible_crtcs = drm_crtc_mask(crtc);
 	}
 
 	/* Set up the legacy cursor after overlay initialization,
@@ -1092,8 +1090,7 @@ static int vc4_crtc_bind(struct device *dev, struct device *master, void *data)
 	 */
 	cursor_plane = vc4_plane_init(drm, DRM_PLANE_TYPE_CURSOR);
 	if (!IS_ERR(cursor_plane)) {
-		cursor_plane->possible_crtcs = 1 << drm_crtc_index(crtc);
-		cursor_plane->crtc = crtc;
+		cursor_plane->possible_crtcs = drm_crtc_mask(crtc);
 		crtc->cursor = cursor_plane;
 	}
 
@@ -1121,7 +1118,7 @@ static int vc4_crtc_bind(struct device *dev, struct device *master, void *data)
 err_destroy_planes:
 	list_for_each_entry_safe(destroy_plane, temp,
 				 &drm->mode_config.plane_list, head) {
-		if (destroy_plane->possible_crtcs == 1 << drm_crtc_index(crtc))
+		if (destroy_plane->possible_crtcs == drm_crtc_mask(crtc))
 		    destroy_plane->funcs->destroy(destroy_plane);
 	}
 err:

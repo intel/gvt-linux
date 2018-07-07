@@ -1,0 +1,28 @@
+drm drm-fixes c78d1f9d95a9f2cd5546c64f5315f54681dd6055
+	Merge tag 'exynos-drm-fixes-for-v4.18-rc4' of git://git.kernel.org/pub/scm/linux/kernel/git/daeinki/drm-exynos into drm-fixes
+drm-misc drm-misc-fixes 44f9a4b0dc7563669772198e5b226cab58a00167
+	drm/bridge/sii8620: Fix link mode selection
+drm-intel drm-intel-fixes 3030deda09711e5d81eabf5cd95a567576601343
+	Merge tag 'gvt-fixes-2018-07-03' of https://github.com/intel/gvt-linux into drm-intel-fixes
+drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
+	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
+drm drm-next 4da1d4c751c9b1b713c13043bad7c4d27cd1418c
+	Merge commit 'refs/for-upstream/mali-dp' of git://linux-arm.org/linux-ld into drm-next
+drm-misc drm-misc-next-fixes 069035c5db3459b9b5f12caf3bffed9a863fa5c4
+	drm: Fix possible race conditions while unplugging DRM device
+drm-intel drm-intel-next-fixes 807cba6559cf333a74df1fbd74f0597e8e7fa020
+	Merge tag 'gvt-fixes-2018-04-19' of https://github.com/intel/gvt-linux into drm-intel-next-fixes
+drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
+	Linux 4.14-rc1
+drm-misc drm-misc-next 008095e065a85a13ffb41b9c98149456267c30b8
+	drm/vc4: Add support for the transposer block
+drm-intel drm-intel-next-queued 890fd185d53037d05d10a0825950c4b038e39d4a
+	drm/i915: Replace nested subclassing with explicit subclasses
+drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
+	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
+sound-upstream for-linus c6b17f1020d956f4113d478cae6171b9093817ba
+	ALSA: hda/realtek - two more lenovo models need fixup of MIC_LOCATION
+sound-upstream for-next d64c5cf8e89d124355924c513a42b16f0d7d3a03
+	ALSA: pcm: Allow drivers to set R/W wait time.
+drm-intel topic/core-for-CI e3aa13f8269f5966e0b1ab1684b7576c35a14dba
+	usb/icl: Work around ACPI boottime crash

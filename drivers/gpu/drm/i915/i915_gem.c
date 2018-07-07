@@ -837,6 +837,10 @@ flush_write_domain(struct drm_i915_gem_object *obj, unsigned int flush_domains)
 		}
 		break;
 
+	case I915_GEM_DOMAIN_WC:
+		wmb();
+		break;
+
 	case I915_GEM_DOMAIN_CPU:
 		i915_gem_clflush_object(obj, I915_CLFLUSH_SYNC);
 		break;
@@ -2120,6 +2124,7 @@ err:
 		 */
 		if (!i915_terminally_wedged(&dev_priv->gpu_error))
 			return VM_FAULT_SIGBUS;
+		/* else: fall through */
 	case -EAGAIN:
 		/*
 		 * EAGAIN means the gpu is hung and we'll wait for the error
@@ -3080,25 +3085,6 @@ int i915_gem_reset_prepare(struct drm_i915_private *dev_priv)
 	return err;
 }
 
-static void skip_request(struct i915_request *request)
-{
-	void *vaddr = request->ring->vaddr;
-	u32 head;
-
-	/* As this request likely depends on state from the lost
-	 * context, clear out all the user operations leaving the
-	 * breadcrumb at the end (so we get the fence notifications).
-	 */
-	head = request->head;
-	if (request->postfix < head) {
-		memset(vaddr + head, 0, request->ring->size - head);
-		head = 0;
-	}
-	memset(vaddr + head, 0, request->postfix - head);
-
-	dma_fence_set_error(&request->fence, -EIO);
-}
-
 static void engine_skip_context(struct i915_request *request)
 {
 	struct intel_engine_cs *engine = request->engine;
@@ -3109,14 +3095,14 @@ static void engine_skip_context(struct i915_request *request)
 	GEM_BUG_ON(timeline == &engine->timeline);
 
 	spin_lock_irqsave(&engine->timeline.lock, flags);
-	spin_lock_nested(&timeline->lock, SINGLE_DEPTH_NESTING);
+	spin_lock(&timeline->lock);
 
 	list_for_each_entry_continue(request, &engine->timeline.requests, link)
 		if (request->gem_context == hung_ctx)
-			skip_request(request);
+			i915_request_skip(request, -EIO);
 
 	list_for_each_entry(request, &timeline->requests, link)
-		skip_request(request);
+		i915_request_skip(request, -EIO);
 
 	spin_unlock(&timeline->lock);
 	spin_unlock_irqrestore(&engine->timeline.lock, flags);
@@ -3159,7 +3145,7 @@ i915_gem_reset_request(struct intel_engine_cs *engine,
 
 	if (stalled) {
 		i915_gem_context_mark_guilty(request->gem_context);
-		skip_request(request);
+		i915_request_skip(request, -EIO);
 
 		/* If this context is now banned, skip all pending requests. */
 		if (i915_gem_context_is_banned(request->gem_context))
@@ -3816,10 +3802,13 @@ int i915_gem_wait_for_idle(struct drm_i915_private *i915, unsigned int flags)
 			if (err)
 				return err;
 		}
+
+		err = wait_for_engines(i915);
+		if (err)
+			return err;
+
 		i915_retire_requests(i915);
 		GEM_BUG_ON(i915->gt.active_requests);
-
-		return wait_for_engines(i915);
 	} else {
 		struct intel_engine_cs *engine;
 		enum intel_engine_id id;
@@ -3830,9 +3819,9 @@ int i915_gem_wait_for_idle(struct drm_i915_private *i915, unsigned int flags)
 			if (err)
 				return err;
 		}
-
-		return 0;
 	}
+
+	return 0;
 }
 
 static void __i915_gem_object_flush_for_display(struct drm_i915_gem_object *obj)
@@ -5462,13 +5451,13 @@ int i915_gem_init(struct drm_i915_private *dev_priv)
 	if (ret)
 		return ret;
 
-	ret = intel_wopcm_init(&dev_priv->wopcm);
-	if (ret)
-		return ret;
-
 	ret = intel_uc_init_misc(dev_priv);
 	if (ret)
 		return ret;
+
+	ret = intel_wopcm_init(&dev_priv->wopcm);
+	if (ret)
+		goto err_uc_misc;
 
 	/* This is just a security blanket to placate dragons.
 	 * On some systems, we very sporadically observe that the first TLBs
@@ -5566,6 +5555,7 @@ err_unlock:
 	intel_uncore_forcewake_put(dev_priv, FORCEWAKE_ALL);
 	mutex_unlock(&dev_priv->drm.struct_mutex);
 
+err_uc_misc:
 	intel_uc_fini_misc(dev_priv);
 
 	if (ret != -EIO)

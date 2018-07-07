@@ -262,7 +262,7 @@ int i915_request_mock_selftests(void)
 		return -ENOMEM;
 
 	err = i915_subtests(tests, i915);
-	drm_dev_unref(&i915->drm);
+	drm_dev_put(&i915->drm);
 
 	return err;
 }
@@ -594,11 +594,8 @@ static struct i915_vma *recursive_batch(struct drm_i915_private *i915)
 	} else if (gen >= 6) {
 		*cmd++ = MI_BATCH_BUFFER_START | 1 << 8;
 		*cmd++ = lower_32_bits(vma->node.start);
-	} else if (gen >= 4) {
-		*cmd++ = MI_BATCH_BUFFER_START | MI_BATCH_GTT;
-		*cmd++ = lower_32_bits(vma->node.start);
 	} else {
-		*cmd++ = MI_BATCH_BUFFER_START | MI_BATCH_GTT | 1;
+		*cmd++ = MI_BATCH_BUFFER_START | MI_BATCH_GTT;
 		*cmd++ = lower_32_bits(vma->node.start);
 	}
 	*cmd++ = MI_BATCH_BUFFER_END; /* terminate early in case of error */
@@ -678,7 +675,9 @@ static int live_all_engines(void *arg)
 			i915_gem_object_set_active_reference(batch->obj);
 		}
 
-		i915_vma_move_to_active(batch, request[id], 0);
+		err = i915_vma_move_to_active(batch, request[id], 0);
+		GEM_BUG_ON(err);
+
 		i915_request_get(request[id]);
 		i915_request_add(request[id]);
 	}
@@ -788,7 +787,9 @@ static int live_sequential_engines(void *arg)
 		GEM_BUG_ON(err);
 		request[id]->batch = batch;
 
-		i915_vma_move_to_active(batch, request[id], 0);
+		err = i915_vma_move_to_active(batch, request[id], 0);
+		GEM_BUG_ON(err);
+
 		i915_gem_object_set_active_reference(batch->obj);
 		i915_vma_get(batch);
 
@@ -862,5 +863,9 @@ int i915_request_live_selftests(struct drm_i915_private *i915)
 		SUBTEST(live_sequential_engines),
 		SUBTEST(live_empty_request),
 	};
+
+	if (i915_terminally_wedged(&i915->gpu_error))
+		return 0;
+
 	return i915_subtests(tests, i915);
 }

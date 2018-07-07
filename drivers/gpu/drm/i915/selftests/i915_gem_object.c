@@ -288,6 +288,8 @@ static int check_partial_mapping(struct drm_i915_gem_object *obj,
 		kunmap(p);
 		if (err)
 			return err;
+
+		i915_vma_destroy(vma);
 	}
 
 	return 0;
@@ -347,6 +349,14 @@ static int igt_partial_tiling(void *arg)
 		unsigned int pitch;
 		struct tile tile;
 
+		if (i915->quirks & QUIRK_PIN_SWIZZLED_PAGES)
+			/*
+			 * The swizzling pattern is actually unknown as it
+			 * varies based on physical address of each page.
+			 * See i915_gem_detect_bit_6_swizzle().
+			 */
+			break;
+
 		tile.tiling = tiling;
 		switch (tiling) {
 		case I915_TILING_X:
@@ -357,8 +367,8 @@ static int igt_partial_tiling(void *arg)
 			break;
 		}
 
-		if (tile.swizzle == I915_BIT_6_SWIZZLE_UNKNOWN ||
-		    tile.swizzle == I915_BIT_6_SWIZZLE_9_10_17)
+		GEM_BUG_ON(tile.swizzle == I915_BIT_6_SWIZZLE_UNKNOWN);
+		if (tile.swizzle == I915_BIT_6_SWIZZLE_9_10_17)
 			continue;
 
 		if (INTEL_GEN(i915) <= 2) {
@@ -454,12 +464,14 @@ static int make_obj_busy(struct drm_i915_gem_object *obj)
 		return PTR_ERR(rq);
 	}
 
-	i915_vma_move_to_active(vma, rq, 0);
+	err = i915_vma_move_to_active(vma, rq, EXEC_OBJECT_WRITE);
+
 	i915_request_add(rq);
 
-	i915_gem_object_set_active_reference(obj);
+	__i915_gem_object_release_unless_active(obj);
 	i915_vma_unpin(vma);
-	return 0;
+
+	return err;
 }
 
 static bool assert_mmap_offset(struct drm_i915_private *i915,
@@ -538,6 +550,9 @@ static int igt_mmap_offset_exhaustion(void *arg)
 
 	/* Now fill with busy dead objects that we expect to reap */
 	for (loop = 0; loop < 3; loop++) {
+		if (i915_terminally_wedged(&i915->gpu_error))
+			break;
+
 		obj = i915_gem_object_create_internal(i915, PAGE_SIZE);
 		if (IS_ERR(obj)) {
 			err = PTR_ERR(obj);
@@ -586,7 +601,7 @@ int i915_gem_object_mock_selftests(void)
 
 	err = i915_subtests(tests, i915);
 
-	drm_dev_unref(&i915->drm);
+	drm_dev_put(&i915->drm);
 	return err;
 }
 

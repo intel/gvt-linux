@@ -39,6 +39,9 @@
 #include "dm_helpers.h"
 #include "dm_services_types.h"
 #include "amdgpu_dm_mst_types.h"
+#if defined(CONFIG_DEBUG_FS)
+#include "amdgpu_dm_debugfs.h"
+#endif
 
 #include "ivsrcid/ivsrcid_vislands30.h"
 
@@ -347,7 +350,6 @@ static void hotplug_notify_work_func(struct work_struct *work)
 	drm_kms_helper_hotplug_event(dev);
 }
 
-#if defined(CONFIG_DRM_AMD_DC_FBC)
 /* Allocate memory for FBC compressed data  */
 static void amdgpu_dm_fbc_init(struct drm_connector *connector)
 {
@@ -388,7 +390,6 @@ static void amdgpu_dm_fbc_init(struct drm_connector *connector)
 	}
 
 }
-#endif
 
 
 /* Init display KMS
@@ -1534,7 +1535,7 @@ static int amdgpu_dm_initialize_drm_device(struct amdgpu_device *adev)
 		/*
 		 * Temporary disable until pplib/smu interaction is implemented
 		 */
-		dm->dc->debug.disable_stutter = true;
+		dm->dc->debug.disable_stutter = amdgpu_pp_feature_mask & PP_STUTTER_MODE ? false : true;
 		break;
 #endif
 	default:
@@ -3471,12 +3472,15 @@ static int amdgpu_dm_connector_get_modes(struct drm_connector *connector)
 	struct edid *edid = amdgpu_dm_connector->edid;
 
 	encoder = helper->best_encoder(connector);
-	amdgpu_dm_connector_ddc_get_modes(connector, edid);
-	amdgpu_dm_connector_add_common_modes(encoder, connector);
 
-#if defined(CONFIG_DRM_AMD_DC_FBC)
+	if (!edid || !drm_edid_is_valid(edid)) {
+		drm_add_modes_noedid(connector, 640, 480);
+	} else {
+		amdgpu_dm_connector_ddc_get_modes(connector, edid);
+		amdgpu_dm_connector_add_common_modes(encoder, connector);
+	}
 	amdgpu_dm_fbc_init(connector);
-#endif
+
 	return amdgpu_dm_connector->num_modes;
 }
 
@@ -3663,6 +3667,13 @@ static int amdgpu_dm_connector_init(struct amdgpu_display_manager *dm,
 		&aconnector->base, &aencoder->base);
 
 	drm_connector_register(&aconnector->base);
+#if defined(CONFIG_DEBUG_FS)
+	res = connector_debugfs_init(aconnector);
+	if (res) {
+		DRM_ERROR("Failed to create debugfs for connector");
+		goto out_free;
+	}
+#endif
 
 	if (connector_type == DRM_MODE_CONNECTOR_DisplayPort
 		|| connector_type == DRM_MODE_CONNECTOR_eDP)
@@ -3959,8 +3970,6 @@ static void amdgpu_dm_do_flip(struct drm_crtc *crtc,
 
 	/* Flip */
 	spin_lock_irqsave(&crtc->dev->event_lock, flags);
-	/* update crtc fb */
-	crtc->primary->fb = fb;
 
 	WARN_ON(acrtc->pflip_status != AMDGPU_FLIP_NONE);
 	WARN_ON(!acrtc_state->stream);

@@ -163,8 +163,8 @@ void intel_enable_shared_dpll(struct intel_crtc *crtc)
 	struct drm_device *dev = crtc->base.dev;
 	struct drm_i915_private *dev_priv = to_i915(dev);
 	struct intel_shared_dpll *pll = crtc->config->shared_dpll;
-	unsigned crtc_mask = 1 << drm_crtc_index(&crtc->base);
-	unsigned old_mask;
+	unsigned int crtc_mask = drm_crtc_mask(&crtc->base);
+	unsigned int old_mask;
 
 	if (WARN_ON(pll == NULL))
 		return;
@@ -207,7 +207,7 @@ void intel_disable_shared_dpll(struct intel_crtc *crtc)
 {
 	struct drm_i915_private *dev_priv = to_i915(crtc->base.dev);
 	struct intel_shared_dpll *pll = crtc->config->shared_dpll;
-	unsigned crtc_mask = 1 << drm_crtc_index(&crtc->base);
+	unsigned int crtc_mask = drm_crtc_mask(&crtc->base);
 
 	/* PCH only available on ILK+ */
 	if (INTEL_GEN(dev_priv) < 5)
@@ -2525,6 +2525,76 @@ static bool icl_calc_dpll_state(struct intel_crtc_state *crtc_state,
 	return true;
 }
 
+int icl_calc_dp_combo_pll_link(struct drm_i915_private *dev_priv,
+			       uint32_t pll_id)
+{
+	uint32_t cfgcr0, cfgcr1;
+	uint32_t pdiv, kdiv, qdiv_mode, qdiv_ratio, dco_integer, dco_fraction;
+	const struct skl_wrpll_params *params;
+	int index, n_entries, link_clock;
+
+	/* Read back values from DPLL CFGCR registers */
+	cfgcr0 = I915_READ(ICL_DPLL_CFGCR0(pll_id));
+	cfgcr1 = I915_READ(ICL_DPLL_CFGCR1(pll_id));
+
+	dco_integer = cfgcr0 & DPLL_CFGCR0_DCO_INTEGER_MASK;
+	dco_fraction = (cfgcr0 & DPLL_CFGCR0_DCO_FRACTION_MASK) >>
+		DPLL_CFGCR0_DCO_FRACTION_SHIFT;
+	pdiv = (cfgcr1 & DPLL_CFGCR1_PDIV_MASK) >> DPLL_CFGCR1_PDIV_SHIFT;
+	kdiv = (cfgcr1 & DPLL_CFGCR1_KDIV_MASK) >> DPLL_CFGCR1_KDIV_SHIFT;
+	qdiv_mode = (cfgcr1 & DPLL_CFGCR1_QDIV_MODE(1)) >>
+		DPLL_CFGCR1_QDIV_MODE_SHIFT;
+	qdiv_ratio = (cfgcr1 & DPLL_CFGCR1_QDIV_RATIO_MASK) >>
+		DPLL_CFGCR1_QDIV_RATIO_SHIFT;
+
+	params = dev_priv->cdclk.hw.ref == 24000 ?
+		icl_dp_combo_pll_24MHz_values :
+		icl_dp_combo_pll_19_2MHz_values;
+	n_entries = ARRAY_SIZE(icl_dp_combo_pll_24MHz_values);
+
+	for (index = 0; index < n_entries; index++) {
+		if (dco_integer == params[index].dco_integer &&
+		    dco_fraction == params[index].dco_fraction &&
+		    pdiv == params[index].pdiv &&
+		    kdiv == params[index].kdiv &&
+		    qdiv_mode == params[index].qdiv_mode &&
+		    qdiv_ratio == params[index].qdiv_ratio)
+			break;
+	}
+
+	/* Map PLL Index to Link Clock */
+	switch (index) {
+	default:
+		MISSING_CASE(index);
+	case 0:
+		link_clock = 540000;
+		break;
+	case 1:
+		link_clock = 270000;
+		break;
+	case 2:
+		link_clock = 162000;
+		break;
+	case 3:
+		link_clock = 324000;
+		break;
+	case 4:
+		link_clock = 216000;
+		break;
+	case 5:
+		link_clock = 432000;
+		break;
+	case 6:
+		link_clock = 648000;
+		break;
+	case 7:
+		link_clock = 810000;
+		break;
+	}
+
+	return link_clock;
+}
+
 static enum port icl_mg_pll_id_to_port(enum intel_dpll_id id)
 {
 	return id - DPLL_ID_ICL_MGPLL1 + PORT_C;
@@ -2787,10 +2857,17 @@ icl_get_dpll(struct intel_crtc *crtc, struct intel_crtc_state *crtc_state,
 	case PORT_D:
 	case PORT_E:
 	case PORT_F:
-		min = icl_port_to_mg_pll_id(port);
-		max = min;
-		ret = icl_calc_mg_pll_state(crtc_state, encoder, clock,
-					    &pll_state);
+		if (0 /* TODO: TBT PLLs */) {
+			min = DPLL_ID_ICL_TBTPLL;
+			max = min;
+			ret = icl_calc_dpll_state(crtc_state, encoder, clock,
+						  &pll_state);
+		} else {
+			min = icl_port_to_mg_pll_id(port);
+			max = min;
+			ret = icl_calc_mg_pll_state(crtc_state, encoder, clock,
+						    &pll_state);
+		}
 		break;
 	default:
 		MISSING_CASE(port);
@@ -2823,6 +2900,8 @@ static i915_reg_t icl_pll_id_to_enable_reg(enum intel_dpll_id id)
 	case DPLL_ID_ICL_DPLL0:
 	case DPLL_ID_ICL_DPLL1:
 		return CNL_DPLL_ENABLE(id);
+	case DPLL_ID_ICL_TBTPLL:
+		return TBT_PLL_ENABLE;
 	case DPLL_ID_ICL_MGPLL1:
 	case DPLL_ID_ICL_MGPLL2:
 	case DPLL_ID_ICL_MGPLL3:
@@ -2850,6 +2929,7 @@ static bool icl_pll_get_hw_state(struct drm_i915_private *dev_priv,
 	switch (id) {
 	case DPLL_ID_ICL_DPLL0:
 	case DPLL_ID_ICL_DPLL1:
+	case DPLL_ID_ICL_TBTPLL:
 		hw_state->cfgcr0 = I915_READ(ICL_DPLL_CFGCR0(id));
 		hw_state->cfgcr1 = I915_READ(ICL_DPLL_CFGCR1(id));
 		break;
@@ -2936,6 +3016,7 @@ static void icl_pll_enable(struct drm_i915_private *dev_priv,
 	switch (id) {
 	case DPLL_ID_ICL_DPLL0:
 	case DPLL_ID_ICL_DPLL1:
+	case DPLL_ID_ICL_TBTPLL:
 		icl_dpll_write(dev_priv, pll);
 		break;
 	case DPLL_ID_ICL_MGPLL1:
@@ -3034,6 +3115,7 @@ static const struct intel_shared_dpll_funcs icl_pll_funcs = {
 static const struct dpll_info icl_plls[] = {
 	{ "DPLL 0",   &icl_pll_funcs, DPLL_ID_ICL_DPLL0,  0 },
 	{ "DPLL 1",   &icl_pll_funcs, DPLL_ID_ICL_DPLL1,  0 },
+	{ "TBT PLL",  &icl_pll_funcs, DPLL_ID_ICL_TBTPLL, 0 },
 	{ "MG PLL 1", &icl_pll_funcs, DPLL_ID_ICL_MGPLL1, 0 },
 	{ "MG PLL 2", &icl_pll_funcs, DPLL_ID_ICL_MGPLL2, 0 },
 	{ "MG PLL 3", &icl_pll_funcs, DPLL_ID_ICL_MGPLL3, 0 },

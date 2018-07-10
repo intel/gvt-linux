@@ -524,8 +524,6 @@ static int init_ring_common(struct intel_engine_cs *engine)
 		goto out;
 	}
 
-	intel_engine_init_hangcheck(engine);
-
 	if (INTEL_GEN(dev_priv) > 2)
 		I915_WRITE_MODE(engine, _MASKED_BIT_DISABLE(STOP_RING));
 
@@ -1169,8 +1167,11 @@ static void intel_ring_context_destroy(struct intel_context *ce)
 {
 	GEM_BUG_ON(ce->pin_count);
 
-	if (ce->state)
-		__i915_gem_object_release_unless_active(ce->state->obj);
+	if (!ce->state)
+		return;
+
+	GEM_BUG_ON(i915_gem_object_is_active(ce->state->obj));
+	i915_gem_object_put(ce->state->obj);
 }
 
 static int __context_pin_ppgtt(struct i915_gem_context *ctx)

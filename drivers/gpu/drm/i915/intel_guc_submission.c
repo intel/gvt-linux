@@ -628,13 +628,14 @@ static void complete_preempt_context(struct intel_engine_cs *engine)
 
 	GEM_BUG_ON(!execlists_is_active(execlists, EXECLISTS_ACTIVE_PREEMPT));
 
+	if (inject_preempt_hang(execlists))
+		return;
+
 	execlists_cancel_port_requests(execlists);
 	execlists_unwind_incomplete_requests(execlists);
 
 	wait_for_guc_preempt_report(engine);
 	intel_write_status_page(engine, I915_GEM_HWS_PREEMPT_INDEX, 0);
-
-	execlists_clear_active(execlists, EXECLISTS_ACTIVE_PREEMPT);
 }
 
 /**
@@ -695,9 +696,6 @@ static bool __guc_dequeue(struct intel_engine_cs *engine)
 
 	lockdep_assert_held(&engine->timeline.lock);
 
-	rb = execlists->first;
-	GEM_BUG_ON(rb_first(&execlists->queue) != rb);
-
 	if (port_isset(port)) {
 		if (intel_engine_has_preemption(engine)) {
 			struct guc_preempt_work *preempt_work =
@@ -719,7 +717,7 @@ static bool __guc_dequeue(struct intel_engine_cs *engine)
 	}
 	GEM_BUG_ON(port_isset(port));
 
-	while (rb) {
+	while ((rb = rb_first_cached(&execlists->queue))) {
 		struct i915_priolist *p = to_priolist(rb);
 		struct i915_request *rq, *rn;
 
@@ -744,15 +742,13 @@ static bool __guc_dequeue(struct intel_engine_cs *engine)
 			submit = true;
 		}
 
-		rb = rb_next(rb);
-		rb_erase(&p->node, &execlists->queue);
+		rb_erase_cached(&p->node, &execlists->queue);
 		INIT_LIST_HEAD(&p->requests);
 		if (p->priority != I915_PRIORITY_NORMAL)
 			kmem_cache_free(engine->i915->priorities, p);
 	}
 done:
 	execlists->queue_priority = rb ? to_priolist(rb)->priority : INT_MIN;
-	execlists->first = rb;
 	if (submit)
 		port_assign(port, last);
 	if (last)
@@ -761,7 +757,8 @@ done:
 	/* We must always keep the beast fed if we have work piled up */
 	GEM_BUG_ON(port_isset(execlists->port) &&
 		   !execlists_is_active(execlists, EXECLISTS_ACTIVE_USER));
-	GEM_BUG_ON(execlists->first && !port_isset(execlists->port));
+	GEM_BUG_ON(rb_first_cached(&execlists->queue) &&
+		   !port_isset(execlists->port));
 
 	return submit;
 }
@@ -914,8 +911,12 @@ static void guc_clients_doorbell_fini(struct intel_guc *guc)
 		__update_doorbell_desc(guc->preempt_client,
 				       GUC_DOORBELL_INVALID);
 	}
-	__destroy_doorbell(guc->execbuf_client);
-	__update_doorbell_desc(guc->execbuf_client, GUC_DOORBELL_INVALID);
+
+	if (guc->execbuf_client) {
+		__destroy_doorbell(guc->execbuf_client);
+		__update_doorbell_desc(guc->execbuf_client,
+				       GUC_DOORBELL_INVALID);
+	}
 }
 
 /**
@@ -1128,7 +1129,8 @@ static void guc_clients_destroy(struct intel_guc *guc)
 		guc_client_free(client);
 
 	client = fetch_and_zero(&guc->execbuf_client);
-	guc_client_free(client);
+	if (client)
+		guc_client_free(client);
 }
 
 /*
@@ -1183,7 +1185,8 @@ void intel_guc_submission_fini(struct intel_guc *guc)
 	guc_clients_destroy(guc);
 	WARN_ON(!guc_verify_doorbells(guc));
 
-	guc_stage_desc_pool_destroy(guc);
+	if (guc->stage_desc_pool)
+		guc_stage_desc_pool_destroy(guc);
 }
 
 static void guc_interrupts_capture(struct drm_i915_private *dev_priv)

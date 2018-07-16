@@ -32,6 +32,7 @@ struct kthread_create_info
 	int (*threadfn)(void *data);
 	void *data;
 	int node;
+	struct lock_class_key *exited_key, *parked_key;
 
 	/* Result passed back to kthread_create() from kthreadd. */
 	struct task_struct *result;
@@ -229,8 +230,17 @@ static int kthread(void *_create)
 	}
 
 	self->data = data;
-	init_completion(&self->exited);
-	init_completion(&self->parked);
+	/* these two completions are shared with all kthread, which is bonghist
+	 * imo */
+	lockdep_init_map_crosslock(&self->exited.map.map,
+			"(kthread completion)->exited",
+			create->exited_key, 0);
+	init_completion_map(&self->exited, &self->exited.map.map);
+	lockdep_init_map_crosslock(&self->parked.map.map,
+			"(kthread completion)->parked",
+			create->parked_key, 0);
+	init_completion_map(&self->parked, &self->exited.map.map);
+
 	current->vfork_done = &self->exited;
 
 	/* OK, tell user we're spawned, wait for stop or wakeup */
@@ -280,9 +290,11 @@ static void create_kthread(struct kthread_create_info *create)
 	}
 }
 
-static __printf(4, 0)
+static __printf(6, 0)
 struct task_struct *__kthread_create_on_node(int (*threadfn)(void *data),
 						    void *data, int node,
+						    struct lock_class_key *exited_key,
+						    struct lock_class_key *parked_key,
 						    const char namefmt[],
 						    va_list args)
 {
@@ -297,6 +309,8 @@ struct task_struct *__kthread_create_on_node(int (*threadfn)(void *data),
 	create->data = data;
 	create->node = node;
 	create->done = &done;
+	create->exited_key = exited_key;
+	create->parked_key = parked_key;
 
 	spin_lock(&kthread_create_lock);
 	list_add_tail(&create->list, &kthread_create_list);
@@ -361,21 +375,24 @@ struct task_struct *__kthread_create_on_node(int (*threadfn)(void *data),
  *
  * Returns a task_struct or ERR_PTR(-ENOMEM) or ERR_PTR(-EINTR).
  */
-struct task_struct *kthread_create_on_node(int (*threadfn)(void *data),
-					   void *data, int node,
-					   const char namefmt[],
-					   ...)
+struct task_struct *_kthread_create_on_node(int (*threadfn)(void *data),
+					    void *data, int node,
+					    struct lock_class_key *exited_key,
+					    struct lock_class_key *parked_key,
+					    const char namefmt[],
+					    ...)
 {
 	struct task_struct *task;
 	va_list args;
 
 	va_start(args, namefmt);
-	task = __kthread_create_on_node(threadfn, data, node, namefmt, args);
+	task = __kthread_create_on_node(threadfn, data, node,
+					exited_key, parked_key, namefmt, args);
 	va_end(args);
 
 	return task;
 }
-EXPORT_SYMBOL(kthread_create_on_node);
+EXPORT_SYMBOL(_kthread_create_on_node);
 
 static void __kthread_bind_mask(struct task_struct *p, const struct cpumask *mask, long state)
 {
@@ -429,14 +446,16 @@ EXPORT_SYMBOL(kthread_bind);
  * Description: This helper function creates and names a kernel thread
  * The thread will be woken and put into park mode.
  */
-struct task_struct *kthread_create_on_cpu(int (*threadfn)(void *data),
+struct task_struct *_kthread_create_on_cpu(int (*threadfn)(void *data),
 					  void *data, unsigned int cpu,
+					  struct lock_class_key *exited_key,
+					  struct lock_class_key *parked_key,
 					  const char *namefmt)
 {
 	struct task_struct *p;
 
-	p = kthread_create_on_node(threadfn, data, cpu_to_node(cpu), namefmt,
-				   cpu);
+	p = _kthread_create_on_node(threadfn, data, cpu_to_node(cpu),
+				    exited_key, parked_key, namefmt, cpu);
 	if (IS_ERR(p))
 		return p;
 	kthread_bind(p, cpu);
@@ -661,8 +680,10 @@ repeat:
 }
 EXPORT_SYMBOL_GPL(kthread_worker_fn);
 
-static __printf(3, 0) struct kthread_worker *
+static __printf(5, 0) struct kthread_worker *
 __kthread_create_worker(int cpu, unsigned int flags,
+			struct lock_class_key *exited_key,
+			struct lock_class_key *parked_key,
 			const char namefmt[], va_list args)
 {
 	struct kthread_worker *worker;
@@ -678,8 +699,8 @@ __kthread_create_worker(int cpu, unsigned int flags,
 	if (cpu >= 0)
 		node = cpu_to_node(cpu);
 
-	task = __kthread_create_on_node(kthread_worker_fn, worker,
-						node, namefmt, args);
+	task = __kthread_create_on_node(kthread_worker_fn, worker, node,
+					exited_key, parked_key, namefmt, args);
 	if (IS_ERR(task))
 		goto fail_task;
 
@@ -706,18 +727,22 @@ fail_task:
  * when the worker was SIGKILLed.
  */
 struct kthread_worker *
-kthread_create_worker(unsigned int flags, const char namefmt[], ...)
+_kthread_create_worker(unsigned int flags,
+		       struct lock_class_key *exited_key,
+		       struct lock_class_key *parked_key,
+		       const char namefmt[], ...)
 {
 	struct kthread_worker *worker;
 	va_list args;
 
 	va_start(args, namefmt);
-	worker = __kthread_create_worker(-1, flags, namefmt, args);
+	worker = __kthread_create_worker(-1, flags, exited_key, parked_key,
+					 namefmt, args);
 	va_end(args);
 
 	return worker;
 }
-EXPORT_SYMBOL(kthread_create_worker);
+EXPORT_SYMBOL(_kthread_create_worker);
 
 /**
  * kthread_create_worker_on_cpu - create a kthread worker and bind it
@@ -737,19 +762,22 @@ EXPORT_SYMBOL(kthread_create_worker);
  * when the worker was SIGKILLed.
  */
 struct kthread_worker *
-kthread_create_worker_on_cpu(int cpu, unsigned int flags,
+_kthread_create_worker_on_cpu(int cpu, unsigned int flags,
+			      struct lock_class_key *exited_key,
+			      struct lock_class_key *parked_key,
 			     const char namefmt[], ...)
 {
 	struct kthread_worker *worker;
 	va_list args;
 
 	va_start(args, namefmt);
-	worker = __kthread_create_worker(cpu, flags, namefmt, args);
+	worker = __kthread_create_worker(cpu, flags, exited_key, parked_key,
+					 namefmt, args);
 	va_end(args);
 
 	return worker;
 }
-EXPORT_SYMBOL(kthread_create_worker_on_cpu);
+EXPORT_SYMBOL(_kthread_create_worker_on_cpu);
 
 /*
  * Returns true when the work could not be queued at the moment.

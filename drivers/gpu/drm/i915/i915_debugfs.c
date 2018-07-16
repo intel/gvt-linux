@@ -328,7 +328,7 @@ static int per_file_stats(int id, void *ptr, void *data)
 		} else {
 			struct i915_hw_ppgtt *ppgtt = i915_vm_to_ppgtt(vma->vm);
 
-			if (ppgtt->base.file != stats->file_priv)
+			if (ppgtt->vm.file != stats->file_priv)
 				continue;
 		}
 
@@ -508,7 +508,7 @@ static int i915_gem_object_info(struct seq_file *m, void *data)
 		   dpy_count, dpy_size);
 
 	seq_printf(m, "%llu [%pa] gtt total\n",
-		   ggtt->base.total, &ggtt->mappable_end);
+		   ggtt->vm.total, &ggtt->mappable_end);
 	seq_printf(m, "Supported page sizes: %s\n",
 		   stringify_page_sizes(INTEL_INFO(dev_priv)->page_sizes,
 					buf, sizeof(buf)));
@@ -542,8 +542,8 @@ static int i915_gem_object_info(struct seq_file *m, void *data)
 						   struct i915_request,
 						   client_link);
 		rcu_read_lock();
-		task = pid_task(request && request->ctx->pid ?
-				request->ctx->pid : file->pid,
+		task = pid_task(request && request->gem_context->pid ?
+				request->gem_context->pid : file->pid,
 				PIDTYPE_PID);
 		print_file_stats(m, task ? task->comm : "<unknown>", stats);
 		rcu_read_unlock();
@@ -1162,19 +1162,28 @@ static int i915_frequency_info(struct seq_file *m, void *unused)
 
 		intel_uncore_forcewake_put(dev_priv, FORCEWAKE_ALL);
 
-		if (IS_GEN6(dev_priv) || IS_GEN7(dev_priv)) {
-			pm_ier = I915_READ(GEN6_PMIER);
-			pm_imr = I915_READ(GEN6_PMIMR);
-			pm_isr = I915_READ(GEN6_PMISR);
-			pm_iir = I915_READ(GEN6_PMIIR);
-			pm_mask = I915_READ(GEN6_PMINTRMSK);
-		} else {
+		if (INTEL_GEN(dev_priv) >= 11) {
+			pm_ier = I915_READ(GEN11_GPM_WGBOXPERF_INTR_ENABLE);
+			pm_imr = I915_READ(GEN11_GPM_WGBOXPERF_INTR_MASK);
+			/*
+			 * The equivalent to the PM ISR & IIR cannot be read
+			 * without affecting the current state of the system
+			 */
+			pm_isr = 0;
+			pm_iir = 0;
+		} else if (INTEL_GEN(dev_priv) >= 8) {
 			pm_ier = I915_READ(GEN8_GT_IER(2));
 			pm_imr = I915_READ(GEN8_GT_IMR(2));
 			pm_isr = I915_READ(GEN8_GT_ISR(2));
 			pm_iir = I915_READ(GEN8_GT_IIR(2));
-			pm_mask = I915_READ(GEN6_PMINTRMSK);
+		} else {
+			pm_ier = I915_READ(GEN6_PMIER);
+			pm_imr = I915_READ(GEN6_PMIMR);
+			pm_isr = I915_READ(GEN6_PMISR);
+			pm_iir = I915_READ(GEN6_PMIIR);
 		}
+		pm_mask = I915_READ(GEN6_PMINTRMSK);
+
 		seq_printf(m, "Video Turbo Mode: %s\n",
 			   yesno(rpmodectl & GEN6_RP_MEDIA_TURBO));
 		seq_printf(m, "HW control enabled: %s\n",
@@ -1182,8 +1191,12 @@ static int i915_frequency_info(struct seq_file *m, void *unused)
 		seq_printf(m, "SW control enabled: %s\n",
 			   yesno((rpmodectl & GEN6_RP_MEDIA_MODE_MASK) ==
 				  GEN6_RP_MEDIA_SW_MODE));
-		seq_printf(m, "PM IER=0x%08x IMR=0x%08x ISR=0x%08x IIR=0x%08x, MASK=0x%08x\n",
-			   pm_ier, pm_imr, pm_isr, pm_iir, pm_mask);
+
+		seq_printf(m, "PM IER=0x%08x IMR=0x%08x, MASK=0x%08x\n",
+			   pm_ier, pm_imr, pm_mask);
+		if (INTEL_GEN(dev_priv) <= 10)
+			seq_printf(m, "PM ISR=0x%08x IIR=0x%08x\n",
+				   pm_isr, pm_iir);
 		seq_printf(m, "pm_intrmsk_mbz: 0x%08x\n",
 			   rps->pm_intrmsk_mbz);
 		seq_printf(m, "GT_PERF_STATUS: 0x%08x\n", gt_perf_status);
@@ -1346,11 +1359,12 @@ static int i915_hangcheck_info(struct seq_file *m, void *unused)
 		seq_printf(m, "\tseqno = %x [current %x, last %x]\n",
 			   engine->hangcheck.seqno, seqno[id],
 			   intel_engine_last_submit(engine));
-		seq_printf(m, "\twaiters? %s, fake irq active? %s, stalled? %s\n",
+		seq_printf(m, "\twaiters? %s, fake irq active? %s, stalled? %s, wedged? %s\n",
 			   yesno(intel_engine_has_waiter(engine)),
 			   yesno(test_bit(engine->id,
 					  &dev_priv->gpu_error.missed_irq_rings)),
-			   yesno(engine->hangcheck.stalled));
+			   yesno(engine->hangcheck.stalled),
+			   yesno(engine->hangcheck.wedged));
 
 		spin_lock_irq(&b->rb_lock);
 		for (rb = rb_first(&b->waiters); rb; rb = rb_next(rb)) {
@@ -1895,7 +1909,7 @@ static int i915_gem_framebuffer_info(struct seq_file *m, void *data)
 			   fbdev_fb->base.format->cpp[0] * 8,
 			   fbdev_fb->base.modifier,
 			   drm_framebuffer_read_refcount(&fbdev_fb->base));
-		describe_obj(m, fbdev_fb->obj);
+		describe_obj(m, intel_fb_obj(&fbdev_fb->base));
 		seq_putc(m, '\n');
 	}
 #endif
@@ -1913,7 +1927,7 @@ static int i915_gem_framebuffer_info(struct seq_file *m, void *data)
 			   fb->base.format->cpp[0] * 8,
 			   fb->base.modifier,
 			   drm_framebuffer_read_refcount(&fb->base));
-		describe_obj(m, fb->obj);
+		describe_obj(m, intel_fb_obj(&fb->base));
 		seq_putc(m, '\n');
 	}
 	mutex_unlock(&dev->mode_config.fb_lock);
@@ -2523,7 +2537,7 @@ static int i915_guc_log_level_get(void *data, u64 *val)
 	if (!USES_GUC(dev_priv))
 		return -ENODEV;
 
-	*val = intel_guc_log_level_get(&dev_priv->guc.log);
+	*val = intel_guc_log_get_level(&dev_priv->guc.log);
 
 	return 0;
 }
@@ -2535,7 +2549,7 @@ static int i915_guc_log_level_set(void *data, u64 val)
 	if (!USES_GUC(dev_priv))
 		return -ENODEV;
 
-	return intel_guc_log_level_set(&dev_priv->guc.log, val);
+	return intel_guc_log_set_level(&dev_priv->guc.log, val);
 }
 
 DEFINE_SIMPLE_ATTRIBUTE(i915_guc_log_level_fops,
@@ -2630,8 +2644,6 @@ static int i915_edp_psr_status(struct seq_file *m, void *data)
 {
 	struct drm_i915_private *dev_priv = node_to_i915(m->private);
 	u32 psrperf = 0;
-	u32 stat[3];
-	enum pipe pipe;
 	bool enabled = false;
 	bool sink_support;
 
@@ -2649,50 +2661,18 @@ static int i915_edp_psr_status(struct seq_file *m, void *data)
 	seq_printf(m, "Enabled: %s\n", yesno((bool)dev_priv->psr.enabled));
 	seq_printf(m, "Busy frontbuffer bits: 0x%03x\n",
 		   dev_priv->psr.busy_frontbuffer_bits);
-	seq_printf(m, "Re-enable work scheduled: %s\n",
-		   yesno(work_busy(&dev_priv->psr.work.work)));
 
-	if (HAS_DDI(dev_priv)) {
-		if (dev_priv->psr.psr2_enabled)
-			enabled = I915_READ(EDP_PSR2_CTL) & EDP_PSR2_ENABLE;
-		else
-			enabled = I915_READ(EDP_PSR_CTL) & EDP_PSR_ENABLE;
-	} else {
-		for_each_pipe(dev_priv, pipe) {
-			enum transcoder cpu_transcoder =
-				intel_pipe_to_cpu_transcoder(dev_priv, pipe);
-			enum intel_display_power_domain power_domain;
-
-			power_domain = POWER_DOMAIN_TRANSCODER(cpu_transcoder);
-			if (!intel_display_power_get_if_enabled(dev_priv,
-								power_domain))
-				continue;
-
-			stat[pipe] = I915_READ(VLV_PSRSTAT(pipe)) &
-				VLV_EDP_PSR_CURR_STATE_MASK;
-			if ((stat[pipe] == VLV_EDP_PSR_ACTIVE_NORFB_UP) ||
-			    (stat[pipe] == VLV_EDP_PSR_ACTIVE_SF_UPDATE))
-				enabled = true;
-
-			intel_display_power_put(dev_priv, power_domain);
-		}
-	}
+	if (dev_priv->psr.psr2_enabled)
+		enabled = I915_READ(EDP_PSR2_CTL) & EDP_PSR2_ENABLE;
+	else
+		enabled = I915_READ(EDP_PSR_CTL) & EDP_PSR_ENABLE;
 
 	seq_printf(m, "Main link in standby mode: %s\n",
 		   yesno(dev_priv->psr.link_standby));
 
-	seq_printf(m, "HW Enabled & Active bit: %s", yesno(enabled));
-
-	if (!HAS_DDI(dev_priv))
-		for_each_pipe(dev_priv, pipe) {
-			if ((stat[pipe] == VLV_EDP_PSR_ACTIVE_NORFB_UP) ||
-			    (stat[pipe] == VLV_EDP_PSR_ACTIVE_SF_UPDATE))
-				seq_printf(m, " pipe %c", pipe_name(pipe));
-		}
-	seq_puts(m, "\n");
+	seq_printf(m, "HW Enabled & Active bit: %s\n", yesno(enabled));
 
 	/*
-	 * VLV/CHV PSR has no kind of performance counter
 	 * SKL+ Perf counter is reset to 0 everytime DC state is entered
 	 */
 	if (IS_HASWELL(dev_priv) || IS_BROADWELL(dev_priv)) {
@@ -3398,28 +3378,13 @@ static int i915_shared_dplls_info(struct seq_file *m, void *unused)
 
 static int i915_wa_registers(struct seq_file *m, void *unused)
 {
-	struct drm_i915_private *dev_priv = node_to_i915(m->private);
-	struct i915_workarounds *workarounds = &dev_priv->workarounds;
+	struct i915_workarounds *wa = &node_to_i915(m->private)->workarounds;
 	int i;
 
-	intel_runtime_pm_get(dev_priv);
-
-	seq_printf(m, "Workarounds applied: %d\n", workarounds->count);
-	for (i = 0; i < workarounds->count; ++i) {
-		i915_reg_t addr;
-		u32 mask, value, read;
-		bool ok;
-
-		addr = workarounds->reg[i].addr;
-		mask = workarounds->reg[i].mask;
-		value = workarounds->reg[i].value;
-		read = I915_READ(addr);
-		ok = (value & mask) == (read & mask);
-		seq_printf(m, "0x%X: 0x%08X, mask: 0x%08X, read: 0x%08x, status: %s\n",
-			   i915_mmio_reg_offset(addr), value, mask, read, ok ? "OK" : "FAIL");
-	}
-
-	intel_runtime_pm_put(dev_priv);
+	seq_printf(m, "Workarounds applied: %d\n", wa->count);
+	for (i = 0; i < wa->count; ++i)
+		seq_printf(m, "0x%X: 0x%08X, mask: 0x%08X\n",
+			   wa->reg[i].addr, wa->reg[i].value, wa->reg[i].mask);
 
 	return 0;
 }
@@ -4245,8 +4210,13 @@ i915_drop_caches_set(void *data, u64 val)
 		i915_gem_shrink_all(dev_priv);
 	fs_reclaim_release(GFP_KERNEL);
 
-	if (val & DROP_IDLE)
-		drain_delayed_work(&dev_priv->gt.idle_work);
+	if (val & DROP_IDLE) {
+		do {
+			if (READ_ONCE(dev_priv->gt.active_requests))
+				flush_delayed_work(&dev_priv->gt.retire_work);
+			drain_delayed_work(&dev_priv->gt.idle_work);
+		} while (READ_ONCE(dev_priv->gt.awake));
+	}
 
 	if (val & DROP_FREED)
 		i915_gem_drain_freed_objects(dev_priv);

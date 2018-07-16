@@ -1,28 +1,12 @@
-drm drm-fixes bf642e3a1996f1ed8f083c5ecd4b51270a9e11bc
-	Merge tag 'drm-intel-fixes-2018-07-12' of git://anongit.freedesktop.org/drm/drm-intel into drm-fixes
-drm-misc drm-misc-fixes 3156b53c2e2fadafa1a16412a8791b38f94b5bdc
-	drm/sun4i: link in front-end code if needed
-drm-intel drm-intel-fixes 09d2da310d61c4bfae33ea05b88e7a8f31350d9e
-	Merge tag 'gvt-fixes-2018-07-11' of https://github.com/intel/gvt-linux into drm-intel-fixes
-drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
-	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
-drm drm-next b861686b18538eaaf3530255eb37b4133146fbe2
-	Merge tag 'vmwgfx-next-4.19-3' of git://people.freedesktop.org/~thomash/linux into drm-next
-drm-misc drm-misc-next-fixes 069035c5db3459b9b5f12caf3bffed9a863fa5c4
-	drm: Fix possible race conditions while unplugging DRM device
-drm-intel drm-intel-next-fixes 807cba6559cf333a74df1fbd74f0597e8e7fa020
-	Merge tag 'gvt-fixes-2018-04-19' of https://github.com/intel/gvt-linux into drm-intel-next-fixes
-drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
-	Linux 4.14-rc1
-drm-misc drm-misc-next 620eec75f35ce470cb59410b2ed91ad750b867a2
-	drm/doc: use inline kerneldoc style for drm_crtc_state
-drm-intel drm-intel-next-queued e5cae659597811f8bacc4abc70135dffb48711d5
-	drm/i915/guc: Disable rpm wakeref asserts in GuC irq handler
-drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
-	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
-sound-upstream for-linus c5a59d2477abf04e1b77152bef49383fd212da8d
-	ALSA: hda/ca0132: Update a pci quirk device name
-sound-upstream for-next ff2d6acdf6f13d9f8fdcd890844c6d7535ac1f10
-	ALSA: pcm: Fix snd_interval_refine first/last with open min/max
-drm-intel topic/core-for-CI e3aa13f8269f5966e0b1ab1684b7576c35a14dba
-	usb/icl: Work around ACPI boottime crash
+drm-tip/drm-tip 1a9b9e1bf9510b583f8c78a42e65ea7fa323040a
+	drm-tip: 2018y-07m-16d-00h-35m-03s UTC integration manifest
+vfio-upstream/for-linus 498e8bf51c633cc4496343e6113f340f8e9301ae
+	sample: vfio-mdev: avoid deadlock in mdev_access()
+vfio-upstream/next c1abca96b252a9627f99f39215b84e5de92bf1e3
+	samples: mbochs: add DMA_SHARED_BUFFER dependency
+origin/gvt-fixes 6cef21a1964933b77c855c55bac2723053cc676d
+	drm/i915/gvt: update vreg on inhibit context lri command
+origin/gvt-next 279ce5d117078ee8ea40c40199399889981fd808
+	drm/i915/gvt: declare gvt as i915's soft dependency
+origin/gvt-next-fixes 10996f802109c83421ca30556cfe36ffc3bebae3
+	drm/i915/gvt: Add drm_format_mod update

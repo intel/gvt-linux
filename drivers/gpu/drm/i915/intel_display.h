@@ -199,6 +199,10 @@ enum intel_display_power_domain {
 	POWER_DOMAIN_AUX_E,
 	POWER_DOMAIN_AUX_F,
 	POWER_DOMAIN_AUX_IO_A,
+	POWER_DOMAIN_AUX_TBT1,
+	POWER_DOMAIN_AUX_TBT2,
+	POWER_DOMAIN_AUX_TBT3,
+	POWER_DOMAIN_AUX_TBT4,
 	POWER_DOMAIN_GMBUS,
 	POWER_DOMAIN_MODESET,
 	POWER_DOMAIN_GT_IRQ,
@@ -284,6 +288,10 @@ struct intel_link_m_n {
 	list_for_each_entry(intel_encoder,			\
 			    &(dev)->mode_config.encoder_list,	\
 			    base.head)
+
+#define for_each_intel_dp(dev, intel_encoder)			\
+	for_each_intel_encoder(dev, intel_encoder)		\
+		for_each_if(intel_encoder_is_dp(intel_encoder))
 
 #define for_each_intel_connector_iter(intel_connector, iter) \
 	while ((intel_connector = to_intel_connector(drm_connector_list_iter_next(iter))))

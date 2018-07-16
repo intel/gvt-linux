@@ -44,7 +44,8 @@ sun8i_dw_hdmi_mode_valid(struct drm_connector *connector,
 
 static bool sun8i_dw_hdmi_node_is_tcon_top(struct device_node *node)
 {
-	return !!of_match_node(sun8i_tcon_top_of_table, node);
+	return IS_ENABLED(CONFIG_DRM_SUN8I_TCON_TOP) &&
+		!!of_match_node(sun8i_tcon_top_of_table, node);
 }
 
 static u32 sun8i_dw_hdmi_find_possible_crtcs(struct drm_device *drm,
@@ -53,22 +54,14 @@ static u32 sun8i_dw_hdmi_find_possible_crtcs(struct drm_device *drm,
 	struct device_node *port, *ep, *remote, *remote_port;
 	u32 crtcs = 0;
 
-	port = of_graph_get_port_by_id(node, 0);
-	if (!port)
-		return 0;
-
-	ep = of_get_next_available_child(port, NULL);
-	if (!ep)
-		return 0;
-
-	remote = of_graph_get_remote_port_parent(ep);
+	remote = of_graph_get_remote_node(node, 0, -1);
 	if (!remote)
 		return 0;
 
 	if (sun8i_dw_hdmi_node_is_tcon_top(remote)) {
 		port = of_graph_get_port_by_id(remote, 4);
 		if (!port)
-			return 0;
+			goto crtcs_exit;
 
 		for_each_child_of_node(port, ep) {
 			remote_port = of_graph_get_remote_port(ep);
@@ -80,6 +73,9 @@ static u32 sun8i_dw_hdmi_find_possible_crtcs(struct drm_device *drm,
 	} else {
 		crtcs = drm_of_find_possible_crtcs(drm, node);
 	}
+
+crtcs_exit:
+	of_node_put(remote);
 
 	return crtcs;
 }
@@ -225,7 +221,7 @@ static const struct of_device_id sun8i_dw_hdmi_dt_ids[] = {
 };
 MODULE_DEVICE_TABLE(of, sun8i_dw_hdmi_dt_ids);
 
-struct platform_driver sun8i_dw_hdmi_pltfm_driver = {
+static struct platform_driver sun8i_dw_hdmi_pltfm_driver = {
 	.probe  = sun8i_dw_hdmi_probe,
 	.remove = sun8i_dw_hdmi_remove,
 	.driver = {

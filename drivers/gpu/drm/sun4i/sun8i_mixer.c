@@ -21,8 +21,9 @@
 
 #include <linux/component.h>
 #include <linux/dma-mapping.h>
-#include <linux/reset.h>
 #include <linux/of_device.h>
+#include <linux/of_graph.h>
+#include <linux/reset.h>
 
 #include "sun4i_drv.h"
 #include "sun8i_mixer.h"
@@ -260,6 +261,17 @@ const struct de2_fmt_info *sun8i_mixer_format_info(u32 format)
 	return NULL;
 }
 
+static void sun8i_mixer_atomic_begin(struct sunxi_engine *engine,
+				     struct drm_crtc_state *old_state)
+{
+	/*
+	 * Disable all pipes at the beginning. They will be enabled
+	 * again if needed in plane update callback.
+	 */
+	regmap_update_bits(engine->regs, SUN8I_MIXER_BLEND_PIPE_CTL,
+			   SUN8I_MIXER_BLEND_PIPE_CTL_EN_MSK, 0);
+}
+
 static void sun8i_mixer_commit(struct sunxi_engine *engine)
 {
 	DRM_DEBUG_DRIVER("Committing changes\n");
@@ -311,6 +323,7 @@ static struct drm_plane **sun8i_layers_init(struct drm_device *drm,
 }
 
 static const struct sunxi_engine_ops sun8i_engine_ops = {
+	.atomic_begin	= sun8i_mixer_atomic_begin,
 	.commit		= sun8i_mixer_commit,
 	.layers_init	= sun8i_layers_init,
 };
@@ -321,6 +334,42 @@ static struct regmap_config sun8i_mixer_regmap_config = {
 	.reg_stride	= 4,
 	.max_register	= 0xbfffc, /* guessed */
 };
+
+static int sun8i_mixer_of_get_id(struct device_node *node)
+{
+	struct device_node *port, *ep;
+	int ret = -EINVAL;
+
+	/* output is port 1 */
+	port = of_graph_get_port_by_id(node, 1);
+	if (!port)
+		return -EINVAL;
+
+	/* try to find downstream endpoint */
+	for_each_available_child_of_node(port, ep) {
+		struct device_node *remote;
+		u32 reg;
+
+		remote = of_graph_get_remote_endpoint(ep);
+		if (!remote)
+			continue;
+
+		ret = of_property_read_u32(remote, "reg", &reg);
+		if (!ret) {
+			of_node_put(remote);
+			of_node_put(ep);
+			of_node_put(port);
+
+			return reg;
+		}
+
+		of_node_put(remote);
+	}
+
+	of_node_put(port);
+
+	return ret;
+}
 
 static int sun8i_mixer_bind(struct device *dev, struct device *master,
 			      void *data)
@@ -353,8 +402,16 @@ static int sun8i_mixer_bind(struct device *dev, struct device *master,
 	dev_set_drvdata(dev, mixer);
 	mixer->engine.ops = &sun8i_engine_ops;
 	mixer->engine.node = dev->of_node;
-	/* The ID of the mixer currently doesn't matter */
-	mixer->engine.id = -1;
+
+	/*
+	 * While this function can fail, we shouldn't do anything
+	 * if this happens. Some early DE2 DT entries don't provide
+	 * mixer id but work nevertheless because matching between
+	 * TCON and mixer is done by comparing node pointers (old
+	 * way) instead comparing ids. If this function fails and
+	 * id is needed, it will fail during id matching anyway.
+	 */
+	mixer->engine.id = sun8i_mixer_of_get_id(dev->of_node);
 
 	mixer->cfg = of_device_get_match_data(dev);
 	if (!mixer->cfg)
@@ -431,9 +488,6 @@ static int sun8i_mixer_bind(struct device *dev, struct device *master,
 		     SUN8I_MIXER_BLEND_PIPE_CTL_FC_EN(0));
 	regmap_write(mixer->engine.regs, SUN8I_MIXER_BLEND_ATTR_FCOLOR(0),
 		     SUN8I_MIXER_BLEND_COLOR_BLACK);
-
-	/* Fixed zpos for now */
-	regmap_write(mixer->engine.regs, SUN8I_MIXER_BLEND_ROUTE, 0x43210);
 
 	plane_cnt = mixer->cfg->vi_num + mixer->cfg->ui_num;
 	for (i = 0; i < plane_cnt; i++)

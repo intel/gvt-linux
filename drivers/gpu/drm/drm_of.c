@@ -9,6 +9,13 @@
 #include <drm/drm_panel.h>
 #include <drm/drm_of.h>
 
+/**
+ * DOC: overview
+ *
+ * A set of helper functions to aid DRM drivers in parsing standard DT
+ * properties.
+ */
+
 static void drm_release_of(struct device *dev, void *data)
 {
 	of_node_put(data);
@@ -94,7 +101,7 @@ EXPORT_SYMBOL_GPL(drm_of_component_match_add);
  * drm_of_component_probe - Generic probe function for a component based master
  * @dev: master device containing the OF node
  * @compare_of: compare function used for matching components
- * @master_ops: component master ops to be used
+ * @m_ops: component master ops to be used
  *
  * Parse the platform device OF node and bind all the components associated
  * with the master. Interface ports are added before the encoders in order to
@@ -239,10 +246,17 @@ int drm_of_find_panel_or_bridge(const struct device_node *np,
 	if (!remote)
 		return -ENODEV;
 
+	if (!of_device_is_available(remote)) {
+		of_node_put(remote);
+		return -ENODEV;
+	}
+
 	if (panel) {
 		*panel = of_drm_find_panel(remote);
-		if (*panel)
+		if (!IS_ERR(*panel))
 			ret = 0;
+		else
+			*panel = NULL;
 	}
 
 	/* No panel found yet, check for a bridge next. */

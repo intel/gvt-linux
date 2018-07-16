@@ -162,7 +162,7 @@ error_mem:
 static void amdgpu_ttm_global_fini(struct amdgpu_device *adev)
 {
 	if (adev->mman.mem_global_referenced) {
-		drm_sched_entity_fini(adev->mman.entity.sched,
+		drm_sched_entity_destroy(adev->mman.entity.sched,
 				      &adev->mman.entity);
 		mutex_destroy(&adev->mman.gtt_window_lock);
 		drm_global_item_unref(&adev->mman.bo_global_ref.ref);
@@ -277,7 +277,7 @@ static void amdgpu_evict_flags(struct ttm_buffer_object *bo,
 		if (!adev->mman.buffer_funcs_enabled) {
 			/* Move to system memory */
 			amdgpu_ttm_placement_from_domain(abo, AMDGPU_GEM_DOMAIN_CPU);
-		} else if (adev->gmc.visible_vram_size < adev->gmc.real_vram_size &&
+		} else if (!amdgpu_gmc_vram_full_visible(&adev->gmc) &&
 			   !(abo->flags & AMDGPU_GEM_CREATE_CPU_ACCESS_REQUIRED) &&
 			   amdgpu_bo_in_cpu_visible_vram(abo)) {
 

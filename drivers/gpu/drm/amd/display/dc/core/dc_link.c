@@ -33,6 +33,7 @@
 #include "dc_link_dp.h"
 #include "dc_link_ddc.h"
 #include "link_hwss.h"
+#include "opp.h"
 
 #include "link_encoder.h"
 #include "hw_sequencer.h"
@@ -1284,29 +1285,15 @@ static enum dc_status enable_link_dp(
 		max_link_rate = LINK_RATE_HIGH3;
 
 	if (link_settings.link_rate == max_link_rate) {
-		if (state->dis_clk->funcs->set_min_clocks_state) {
-			if (state->dis_clk->cur_min_clks_state < DM_PP_CLOCKS_STATE_NOMINAL)
-				state->dis_clk->funcs->set_min_clocks_state(
-					state->dis_clk, DM_PP_CLOCKS_STATE_NOMINAL);
-		} else {
-			uint32_t dp_phyclk_in_khz;
-			const struct clocks_value clocks_value =
-					state->dis_clk->cur_clocks_value;
+		struct dc_clocks clocks = state->bw.dcn.clk;
 
-			/* 27mhz = 27000000hz= 27000khz */
-			dp_phyclk_in_khz = link_settings.link_rate * 27000;
+		/* dce/dcn compat, do not update dispclk */
+		clocks.dispclk_khz = 0;
+		/* 27mhz = 27000000hz= 27000khz */
+		clocks.phyclk_khz = link_settings.link_rate * 27000;
 
-			if (((clocks_value.max_non_dp_phyclk_in_khz != 0) &&
-				(dp_phyclk_in_khz > clocks_value.max_non_dp_phyclk_in_khz)) ||
-				(dp_phyclk_in_khz > clocks_value.max_dp_phyclk_in_khz)) {
-				state->dis_clk->funcs->apply_clock_voltage_request(
-						state->dis_clk,
-						DM_PP_CLOCK_TYPE_DISPLAYPHYCLK,
-						dp_phyclk_in_khz,
-						false,
-						true);
-			}
-		}
+		state->dis_clk->funcs->update_clocks(
+				state->dis_clk, &clocks, false);
 	}
 
 	dp_enable_link_phy(
@@ -1861,28 +1848,6 @@ static enum dc_status enable_link(
 		break;
 	}
 
-	if (pipe_ctx->stream_res.audio && status == DC_OK) {
-		struct dc *core_dc = pipe_ctx->stream->ctx->dc;
-		/* notify audio driver for audio modes of monitor */
-		struct pp_smu_funcs_rv *pp_smu = core_dc->res_pool->pp_smu;
-		unsigned int i, num_audio = 1;
-		for (i = 0; i < MAX_PIPES; i++) {
-			/*current_state not updated yet*/
-			if (core_dc->current_state->res_ctx.pipe_ctx[i].stream_res.audio != NULL)
-				num_audio++;
-		}
-
-		pipe_ctx->stream_res.audio->funcs->az_enable(pipe_ctx->stream_res.audio);
-
-		if (num_audio == 1 && pp_smu != NULL && pp_smu->set_pme_wa_enable != NULL)
-			/*this is the first audio. apply the PME w/a in order to wake AZ from D3*/
-			pp_smu->set_pme_wa_enable(&pp_smu->pp_smu);
-		/* un-mute audio */
-		/* TODO: audio should be per stream rather than per link */
-		pipe_ctx->stream_res.stream_enc->funcs->audio_mute_control(
-			pipe_ctx->stream_res.stream_enc, false);
-	}
-
 	return status;
 }
 
@@ -2415,10 +2380,13 @@ void core_link_enable_stream(
 			}
 	}
 
+	core_dc->hwss.enable_audio_stream(pipe_ctx);
+
 	/* turn off otg test pattern if enable */
-	pipe_ctx->stream_res.tg->funcs->set_test_pattern(pipe_ctx->stream_res.tg,
-			CONTROLLER_DP_TEST_PATTERN_VIDEOMODE,
-			COLOR_DEPTH_UNDEFINED);
+	if (pipe_ctx->stream_res.tg->funcs->set_test_pattern)
+		pipe_ctx->stream_res.tg->funcs->set_test_pattern(pipe_ctx->stream_res.tg,
+				CONTROLLER_DP_TEST_PATTERN_VIDEOMODE,
+				COLOR_DEPTH_UNDEFINED);
 
 	core_dc->hwss.enable_stream(pipe_ctx);
 
@@ -2453,6 +2421,22 @@ void core_link_set_avmute(struct pipe_ctx *pipe_ctx, bool enable)
 	core_dc->hwss.set_avmute(pipe_ctx, enable);
 }
 
+/**
+ *****************************************************************************
+ *  Function: dc_link_enable_hpd_filter
+ *
+ *  @brief
+ *     If enable is true, programs HPD filter on associated HPD line using
+ *     delay_on_disconnect/delay_on_connect values dependent on
+ *     link->connector_signal
+ *
+ *     If enable is false, programs HPD filter on associated HPD line with no
+ *     delays on connect or disconnect
+ *
+ *  @param [in] link: pointer to the dc link
+ *  @param [in] enable: boolean specifying whether to enable hbd
+ *****************************************************************************
+ */
 void dc_link_enable_hpd_filter(struct dc_link *link, bool enable)
 {
 	struct gpio *hpd;

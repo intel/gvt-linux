@@ -342,9 +342,9 @@ static int live_nop_request(void *arg)
 	mutex_lock(&i915->drm.struct_mutex);
 
 	for_each_engine(engine, i915, id) {
-		IGT_TIMEOUT(end_time);
-		struct i915_request *request;
+		struct i915_request *request = NULL;
 		unsigned long n, prime;
+		IGT_TIMEOUT(end_time);
 		ktime_t times[2] = {};
 
 		err = begin_live_test(&t, i915, __func__, engine->name);
@@ -430,7 +430,7 @@ static struct i915_vma *empty_batch(struct drm_i915_private *i915)
 	if (err)
 		goto err;
 
-	vma = i915_vma_instance(obj, &i915->ggtt.base, NULL);
+	vma = i915_vma_instance(obj, &i915->ggtt.vm, NULL);
 	if (IS_ERR(vma)) {
 		err = PTR_ERR(vma);
 		goto err;
@@ -466,7 +466,7 @@ empty_request(struct intel_engine_cs *engine,
 		goto out_request;
 
 out_request:
-	__i915_request_add(request, err == 0);
+	i915_request_add(request);
 	return err ? ERR_PTR(err) : request;
 }
 
@@ -555,7 +555,8 @@ out_unlock:
 static struct i915_vma *recursive_batch(struct drm_i915_private *i915)
 {
 	struct i915_gem_context *ctx = i915->kernel_context;
-	struct i915_address_space *vm = ctx->ppgtt ? &ctx->ppgtt->base : &i915->ggtt.base;
+	struct i915_address_space *vm =
+		ctx->ppgtt ? &ctx->ppgtt->vm : &i915->ggtt.vm;
 	struct drm_i915_gem_object *obj;
 	const int gen = INTEL_GEN(i915);
 	struct i915_vma *vma;

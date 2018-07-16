@@ -148,6 +148,7 @@ struct resource_pool {
 	unsigned int underlay_pipe_index;
 	unsigned int stream_enc_count;
 	unsigned int ref_clock_inKhz;
+	unsigned int dentist_vco_freq_khz;
 	unsigned int timing_generator_count;
 
 	/*
@@ -162,7 +163,7 @@ struct resource_pool {
 	unsigned int audio_count;
 	struct audio_support audio_support;
 
-	struct display_clock *display_clock;
+	struct dccg *dccg;
 	struct irq_service *irqs;
 
 	struct abm *abm;
@@ -255,8 +256,7 @@ struct dce_bw_output {
 };
 
 struct dcn_bw_output {
-	struct dc_clocks cur_clk;
-	struct dc_clocks calc_clk;
+	struct dc_clocks clk;
 	struct dcn_watermark_set watermarks;
 };
 
@@ -281,7 +281,7 @@ struct dc_state {
 	struct dcn_bw_internal_vars dcn_bw_vars;
 #endif
 
-	struct display_clock *dis_clk;
+	struct dccg *dis_clk;
 
 	struct kref refcount;
 };

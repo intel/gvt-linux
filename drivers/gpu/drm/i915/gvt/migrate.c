@@ -538,6 +538,11 @@ static int vreg_load(const struct gvt_migration_obj_t *obj, u32 size)
 	for_each_engine(engine, dev_priv, id)
 		MIG_VREG_RESTORE(vgpu, i915_mmio_reg_offset(RING_MODE_GEN7(engine)));
 
+	//restore hw status page for variable to keep it in host
+	for_each_engine(engine, dev_priv, id)
+		MIG_VREG_RESTORE(vgpu,
+			i915_mmio_reg_offset(RING_HWS_PGA(engine->mmio_base)));
+
 	return n_transfer;
 }
 

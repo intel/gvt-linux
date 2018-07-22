@@ -12,6 +12,7 @@
 #include <linux/acpi.h>
 #include <linux/pci.h>
 #include <linux/usb/hcd.h>
+#include <linux/dmi.h>
 
 #include "hub.h"
 
@@ -81,6 +82,20 @@ int usb_acpi_set_power_state(struct usb_device *hdev, int index, bool enable)
 }
 EXPORT_SYMBOL_GPL(usb_acpi_set_power_state);
 
+static const struct dmi_system_id intel_icl_broken_acpi[] = {
+	{
+		.ident = "ICL RVP",
+		.matches = {
+			DMI_MATCH(DMI_SYS_VENDOR, "Intel Corporation"),
+			DMI_MATCH(DMI_PRODUCT_NAME, "Ice Lake Client Platform"),
+		},
+	},
+
+	{ }
+};
+
+static bool acpi_connection_type_broken;
+
 static enum usb_port_connect_type usb_acpi_get_connect_type(acpi_handle handle,
 		struct acpi_pld_info *pld)
 {
@@ -88,6 +103,10 @@ static enum usb_port_connect_type usb_acpi_get_connect_type(acpi_handle handle,
 	struct acpi_buffer buffer = { ACPI_ALLOCATE_BUFFER, NULL };
 	union acpi_object *upc;
 	acpi_status status;
+
+	/* Work around unknown ACPI instruction error on ICL RVP BIOSes. */
+	if (acpi_connection_type_broken)
+		return USB_PORT_CONNECT_TYPE_UNKNOWN;
 
 	/*
 	 * According to 9.14 in ACPI Spec 6.2. _PLD indicates whether usb port
@@ -235,6 +254,11 @@ static struct acpi_bus_type usb_acpi_bus = {
 
 int usb_acpi_register(void)
 {
+	if (dmi_check_system(intel_icl_broken_acpi)) {
+		pr_info("USB ACPI connection type broken.\n");
+		acpi_connection_type_broken = true;
+	}
+
 	return register_acpi_bus_type(&usb_acpi_bus);
 }
 

@@ -23,13 +23,10 @@
  *
  */
 
-#ifndef __SOC_BOUNDING_BOX_H__
-#define __SOC_BOUNDING_BOX_H__
+#ifndef __IRQSRCS_SMUIO_9_0_H__
+#define __IRQSRCS_SMUIO_9_0_H__
 
-#include "dml_common_defs.h"
+#define SMUIO_9_0__SRCID__SMUIO_GPIO19			83		/* GPIO19 interrupt  */
 
-void dml_socbb_set_latencies(soc_bounding_box_st *to_box, soc_bounding_box_st *from_box);
-voltage_scaling_st dml_socbb_voltage_scaling(const soc_bounding_box_st *box, enum voltage_state voltage);
-double dml_socbb_return_bw_mhz(soc_bounding_box_st *box, enum voltage_state voltage);
+#endif /* __IRQSRCS_SMUIO_9_0_H__ */
 
-#endif

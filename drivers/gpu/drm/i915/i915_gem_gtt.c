@@ -173,19 +173,11 @@ int intel_sanitize_enable_ppgtt(struct drm_i915_private *dev_priv,
 		return 0;
 	}
 
-	/* Early VLV doesn't have this */
-	if (IS_VALLEYVIEW(dev_priv) && dev_priv->drm.pdev->revision < 0xb) {
-		DRM_DEBUG_DRIVER("disabling PPGTT on pre-B3 step VLV\n");
-		return 0;
-	}
+	if (has_full_48bit_ppgtt)
+		return 3;
 
-	if (HAS_LOGICAL_RING_CONTEXTS(dev_priv)) {
-		if (has_full_48bit_ppgtt)
-			return 3;
-
-		if (has_full_ppgtt)
-			return 2;
-	}
+	if (has_full_ppgtt)
+		return 2;
 
 	return 1;
 }
@@ -3662,6 +3654,10 @@ void i915_ggtt_enable_guc(struct drm_i915_private *i915)
 
 void i915_ggtt_disable_guc(struct drm_i915_private *i915)
 {
+	/* XXX Temporary pardon for error unload */
+	if (i915->ggtt.invalidate == gen6_ggtt_invalidate)
+		return;
+
 	/* We should only be called after i915_ggtt_enable_guc() */
 	GEM_BUG_ON(i915->ggtt.invalidate != guc_ggtt_invalidate);
 

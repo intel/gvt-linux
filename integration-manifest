@@ -1,28 +1,12 @@
-drm drm-fixes 02e546eacceaaad4494e2ea8fb5014f00f9c4bef
-	Merge branch 'linux-4.18' of git://github.com/skeggsb/linux into drm-fixes
-drm-misc drm-misc-fixes d530b5f1ca0bb66958a2b714bebe40a1248b9c15
-	drm: re-enable error handling
-drm-intel drm-intel-fixes 09d2da310d61c4bfae33ea05b88e7a8f31350d9e
-	Merge tag 'gvt-fixes-2018-07-11' of https://github.com/intel/gvt-linux into drm-intel-fixes
-drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
-	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
-drm drm-next 500775074f88d9cf5416bed2ca19592812d62c41
-	Merge branch 'drm-next-4.19' of git://people.freedesktop.org/~agd5f/linux into drm-next
-drm-misc drm-misc-next-fixes 069035c5db3459b9b5f12caf3bffed9a863fa5c4
-	drm: Fix possible race conditions while unplugging DRM device
-drm-intel drm-intel-next-fixes 807cba6559cf333a74df1fbd74f0597e8e7fa020
-	Merge tag 'gvt-fixes-2018-04-19' of https://github.com/intel/gvt-linux into drm-intel-next-fixes
-drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
-	Linux 4.14-rc1
-drm-misc drm-misc-next 106b6c39c870c1f7628ba41693e571f419b1981d
-	drm/print: Fix DRM_DEBUG_DP macro
-drm-intel drm-intel-next-queued 6f15a7de86c8cf2dc09fc9e6d07047efa40ef809
-	drm/i915/dsc: Add missing _MMIO() from PPS registers
-drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
-	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
-sound-upstream for-linus f3d737b6340b0c7bacd8bc751605f0ed6203f146
-	ALSA: hda/realtek - Yet another Clevo P950 quirk entry
-sound-upstream for-next d10ee9c542365bdc0a7497306e21ff6c7f2172b0
-	ALSA: timer: catch invalid timer object creation
-drm-intel topic/core-for-CI 3ae78c51e2ebf0d2dd9f7cee2754bc9b5620365d
-	Revert "iommu/vt-d: Clean up pasid quirk for pre-production devices"
+drm-tip/drm-tip 45a13851617f46cbd2dcac1c2fcc8cdcedf016d6
+	drm-tip: 2018y-07m-22d-22h-43m-06s UTC integration manifest
+vfio-upstream/for-linus 0e714d27786ce1fb3efa9aac58abc096e68b1c2a
+	vfio/pci: Fix potential Spectre v1
+vfio-upstream/next c1abca96b252a9627f99f39215b84e5de92bf1e3
+	samples: mbochs: add DMA_SHARED_BUFFER dependency
+origin/gvt-fixes 6cef21a1964933b77c855c55bac2723053cc676d
+	drm/i915/gvt: update vreg on inhibit context lri command
+origin/gvt-next 3e494c2eb417715cdfed66827a5752e41de748c3
+	drm/i915/gvt: Fix W=1 warnings
+origin/gvt-next-fixes 10996f802109c83421ca30556cfe36ffc3bebae3
+	drm/i915/gvt: Add drm_format_mod update

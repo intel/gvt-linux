@@ -43,12 +43,14 @@
 
 #include "amdgpu_atombios.h"
 
+#include "ivsrcid/ivsrcid_vislands30.h"
+
 static void gmc_v7_0_set_gmc_funcs(struct amdgpu_device *adev);
 static void gmc_v7_0_set_irq_funcs(struct amdgpu_device *adev);
 static int gmc_v7_0_wait_for_idle(void *handle);
 
-MODULE_FIRMWARE("radeon/bonaire_mc.bin");
-MODULE_FIRMWARE("radeon/hawaii_mc.bin");
+MODULE_FIRMWARE("amdgpu/bonaire_mc.bin");
+MODULE_FIRMWARE("amdgpu/hawaii_mc.bin");
 MODULE_FIRMWARE("amdgpu/topaz_mc.bin");
 
 static const u32 golden_settings_iceland_a11[] =
@@ -147,10 +149,7 @@ static int gmc_v7_0_init_microcode(struct amdgpu_device *adev)
 	default: BUG();
 	}
 
-	if (adev->asic_type == CHIP_TOPAZ)
-		snprintf(fw_name, sizeof(fw_name), "amdgpu/%s_mc.bin", chip_name);
-	else
-		snprintf(fw_name, sizeof(fw_name), "radeon/%s_mc.bin", chip_name);
+	snprintf(fw_name, sizeof(fw_name), "amdgpu/%s_mc.bin", chip_name);
 
 	err = request_firmware(&adev->gmc.fw, fw_name, adev->dev);
 	if (err)
@@ -999,11 +998,11 @@ static int gmc_v7_0_sw_init(void *handle)
 		adev->gmc.vram_type = gmc_v7_0_convert_vram_type(tmp);
 	}
 
-	r = amdgpu_irq_add_id(adev, AMDGPU_IH_CLIENTID_LEGACY, 146, &adev->gmc.vm_fault);
+	r = amdgpu_irq_add_id(adev, AMDGPU_IH_CLIENTID_LEGACY, VISLANDS30_IV_SRCID_GFX_PAGE_INV_FAULT, &adev->gmc.vm_fault);
 	if (r)
 		return r;
 
-	r = amdgpu_irq_add_id(adev, AMDGPU_IH_CLIENTID_LEGACY, 147, &adev->gmc.vm_fault);
+	r = amdgpu_irq_add_id(adev, AMDGPU_IH_CLIENTID_LEGACY, VISLANDS30_IV_SRCID_GFX_MEM_PROT_FAULT, &adev->gmc.vm_fault);
 	if (r)
 		return r;
 

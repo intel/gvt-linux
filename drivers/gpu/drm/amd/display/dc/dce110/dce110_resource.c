@@ -54,9 +54,8 @@
 
 #define DC_LOGGER \
 		dc->ctx->logger
-#if defined(CONFIG_DRM_AMD_DC_FBC)
+
 #include "dce110/dce110_compressor.h"
-#endif
 
 #include "reg_helper.h"
 
@@ -147,15 +146,15 @@ static const struct dce110_timing_generator_offsets dce110_tg_offsets[] = {
 #define SRI(reg_name, block, id)\
 	.reg_name = mm ## block ## id ## _ ## reg_name
 
-static const struct dce_disp_clk_registers disp_clk_regs = {
+static const struct dccg_registers disp_clk_regs = {
 		CLK_COMMON_REG_LIST_DCE_BASE()
 };
 
-static const struct dce_disp_clk_shift disp_clk_shift = {
+static const struct dccg_shift disp_clk_shift = {
 		CLK_COMMON_MASK_SH_LIST_DCE_COMMON_BASE(__SHIFT)
 };
 
-static const struct dce_disp_clk_mask disp_clk_mask = {
+static const struct dccg_mask disp_clk_mask = {
 		CLK_COMMON_MASK_SH_LIST_DCE_COMMON_BASE(_MASK)
 };
 
@@ -680,8 +679,8 @@ static void destruct(struct dce110_resource_pool *pool)
 	if (pool->base.dmcu != NULL)
 		dce_dmcu_destroy(&pool->base.dmcu);
 
-	if (pool->base.display_clock != NULL)
-		dce_disp_clk_destroy(&pool->base.display_clock);
+	if (pool->base.dccg != NULL)
+		dce_dccg_destroy(&pool->base.dccg);
 
 	if (pool->base.irqs != NULL) {
 		dal_irq_service_destroy(&pool->base.irqs);
@@ -795,43 +794,38 @@ static bool dce110_validate_bandwidth(
 
 	if (memcmp(&dc->current_state->bw.dce,
 			&context->bw.dce, sizeof(context->bw.dce))) {
-		struct log_entry log_entry;
-		dm_logger_open(
-			dc->ctx->logger,
-			&log_entry,
-			LOG_BANDWIDTH_CALCS);
-		dm_logger_append(&log_entry, "%s: finish,\n"
+
+		DC_LOG_BANDWIDTH_CALCS(
+			"%s: finish,\n"
 			"nbpMark_b: %d nbpMark_a: %d urgentMark_b: %d urgentMark_a: %d\n"
-			"stutMark_b: %d stutMark_a: %d\n",
+			"stutMark_b: %d stutMark_a: %d\n"
+			"nbpMark_b: %d nbpMark_a: %d urgentMark_b: %d urgentMark_a: %d\n"
+			"stutMark_b: %d stutMark_a: %d\n"
+			"nbpMark_b: %d nbpMark_a: %d urgentMark_b: %d urgentMark_a: %d\n"
+			"stutMark_b: %d stutMark_a: %d stutter_mode_enable: %d\n"
+			"cstate: %d pstate: %d nbpstate: %d sync: %d dispclk: %d\n"
+			"sclk: %d sclk_sleep: %d yclk: %d blackout_recovery_time_us: %d\n"
+			,
 			__func__,
 			context->bw.dce.nbp_state_change_wm_ns[0].b_mark,
 			context->bw.dce.nbp_state_change_wm_ns[0].a_mark,
 			context->bw.dce.urgent_wm_ns[0].b_mark,
 			context->bw.dce.urgent_wm_ns[0].a_mark,
 			context->bw.dce.stutter_exit_wm_ns[0].b_mark,
-			context->bw.dce.stutter_exit_wm_ns[0].a_mark);
-		dm_logger_append(&log_entry,
-			"nbpMark_b: %d nbpMark_a: %d urgentMark_b: %d urgentMark_a: %d\n"
-			"stutMark_b: %d stutMark_a: %d\n",
+			context->bw.dce.stutter_exit_wm_ns[0].a_mark,
 			context->bw.dce.nbp_state_change_wm_ns[1].b_mark,
 			context->bw.dce.nbp_state_change_wm_ns[1].a_mark,
 			context->bw.dce.urgent_wm_ns[1].b_mark,
 			context->bw.dce.urgent_wm_ns[1].a_mark,
 			context->bw.dce.stutter_exit_wm_ns[1].b_mark,
-			context->bw.dce.stutter_exit_wm_ns[1].a_mark);
-		dm_logger_append(&log_entry,
-			"nbpMark_b: %d nbpMark_a: %d urgentMark_b: %d urgentMark_a: %d\n"
-			"stutMark_b: %d stutMark_a: %d stutter_mode_enable: %d\n",
+			context->bw.dce.stutter_exit_wm_ns[1].a_mark,
 			context->bw.dce.nbp_state_change_wm_ns[2].b_mark,
 			context->bw.dce.nbp_state_change_wm_ns[2].a_mark,
 			context->bw.dce.urgent_wm_ns[2].b_mark,
 			context->bw.dce.urgent_wm_ns[2].a_mark,
 			context->bw.dce.stutter_exit_wm_ns[2].b_mark,
 			context->bw.dce.stutter_exit_wm_ns[2].a_mark,
-			context->bw.dce.stutter_mode_enable);
-		dm_logger_append(&log_entry,
-			"cstate: %d pstate: %d nbpstate: %d sync: %d dispclk: %d\n"
-			"sclk: %d sclk_sleep: %d yclk: %d blackout_recovery_time_us: %d\n",
+			context->bw.dce.stutter_mode_enable,
 			context->bw.dce.cpuc_state_change_enable,
 			context->bw.dce.cpup_state_change_enable,
 			context->bw.dce.nbp_state_change_enable,
@@ -841,7 +835,6 @@ static bool dce110_validate_bandwidth(
 			context->bw.dce.sclk_deep_sleep_khz,
 			context->bw.dce.yclk_khz,
 			context->bw.dce.blackout_recovery_time_us);
-		dm_logger_close(&log_entry);
 	}
 	return result;
 }
@@ -1180,11 +1173,11 @@ static bool construct(
 		}
 	}
 
-	pool->base.display_clock = dce110_disp_clk_create(ctx,
+	pool->base.dccg = dce110_dccg_create(ctx,
 			&disp_clk_regs,
 			&disp_clk_shift,
 			&disp_clk_mask);
-	if (pool->base.display_clock == NULL) {
+	if (pool->base.dccg == NULL) {
 		dm_error("DC: failed to create display clock!\n");
 		BREAK_TO_DEBUGGER();
 		goto res_create_fail;
@@ -1214,7 +1207,7 @@ static bool construct(
 	 * max_clock_state
 	 */
 	if (dm_pp_get_static_clocks(ctx, &static_clk_info))
-		pool->base.display_clock->max_clks_state =
+		pool->base.dccg->max_clks_state =
 				static_clk_info.max_clocks_state;
 
 	{
@@ -1267,12 +1260,8 @@ static bool construct(
 		}
 	}
 
-#if defined(CONFIG_DRM_AMD_DC_FBC)
 	dc->fbc_compressor = dce110_compressor_create(ctx);
 
-
-
-#endif
 	if (!underlay_create(ctx, &pool->base))
 		goto res_create_fail;
 

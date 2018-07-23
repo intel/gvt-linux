@@ -543,6 +543,7 @@ static int vreg_load(const struct gvt_migration_obj_t *obj, u32 size)
 		MIG_VREG_RESTORE(vgpu,
 			i915_mmio_reg_offset(RING_HWS_PGA(engine->mmio_base)));
 
+	memcpy(dest, obj->img + obj->offset, n_transfer);
 	return n_transfer;
 }
 

@@ -20,6 +20,14 @@ static const u32 vkms_formats[] = {
 	DRM_FORMAT_XRGB8888,
 };
 
+/**
+ * vkms_crtc_state - Driver specific CRTC state
+ * @base: base CRTC state
+ */
+struct vkms_crtc_state {
+	struct drm_crtc_state base;
+};
+
 struct vkms_output {
 	struct drm_crtc crtc;
 	struct drm_encoder encoder;
@@ -39,6 +47,8 @@ struct vkms_gem_object {
 	struct drm_gem_object gem;
 	struct mutex pages_lock; /* Page lock used in page fault handler */
 	struct page **pages;
+	unsigned int vmap_count;
+	void *vaddr;
 };
 
 #define drm_crtc_to_vkms_output(target) \
@@ -46,6 +56,12 @@ struct vkms_gem_object {
 
 #define drm_device_to_vkms_device(target) \
 	container_of(target, struct vkms_device, drm)
+
+#define drm_gem_to_vkms_gem(target)\
+	container_of(target, struct vkms_gem_object, gem)
+
+#define to_vkms_crtc_state(target)\
+	container_of(target, struct vkms_crtc_state, base)
 
 /* CRTC */
 int vkms_crtc_init(struct drm_device *dev, struct drm_crtc *crtc,
@@ -65,7 +81,7 @@ struct drm_gem_object *vkms_gem_create(struct drm_device *dev,
 				       u32 *handle,
 				       u64 size);
 
-int vkms_gem_fault(struct vm_fault *vmf);
+vm_fault_t vkms_gem_fault(struct vm_fault *vmf);
 
 int vkms_dumb_create(struct drm_file *file, struct drm_device *dev,
 		     struct drm_mode_create_dumb *args);
@@ -74,5 +90,9 @@ int vkms_dumb_map(struct drm_file *file, struct drm_device *dev,
 		  u32 handle, u64 *offset);
 
 void vkms_gem_free_object(struct drm_gem_object *obj);
+
+int vkms_gem_vmap(struct drm_gem_object *obj);
+
+void vkms_gem_vunmap(struct drm_gem_object *obj);
 
 #endif /* _VKMS_DRV_H_ */

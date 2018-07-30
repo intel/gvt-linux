@@ -2942,8 +2942,8 @@ static void intel_print_wm_latency(struct drm_i915_private *dev_priv,
 		unsigned int latency = wm[level];
 
 		if (latency == 0) {
-			DRM_ERROR("%s WM%d latency not provided\n",
-				  name, level);
+			DRM_DEBUG_KMS("%s WM%d latency not provided\n",
+				      name, level);
 			continue;
 		}
 
@@ -5142,17 +5142,6 @@ skl_compute_ddb(struct drm_atomic_state *state)
 }
 
 static void
-skl_copy_ddb_for_pipe(struct skl_ddb_values *dst,
-		      struct skl_ddb_values *src,
-		      enum pipe pipe)
-{
-	memcpy(dst->ddb.uv_plane[pipe], src->ddb.uv_plane[pipe],
-	       sizeof(dst->ddb.uv_plane[pipe]));
-	memcpy(dst->ddb.plane[pipe], src->ddb.plane[pipe],
-	       sizeof(dst->ddb.plane[pipe]));
-}
-
-static void
 skl_print_wm_changes(const struct drm_atomic_state *state)
 {
 	const struct drm_device *dev = state->dev;
@@ -5381,7 +5370,10 @@ static void skl_initial_wm(struct intel_atomic_state *state,
 	if (cstate->base.active_changed)
 		skl_atomic_update_crtc_wm(state, cstate);
 
-	skl_copy_ddb_for_pipe(hw_vals, results, pipe);
+	memcpy(hw_vals->ddb.uv_plane[pipe], results->ddb.uv_plane[pipe],
+	       sizeof(hw_vals->ddb.uv_plane[pipe]));
+	memcpy(hw_vals->ddb.plane[pipe], results->ddb.plane[pipe],
+	       sizeof(hw_vals->ddb.plane[pipe]));
 
 	mutex_unlock(&dev_priv->wm.wm_mutex);
 }

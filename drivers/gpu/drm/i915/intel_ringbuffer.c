@@ -527,6 +527,8 @@ static int init_ring_common(struct intel_engine_cs *engine)
 	if (INTEL_GEN(dev_priv) > 2)
 		I915_WRITE_MODE(engine, _MASKED_BIT_DISABLE(STOP_RING));
 
+	/* Papering over lost _interrupts_ immediately following the restart */
+	intel_engine_wakeup(engine);
 out:
 	intel_uncore_forcewake_put(dev_priv, FORCEWAKE_ALL);
 
@@ -1003,24 +1005,22 @@ i915_emit_bb_start(struct i915_request *rq,
 	return 0;
 }
 
-
-
-int intel_ring_pin(struct intel_ring *ring,
-		   struct drm_i915_private *i915,
-		   unsigned int offset_bias)
+int intel_ring_pin(struct intel_ring *ring)
 {
-	enum i915_map_type map = HAS_LLC(i915) ? I915_MAP_WB : I915_MAP_WC;
 	struct i915_vma *vma = ring->vma;
+	enum i915_map_type map =
+		HAS_LLC(vma->vm->i915) ? I915_MAP_WB : I915_MAP_WC;
 	unsigned int flags;
 	void *addr;
 	int ret;
 
 	GEM_BUG_ON(ring->vaddr);
 
-
 	flags = PIN_GLOBAL;
-	if (offset_bias)
-		flags |= PIN_OFFSET_BIAS | offset_bias;
+
+	/* Ring wraparound at offset 0 sometimes hangs. No idea why. */
+	flags |= PIN_OFFSET_BIAS | i915_ggtt_pin_bias(vma);
+
 	if (vma->obj->stolen)
 		flags |= PIN_MAPPABLE;
 	else
@@ -1035,7 +1035,7 @@ int intel_ring_pin(struct intel_ring *ring,
 			return ret;
 	}
 
-	ret = i915_vma_pin(vma, 0, PAGE_SIZE, flags);
+	ret = i915_vma_pin(vma, 0, 0, flags);
 	if (unlikely(ret))
 		return ret;
 
@@ -1220,8 +1220,7 @@ static int __context_pin(struct intel_context *ce)
 			return err;
 	}
 
-	err = i915_vma_pin(vma, 0, I915_GTT_MIN_ALIGNMENT,
-			   PIN_GLOBAL | PIN_HIGH);
+	err = i915_vma_pin(vma, 0, 0, PIN_GLOBAL | PIN_HIGH);
 	if (err)
 		return err;
 
@@ -1409,8 +1408,7 @@ static int intel_init_ring_buffer(struct intel_engine_cs *engine)
 		goto err;
 	}
 
-	/* Ring wraparound at offset 0 sometimes hangs. No idea why. */
-	err = intel_ring_pin(ring, engine->i915, I915_GTT_PAGE_SIZE);
+	err = intel_ring_pin(ring);
 	if (err)
 		goto err_ring;
 

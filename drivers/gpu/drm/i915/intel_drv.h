@@ -1164,6 +1164,7 @@ struct intel_digital_port {
 	bool release_cl2_override;
 	uint8_t max_lanes;
 	enum intel_display_power_domain ddi_io_power_domain;
+	enum tc_port_type tc_type;
 
 	void (*write_infoframe)(struct drm_encoder *encoder,
 				const struct intel_crtc_state *crtc_state,
@@ -1713,6 +1714,9 @@ void intel_edp_drrs_invalidate(struct drm_i915_private *dev_priv,
 			       unsigned int frontbuffer_bits);
 void intel_edp_drrs_flush(struct drm_i915_private *dev_priv,
 			  unsigned int frontbuffer_bits);
+void icl_program_mg_dp_mode(struct intel_dp *intel_dp);
+void icl_enable_phy_clock_gating(struct intel_digital_port *dig_port);
+void icl_disable_phy_clock_gating(struct intel_digital_port *dig_port);
 
 void
 intel_dp_program_link_training_pattern(struct intel_dp *intel_dp,

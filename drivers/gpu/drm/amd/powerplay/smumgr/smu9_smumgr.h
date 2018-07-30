@@ -1,5 +1,5 @@
 /*
- * Copyright 2015 Advanced Micro Devices, Inc.
+ * Copyright 2018 Advanced Micro Devices, Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -20,17 +20,13 @@
  * OTHER DEALINGS IN THE SOFTWARE.
  *
  */
+#ifndef _SMU9_SMUMANAGER_H_
+#define _SMU9_SMUMANAGER_H_
 
-#ifndef PP_POWERSOURCE_H
-#define PP_POWERSOURCE_H
-
-enum pp_power_source {
-	PP_PowerSource_AC = 0,
-	PP_PowerSource_DC,
-	PP_PowerSource_LimitedPower,
-	PP_PowerSource_LimitedPower_2,
-	PP_PowerSource_Max
-};
-
+bool smu9_is_smc_ram_running(struct pp_hwmgr *hwmgr);
+int smu9_send_msg_to_smc(struct pp_hwmgr *hwmgr, uint16_t msg);
+int smu9_send_msg_to_smc_with_parameter(struct pp_hwmgr *hwmgr,
+					uint16_t msg, uint32_t parameter);
+uint32_t smu9_get_argument(struct pp_hwmgr *hwmgr);
 
 #endif

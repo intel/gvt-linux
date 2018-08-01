@@ -54,6 +54,7 @@
 #include "reg_helper.h"
 
 #include "dce/dce_dmcu.h"
+#include "dce/dce_aux.h"
 #include "dce/dce_abm.h"
 /* TODO remove this include */
 
@@ -153,15 +154,15 @@ static const struct dce110_timing_generator_offsets dce80_tg_offsets[] = {
 	.reg_name = mm ## block ## id ## _ ## reg_name
 
 
-static const struct dce_disp_clk_registers disp_clk_regs = {
+static const struct dccg_registers disp_clk_regs = {
 		CLK_COMMON_REG_LIST_DCE_BASE()
 };
 
-static const struct dce_disp_clk_shift disp_clk_shift = {
+static const struct dccg_shift disp_clk_shift = {
 		CLK_COMMON_MASK_SH_LIST_DCE_COMMON_BASE(__SHIFT)
 };
 
-static const struct dce_disp_clk_mask disp_clk_mask = {
+static const struct dccg_mask disp_clk_mask = {
 		CLK_COMMON_MASK_SH_LIST_DCE_COMMON_BASE(_MASK)
 };
 
@@ -296,6 +297,21 @@ static const struct dce_opp_shift opp_shift = {
 
 static const struct dce_opp_mask opp_mask = {
 	OPP_COMMON_MASK_SH_LIST_DCE_80(_MASK)
+};
+
+#define aux_engine_regs(id)\
+[id] = {\
+	AUX_COMMON_REG_LIST(id), \
+	.AUX_RESET_MASK = 0 \
+}
+
+static const struct dce110_aux_registers aux_engine_regs[] = {
+		aux_engine_regs(0),
+		aux_engine_regs(1),
+		aux_engine_regs(2),
+		aux_engine_regs(3),
+		aux_engine_regs(4),
+		aux_engine_regs(5)
 };
 
 #define audio_regs(id)\
@@ -446,6 +462,23 @@ static struct output_pixel_processor *dce80_opp_create(
 	dce110_opp_construct(opp,
 			     ctx, inst, &opp_regs[inst], &opp_shift, &opp_mask);
 	return &opp->base;
+}
+
+struct engine *dce80_aux_engine_create(
+	struct dc_context *ctx,
+	uint32_t inst)
+{
+	struct aux_engine_dce110 *aux_engine =
+		kzalloc(sizeof(struct aux_engine_dce110), GFP_KERNEL);
+
+	if (!aux_engine)
+		return NULL;
+
+	dce110_aux_engine_construct(aux_engine, ctx, inst,
+				    SW_AUX_TIMEOUT_PERIOD_MULTIPLIER * AUX_TIMEOUT_PERIOD,
+				    &aux_engine_regs[inst]);
+
+	return &aux_engine->base.base;
 }
 
 static struct stream_encoder *dce80_stream_encoder_create(
@@ -655,6 +688,9 @@ static void destruct(struct dce110_resource_pool *pool)
 			kfree(DCE110TG_FROM_TG(pool->base.timing_generators[i]));
 			pool->base.timing_generators[i] = NULL;
 		}
+
+		if (pool->base.engines[i] != NULL)
+			dce110_engine_destroy(&pool->base.engines[i]);
 	}
 
 	for (i = 0; i < pool->base.stream_enc_count; i++) {
@@ -683,8 +719,8 @@ static void destruct(struct dce110_resource_pool *pool)
 		}
 	}
 
-	if (pool->base.display_clock != NULL)
-		dce_disp_clk_destroy(&pool->base.display_clock);
+	if (pool->base.dccg != NULL)
+		dce_dccg_destroy(&pool->base.dccg);
 
 	if (pool->base.irqs != NULL) {
 		dal_irq_service_destroy(&pool->base.irqs);
@@ -822,11 +858,11 @@ static bool dce80_construct(
 		}
 	}
 
-	pool->base.display_clock = dce_disp_clk_create(ctx,
+	pool->base.dccg = dce_dccg_create(ctx,
 			&disp_clk_regs,
 			&disp_clk_shift,
 			&disp_clk_mask);
-	if (pool->base.display_clock == NULL) {
+	if (pool->base.dccg == NULL) {
 		dm_error("DC: failed to create display clock!\n");
 		BREAK_TO_DEBUGGER();
 		goto res_create_fail;
@@ -852,7 +888,7 @@ static bool dce80_construct(
 		goto res_create_fail;
 	}
 	if (dm_pp_get_static_clocks(ctx, &static_clk_info))
-		pool->base.display_clock->max_clks_state =
+		pool->base.dccg->max_clks_state =
 					static_clk_info.max_clocks_state;
 
 	{
@@ -897,6 +933,14 @@ static bool dce80_construct(
 		if (pool->base.opps[i] == NULL) {
 			BREAK_TO_DEBUGGER();
 			dm_error("DC: failed to create output pixel processor!\n");
+			goto res_create_fail;
+		}
+
+		pool->base.engines[i] = dce80_aux_engine_create(ctx, i);
+		if (pool->base.engines[i] == NULL) {
+			BREAK_TO_DEBUGGER();
+			dm_error(
+				"DC:failed to create aux engine!!\n");
 			goto res_create_fail;
 		}
 	}
@@ -1006,11 +1050,11 @@ static bool dce81_construct(
 		}
 	}
 
-	pool->base.display_clock = dce_disp_clk_create(ctx,
+	pool->base.dccg = dce_dccg_create(ctx,
 			&disp_clk_regs,
 			&disp_clk_shift,
 			&disp_clk_mask);
-	if (pool->base.display_clock == NULL) {
+	if (pool->base.dccg == NULL) {
 		dm_error("DC: failed to create display clock!\n");
 		BREAK_TO_DEBUGGER();
 		goto res_create_fail;
@@ -1037,7 +1081,7 @@ static bool dce81_construct(
 	}
 
 	if (dm_pp_get_static_clocks(ctx, &static_clk_info))
-		pool->base.display_clock->max_clks_state =
+		pool->base.dccg->max_clks_state =
 					static_clk_info.max_clocks_state;
 
 	{
@@ -1187,11 +1231,11 @@ static bool dce83_construct(
 		}
 	}
 
-	pool->base.display_clock = dce_disp_clk_create(ctx,
+	pool->base.dccg = dce_dccg_create(ctx,
 			&disp_clk_regs,
 			&disp_clk_shift,
 			&disp_clk_mask);
-	if (pool->base.display_clock == NULL) {
+	if (pool->base.dccg == NULL) {
 		dm_error("DC: failed to create display clock!\n");
 		BREAK_TO_DEBUGGER();
 		goto res_create_fail;
@@ -1218,7 +1262,7 @@ static bool dce83_construct(
 	}
 
 	if (dm_pp_get_static_clocks(ctx, &static_clk_info))
-		pool->base.display_clock->max_clks_state =
+		pool->base.dccg->max_clks_state =
 					static_clk_info.max_clocks_state;
 
 	{

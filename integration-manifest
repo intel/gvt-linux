@@ -1,0 +1,28 @@
+drm drm-fixes 51973dc079a9e1e082ae647ee3804f324a258eee
+	Merge tag 'drm-misc-fixes-2018-07-27' of git://anongit.freedesktop.org/drm/drm-misc into drm-fixes
+drm-misc drm-misc-fixes a6a00918d4ad8718c3ccde38c02cec17f116b2fd
+	drm/vc4: Reset ->{x, y}_scaling[1] when dealing with uniplanar formats
+drm-intel drm-intel-fixes 0ca9488193e61ec5f31a631d8147f74525629e8a
+	drm/i915/glk: Add Quirk for GLK NUC HDMI port issues.
+drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
+	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
+drm drm-next 15da09500a7053612e4ab049ff998e99a77a8df0
+	Merge branch 'drm-armada-devel' of git://git.armlinux.org.uk/~rmk/linux-arm into drm-next
+drm-misc drm-misc-next-fixes 2ead1be54b22ccdc93d3030172993e363128f1b4
+	drm/vkms: Fix connector leak at the module removal
+drm-intel drm-intel-next-fixes 807cba6559cf333a74df1fbd74f0597e8e7fa020
+	Merge tag 'gvt-fixes-2018-04-19' of https://github.com/intel/gvt-linux into drm-intel-next-fixes
+drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
+	Linux 4.14-rc1
+drm-misc drm-misc-next 22e6de7074b820103cc566b1f57106515a054a39
+	drm/dp: add missing ')' to I2C nack debug message
+drm-intel drm-intel-next-queued d0f5cc5db11470a160788c123cc67bdb0cad1904
+	drm/i915/execlists: Terminate the context image with BB_END
+drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
+	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
+sound-upstream for-linus f59cf9a0551dd954ad8b752461cf19d9789f4b1d
+	ALSA: hda - Sleep for 10ms after entering D3 on Conexant codecs
+sound-upstream for-next 5a6cd13d4faef48bdcb7ae9c1e98175332ced7cd
+	ALSA: pcm: Mark expected switch fall-through
+drm-intel topic/core-for-CI e0b3053545ea38e20cc85537ba2840780fc63a68
+	usb/icl: Work around ACPI boottime crash

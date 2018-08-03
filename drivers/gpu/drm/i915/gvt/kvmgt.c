@@ -1207,6 +1207,7 @@ static long intel_vgpu_ioctl(struct mdev_device *mdev, unsigned int cmd,
 					return ret;
 				break;
 			default:
+				kfree(sparse);
 				return -EINVAL;
 			}
 		}
@@ -1222,6 +1223,7 @@ static long intel_vgpu_ioctl(struct mdev_device *mdev, unsigned int cmd,
 						  sizeof(info), caps.buf,
 						  caps.size)) {
 					kfree(caps.buf);
+					kfree(sparse);
 					return -EFAULT;
 				}
 				info.cap_offset = sizeof(info);
@@ -1230,6 +1232,7 @@ static long intel_vgpu_ioctl(struct mdev_device *mdev, unsigned int cmd,
 			kfree(caps.buf);
 		}
 
+		kfree(sparse);
 		return copy_to_user((void __user *)arg, &info, minsz) ?
 			-EFAULT : 0;
 	} else if (cmd == VFIO_DEVICE_GET_IRQ_INFO) {

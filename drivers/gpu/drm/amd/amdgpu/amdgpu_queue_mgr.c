@@ -66,8 +66,6 @@ static int amdgpu_identity_map(struct amdgpu_device *adev,
 			       u32 ring,
 			       struct amdgpu_ring **out_ring)
 {
-	u32 instance;
-
 	switch (mapper->hw_ip) {
 	case AMDGPU_HW_IP_GFX:
 		*out_ring = &adev->gfx.gfx_ring[ring];
@@ -79,22 +77,22 @@ static int amdgpu_identity_map(struct amdgpu_device *adev,
 		*out_ring = &adev->sdma.instance[ring].ring;
 		break;
 	case AMDGPU_HW_IP_UVD:
-		instance = ring;
-		*out_ring = &adev->uvd.inst[instance].ring;
+		*out_ring = &adev->uvd.inst[0].ring;
 		break;
 	case AMDGPU_HW_IP_VCE:
 		*out_ring = &adev->vce.ring[ring];
 		break;
 	case AMDGPU_HW_IP_UVD_ENC:
-		instance = ring / adev->uvd.num_enc_rings;
-		*out_ring =
-		&adev->uvd.inst[instance].ring_enc[ring%adev->uvd.num_enc_rings];
+		*out_ring = &adev->uvd.inst[0].ring_enc[ring];
 		break;
 	case AMDGPU_HW_IP_VCN_DEC:
 		*out_ring = &adev->vcn.ring_dec;
 		break;
 	case AMDGPU_HW_IP_VCN_ENC:
 		*out_ring = &adev->vcn.ring_enc[ring];
+		break;
+	case AMDGPU_HW_IP_VCN_JPEG:
+		*out_ring = &adev->vcn.ring_jpeg;
 		break;
 	default:
 		*out_ring = NULL;
@@ -260,6 +258,9 @@ int amdgpu_queue_mgr_map(struct amdgpu_device *adev,
 	case AMDGPU_HW_IP_VCN_ENC:
 		ip_num_rings = adev->vcn.num_enc_rings;
 		break;
+	case AMDGPU_HW_IP_VCN_JPEG:
+		ip_num_rings = 1;
+		break;
 	default:
 		DRM_DEBUG("unknown ip type: %d\n", hw_ip);
 		return -EINVAL;
@@ -287,6 +288,7 @@ int amdgpu_queue_mgr_map(struct amdgpu_device *adev,
 	case AMDGPU_HW_IP_UVD_ENC:
 	case AMDGPU_HW_IP_VCN_DEC:
 	case AMDGPU_HW_IP_VCN_ENC:
+	case AMDGPU_HW_IP_VCN_JPEG:
 		r = amdgpu_identity_map(adev, mapper, ring, out_ring);
 		break;
 	case AMDGPU_HW_IP_DMA:

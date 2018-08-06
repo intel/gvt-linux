@@ -474,7 +474,6 @@ struct intel_engine_cs {
 					 unsigned int dispatch_flags);
 #define I915_DISPATCH_SECURE BIT(0)
 #define I915_DISPATCH_PINNED BIT(1)
-#define I915_DISPATCH_RS     BIT(2)
 	void		(*emit_breadcrumb)(struct i915_request *rq, u32 *cs);
 	int		emit_breadcrumb_sz;
 
@@ -797,9 +796,7 @@ struct intel_ring *
 intel_engine_create_ring(struct intel_engine_cs *engine,
 			 struct i915_timeline *timeline,
 			 int size);
-int intel_ring_pin(struct intel_ring *ring,
-		   struct drm_i915_private *i915,
-		   unsigned int offset_bias);
+int intel_ring_pin(struct intel_ring *ring);
 void intel_ring_reset(struct intel_ring *ring, u32 tail);
 unsigned int intel_ring_update_space(struct intel_ring *ring);
 void intel_ring_unpin(struct intel_ring *ring);

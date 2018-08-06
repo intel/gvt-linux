@@ -373,7 +373,7 @@ static int i915_getparam_ioctl(struct drm_device *dev, void *data,
 			value = 2;
 		break;
 	case I915_PARAM_HAS_RESOURCE_STREAMER:
-		value = HAS_RESOURCE_STREAMER(dev_priv);
+		value = 0;
 		break;
 	case I915_PARAM_HAS_POOLED_EU:
 		value = HAS_POOLED_EU(dev_priv);
@@ -440,6 +440,9 @@ static int i915_getparam_ioctl(struct drm_device *dev, void *data,
 		break;
 	case I915_PARAM_CS_TIMESTAMP_FREQUENCY:
 		value = 1000 * INTEL_INFO(dev_priv)->cs_timestamp_frequency_khz;
+		break;
+	case I915_PARAM_MMAP_GTT_COHERENT:
+		value = INTEL_INFO(dev_priv)->has_coherent_ggtt;
 		break;
 	default:
 		DRM_DEBUG("Unknown parameter %d\n", param->param);
@@ -1755,7 +1758,7 @@ static int i915_drm_resume(struct drm_device *dev)
 	/*
 	 * ... but also need to make sure that hotplug processing
 	 * doesn't cause havoc. Like in the driver load code we don't
-	 * bother with the tiny race here where we might loose hotplug
+	 * bother with the tiny race here where we might lose hotplug
 	 * notifications.
 	 * */
 	intel_hpd_init(dev_priv);
@@ -1915,7 +1918,6 @@ void i915_reset(struct drm_i915_private *i915,
 		dev_notice(i915->drm.dev, "Resetting chip for %s\n", reason);
 	error->reset_count++;
 
-	disable_irq(i915->drm.irq);
 	ret = i915_gem_reset_prepare(i915);
 	if (ret) {
 		dev_err(i915->drm.dev, "GPU recovery failed\n");
@@ -1977,8 +1979,6 @@ void i915_reset(struct drm_i915_private *i915,
 
 finish:
 	i915_gem_reset_finish(i915);
-	enable_irq(i915->drm.irq);
-
 wakeup:
 	clear_bit(I915_RESET_HANDOFF, &error->flags);
 	wake_up_bit(&error->flags, I915_RESET_HANDOFF);

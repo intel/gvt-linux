@@ -2942,8 +2942,8 @@ static void intel_print_wm_latency(struct drm_i915_private *dev_priv,
 		unsigned int latency = wm[level];
 
 		if (latency == 0) {
-			DRM_ERROR("%s WM%d latency not provided\n",
-				  name, level);
+			DRM_DEBUG_KMS("%s WM%d latency not provided\n",
+				      name, level);
 			continue;
 		}
 
@@ -3909,7 +3909,12 @@ skl_ddb_get_hw_plane_state(struct drm_i915_private *dev_priv,
 				      val & PLANE_CTL_ALPHA_MASK);
 
 	val = I915_READ(PLANE_BUF_CFG(pipe, plane_id));
-	val2 = I915_READ(PLANE_NV12_BUF_CFG(pipe, plane_id));
+	/*
+	 * FIXME: add proper NV12 support for ICL. Avoid reading unclaimed
+	 * registers for now.
+	 */
+	if (INTEL_GEN(dev_priv) < 11)
+		val2 = I915_READ(PLANE_NV12_BUF_CFG(pipe, plane_id));
 
 	if (fourcc == DRM_FORMAT_NV12) {
 		skl_ddb_entry_init_from_hw(dev_priv,
@@ -4977,6 +4982,7 @@ static void skl_write_plane_wm(struct intel_crtc *intel_crtc,
 
 	skl_ddb_entry_write(dev_priv, PLANE_BUF_CFG(pipe, plane_id),
 			    &ddb->plane[pipe][plane_id]);
+	/* FIXME: add proper NV12 support for ICL. */
 	if (INTEL_GEN(dev_priv) >= 11)
 		return skl_ddb_entry_write(dev_priv,
 					   PLANE_BUF_CFG(pipe, plane_id),
@@ -5139,17 +5145,6 @@ skl_compute_ddb(struct drm_atomic_state *state)
 	}
 
 	return 0;
-}
-
-static void
-skl_copy_ddb_for_pipe(struct skl_ddb_values *dst,
-		      struct skl_ddb_values *src,
-		      enum pipe pipe)
-{
-	memcpy(dst->ddb.uv_plane[pipe], src->ddb.uv_plane[pipe],
-	       sizeof(dst->ddb.uv_plane[pipe]));
-	memcpy(dst->ddb.plane[pipe], src->ddb.plane[pipe],
-	       sizeof(dst->ddb.plane[pipe]));
 }
 
 static void
@@ -5381,7 +5376,10 @@ static void skl_initial_wm(struct intel_atomic_state *state,
 	if (cstate->base.active_changed)
 		skl_atomic_update_crtc_wm(state, cstate);
 
-	skl_copy_ddb_for_pipe(hw_vals, results, pipe);
+	memcpy(hw_vals->ddb.uv_plane[pipe], results->ddb.uv_plane[pipe],
+	       sizeof(hw_vals->ddb.uv_plane[pipe]));
+	memcpy(hw_vals->ddb.plane[pipe], results->ddb.plane[pipe],
+	       sizeof(hw_vals->ddb.plane[pipe]));
 
 	mutex_unlock(&dev_priv->wm.wm_mutex);
 }
@@ -6379,7 +6377,6 @@ static void gen6_set_rps_thresholds(struct drm_i915_private *dev_priv, u8 val)
 		new_power = HIGH_POWER;
 	rps_set_power(dev_priv, new_power);
 	mutex_unlock(&rps->power.mutex);
-	rps->last_adj = 0;
 }
 
 void intel_rps_mark_interactive(struct drm_i915_private *i915, bool interactive)

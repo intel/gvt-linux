@@ -1,0 +1,28 @@
+drm drm-fixes 51973dc079a9e1e082ae647ee3804f324a258eee
+	Merge tag 'drm-misc-fixes-2018-07-27' of git://anongit.freedesktop.org/drm/drm-misc into drm-fixes
+drm-misc drm-misc-fixes 404fb5c9ef26598e528a6242db9b34d6b3046ed7
+	drm/vc4: Fix the "no scaling" case on multi-planar YUV formats
+drm-intel drm-intel-fixes 1ffaddd029c867d134a1dde39f540dcc8c52e274
+	Linux 4.18-rc8
+drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
+	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
+drm drm-next 824da016fde1de98ab92c5b9df1b52433edd1594
+	Merge tag 'drm-intel-next-fixes-2018-08-06' of git://anongit.freedesktop.org/drm/drm-intel into drm-next
+drm-misc drm-misc-next-fixes 2ead1be54b22ccdc93d3030172993e363128f1b4
+	drm/vkms: Fix connector leak at the module removal
+drm-intel drm-intel-next-fixes 3237c0dbe21f8d2ca2feaa3891aff3619873cd30
+	drm/i915/kvmgt: Fix compilation error
+drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
+	Linux 4.14-rc1
+drm-misc drm-misc-next e61e0f07ef0d0b9312269582542f6627bc35c799
+	gpu: drm: virtio: code cleanup
+drm-intel drm-intel-next-queued 97f0615800041b145b36e00df65526e0fa6927bd
+	drm/i915: Pull seqno started checks together
+drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
+	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
+sound-upstream for-linus 627661ced8246c8e833f3bc3817070e934cd79ba
+	ALSA: dice: fix wrong copy to rx parameters for Alesis iO26
+sound-upstream for-next d2f884612c42850db0b3521b74a05636a5fc035f
+	ALSA: intel_hdmi: remove redundant variable cfg_val
+drm-intel topic/core-for-CI e0b3053545ea38e20cc85537ba2840780fc63a68
+	usb/icl: Work around ACPI boottime crash

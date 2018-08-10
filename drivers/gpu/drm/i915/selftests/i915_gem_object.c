@@ -282,7 +282,7 @@ static int check_partial_mapping(struct drm_i915_gem_object *obj,
 			       view.partial.offset,
 			       view.partial.size,
 			       vma->size >> PAGE_SHIFT,
-			       tile_row_pages(obj),
+			       tile->tiling ? tile_row_pages(obj) : 0,
 			       vma->fence ? vma->fence->id : -1, tile->tiling, tile->stride,
 			       offset >> PAGE_SHIFT,
 			       (unsigned int)offset_in_page(offset),
@@ -499,6 +499,19 @@ static bool assert_mmap_offset(struct drm_i915_private *i915,
 	return err == expected;
 }
 
+static void disable_retire_worker(struct drm_i915_private *i915)
+{
+	mutex_lock(&i915->drm.struct_mutex);
+	if (!i915->gt.active_requests++) {
+		intel_runtime_pm_get(i915);
+		i915_gem_unpark(i915);
+		intel_runtime_pm_put(i915);
+	}
+	mutex_unlock(&i915->drm.struct_mutex);
+	cancel_delayed_work_sync(&i915->gt.retire_work);
+	cancel_delayed_work_sync(&i915->gt.idle_work);
+}
+
 static int igt_mmap_offset_exhaustion(void *arg)
 {
 	struct drm_i915_private *i915 = arg;
@@ -509,12 +522,7 @@ static int igt_mmap_offset_exhaustion(void *arg)
 	int loop, err;
 
 	/* Disable background reaper */
-	mutex_lock(&i915->drm.struct_mutex);
-	if (!i915->gt.active_requests++)
-		i915_gem_unpark(i915);
-	mutex_unlock(&i915->drm.struct_mutex);
-	cancel_delayed_work_sync(&i915->gt.retire_work);
-	cancel_delayed_work_sync(&i915->gt.idle_work);
+	disable_retire_worker(i915);
 	GEM_BUG_ON(!i915->gt.awake);
 
 	/* Trim the device mmap space to only a page */

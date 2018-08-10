@@ -184,7 +184,7 @@ err_mode_config_cleanup:
 err_free:
 	drm_dev->dev_private = NULL;
 	dev_set_drvdata(dev, NULL);
-	drm_dev_unref(drm_dev);
+	drm_dev_put(drm_dev);
 	return ret;
 }
 
@@ -204,7 +204,7 @@ static void rockchip_drm_unbind(struct device *dev)
 
 	drm_dev->dev_private = NULL;
 	dev_set_drvdata(dev, NULL);
-	drm_dev_unref(drm_dev);
+	drm_dev_put(drm_dev);
 }
 
 static const struct file_operations rockchip_drm_driver_fops = {
@@ -243,60 +243,18 @@ static struct drm_driver rockchip_drm_driver = {
 };
 
 #ifdef CONFIG_PM_SLEEP
-static void rockchip_drm_fb_suspend(struct drm_device *drm)
-{
-	struct rockchip_drm_private *priv = drm->dev_private;
-
-	console_lock();
-	drm_fb_helper_set_suspend(&priv->fbdev_helper, 1);
-	console_unlock();
-}
-
-static void rockchip_drm_fb_resume(struct drm_device *drm)
-{
-	struct rockchip_drm_private *priv = drm->dev_private;
-
-	console_lock();
-	drm_fb_helper_set_suspend(&priv->fbdev_helper, 0);
-	console_unlock();
-}
-
 static int rockchip_drm_sys_suspend(struct device *dev)
 {
 	struct drm_device *drm = dev_get_drvdata(dev);
-	struct rockchip_drm_private *priv;
 
-	if (!drm)
-		return 0;
-
-	drm_kms_helper_poll_disable(drm);
-	rockchip_drm_fb_suspend(drm);
-
-	priv = drm->dev_private;
-	priv->state = drm_atomic_helper_suspend(drm);
-	if (IS_ERR(priv->state)) {
-		rockchip_drm_fb_resume(drm);
-		drm_kms_helper_poll_enable(drm);
-		return PTR_ERR(priv->state);
-	}
-
-	return 0;
+	return drm_mode_config_helper_suspend(drm);
 }
 
 static int rockchip_drm_sys_resume(struct device *dev)
 {
 	struct drm_device *drm = dev_get_drvdata(dev);
-	struct rockchip_drm_private *priv;
 
-	if (!drm)
-		return 0;
-
-	priv = drm->dev_private;
-	drm_atomic_helper_resume(drm, priv->state);
-	rockchip_drm_fb_resume(drm);
-	drm_kms_helper_poll_enable(drm);
-
-	return 0;
+	return drm_mode_config_helper_resume(drm);
 }
 #endif
 

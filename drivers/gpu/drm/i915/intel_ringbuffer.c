@@ -387,8 +387,18 @@ static void intel_ring_setup_status_page(struct intel_engine_cs *engine)
 		mmio = RING_HWS_PGA(engine->mmio_base);
 	}
 
-	if (INTEL_GEN(dev_priv) >= 6)
-		I915_WRITE(RING_HWSTAM(engine->mmio_base), 0xffffffff);
+	if (INTEL_GEN(dev_priv) >= 6) {
+		u32 mask = ~0u;
+
+		/*
+		 * Keep the render interrupt unmasked as this papers over
+		 * lost interrupts following a reset.
+		 */
+		if (engine->id == RCS)
+			mask &= ~BIT(0);
+
+		I915_WRITE(RING_HWSTAM(engine->mmio_base), mask);
+	}
 
 	I915_WRITE(mmio, engine->status_page.ggtt_offset);
 	POSTING_READ(mmio);
@@ -1003,24 +1013,22 @@ i915_emit_bb_start(struct i915_request *rq,
 	return 0;
 }
 
-
-
-int intel_ring_pin(struct intel_ring *ring,
-		   struct drm_i915_private *i915,
-		   unsigned int offset_bias)
+int intel_ring_pin(struct intel_ring *ring)
 {
-	enum i915_map_type map = HAS_LLC(i915) ? I915_MAP_WB : I915_MAP_WC;
 	struct i915_vma *vma = ring->vma;
+	enum i915_map_type map =
+		HAS_LLC(vma->vm->i915) ? I915_MAP_WB : I915_MAP_WC;
 	unsigned int flags;
 	void *addr;
 	int ret;
 
 	GEM_BUG_ON(ring->vaddr);
 
-
 	flags = PIN_GLOBAL;
-	if (offset_bias)
-		flags |= PIN_OFFSET_BIAS | offset_bias;
+
+	/* Ring wraparound at offset 0 sometimes hangs. No idea why. */
+	flags |= PIN_OFFSET_BIAS | i915_ggtt_pin_bias(vma);
+
 	if (vma->obj->stolen)
 		flags |= PIN_MAPPABLE;
 	else
@@ -1035,7 +1043,7 @@ int intel_ring_pin(struct intel_ring *ring,
 			return ret;
 	}
 
-	ret = i915_vma_pin(vma, 0, PAGE_SIZE, flags);
+	ret = i915_vma_pin(vma, 0, 0, flags);
 	if (unlikely(ret))
 		return ret;
 
@@ -1220,8 +1228,7 @@ static int __context_pin(struct intel_context *ce)
 			return err;
 	}
 
-	err = i915_vma_pin(vma, 0, I915_GTT_MIN_ALIGNMENT,
-			   PIN_GLOBAL | PIN_HIGH);
+	err = i915_vma_pin(vma, 0, 0, PIN_GLOBAL | PIN_HIGH);
 	if (err)
 		return err;
 
@@ -1409,8 +1416,7 @@ static int intel_init_ring_buffer(struct intel_engine_cs *engine)
 		goto err;
 	}
 
-	/* Ring wraparound at offset 0 sometimes hangs. No idea why. */
-	err = intel_ring_pin(ring, engine->i915, I915_GTT_PAGE_SIZE);
+	err = intel_ring_pin(ring);
 	if (err)
 		goto err_ring;
 
@@ -1982,9 +1988,7 @@ hsw_emit_bb_start(struct i915_request *rq,
 		return PTR_ERR(cs);
 
 	*cs++ = MI_BATCH_BUFFER_START | (dispatch_flags & I915_DISPATCH_SECURE ?
-		0 : MI_BATCH_PPGTT_HSW | MI_BATCH_NON_SECURE_HSW) |
-		(dispatch_flags & I915_DISPATCH_RS ?
-		MI_BATCH_RESOURCE_STREAMER : 0);
+		0 : MI_BATCH_PPGTT_HSW | MI_BATCH_NON_SECURE_HSW);
 	/* bit0-7 is the length on GEN6+ */
 	*cs++ = offset;
 	intel_ring_advance(rq, cs);

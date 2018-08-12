@@ -1166,6 +1166,7 @@ struct intel_digital_port {
 	bool release_cl2_override;
 	uint8_t max_lanes;
 	enum intel_display_power_domain ddi_io_power_domain;
+	enum tc_port_type tc_type;
 
 	void (*write_infoframe)(struct drm_encoder *encoder,
 				const struct intel_crtc_state *crtc_state,
@@ -1715,6 +1716,9 @@ void intel_edp_drrs_invalidate(struct drm_i915_private *dev_priv,
 			       unsigned int frontbuffer_bits);
 void intel_edp_drrs_flush(struct drm_i915_private *dev_priv,
 			  unsigned int frontbuffer_bits);
+void icl_program_mg_dp_mode(struct intel_dp *intel_dp);
+void icl_enable_phy_clock_gating(struct intel_digital_port *dig_port);
+void icl_disable_phy_clock_gating(struct intel_digital_port *dig_port);
 
 void
 intel_dp_program_link_training_pattern(struct intel_dp *intel_dp,
@@ -1928,6 +1932,9 @@ void intel_psr_enable(struct intel_dp *intel_dp,
 		      const struct intel_crtc_state *crtc_state);
 void intel_psr_disable(struct intel_dp *intel_dp,
 		      const struct intel_crtc_state *old_crtc_state);
+int intel_psr_set_debugfs_mode(struct drm_i915_private *dev_priv,
+			       struct drm_modeset_acquire_ctx *ctx,
+			       u64 value);
 void intel_psr_invalidate(struct drm_i915_private *dev_priv,
 			  unsigned frontbuffer_bits,
 			  enum fb_op_origin origin);
@@ -1944,8 +1951,9 @@ int intel_psr_wait_for_idle(const struct intel_crtc_state *new_crtc_state);
 
 /* intel_runtime_pm.c */
 int intel_power_domains_init(struct drm_i915_private *);
-void intel_power_domains_fini(struct drm_i915_private *);
+void intel_power_domains_cleanup(struct drm_i915_private *dev_priv);
 void intel_power_domains_init_hw(struct drm_i915_private *dev_priv, bool resume);
+void intel_power_domains_fini_hw(struct drm_i915_private *dev_priv);
 void intel_power_domains_suspend(struct drm_i915_private *dev_priv);
 void intel_power_domains_verify_state(struct drm_i915_private *dev_priv);
 void bxt_display_core_init(struct drm_i915_private *dev_priv, bool resume);

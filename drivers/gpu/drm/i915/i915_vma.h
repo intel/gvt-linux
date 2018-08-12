@@ -138,7 +138,8 @@ i915_vma_instance(struct drm_i915_gem_object *obj,
 		  struct i915_address_space *vm,
 		  const struct i915_ggtt_view *view);
 
-void i915_vma_unpin_and_release(struct i915_vma **p_vma);
+void i915_vma_unpin_and_release(struct i915_vma **p_vma, unsigned int flags);
+#define I915_VMA_RELEASE_MAP BIT(0)
 
 static inline bool i915_vma_is_active(struct i915_vma *vma)
 {
@@ -205,6 +206,11 @@ static inline u32 i915_ggtt_offset(const struct i915_vma *vma)
 	GEM_BUG_ON(upper_32_bits(vma->node.start));
 	GEM_BUG_ON(upper_32_bits(vma->node.start + vma->node.size - 1));
 	return lower_32_bits(vma->node.start);
+}
+
+static inline u32 i915_ggtt_pin_bias(struct i915_vma *vma)
+{
+	return i915_vm_to_ggtt(vma->vm)->pin_bias;
 }
 
 static inline struct i915_vma *i915_vma_get(struct i915_vma *vma)

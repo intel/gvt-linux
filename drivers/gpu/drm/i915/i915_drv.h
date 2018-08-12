@@ -611,8 +611,18 @@ struct i915_drrs {
 
 struct i915_psr {
 	struct mutex lock;
+
+#define I915_PSR_DEBUG_MODE_MASK	0x0f
+#define I915_PSR_DEBUG_DEFAULT		0x00
+#define I915_PSR_DEBUG_DISABLE		0x01
+#define I915_PSR_DEBUG_ENABLE		0x02
+#define I915_PSR_DEBUG_FORCE_PSR1	0x03
+#define I915_PSR_DEBUG_IRQ		0x10
+
+	u32 debug;
 	bool sink_support;
-	struct intel_dp *enabled;
+	bool prepared, enabled;
+	struct intel_dp *dp;
 	bool active;
 	struct work_struct work;
 	unsigned busy_frontbuffer_bits;
@@ -622,7 +632,6 @@ struct i915_psr {
 	bool alpm;
 	bool psr2_enabled;
 	u8 sink_sync_latency;
-	bool debug;
 	ktime_t last_entry_attempt;
 	ktime_t last_exit;
 };
@@ -867,14 +876,17 @@ struct i915_power_well_ops {
 			   struct i915_power_well *power_well);
 };
 
+struct i915_power_well_regs {
+	i915_reg_t bios;
+	i915_reg_t driver;
+	i915_reg_t kvmr;
+	i915_reg_t debug;
+};
+
 /* Power well structure for haswell */
-struct i915_power_well {
+struct i915_power_well_desc {
 	const char *name;
 	bool always_on;
-	/* power well enable/disable usage count */
-	int count;
-	/* cached hw enabled state */
-	bool hw_enabled;
 	u64 domains;
 	/* unique identifier for this power well */
 	enum i915_power_well_id id;
@@ -884,9 +896,22 @@ struct i915_power_well {
 	 */
 	union {
 		struct {
+			/*
+			 * request/status flag index in the PUNIT power well
+			 * control/status registers.
+			 */
+			u8 idx;
+		} vlv;
+		struct {
 			enum dpio_phy phy;
 		} bxt;
 		struct {
+			const struct i915_power_well_regs *regs;
+			/*
+			 * request/status flag index in the power well
+			 * constrol/status registers.
+			 */
+			u8 idx;
 			/* Mask of pipes whose IRQ logic is backed by the pw */
 			u8 irq_pipe_mask;
 			/* The pw is backing the VGA functionality */
@@ -895,6 +920,14 @@ struct i915_power_well {
 		} hsw;
 	};
 	const struct i915_power_well_ops *ops;
+};
+
+struct i915_power_well {
+	const struct i915_power_well_desc *desc;
+	/* power well enable/disable usage count */
+	int count;
+	/* cached hw enabled state */
+	bool hw_enabled;
 };
 
 struct i915_power_domains {
@@ -2609,8 +2642,6 @@ intel_info(const struct drm_i915_private *dev_priv)
 #define USES_GUC(dev_priv)		intel_uc_is_using_guc()
 #define USES_GUC_SUBMISSION(dev_priv)	intel_uc_is_using_guc_submission()
 #define USES_HUC(dev_priv)		intel_uc_is_using_huc()
-
-#define HAS_RESOURCE_STREAMER(dev_priv) ((dev_priv)->info.has_resource_streamer)
 
 #define HAS_POOLED_EU(dev_priv)	((dev_priv)->info.has_pooled_eu)
 

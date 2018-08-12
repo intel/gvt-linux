@@ -137,6 +137,13 @@ enum tc_port {
 	I915_MAX_TC_PORTS
 };
 
+enum tc_port_type {
+	TC_PORT_UNKNOWN = 0,
+	TC_PORT_TYPEC,
+	TC_PORT_TBT,
+	TC_PORT_LEGACY,
+};
+
 enum dpio_channel {
 	DPIO_CH0,
 	DPIO_CH1
@@ -322,11 +329,11 @@ struct intel_link_m_n {
 
 #define for_each_power_domain_well(__dev_priv, __power_well, __domain_mask)	\
 	for_each_power_well(__dev_priv, __power_well)				\
-		for_each_if((__power_well)->domains & (__domain_mask))
+		for_each_if((__power_well)->desc->domains & (__domain_mask))
 
 #define for_each_power_domain_well_rev(__dev_priv, __power_well, __domain_mask) \
 	for_each_power_well_rev(__dev_priv, __power_well)		        \
-		for_each_if((__power_well)->domains & (__domain_mask))
+		for_each_if((__power_well)->desc->domains & (__domain_mask))
 
 #define for_each_new_intel_plane_in_state(__state, plane, new_plane_state, __i) \
 	for ((__i) = 0; \

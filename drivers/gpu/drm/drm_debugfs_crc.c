@@ -68,8 +68,29 @@ static int crc_control_show(struct seq_file *m, void *data)
 {
 	struct drm_crtc *crtc = m->private;
 
-	seq_printf(m, "%s\n", crtc->crc.source);
+	if (crtc->funcs->get_crc_sources) {
+		size_t count;
+		const char *const *sources = crtc->funcs->get_crc_sources(crtc,
+									&count);
+		size_t values_cnt;
+		int i;
 
+		if (count == 0 || !sources)
+			goto out;
+
+		for (i = 0; i < count; i++)
+			if (!crtc->funcs->verify_crc_source(crtc, sources[i],
+							    &values_cnt)) {
+				if (strcmp(sources[i], crtc->crc.source))
+					seq_printf(m, "%s\n", sources[i]);
+				else
+					seq_printf(m, "%s*\n", sources[i]);
+			}
+	}
+	return 0;
+
+out:
+	seq_printf(m, "%s*\n", crtc->crc.source);
 	return 0;
 }
 
@@ -87,6 +108,8 @@ static ssize_t crc_control_write(struct file *file, const char __user *ubuf,
 	struct drm_crtc *crtc = m->private;
 	struct drm_crtc_crc *crc = &crtc->crc;
 	char *source;
+	size_t values_cnt;
+	int ret;
 
 	if (len == 0)
 		return 0;
@@ -103,6 +126,12 @@ static ssize_t crc_control_write(struct file *file, const char __user *ubuf,
 
 	if (source[len] == '\n')
 		source[len] = '\0';
+
+	if (crtc->funcs->verify_crc_source) {
+		ret = crtc->funcs->verify_crc_source(crtc, source, &values_cnt);
+		if (ret)
+			return ret;
+	}
 
 	spin_lock_irq(&crc->lock);
 

@@ -189,14 +189,14 @@ static int gvt_dma_map_page(struct intel_vgpu *vgpu, unsigned long gfn,
 
 	/* Setup DMA mapping. */
 	*dma_addr = dma_map_page(dev, page, 0, size, PCI_DMA_BIDIRECTIONAL);
-	ret = dma_mapping_error(dev, *dma_addr);
-	if (ret) {
+	if (dma_mapping_error(dev, *dma_addr)) {
 		gvt_vgpu_err("DMA mapping failed for pfn 0x%lx, ret %d\n",
 			     page_to_pfn(page), ret);
 		gvt_unpin_guest_page(vgpu, gfn, size);
+		return -ENOMEM;
 	}
 
-	return ret;
+	return 0;
 }
 
 static void gvt_dma_unmap_page(struct intel_vgpu *vgpu, unsigned long gfn,
@@ -668,7 +668,7 @@ static void __intel_vgpu_release(struct intel_vgpu *vgpu)
 	if (atomic_cmpxchg(&vgpu->vdev.released, 0, 1))
 		return;
 
-	intel_gvt_ops->vgpu_deactivate(vgpu);
+	intel_gvt_ops->vgpu_release(vgpu);
 
 	ret = vfio_unregister_notifier(mdev_dev(vgpu->vdev.mdev), VFIO_IOMMU_NOTIFY,
 					&vgpu->vdev.iommu_notifier);

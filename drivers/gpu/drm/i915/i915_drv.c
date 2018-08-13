@@ -373,7 +373,7 @@ static int i915_getparam_ioctl(struct drm_device *dev, void *data,
 			value = 2;
 		break;
 	case I915_PARAM_HAS_RESOURCE_STREAMER:
-		value = HAS_RESOURCE_STREAMER(dev_priv);
+		value = 0;
 		break;
 	case I915_PARAM_HAS_POOLED_EU:
 		value = HAS_POOLED_EU(dev_priv);
@@ -440,6 +440,9 @@ static int i915_getparam_ioctl(struct drm_device *dev, void *data,
 		break;
 	case I915_PARAM_CS_TIMESTAMP_FREQUENCY:
 		value = 1000 * INTEL_INFO(dev_priv)->cs_timestamp_frequency_khz;
+		break;
+	case I915_PARAM_MMAP_GTT_COHERENT:
+		value = INTEL_INFO(dev_priv)->has_coherent_ggtt;
 		break;
 	default:
 		DRM_DEBUG("Unknown parameter %d\n", param->param);
@@ -709,7 +712,7 @@ cleanup_irq:
 	intel_teardown_gmbus(dev_priv);
 cleanup_csr:
 	intel_csr_ucode_fini(dev_priv);
-	intel_power_domains_fini(dev_priv);
+	intel_power_domains_fini_hw(dev_priv);
 	vga_switcheroo_unregister_client(pdev);
 cleanup_vga_client:
 	vga_client_register(pdev, NULL, NULL, NULL);
@@ -921,7 +924,9 @@ static int i915_driver_init_early(struct drm_i915_private *dev_priv,
 	intel_uc_init_early(dev_priv);
 	intel_pm_setup(dev_priv);
 	intel_init_dpio(dev_priv);
-	intel_power_domains_init(dev_priv);
+	ret = intel_power_domains_init(dev_priv);
+	if (ret < 0)
+		goto err_uc;
 	intel_irq_init(dev_priv);
 	intel_hangcheck_init(dev_priv);
 	intel_init_display_hooks(dev_priv);
@@ -933,6 +938,9 @@ static int i915_driver_init_early(struct drm_i915_private *dev_priv,
 
 	return 0;
 
+err_uc:
+	intel_uc_cleanup_early(dev_priv);
+	i915_gem_cleanup_early(dev_priv);
 err_workqueues:
 	i915_workqueues_cleanup(dev_priv);
 err_engines:
@@ -947,6 +955,7 @@ err_engines:
 static void i915_driver_cleanup_early(struct drm_i915_private *dev_priv)
 {
 	intel_irq_fini(dev_priv);
+	intel_power_domains_cleanup(dev_priv);
 	intel_uc_cleanup_early(dev_priv);
 	i915_gem_cleanup_early(dev_priv);
 	i915_workqueues_cleanup(dev_priv);
@@ -1459,7 +1468,7 @@ void i915_driver_unload(struct drm_device *dev)
 	i915_gem_fini(dev_priv);
 	intel_fbc_cleanup_cfb(dev_priv);
 
-	intel_power_domains_fini(dev_priv);
+	intel_power_domains_fini_hw(dev_priv);
 
 	i915_driver_cleanup_hw(dev_priv);
 	i915_driver_cleanup_mmio(dev_priv);
@@ -1755,7 +1764,7 @@ static int i915_drm_resume(struct drm_device *dev)
 	/*
 	 * ... but also need to make sure that hotplug processing
 	 * doesn't cause havoc. Like in the driver load code we don't
-	 * bother with the tiny race here where we might loose hotplug
+	 * bother with the tiny race here where we might lose hotplug
 	 * notifications.
 	 * */
 	intel_hpd_init(dev_priv);
@@ -1915,7 +1924,6 @@ void i915_reset(struct drm_i915_private *i915,
 		dev_notice(i915->drm.dev, "Resetting chip for %s\n", reason);
 	error->reset_count++;
 
-	disable_irq(i915->drm.irq);
 	ret = i915_gem_reset_prepare(i915);
 	if (ret) {
 		dev_err(i915->drm.dev, "GPU recovery failed\n");
@@ -1977,8 +1985,6 @@ void i915_reset(struct drm_i915_private *i915,
 
 finish:
 	i915_gem_reset_finish(i915);
-	enable_irq(i915->drm.irq);
-
 wakeup:
 	clear_bit(I915_RESET_HANDOFF, &error->flags);
 	wake_up_bit(&error->flags, I915_RESET_HANDOFF);

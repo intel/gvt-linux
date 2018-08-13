@@ -2708,7 +2708,7 @@ static int i915_edp_psr_status(struct seq_file *m, void *data)
 	intel_runtime_pm_get(dev_priv);
 
 	mutex_lock(&dev_priv->psr.lock);
-	seq_printf(m, "Enabled: %s\n", yesno((bool)dev_priv->psr.enabled));
+	seq_printf(m, "Enabled: %s\n", yesno(dev_priv->psr.enabled));
 	seq_printf(m, "Busy frontbuffer bits: 0x%03x\n",
 		   dev_priv->psr.busy_frontbuffer_bits);
 
@@ -2750,17 +2750,32 @@ static int
 i915_edp_psr_debug_set(void *data, u64 val)
 {
 	struct drm_i915_private *dev_priv = data;
+	struct drm_modeset_acquire_ctx ctx;
+	int ret;
 
 	if (!CAN_PSR(dev_priv))
 		return -ENODEV;
 
-	DRM_DEBUG_KMS("PSR debug %s\n", enableddisabled(val));
+	DRM_DEBUG_KMS("Setting PSR debug to %llx\n", val);
 
 	intel_runtime_pm_get(dev_priv);
-	intel_psr_irq_control(dev_priv, !!val);
+
+	drm_modeset_acquire_init(&ctx, DRM_MODESET_ACQUIRE_INTERRUPTIBLE);
+
+retry:
+	ret = intel_psr_set_debugfs_mode(dev_priv, &ctx, val);
+	if (ret == -EDEADLK) {
+		ret = drm_modeset_backoff(&ctx);
+		if (!ret)
+			goto retry;
+	}
+
+	drm_modeset_drop_locks(&ctx);
+	drm_modeset_acquire_fini(&ctx);
+
 	intel_runtime_pm_put(dev_priv);
 
-	return 0;
+	return ret;
 }
 
 static int
@@ -2845,10 +2860,10 @@ static int i915_power_domain_info(struct seq_file *m, void *unused)
 		enum intel_display_power_domain power_domain;
 
 		power_well = &power_domains->power_wells[i];
-		seq_printf(m, "%-25s %d\n", power_well->name,
+		seq_printf(m, "%-25s %d\n", power_well->desc->name,
 			   power_well->count);
 
-		for_each_power_domain(power_domain, power_well->domains)
+		for_each_power_domain(power_domain, power_well->desc->domains)
 			seq_printf(m, "  %-23s %d\n",
 				 intel_display_power_domain_str(power_domain),
 				 power_domains->domain_use_count[power_domain]);

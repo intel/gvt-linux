@@ -19,6 +19,7 @@
 #include <linux/slab.h>
 #include <linux/hash.h>
 #include <linux/kmemleak.h>
+#include <linux/stacktrace.h>
 
 #define ODEBUG_HASH_BITS	14
 #define ODEBUG_HASH_SIZE	(1 << ODEBUG_HASH_BITS)
@@ -29,6 +30,8 @@
 #define ODEBUG_CHUNK_SHIFT	PAGE_SHIFT
 #define ODEBUG_CHUNK_SIZE	(1 << ODEBUG_CHUNK_SHIFT)
 #define ODEBUG_CHUNK_MASK	(~(ODEBUG_CHUNK_SIZE - 1))
+
+#define ODEBUG_STACKDEPTH 32
 
 struct debug_bucket {
 	struct hlist_head	list;
@@ -318,15 +321,24 @@ static void debug_print_object(struct debug_obj *obj, char *msg)
 {
 	struct debug_obj_descr *descr = obj->descr;
 	static int limit;
+	unsigned long entries[ODEBUG_STACKDEPTH];
+	struct stack_trace trace = {
+		.entries = entries,
+		.max_entries = ODEBUG_STACKDEPTH
+	};
+
 
 	if (limit < 5 && descr != descr_test) {
 		void *hint = descr->debug_hint ?
 			descr->debug_hint(obj->object) : NULL;
 		limit++;
+		depot_fetch_stack(obj->stack, &trace);
 		WARN(1, KERN_ERR "ODEBUG: %s %s (active state %u) "
 				 "object type: %s hint: %pS\n",
 			msg, obj_states[obj->state], obj->astate,
 			descr->name, hint);
+		pr_err("ODEBUG: debug object originally initialized at:\n");
+		print_stack_trace(&trace, 2);
 	}
 	debug_objects_warnings++;
 }
@@ -366,6 +378,24 @@ static void debug_object_is_on_stack(void *addr, int onstack)
 	WARN_ON(1);
 }
 
+static noinline depot_stack_handle_t save_stack(struct debug_obj *obj)
+{
+	unsigned long entries[ODEBUG_STACKDEPTH];
+	struct stack_trace trace = {
+		.entries = entries,
+		.max_entries = ODEBUG_STACKDEPTH,
+		.skip = 2
+	};
+
+	save_stack_trace(&trace);
+	if (trace.nr_entries != 0 &&
+	    trace.entries[trace.nr_entries-1] == ULONG_MAX)
+		trace.nr_entries--;
+
+	/* May be called under spinlock, so avoid sleeping */
+	return depot_save_stack(&trace, GFP_NOWAIT);
+}
+
 static void
 __debug_object_init(void *addr, struct debug_obj_descr *descr, int onstack)
 {
@@ -382,14 +412,29 @@ __debug_object_init(void *addr, struct debug_obj_descr *descr, int onstack)
 
 	obj = lookup_object(addr, db);
 	if (!obj) {
-		obj = alloc_object(addr, db, descr);
+		depot_stack_handle_t stack;
+
+		/*
+		 * must drop locks while storing the stack trace to avoid
+		 * recursive deadlock through depot_save_stack
+		 * allocating/freeing memory.
+		 */
+		raw_spin_unlock_irqrestore(&db->lock, flags);
+		stack = save_stack(obj);
+		raw_spin_lock_irqsave(&db->lock, flags);
+
+		obj = lookup_object(addr, db);
 		if (!obj) {
-			debug_objects_enabled = 0;
-			raw_spin_unlock_irqrestore(&db->lock, flags);
-			debug_objects_oom();
-			return;
+			obj = alloc_object(addr, db, descr);
+			if (!obj) {
+				debug_objects_enabled = 0;
+				raw_spin_unlock_irqrestore(&db->lock, flags);
+				debug_objects_oom();
+				return;
+			}
+			debug_object_is_on_stack(addr, onstack);
+			obj->stack = stack;
 		}
-		debug_object_is_on_stack(addr, onstack);
 	}
 
 	switch (obj->state) {

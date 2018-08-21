@@ -229,7 +229,6 @@ struct i915_page_dma {
 };
 
 #define px_base(px) (&(px)->base)
-#define px_page(px) (px_base(px)->page)
 #define px_dma(px) (px_base(px)->daddr)
 
 struct i915_page_table {
@@ -400,6 +399,8 @@ struct i915_ggtt {
 	bool do_idle_maps;
 
 	int mtrr;
+
+	u32 pin_bias;
 
 	struct drm_mm_node error_capture;
 };

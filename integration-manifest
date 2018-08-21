@@ -1,28 +1,12 @@
-drm drm-fixes 51973dc079a9e1e082ae647ee3804f324a258eee
-	Merge tag 'drm-misc-fixes-2018-07-27' of git://anongit.freedesktop.org/drm/drm-misc into drm-fixes
-drm-misc drm-misc-fixes 404fb5c9ef26598e528a6242db9b34d6b3046ed7
-	drm/vc4: Fix the "no scaling" case on multi-planar YUV formats
-drm-intel drm-intel-fixes 94710cac0ef4ee177a63b5227664b38c95bbf703
-	Linux 4.18
-drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
-	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
-drm drm-next 3d63a3c14741ed015948943076f3c6a2f2cd7b27
-	Merge tag 'drm-msm-next-2018-08-10' of git://people.freedesktop.org/~robclark/linux into drm-next
-drm-misc drm-misc-next-fixes 4acd8d01a2393f2145ad1db10b2d5c764582a98d
-	MAINTAINERS: drm-misc: Change seanpaul's email address
-drm-intel drm-intel-next-fixes 2693efd99cad2509522a88722e04162b7e869333
-	drm/i915/audio: Hook up component bindings even if displays are disabled
-drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
-	Linux 4.14-rc1
-drm-misc drm-misc-next c76abab59b3cb34a0bc819595614844ed28be721
-	drm: Use horizontal and vertical chroma subsampling factor while calculating offsets in the physical address of framebuffer
-drm-intel drm-intel-next-queued 7b19f544ed90b7ca4bd850145e2624a99a967de0
-	drm/i915/icl: Get DDI clock for ICL for MG PLL and TBT PLL
-drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
-	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
-sound-upstream for-linus 250ea7c5f56e350cdafebe6b87478b00db4f7af8
-	ALSA: ac97: fix unbalanced pm_runtime_enable
-sound-upstream for-next 250ea7c5f56e350cdafebe6b87478b00db4f7af8
-	ALSA: ac97: fix unbalanced pm_runtime_enable
-drm-intel topic/core-for-CI 97263ba0a2a07e9c0fb2cc133ef8f7ebc4c5aea1
-	usb/icl: Work around ACPI boottime crash
+drm-tip/drm-tip d53f119472fc7daa532e46ea77098e9e9db2ac10
+	drm-tip: 2018y-08m-21d-00h-25m-32s UTC integration manifest
+vfio-upstream/for-linus 0e714d27786ce1fb3efa9aac58abc096e68b1c2a
+	vfio/pci: Fix potential Spectre v1
+vfio-upstream/next 0dd0e297f0ec780b6b3484ba38b27d18c8ca7af9
+	vfio-pci: Disable binding to PFs with SR-IOV enabled
+origin/gvt-fixes 6cef21a1964933b77c855c55bac2723053cc676d
+	drm/i915/gvt: update vreg on inhibit context lri command
+origin/gvt-next 69ca5af4ff9a3ff96e4595c2b7522c01a2641779
+	drm/i915/gvt: Move some MMIO definitions to reg.h
+origin/gvt-next-fixes d1a61a373ba18f0f4148fb9026a9cc988b365474
+	drm/i915/gvt: Handle GEN9_WM_CHICKEN3 with F_CMD_ACCESS.

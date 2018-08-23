@@ -1111,7 +1111,7 @@ static struct drm_connector *vop_get_edp_connector(struct vop *vop)
 }
 
 static int vop_crtc_set_crc_source(struct drm_crtc *crtc,
-				   const char *source_name, size_t *values_cnt)
+				   const char *source_name)
 {
 	struct vop *vop = to_vop(crtc);
 	struct drm_connector *connector;
@@ -1120,8 +1120,6 @@ static int vop_crtc_set_crc_source(struct drm_crtc *crtc,
 	connector = vop_get_edp_connector(vop);
 	if (!connector)
 		return -EINVAL;
-
-	*values_cnt = 3;
 
 	if (source_name && strcmp(source_name, "auto") == 0)
 		ret = analogix_dp_start_crc(connector);
@@ -1132,9 +1130,28 @@ static int vop_crtc_set_crc_source(struct drm_crtc *crtc,
 
 	return ret;
 }
+
+static int
+vop_crtc_verify_crc_source(struct drm_crtc *crtc, const char *source_name,
+			   size_t *values_cnt)
+{
+	if (source_name && strcmp(source_name, "auto") != 0)
+		return -EINVAL;
+
+	*values_cnt = 3;
+	return 0;
+}
+
 #else
 static int vop_crtc_set_crc_source(struct drm_crtc *crtc,
-				   const char *source_name, size_t *values_cnt)
+				   const char *source_name)
+{
+	return -ENODEV;
+}
+
+static int
+vop_crtc_verify_crc_source(struct drm_crtc *crtc, const char *source_name,
+			   size_t *values_cnt)
 {
 	return -ENODEV;
 }
@@ -1150,6 +1167,7 @@ static const struct drm_crtc_funcs vop_crtc_funcs = {
 	.enable_vblank = vop_crtc_enable_vblank,
 	.disable_vblank = vop_crtc_disable_vblank,
 	.set_crc_source = vop_crtc_set_crc_source,
+	.verify_crc_source = vop_crtc_verify_crc_source,
 };
 
 static void vop_fb_unref_worker(struct drm_flip_work *work, void *val)

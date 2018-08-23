@@ -176,14 +176,45 @@ static int intel_dp_max_common_rate(struct intel_dp *intel_dp)
 	return intel_dp->common_rates[intel_dp->num_common_rates - 1];
 }
 
+static int intel_dp_get_fia_supported_lane_count(struct intel_dp *intel_dp)
+{
+	struct intel_digital_port *dig_port = dp_to_dig_port(intel_dp);
+	struct drm_i915_private *dev_priv = to_i915(dig_port->base.base.dev);
+	enum tc_port tc_port = intel_port_to_tc(dev_priv, dig_port->base.port);
+	u32 lane_info;
+
+	if (tc_port == PORT_TC_NONE || dig_port->tc_type != TC_PORT_TYPEC)
+		return 4;
+
+	lane_info = (I915_READ(PORT_TX_DFLEXDPSP) &
+		     DP_LANE_ASSIGNMENT_MASK(tc_port)) >>
+		    DP_LANE_ASSIGNMENT_SHIFT(tc_port);
+
+	switch (lane_info) {
+	default:
+		MISSING_CASE(lane_info);
+	case 1:
+	case 2:
+	case 4:
+	case 8:
+		return 1;
+	case 3:
+	case 12:
+		return 2;
+	case 15:
+		return 4;
+	}
+}
+
 /* Theoretical max between source and sink */
 static int intel_dp_max_common_lane_count(struct intel_dp *intel_dp)
 {
 	struct intel_digital_port *intel_dig_port = dp_to_dig_port(intel_dp);
 	int source_max = intel_dig_port->max_lanes;
 	int sink_max = drm_dp_max_lane_count(intel_dp->dpcd);
+	int fia_max = intel_dp_get_fia_supported_lane_count(intel_dp);
 
-	return min(source_max, sink_max);
+	return min3(source_max, sink_max, fia_max);
 }
 
 int intel_dp_max_lane_count(struct intel_dp *intel_dp)
@@ -196,6 +227,138 @@ intel_dp_link_required(int pixel_clock, int bpp)
 {
 	/* pixel_clock is in kHz, divide bpp by 8 for bit to Byte conversion */
 	return DIV_ROUND_UP(pixel_clock * bpp, 8);
+}
+
+void icl_program_mg_dp_mode(struct intel_dp *intel_dp)
+{
+	struct intel_digital_port *intel_dig_port = dp_to_dig_port(intel_dp);
+	struct drm_i915_private *dev_priv = to_i915(intel_dp_to_dev(intel_dp));
+	enum port port = intel_dig_port->base.port;
+	enum tc_port tc_port = intel_port_to_tc(dev_priv, port);
+	u32 ln0, ln1, lane_info;
+
+	if (tc_port == PORT_TC_NONE || intel_dig_port->tc_type == TC_PORT_TBT)
+		return;
+
+	ln0 = I915_READ(MG_DP_MODE(port, 0));
+	ln1 = I915_READ(MG_DP_MODE(port, 1));
+
+	switch (intel_dig_port->tc_type) {
+	case TC_PORT_TYPEC:
+		ln0 &= ~(MG_DP_MODE_CFG_DP_X1_MODE | MG_DP_MODE_CFG_DP_X2_MODE);
+		ln1 &= ~(MG_DP_MODE_CFG_DP_X1_MODE | MG_DP_MODE_CFG_DP_X2_MODE);
+
+		lane_info = (I915_READ(PORT_TX_DFLEXDPSP) &
+			     DP_LANE_ASSIGNMENT_MASK(tc_port)) >>
+			    DP_LANE_ASSIGNMENT_SHIFT(tc_port);
+
+		switch (lane_info) {
+		case 0x1:
+		case 0x4:
+			break;
+		case 0x2:
+			ln0 |= MG_DP_MODE_CFG_DP_X1_MODE;
+			break;
+		case 0x3:
+			ln0 |= MG_DP_MODE_CFG_DP_X1_MODE |
+			       MG_DP_MODE_CFG_DP_X2_MODE;
+			break;
+		case 0x8:
+			ln1 |= MG_DP_MODE_CFG_DP_X1_MODE;
+			break;
+		case 0xC:
+			ln1 |= MG_DP_MODE_CFG_DP_X1_MODE |
+			       MG_DP_MODE_CFG_DP_X2_MODE;
+			break;
+		case 0xF:
+			ln0 |= MG_DP_MODE_CFG_DP_X1_MODE |
+			       MG_DP_MODE_CFG_DP_X2_MODE;
+			ln1 |= MG_DP_MODE_CFG_DP_X1_MODE |
+			       MG_DP_MODE_CFG_DP_X2_MODE;
+			break;
+		default:
+			MISSING_CASE(lane_info);
+		}
+		break;
+
+	case TC_PORT_LEGACY:
+		ln0 |= MG_DP_MODE_CFG_DP_X1_MODE | MG_DP_MODE_CFG_DP_X2_MODE;
+		ln1 |= MG_DP_MODE_CFG_DP_X1_MODE | MG_DP_MODE_CFG_DP_X2_MODE;
+		break;
+
+	default:
+		MISSING_CASE(intel_dig_port->tc_type);
+		return;
+	}
+
+	I915_WRITE(MG_DP_MODE(port, 0), ln0);
+	I915_WRITE(MG_DP_MODE(port, 1), ln1);
+}
+
+void icl_enable_phy_clock_gating(struct intel_digital_port *dig_port)
+{
+	struct drm_i915_private *dev_priv = to_i915(dig_port->base.base.dev);
+	enum port port = dig_port->base.port;
+	enum tc_port tc_port = intel_port_to_tc(dev_priv, port);
+	i915_reg_t mg_regs[2] = { MG_DP_MODE(port, 0), MG_DP_MODE(port, 1) };
+	u32 val;
+	int i;
+
+	if (tc_port == PORT_TC_NONE)
+		return;
+
+	for (i = 0; i < ARRAY_SIZE(mg_regs); i++) {
+		val = I915_READ(mg_regs[i]);
+		val |= MG_DP_MODE_CFG_TR2PWR_GATING |
+		       MG_DP_MODE_CFG_TRPWR_GATING |
+		       MG_DP_MODE_CFG_CLNPWR_GATING |
+		       MG_DP_MODE_CFG_DIGPWR_GATING |
+		       MG_DP_MODE_CFG_GAONPWR_GATING;
+		I915_WRITE(mg_regs[i], val);
+	}
+
+	val = I915_READ(MG_MISC_SUS0(tc_port));
+	val |= MG_MISC_SUS0_SUSCLK_DYNCLKGATE_MODE(3) |
+	       MG_MISC_SUS0_CFG_TR2PWR_GATING |
+	       MG_MISC_SUS0_CFG_CL2PWR_GATING |
+	       MG_MISC_SUS0_CFG_GAONPWR_GATING |
+	       MG_MISC_SUS0_CFG_TRPWR_GATING |
+	       MG_MISC_SUS0_CFG_CL1PWR_GATING |
+	       MG_MISC_SUS0_CFG_DGPWR_GATING;
+	I915_WRITE(MG_MISC_SUS0(tc_port), val);
+}
+
+void icl_disable_phy_clock_gating(struct intel_digital_port *dig_port)
+{
+	struct drm_i915_private *dev_priv = to_i915(dig_port->base.base.dev);
+	enum port port = dig_port->base.port;
+	enum tc_port tc_port = intel_port_to_tc(dev_priv, port);
+	i915_reg_t mg_regs[2] = { MG_DP_MODE(port, 0), MG_DP_MODE(port, 1) };
+	u32 val;
+	int i;
+
+	if (tc_port == PORT_TC_NONE)
+		return;
+
+	for (i = 0; i < ARRAY_SIZE(mg_regs); i++) {
+		val = I915_READ(mg_regs[i]);
+		val &= ~(MG_DP_MODE_CFG_TR2PWR_GATING |
+			 MG_DP_MODE_CFG_TRPWR_GATING |
+			 MG_DP_MODE_CFG_CLNPWR_GATING |
+			 MG_DP_MODE_CFG_DIGPWR_GATING |
+			 MG_DP_MODE_CFG_GAONPWR_GATING);
+		I915_WRITE(mg_regs[i], val);
+	}
+
+	val = I915_READ(MG_MISC_SUS0(tc_port));
+	val &= ~(MG_MISC_SUS0_SUSCLK_DYNCLKGATE_MODE_MASK |
+		 MG_MISC_SUS0_CFG_TR2PWR_GATING |
+		 MG_MISC_SUS0_CFG_CL2PWR_GATING |
+		 MG_MISC_SUS0_CFG_GAONPWR_GATING |
+		 MG_MISC_SUS0_CFG_TRPWR_GATING |
+		 MG_MISC_SUS0_CFG_CL1PWR_GATING |
+		 MG_MISC_SUS0_CFG_DGPWR_GATING);
+	I915_WRITE(MG_MISC_SUS0(tc_port), val);
 }
 
 int
@@ -1045,15 +1208,23 @@ static uint32_t skl_get_aux_send_ctl(struct intel_dp *intel_dp,
 				      int send_bytes,
 				      uint32_t unused)
 {
-	return DP_AUX_CH_CTL_SEND_BUSY |
-	       DP_AUX_CH_CTL_DONE |
-	       DP_AUX_CH_CTL_INTERRUPT |
-	       DP_AUX_CH_CTL_TIME_OUT_ERROR |
-	       DP_AUX_CH_CTL_TIME_OUT_MAX |
-	       DP_AUX_CH_CTL_RECEIVE_ERROR |
-	       (send_bytes << DP_AUX_CH_CTL_MESSAGE_SIZE_SHIFT) |
-	       DP_AUX_CH_CTL_FW_SYNC_PULSE_SKL(32) |
-	       DP_AUX_CH_CTL_SYNC_PULSE_SKL(32);
+	struct intel_digital_port *intel_dig_port = dp_to_dig_port(intel_dp);
+	uint32_t ret;
+
+	ret = DP_AUX_CH_CTL_SEND_BUSY |
+	      DP_AUX_CH_CTL_DONE |
+	      DP_AUX_CH_CTL_INTERRUPT |
+	      DP_AUX_CH_CTL_TIME_OUT_ERROR |
+	      DP_AUX_CH_CTL_TIME_OUT_MAX |
+	      DP_AUX_CH_CTL_RECEIVE_ERROR |
+	      (send_bytes << DP_AUX_CH_CTL_MESSAGE_SIZE_SHIFT) |
+	      DP_AUX_CH_CTL_FW_SYNC_PULSE_SKL(32) |
+	      DP_AUX_CH_CTL_SYNC_PULSE_SKL(32);
+
+	if (intel_dig_port->tc_type == TC_PORT_TBT)
+		ret |= DP_AUX_CH_CTL_TBT_IO;
+
+	return ret;
 }
 
 static int
@@ -4090,12 +4261,14 @@ intel_dp_check_mst_status(struct intel_dp *intel_dp)
 		int ret = 0;
 		int retry;
 		bool handled;
+
+		WARN_ON_ONCE(intel_dp->active_mst_links < 0);
 		bret = intel_dp_get_sink_irq_esi(intel_dp, esi);
 go_again:
 		if (bret == true) {
 
 			/* check link status - esi[10] = 0x200c */
-			if (intel_dp->active_mst_links &&
+			if (intel_dp->active_mst_links > 0 &&
 			    !drm_dp_channel_eq_ok(&esi[10], intel_dp->lane_count)) {
 				DRM_DEBUG_KMS("channel EQ not ok, retraining\n");
 				intel_dp_start_link_train(intel_dp);
@@ -4586,6 +4759,93 @@ static bool bxt_digital_port_connected(struct intel_encoder *encoder)
 	return I915_READ(GEN8_DE_PORT_ISR) & bit;
 }
 
+static bool icl_combo_port_connected(struct drm_i915_private *dev_priv,
+				     struct intel_digital_port *intel_dig_port)
+{
+	enum port port = intel_dig_port->base.port;
+
+	return I915_READ(SDEISR) & SDE_DDI_HOTPLUG_ICP(port);
+}
+
+static void icl_update_tc_port_type(struct drm_i915_private *dev_priv,
+				    struct intel_digital_port *intel_dig_port,
+				    bool is_legacy, bool is_typec, bool is_tbt)
+{
+	enum port port = intel_dig_port->base.port;
+	enum tc_port_type old_type = intel_dig_port->tc_type;
+	const char *type_str;
+
+	WARN_ON(is_legacy + is_typec + is_tbt != 1);
+
+	if (is_legacy) {
+		intel_dig_port->tc_type = TC_PORT_LEGACY;
+		type_str = "legacy";
+	} else if (is_typec) {
+		intel_dig_port->tc_type = TC_PORT_TYPEC;
+		type_str = "typec";
+	} else if (is_tbt) {
+		intel_dig_port->tc_type = TC_PORT_TBT;
+		type_str = "tbt";
+	} else {
+		return;
+	}
+
+	/* Types are not supposed to be changed at runtime. */
+	WARN_ON(old_type != TC_PORT_UNKNOWN &&
+		old_type != intel_dig_port->tc_type);
+
+	if (old_type != intel_dig_port->tc_type)
+		DRM_DEBUG_KMS("Port %c has TC type %s\n", port_name(port),
+			      type_str);
+}
+
+static bool icl_tc_port_connected(struct drm_i915_private *dev_priv,
+				  struct intel_digital_port *intel_dig_port)
+{
+	enum port port = intel_dig_port->base.port;
+	enum tc_port tc_port = intel_port_to_tc(dev_priv, port);
+	bool is_legacy, is_typec, is_tbt;
+	u32 dpsp;
+
+	is_legacy = I915_READ(SDEISR) & SDE_TC_HOTPLUG_ICP(tc_port);
+
+	/*
+	 * The spec says we shouldn't be using the ISR bits for detecting
+	 * between TC and TBT. We should use DFLEXDPSP.
+	 */
+	dpsp = I915_READ(PORT_TX_DFLEXDPSP);
+	is_typec = dpsp & TC_LIVE_STATE_TC(tc_port);
+	is_tbt = dpsp & TC_LIVE_STATE_TBT(tc_port);
+
+	if (!is_legacy && !is_typec && !is_tbt)
+		return false;
+
+	icl_update_tc_port_type(dev_priv, intel_dig_port, is_legacy, is_typec,
+				is_tbt);
+
+	return true;
+}
+
+static bool icl_digital_port_connected(struct intel_encoder *encoder)
+{
+	struct drm_i915_private *dev_priv = to_i915(encoder->base.dev);
+	struct intel_digital_port *dig_port = enc_to_dig_port(&encoder->base);
+
+	switch (encoder->hpd_pin) {
+	case HPD_PORT_A:
+	case HPD_PORT_B:
+		return icl_combo_port_connected(dev_priv, dig_port);
+	case HPD_PORT_C:
+	case HPD_PORT_D:
+	case HPD_PORT_E:
+	case HPD_PORT_F:
+		return icl_tc_port_connected(dev_priv, dig_port);
+	default:
+		MISSING_CASE(encoder->hpd_pin);
+		return false;
+	}
+}
+
 /*
  * intel_digital_port_connected - is the specified port connected?
  * @encoder: intel_encoder
@@ -4613,8 +4873,10 @@ bool intel_digital_port_connected(struct intel_encoder *encoder)
 		return bdw_digital_port_connected(encoder);
 	else if (IS_GEN9_LP(dev_priv))
 		return bxt_digital_port_connected(encoder);
-	else
+	else if (IS_GEN9_BC(dev_priv) || IS_GEN10(dev_priv))
 		return spt_digital_port_connected(encoder);
+	else
+		return icl_digital_port_connected(encoder);
 }
 
 static struct edid *

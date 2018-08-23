@@ -5444,6 +5444,7 @@ F:	drivers/iommu/exynos-iommu.c
 
 EZchip NPS platform support
 M:	Vineet Gupta <vgupta@synopsys.com>
+M:	Ofer Levi <oferle@mellanox.com>
 S:	Supported
 F:	arch/arc/plat-eznps
 F:	arch/arc/boot/dts/eznps.dts
@@ -5929,7 +5930,7 @@ F:	Documentation/dev-tools/gcov.rst
 
 GDB KERNEL DEBUGGING HELPER SCRIPTS
 M:	Jan Kiszka <jan.kiszka@siemens.com>
-M:	Kieran Bingham <kieran@bingham.xyz>
+M:	Kieran Bingham <kbingham@kernel.org>
 S:	Supported
 F:	scripts/gdb/
 
@@ -7985,7 +7986,7 @@ F:	lib/test_kmod.c
 F:	tools/testing/selftests/kmod/
 
 KPROBES
-M:	Ananth N Mavinakayanahalli <ananth@linux.vnet.ibm.com>
+M:	Naveen N. Rao <naveen.n.rao@linux.vnet.ibm.com>
 M:	Anil S Keshavamurthy <anil.s.keshavamurthy@intel.com>
 M:	"David S. Miller" <davem@davemloft.net>
 M:	Masami Hiramatsu <mhiramat@kernel.org>

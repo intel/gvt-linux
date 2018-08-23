@@ -32,6 +32,7 @@
 #include <linux/device.h>
 #include <linux/mm.h>
 #include <linux/mmu_context.h>
+#include <linux/sched/mm.h>
 #include <linux/types.h>
 #include <linux/list.h>
 #include <linux/rbtree.h>
@@ -1614,9 +1615,16 @@ static int kvmgt_guest_init(struct mdev_device *mdev)
 	if (__kvmgt_vgpu_exist(vgpu, kvm))
 		return -EEXIST;
 
+	if (!mmget_not_zero(kvm->mm)) {
+		gvt_vgpu_err("Can't get KVM mm reference\n");
+		return -EINVAL;
+	}
+
 	info = vzalloc(sizeof(struct kvmgt_guest_info));
-	if (!info)
+	if (!info) {
+		mmput(kvm->mm);
 		return -ENOMEM;
+	}
 
 	vgpu->handle = (unsigned long)info;
 	info->vgpu = vgpu;
@@ -1647,6 +1655,8 @@ static bool kvmgt_guest_exit(struct kvmgt_guest_info *info)
 	debugfs_remove(info->debugfs_cache_entries);
 
 	kvm_page_track_unregister_notifier(info->kvm, &info->track_node);
+	if (info->kvm->mm)
+		mmput(info->kvm->mm);
 	kvm_put_kvm(info->kvm);
 	kvmgt_protect_table_destroy(info);
 	gvt_cache_destroy(info->vgpu);

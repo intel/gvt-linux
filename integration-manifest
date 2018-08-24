@@ -1,28 +1,12 @@
-drm drm-fixes 51973dc079a9e1e082ae647ee3804f324a258eee
-	Merge tag 'drm-misc-fixes-2018-07-27' of git://anongit.freedesktop.org/drm/drm-misc into drm-fixes
-drm-misc drm-misc-fixes 404fb5c9ef26598e528a6242db9b34d6b3046ed7
-	drm/vc4: Fix the "no scaling" case on multi-planar YUV formats
-drm-intel drm-intel-fixes 94710cac0ef4ee177a63b5227664b38c95bbf703
-	Linux 4.18
-drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
-	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
-drm drm-next 8f13b60756a1e5ddc9aa8c6b14807264b6833e5b
-	Merge branch 'drm-next-4.19' of git://people.freedesktop.org/~agd5f/linux into drm-next
-drm-misc drm-misc-next-fixes 25da75043f8690fd083878447c91f289dfb63b87
-	drm/edid: Add 6 bpc quirk for SDC panel in Lenovo B50-80
-drm-intel drm-intel-next-fixes 2693efd99cad2509522a88722e04162b7e869333
-	drm/i915/audio: Hook up component bindings even if displays are disabled
-drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
-	Linux 4.14-rc1
-drm-misc drm-misc-next e296de926dfd39cf1ff9e5a41b56d4b3258a5a07
-	drm/syncobj: Drop add/remove_callback from driver interface
-drm-intel drm-intel-next-queued 62d3a8deaa10b8346d979d0dabde56c33b742afa
-	drm/i915: Free write_buf that we allocated with kzalloc.
-drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
-	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
-sound-upstream for-linus 8a328ac1f9ebfc7621f76bbb27aa0382cc5b393d
-	ALSA: hda/realtek - Fix HP Headset Mic can't record
-sound-upstream for-next 8a328ac1f9ebfc7621f76bbb27aa0382cc5b393d
-	ALSA: hda/realtek - Fix HP Headset Mic can't record
-drm-intel topic/core-for-CI 97263ba0a2a07e9c0fb2cc133ef8f7ebc4c5aea1
-	usb/icl: Work around ACPI boottime crash
+drm-tip/drm-tip 5dedf9d9259854872430c04a29737924731ba6f1
+	drm-tip: 2018y-08m-23d-22h-47m-55s UTC integration manifest
+vfio-upstream/for-linus 0e714d27786ce1fb3efa9aac58abc096e68b1c2a
+	vfio/pci: Fix potential Spectre v1
+vfio-upstream/next 0dd0e297f0ec780b6b3484ba38b27d18c8ca7af9
+	vfio-pci: Disable binding to PFs with SR-IOV enabled
+origin/gvt-fixes 6cef21a1964933b77c855c55bac2723053cc676d
+	drm/i915/gvt: update vreg on inhibit context lri command
+origin/gvt-next 69ca5af4ff9a3ff96e4595c2b7522c01a2641779
+	drm/i915/gvt: Move some MMIO definitions to reg.h
+origin/gvt-next-fixes ce30cda6fa4b40b24aafb23b5af95d7b48acc1ea
+	drm/i915/gvt: Fix life cycle reference on KVM mm

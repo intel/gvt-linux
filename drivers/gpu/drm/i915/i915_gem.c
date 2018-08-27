@@ -802,6 +802,11 @@ void i915_gem_flush_ggtt_writes(struct drm_i915_private *dev_priv)
 	 * that was!).
 	 */
 
+	wmb();
+
+	if (INTEL_INFO(dev_priv)->has_coherent_ggtt)
+		return;
+
 	i915_gem_chipset_flush(dev_priv);
 
 	intel_runtime_pm_get(dev_priv);
@@ -1906,7 +1911,7 @@ i915_gem_mmap_ioctl(struct drm_device *dev, void *data,
 	return 0;
 }
 
-static unsigned int tile_row_pages(struct drm_i915_gem_object *obj)
+static unsigned int tile_row_pages(const struct drm_i915_gem_object *obj)
 {
 	return i915_gem_object_get_tile_row_size(obj) >> PAGE_SHIFT;
 }
@@ -1965,7 +1970,7 @@ int i915_gem_mmap_gtt_version(void)
 }
 
 static inline struct i915_ggtt_view
-compute_partial_view(struct drm_i915_gem_object *obj,
+compute_partial_view(const struct drm_i915_gem_object *obj,
 		     pgoff_t page_offset,
 		     unsigned int chunk)
 {
@@ -3307,8 +3312,8 @@ void i915_gem_set_wedged(struct drm_i915_private *i915)
 			intel_engine_dump(engine, &p, "%s\n", engine->name);
 	}
 
-	set_bit(I915_WEDGED, &i915->gpu_error.flags);
-	smp_mb__after_atomic();
+	if (test_and_set_bit(I915_WEDGED, &i915->gpu_error.flags))
+		goto out;
 
 	/*
 	 * First, stop submission to hw, but do not yet complete requests by
@@ -3324,7 +3329,8 @@ void i915_gem_set_wedged(struct drm_i915_private *i915)
 	i915->caps.scheduler = 0;
 
 	/* Even if the GPU reset fails, it should still stop the engines */
-	intel_gpu_reset(i915, ALL_ENGINES);
+	if (INTEL_GEN(i915) >= 5)
+		intel_gpu_reset(i915, ALL_ENGINES);
 
 	/*
 	 * Make sure no one is running the old callback before we proceed with
@@ -3367,6 +3373,7 @@ void i915_gem_set_wedged(struct drm_i915_private *i915)
 		i915_gem_reset_finish_engine(engine);
 	}
 
+out:
 	GEM_TRACE("end\n");
 
 	wake_up_all(&i915->gpu_error.reset_queue);
@@ -3815,6 +3822,12 @@ int i915_gem_wait_for_idle(struct drm_i915_private *i915,
 			timeout = wait_for_timeline(tl, flags, timeout);
 			if (timeout < 0)
 				return timeout;
+		}
+		if (GEM_SHOW_DEBUG() && !timeout) {
+			/* Presume that timeout was non-zero to begin with! */
+			dev_warn(&i915->drm.pdev->dev,
+				 "Missed idle-completion interrupt!\n");
+			GEM_TRACE_DUMP();
 		}
 
 		err = wait_for_engines(i915);
@@ -5592,6 +5605,8 @@ err_uc_misc:
 		i915_gem_cleanup_userptr(dev_priv);
 
 	if (ret == -EIO) {
+		mutex_lock(&dev_priv->drm.struct_mutex);
+
 		/*
 		 * Allow engine initialisation to fail by marking the GPU as
 		 * wedged. But we only want to do this where the GPU is angry,
@@ -5602,7 +5617,14 @@ err_uc_misc:
 					"Failed to initialize GPU, declaring it wedged!\n");
 			i915_gem_set_wedged(dev_priv);
 		}
-		ret = 0;
+
+		/* Minimal basic recovery for KMS */
+		ret = i915_ggtt_enable_hw(dev_priv);
+		i915_gem_restore_gtt_mappings(dev_priv);
+		i915_gem_restore_fences(dev_priv);
+		intel_init_clock_gating(dev_priv);
+
+		mutex_unlock(&dev_priv->drm.struct_mutex);
 	}
 
 	i915_gem_drain_freed_objects(dev_priv);
@@ -5612,6 +5634,7 @@ err_uc_misc:
 void i915_gem_fini(struct drm_i915_private *dev_priv)
 {
 	i915_gem_suspend_late(dev_priv);
+	intel_disable_gt_powersave(dev_priv);
 
 	/* Flush any outstanding unpin_work. */
 	i915_gem_drain_workqueue(dev_priv);
@@ -5622,6 +5645,8 @@ void i915_gem_fini(struct drm_i915_private *dev_priv)
 	i915_gem_cleanup_engines(dev_priv);
 	i915_gem_contexts_fini(dev_priv);
 	mutex_unlock(&dev_priv->drm.struct_mutex);
+
+	intel_cleanup_gt_powersave(dev_priv);
 
 	intel_uc_fini_misc(dev_priv);
 	i915_gem_cleanup_userptr(dev_priv);

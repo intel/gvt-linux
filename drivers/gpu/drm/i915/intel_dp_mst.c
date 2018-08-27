@@ -241,11 +241,8 @@ static void intel_mst_pre_enable_dp(struct intel_encoder *encoder,
 				       connector->port,
 				       pipe_config->pbn,
 				       pipe_config->dp_m_n.tu);
-	if (ret == false) {
+	if (!ret)
 		DRM_ERROR("failed to allocate vcpi\n");
-		return;
-	}
-
 
 	intel_dp->active_mst_links++;
 	temp = I915_READ(DP_TP_STATUS(port));
@@ -263,7 +260,6 @@ static void intel_mst_enable_dp(struct intel_encoder *encoder,
 	struct intel_dp *intel_dp = &intel_dig_port->dp;
 	struct drm_i915_private *dev_priv = to_i915(encoder->base.dev);
 	enum port port = intel_dig_port->base.port;
-	int ret;
 
 	DRM_DEBUG_KMS("active links %d\n", intel_dp->active_mst_links);
 
@@ -274,9 +270,9 @@ static void intel_mst_enable_dp(struct intel_encoder *encoder,
 				    1))
 		DRM_ERROR("Timed out waiting for ACT sent\n");
 
-	ret = drm_dp_check_act_status(&intel_dp->mst_mgr);
+	drm_dp_check_act_status(&intel_dp->mst_mgr);
 
-	ret = drm_dp_update_payload_part2(&intel_dp->mst_mgr);
+	drm_dp_update_payload_part2(&intel_dp->mst_mgr);
 	if (pipe_config->has_audio)
 		intel_audio_codec_enable(encoder, pipe_config, conn_state);
 }

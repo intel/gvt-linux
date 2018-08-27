@@ -2474,6 +2474,12 @@ intel_get_format_info(const struct drm_mode_fb_cmd2 *cmd)
 	}
 }
 
+bool is_ccs_modifier(u64 modifier)
+{
+	return modifier == I915_FORMAT_MOD_Y_TILED_CCS ||
+	       modifier == I915_FORMAT_MOD_Yf_TILED_CCS;
+}
+
 static int
 intel_fill_fb_info(struct drm_i915_private *dev_priv,
 		   struct drm_framebuffer *fb)
@@ -2504,8 +2510,7 @@ intel_fill_fb_info(struct drm_i915_private *dev_priv,
 			return ret;
 		}
 
-		if ((fb->modifier == I915_FORMAT_MOD_Y_TILED_CCS ||
-		     fb->modifier == I915_FORMAT_MOD_Yf_TILED_CCS) && i == 1) {
+		if (is_ccs_modifier(fb->modifier) && i == 1) {
 			int hsub = fb->format->hsub;
 			int vsub = fb->format->vsub;
 			int tile_width, tile_height;
@@ -2988,6 +2993,7 @@ static int skl_check_main_surface(const struct intel_crtc_state *crtc_state,
 	int w = drm_rect_width(&plane_state->base.src) >> 16;
 	int h = drm_rect_height(&plane_state->base.src) >> 16;
 	int dst_x = plane_state->base.dst.x1;
+	int dst_w = drm_rect_width(&plane_state->base.dst);
 	int pipe_src_w = crtc_state->pipe_src_w;
 	int max_width = skl_max_plane_width(fb, 0, rotation);
 	int max_height = 4096;
@@ -3009,10 +3015,10 @@ static int skl_check_main_surface(const struct intel_crtc_state *crtc_state,
 	 * screen may cause FIFO underflow and display corruption.
 	 */
 	if ((IS_GEMINILAKE(dev_priv) || IS_CANNONLAKE(dev_priv)) &&
-	    (dst_x + w < 4 || dst_x > pipe_src_w - 4)) {
+	    (dst_x + dst_w < 4 || dst_x > pipe_src_w - 4)) {
 		DRM_DEBUG_KMS("requested plane X %s position %d invalid (valid range %d-%d)\n",
-			      dst_x + w < 4 ? "end" : "start",
-			      dst_x + w < 4 ? dst_x + w : dst_x,
+			      dst_x + dst_w < 4 ? "end" : "start",
+			      dst_x + dst_w < 4 ? dst_x + dst_w : dst_x,
 			      4, pipe_src_w - 4);
 		return -ERANGE;
 	}
@@ -3054,8 +3060,7 @@ static int skl_check_main_surface(const struct intel_crtc_state *crtc_state,
 	 * CCS AUX surface doesn't have its own x/y offsets, we must make sure
 	 * they match with the main surface x/y offsets.
 	 */
-	if (fb->modifier == I915_FORMAT_MOD_Y_TILED_CCS ||
-	    fb->modifier == I915_FORMAT_MOD_Yf_TILED_CCS) {
+	if (is_ccs_modifier(fb->modifier)) {
 		while (!skl_check_main_ccs_coordinates(plane_state, x, y, offset)) {
 			if (offset == 0)
 				break;
@@ -3189,8 +3194,7 @@ int skl_check_plane_surface(const struct intel_crtc_state *crtc_state,
 		ret = skl_check_nv12_aux_surface(plane_state);
 		if (ret)
 			return ret;
-	} else if (fb->modifier == I915_FORMAT_MOD_Y_TILED_CCS ||
-		   fb->modifier == I915_FORMAT_MOD_Yf_TILED_CCS) {
+	} else if (is_ccs_modifier(fb->modifier)) {
 		ret = skl_check_ccs_aux_surface(plane_state);
 		if (ret)
 			return ret;
@@ -3551,11 +3555,11 @@ static u32 skl_plane_ctl_tiling(uint64_t fb_modifier)
 	case I915_FORMAT_MOD_Y_TILED:
 		return PLANE_CTL_TILED_Y;
 	case I915_FORMAT_MOD_Y_TILED_CCS:
-		return PLANE_CTL_TILED_Y | PLANE_CTL_DECOMPRESSION_ENABLE;
+		return PLANE_CTL_TILED_Y | PLANE_CTL_RENDER_DECOMPRESSION_ENABLE;
 	case I915_FORMAT_MOD_Yf_TILED:
 		return PLANE_CTL_TILED_YF;
 	case I915_FORMAT_MOD_Yf_TILED_CCS:
-		return PLANE_CTL_TILED_YF | PLANE_CTL_DECOMPRESSION_ENABLE;
+		return PLANE_CTL_TILED_YF | PLANE_CTL_RENDER_DECOMPRESSION_ENABLE;
 	default:
 		MISSING_CASE(fb_modifier);
 	}
@@ -8798,13 +8802,13 @@ skylake_get_initial_plane_config(struct intel_crtc *crtc,
 		fb->modifier = I915_FORMAT_MOD_X_TILED;
 		break;
 	case PLANE_CTL_TILED_Y:
-		if (val & PLANE_CTL_DECOMPRESSION_ENABLE)
+		if (val & PLANE_CTL_RENDER_DECOMPRESSION_ENABLE)
 			fb->modifier = I915_FORMAT_MOD_Y_TILED_CCS;
 		else
 			fb->modifier = I915_FORMAT_MOD_Y_TILED;
 		break;
 	case PLANE_CTL_TILED_YF:
-		if (val & PLANE_CTL_DECOMPRESSION_ENABLE)
+		if (val & PLANE_CTL_RENDER_DECOMPRESSION_ENABLE)
 			fb->modifier = I915_FORMAT_MOD_Yf_TILED_CCS;
 		else
 			fb->modifier = I915_FORMAT_MOD_Yf_TILED;
@@ -8973,7 +8977,7 @@ static void assert_can_disable_lcpll(struct drm_i915_private *dev_priv)
 		I915_STATE_WARN(crtc->active, "CRTC for pipe %c enabled\n",
 		     pipe_name(crtc->pipe));
 
-	I915_STATE_WARN(I915_READ(HSW_PWR_WELL_CTL_DRIVER(HSW_DISP_PW_GLOBAL)),
+	I915_STATE_WARN(I915_READ(HSW_PWR_WELL_CTL2),
 			"Display power well on\n");
 	I915_STATE_WARN(I915_READ(SPLL_CTL) & SPLL_PLL_ENABLE, "SPLL enabled\n");
 	I915_STATE_WARN(I915_READ(WRPLL_CTL(0)) & WRPLL_PLL_ENABLE, "WRPLL1 enabled\n");
@@ -12738,7 +12742,7 @@ static void intel_atomic_commit_tail(struct drm_atomic_state *state)
 	 * down.
 	 */
 	INIT_WORK(&state->commit_work, intel_atomic_cleanup_work);
-	schedule_work(&state->commit_work);
+	queue_work(system_highpri_wq, &state->commit_work);
 }
 
 static void intel_atomic_commit_work(struct work_struct *work)
@@ -13399,8 +13403,7 @@ static bool skl_plane_format_mod_supported(struct drm_plane *_plane,
 	case DRM_FORMAT_XBGR8888:
 	case DRM_FORMAT_ARGB8888:
 	case DRM_FORMAT_ABGR8888:
-		if (modifier == I915_FORMAT_MOD_Yf_TILED_CCS ||
-		    modifier == I915_FORMAT_MOD_Y_TILED_CCS)
+		if (is_ccs_modifier(modifier))
 			return true;
 		/* fall through */
 	case DRM_FORMAT_RGB565:
@@ -14130,6 +14133,9 @@ static void intel_setup_outputs(struct drm_i915_private *dev_priv)
 
 	intel_pps_init(dev_priv);
 
+	if (INTEL_INFO(dev_priv)->num_pipes == 0)
+		return;
+
 	/*
 	 * intel_edp_init_connector() depends on this completing first, to
 	 * prevent the registeration of both eDP and LVDS and the incorrect
@@ -14593,8 +14599,7 @@ static int intel_framebuffer_init(struct intel_framebuffer *intel_fb,
 		 * potential runtime errors at plane configuration time.
 		 */
 		if (IS_GEN9(dev_priv) && i == 0 && fb->width > 3840 &&
-		    (fb->modifier == I915_FORMAT_MOD_Y_TILED_CCS ||
-		     fb->modifier == I915_FORMAT_MOD_Yf_TILED_CCS))
+		    is_ccs_modifier(fb->modifier))
 			stride_alignment *= 4;
 
 		if (fb->pitches[i] & (stride_alignment - 1)) {
@@ -15130,12 +15135,61 @@ static void intel_update_fdi_pll_freq(struct drm_i915_private *dev_priv)
 	DRM_DEBUG_DRIVER("FDI PLL freq=%d\n", dev_priv->fdi_pll_freq);
 }
 
+static int intel_initial_commit(struct drm_device *dev)
+{
+	struct drm_atomic_state *state = NULL;
+	struct drm_modeset_acquire_ctx ctx;
+	struct drm_crtc *crtc;
+	struct drm_crtc_state *crtc_state;
+	int ret = 0;
+
+	state = drm_atomic_state_alloc(dev);
+	if (!state)
+		return -ENOMEM;
+
+	drm_modeset_acquire_init(&ctx, 0);
+
+retry:
+	state->acquire_ctx = &ctx;
+
+	drm_for_each_crtc(crtc, dev) {
+		crtc_state = drm_atomic_get_crtc_state(state, crtc);
+		if (IS_ERR(crtc_state)) {
+			ret = PTR_ERR(crtc_state);
+			goto out;
+		}
+
+		if (crtc_state->active) {
+			ret = drm_atomic_add_affected_planes(state, crtc);
+			if (ret)
+				goto out;
+		}
+	}
+
+	ret = drm_atomic_commit(state);
+
+out:
+	if (ret == -EDEADLK) {
+		drm_atomic_state_clear(state);
+		drm_modeset_backoff(&ctx);
+		goto retry;
+	}
+
+	drm_atomic_state_put(state);
+
+	drm_modeset_drop_locks(&ctx);
+	drm_modeset_acquire_fini(&ctx);
+
+	return ret;
+}
+
 int intel_modeset_init(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv = to_i915(dev);
 	struct i915_ggtt *ggtt = &dev_priv->ggtt;
 	enum pipe pipe;
 	struct intel_crtc *crtc;
+	int ret;
 
 	dev_priv->modeset_wq = alloc_ordered_workqueue("i915_modeset", 0);
 
@@ -15158,9 +15212,6 @@ int intel_modeset_init(struct drm_device *dev)
 	intel_init_quirks(dev);
 
 	intel_init_pm(dev_priv);
-
-	if (INTEL_INFO(dev_priv)->num_pipes == 0)
-		return 0;
 
 	/*
 	 * There may be no VBT; and if the BIOS enabled SSC we can
@@ -15210,8 +15261,6 @@ int intel_modeset_init(struct drm_device *dev)
 		      INTEL_INFO(dev_priv)->num_pipes > 1 ? "s" : "");
 
 	for_each_pipe(dev_priv, pipe) {
-		int ret;
-
 		ret = intel_crtc_init(dev_priv, pipe);
 		if (ret) {
 			drm_mode_config_cleanup(dev);
@@ -15266,6 +15315,16 @@ int intel_modeset_init(struct drm_device *dev)
 	 */
 	if (!HAS_GMCH_DISPLAY(dev_priv))
 		sanitize_watermarks(dev);
+
+	/*
+	 * Force all active planes to recompute their states. So that on
+	 * mode_setcrtc after probe, all the intel_plane_state variables
+	 * are already calculated and there is no assert_plane warnings
+	 * during bootup.
+	 */
+	ret = intel_initial_commit(dev);
+	if (ret)
+		DRM_DEBUG_KMS("Initial commit in probe failed.\n");
 
 	return 0;
 }
@@ -15791,6 +15850,8 @@ intel_modeset_setup_hw_state(struct drm_device *dev,
 	struct intel_encoder *encoder;
 	int i;
 
+	intel_display_power_get(dev_priv, POWER_DOMAIN_INIT);
+
 	intel_early_display_was(dev_priv);
 	intel_modeset_readout_hw_state(dev);
 
@@ -15845,9 +15906,8 @@ intel_modeset_setup_hw_state(struct drm_device *dev,
 		if (WARN_ON(put_domains))
 			modeset_put_power_domains(dev_priv, put_domains);
 	}
-	intel_display_set_init_power(dev_priv, false);
 
-	intel_power_domains_verify_state(dev_priv);
+	intel_display_power_put(dev_priv, POWER_DOMAIN_INIT);
 
 	intel_fbc_init_pipe_state(dev_priv);
 }
@@ -15936,8 +15996,6 @@ void intel_modeset_cleanup(struct drm_device *dev)
 	flush_work(&dev_priv->atomic_helper.free_work);
 	WARN_ON(!llist_empty(&dev_priv->atomic_helper.free_list));
 
-	intel_disable_gt_powersave(dev_priv);
-
 	/*
 	 * Interrupts and polling as the first thing to avoid creating havoc.
 	 * Too much stuff here (turning of connectors, ...) would
@@ -15964,8 +16022,6 @@ void intel_modeset_cleanup(struct drm_device *dev)
 	drm_mode_config_cleanup(dev);
 
 	intel_cleanup_overlay(dev_priv);
-
-	intel_cleanup_gt_powersave(dev_priv);
 
 	intel_teardown_gmbus(dev_priv);
 
@@ -16074,8 +16130,7 @@ intel_display_capture_error_state(struct drm_i915_private *dev_priv)
 		return NULL;
 
 	if (IS_HASWELL(dev_priv) || IS_BROADWELL(dev_priv))
-		error->power_well_driver =
-			I915_READ(HSW_PWR_WELL_CTL_DRIVER(HSW_DISP_PW_GLOBAL));
+		error->power_well_driver = I915_READ(HSW_PWR_WELL_CTL2);
 
 	for_each_pipe(dev_priv, i) {
 		error->pipe[i].power_domain_on =

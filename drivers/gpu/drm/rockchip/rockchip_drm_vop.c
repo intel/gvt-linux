@@ -32,6 +32,7 @@
 #include <linux/of_device.h>
 #include <linux/pm_runtime.h>
 #include <linux/component.h>
+#include <linux/overflow.h>
 
 #include <linux/reset.h>
 #include <linux/delay.h>
@@ -1111,7 +1112,7 @@ static struct drm_connector *vop_get_edp_connector(struct vop *vop)
 }
 
 static int vop_crtc_set_crc_source(struct drm_crtc *crtc,
-				   const char *source_name, size_t *values_cnt)
+				   const char *source_name)
 {
 	struct vop *vop = to_vop(crtc);
 	struct drm_connector *connector;
@@ -1120,8 +1121,6 @@ static int vop_crtc_set_crc_source(struct drm_crtc *crtc,
 	connector = vop_get_edp_connector(vop);
 	if (!connector)
 		return -EINVAL;
-
-	*values_cnt = 3;
 
 	if (source_name && strcmp(source_name, "auto") == 0)
 		ret = analogix_dp_start_crc(connector);
@@ -1132,9 +1131,28 @@ static int vop_crtc_set_crc_source(struct drm_crtc *crtc,
 
 	return ret;
 }
+
+static int
+vop_crtc_verify_crc_source(struct drm_crtc *crtc, const char *source_name,
+			   size_t *values_cnt)
+{
+	if (source_name && strcmp(source_name, "auto") != 0)
+		return -EINVAL;
+
+	*values_cnt = 3;
+	return 0;
+}
+
 #else
 static int vop_crtc_set_crc_source(struct drm_crtc *crtc,
-				   const char *source_name, size_t *values_cnt)
+				   const char *source_name)
+{
+	return -ENODEV;
+}
+
+static int
+vop_crtc_verify_crc_source(struct drm_crtc *crtc, const char *source_name,
+			   size_t *values_cnt)
 {
 	return -ENODEV;
 }
@@ -1150,6 +1168,7 @@ static const struct drm_crtc_funcs vop_crtc_funcs = {
 	.enable_vblank = vop_crtc_enable_vblank,
 	.disable_vblank = vop_crtc_disable_vblank,
 	.set_crc_source = vop_crtc_set_crc_source,
+	.verify_crc_source = vop_crtc_verify_crc_source,
 };
 
 static void vop_fb_unref_worker(struct drm_flip_work *work, void *val)
@@ -1561,7 +1580,6 @@ static int vop_bind(struct device *dev, struct device *master, void *data)
 	struct drm_device *drm_dev = data;
 	struct vop *vop;
 	struct resource *res;
-	size_t alloc_size;
 	int ret, irq;
 
 	vop_data = of_device_get_match_data(dev);
@@ -1569,8 +1587,8 @@ static int vop_bind(struct device *dev, struct device *master, void *data)
 		return -ENODEV;
 
 	/* Allocate vop struct and its vop_win array */
-	alloc_size = sizeof(*vop) + sizeof(*vop->win) * vop_data->win_size;
-	vop = devm_kzalloc(dev, alloc_size, GFP_KERNEL);
+	vop = devm_kzalloc(dev, struct_size(vop, win, vop_data->win_size),
+			   GFP_KERNEL);
 	if (!vop)
 		return -ENOMEM;
 

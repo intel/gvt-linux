@@ -2399,6 +2399,19 @@ i915_gem_do_execbuffer(struct drm_device *dev,
 	 * to explicitly hold another reference here.
 	 */
 	eb.request->batch = eb.batch;
+	if (IS_BROXTON(eb.i915) && eb.i915->vgpu.active) {
+		int bb_idx;
+		struct drm_i915_gem_object *obj;
+
+		for (bb_idx = 0; bb_idx < eb.buffer_count; bb_idx++) {
+			obj = i915_gem_object_lookup(file,
+				(exec + bb_idx)->handle);
+			if (obj) {
+				obj->cache_dirty = true;
+				i915_gem_object_put(obj);
+			}
+		}
+	}
 
 	trace_i915_request_queue(eb.request, eb.batch_flags);
 	err = eb_submit(&eb);

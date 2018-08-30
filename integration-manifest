@@ -1,28 +1,12 @@
-drm drm-fixes 49a51c4b4064c8a89ffd166434696138edef6b85
-	Merge tag 'drm-intel-fixes-2018-08-29' of git://anongit.freedesktop.org/drm/drm-intel into drm-fixes
-drm-misc drm-misc-fixes 6dcece71c721be1fb1d2166f434dd85785b24792
-	drm/pl111: Make sure of_device_id tables are NULL terminated
-drm-intel drm-intel-fixes 80ab316901bc4ae6dd0b5903dbe22766307eac9b
-	drm/i915/audio: Hook up component bindings even if displays are disabled
-drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
-	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
-drm drm-next 5b394b2ddf0347bef56e50c69a58773c94343ff3
-	Linux 4.19-rc1
-drm-misc drm-misc-next-fixes 25da75043f8690fd083878447c91f289dfb63b87
-	drm/edid: Add 6 bpc quirk for SDC panel in Lenovo B50-80
-drm-intel drm-intel-next-fixes 2693efd99cad2509522a88722e04162b7e869333
-	drm/i915/audio: Hook up component bindings even if displays are disabled
-drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
-	Linux 4.14-rc1
-drm-misc drm-misc-next a6edf83922ef39f81dca8a66c9e0c43ed165e144
-	drm/rockchip: vop: fix some register define error for px30
-drm-intel drm-intel-next-queued 9e4fa01221b3230320135072ad31ea809ca31147
-	drm/i915/execlists: Flush tasklet directly from reset-finish
-drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
-	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
-sound-upstream for-linus 8a328ac1f9ebfc7621f76bbb27aa0382cc5b393d
-	ALSA: hda/realtek - Fix HP Headset Mic can't record
-sound-upstream for-next 87246f7fd572f9c3db752708730d68cc9eb08d72
-	ALSA: intel_hdmi: Use the new non-cached allocation
-drm-intel topic/core-for-CI 97263ba0a2a07e9c0fb2cc133ef8f7ebc4c5aea1
-	usb/icl: Work around ACPI boottime crash
+drm-tip/drm-tip c8fe77635992b1f6b32102657faced7c9165c942
+	drm-tip: 2018y-08m-30d-03h-55m-54s UTC integration manifest
+vfio-upstream/for-linus 0e714d27786ce1fb3efa9aac58abc096e68b1c2a
+	vfio/pci: Fix potential Spectre v1
+vfio-upstream/next 0dd0e297f0ec780b6b3484ba38b27d18c8ca7af9
+	vfio-pci: Disable binding to PFs with SR-IOV enabled
+origin/gvt-fixes b244ffa15c8b1aabdc117c0b6008086df7b668b7
+	drm/i915/gvt: Fix drm_format_mod value for vGPU plane
+origin/gvt-next 69ca5af4ff9a3ff96e4595c2b7522c01a2641779
+	drm/i915/gvt: Move some MMIO definitions to reg.h
+origin/gvt-next-fixes d1a61a373ba18f0f4148fb9026a9cc988b365474
+	drm/i915/gvt: Handle GEN9_WM_CHICKEN3 with F_CMD_ACCESS.

@@ -513,7 +513,7 @@ int intel_engine_create_scratch(struct intel_engine_cs *engine,
 		goto err_unref;
 	}
 
-	ret = i915_vma_pin(vma, 0, 4096, PIN_GLOBAL | PIN_HIGH);
+	ret = i915_vma_pin(vma, 0, 0, PIN_GLOBAL | PIN_HIGH);
 	if (ret)
 		goto err_unref;
 
@@ -527,7 +527,7 @@ err_unref:
 
 void intel_engine_cleanup_scratch(struct intel_engine_cs *engine)
 {
-	i915_vma_unpin_and_release(&engine->scratch);
+	i915_vma_unpin_and_release(&engine->scratch, 0);
 }
 
 static void cleanup_phys_status_page(struct intel_engine_cs *engine)
@@ -543,20 +543,8 @@ static void cleanup_phys_status_page(struct intel_engine_cs *engine)
 
 static void cleanup_status_page(struct intel_engine_cs *engine)
 {
-	struct i915_vma *vma;
-	struct drm_i915_gem_object *obj;
-
-	vma = fetch_and_zero(&engine->status_page.vma);
-	if (!vma)
-		return;
-
-	obj = vma->obj;
-
-	i915_vma_unpin(vma);
-	i915_vma_close(vma);
-
-	i915_gem_object_unpin_map(obj);
-	__i915_gem_object_release_unless_active(obj);
+	i915_vma_unpin_and_release(&engine->status_page.vma,
+				   I915_VMA_RELEASE_MAP);
 }
 
 static int init_status_page(struct intel_engine_cs *engine)
@@ -598,7 +586,7 @@ static int init_status_page(struct intel_engine_cs *engine)
 		flags |= PIN_MAPPABLE;
 	else
 		flags |= PIN_HIGH;
-	ret = i915_vma_pin(vma, 0, 4096, flags);
+	ret = i915_vma_pin(vma, 0, 0, flags);
 	if (ret)
 		goto err;
 
@@ -800,6 +788,16 @@ int intel_engine_stop_cs(struct intel_engine_cs *engine)
 	return err;
 }
 
+void intel_engine_cancel_stop_cs(struct intel_engine_cs *engine)
+{
+	struct drm_i915_private *dev_priv = engine->i915;
+
+	GEM_TRACE("%s\n", engine->name);
+
+	I915_WRITE_FW(RING_MI_MODE(engine->mmio_base),
+		      _MASKED_BIT_DISABLE(STOP_RING));
+}
+
 const char *i915_cache_level_str(struct drm_i915_private *i915, int type)
 {
 	switch (type) {
@@ -980,8 +978,7 @@ bool intel_engine_is_idle(struct intel_engine_cs *engine)
 		return true;
 
 	/* Any inflight/incomplete requests? */
-	if (!i915_seqno_passed(intel_engine_get_seqno(engine),
-			       intel_engine_last_submit(engine)))
+	if (!intel_engine_signaled(engine, intel_engine_last_submit(engine)))
 		return false;
 
 	if (I915_SELFTEST_ONLY(engine->breadcrumbs.mock))
@@ -1348,20 +1345,19 @@ static void intel_engine_print_registers(const struct intel_engine_cs *engine,
 
 	if (HAS_EXECLISTS(dev_priv)) {
 		const u32 *hws = &engine->status_page.page_addr[I915_HWS_CSB_BUF0_INDEX];
-		u32 ptr, read, write;
 		unsigned int idx;
+		u8 read, write;
 
 		drm_printf(m, "\tExeclist status: 0x%08x %08x\n",
 			   I915_READ(RING_EXECLIST_STATUS_LO(engine)),
 			   I915_READ(RING_EXECLIST_STATUS_HI(engine)));
 
-		ptr = I915_READ(RING_CONTEXT_STATUS_PTR(engine));
-		read = GEN8_CSB_READ_PTR(ptr);
-		write = GEN8_CSB_WRITE_PTR(ptr);
-		drm_printf(m, "\tExeclist CSB read %d [%d cached], write %d [%d from hws], tasklet queued? %s (%s)\n",
-			   read, execlists->csb_head,
-			   write,
-			   intel_read_status_page(engine, intel_hws_csb_write_index(engine->i915)),
+		read = execlists->csb_head;
+		write = READ_ONCE(*execlists->csb_write);
+
+		drm_printf(m, "\tExeclist CSB read %d, write %d [mmio:%d], tasklet queued? %s (%s)\n",
+			   read, write,
+			   GEN8_CSB_WRITE_PTR(I915_READ(RING_CONTEXT_STATUS_PTR(engine))),
 			   yesno(test_bit(TASKLET_STATE_SCHED,
 					  &engine->execlists.tasklet.state)),
 			   enableddisabled(!atomic_read(&engine->execlists.tasklet.count)));
@@ -1373,12 +1369,12 @@ static void intel_engine_print_registers(const struct intel_engine_cs *engine,
 			write += GEN8_CSB_ENTRIES;
 		while (read < write) {
 			idx = ++read % GEN8_CSB_ENTRIES;
-			drm_printf(m, "\tExeclist CSB[%d]: 0x%08x [0x%08x in hwsp], context: %d [%d in hwsp]\n",
+			drm_printf(m, "\tExeclist CSB[%d]: 0x%08x [mmio:0x%08x], context: %d [mmio:%d]\n",
 				   idx,
-				   I915_READ(RING_CONTEXT_STATUS_BUF_LO(engine, idx)),
 				   hws[idx * 2],
-				   I915_READ(RING_CONTEXT_STATUS_BUF_HI(engine, idx)),
-				   hws[idx * 2 + 1]);
+				   I915_READ(RING_CONTEXT_STATUS_BUF_LO(engine, idx)),
+				   hws[idx * 2 + 1],
+				   I915_READ(RING_CONTEXT_STATUS_BUF_HI(engine, idx)));
 		}
 
 		rcu_read_lock();

@@ -1,28 +1,12 @@
-drm drm-fixes 49a51c4b4064c8a89ffd166434696138edef6b85
-	Merge tag 'drm-intel-fixes-2018-08-29' of git://anongit.freedesktop.org/drm/drm-intel into drm-fixes
-drm-misc drm-misc-fixes 12de17a0ceb6ecbeb699fc8ac961ad3b3cc64747
-	drm/sun4i: Remove R40 display pipeline compatibles
-drm-intel drm-intel-fixes 80ab316901bc4ae6dd0b5903dbe22766307eac9b
-	drm/i915/audio: Hook up component bindings even if displays are disabled
-drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
-	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
-drm drm-next 5b394b2ddf0347bef56e50c69a58773c94343ff3
-	Linux 4.19-rc1
-drm-misc drm-misc-next-fixes 25da75043f8690fd083878447c91f289dfb63b87
-	drm/edid: Add 6 bpc quirk for SDC panel in Lenovo B50-80
-drm-intel drm-intel-next-fixes 2693efd99cad2509522a88722e04162b7e869333
-	drm/i915/audio: Hook up component bindings even if displays are disabled
-drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
-	Linux 4.14-rc1
-drm-misc drm-misc-next b972cece9448c55a2464d61787c955ab28110a40
-	drm: Describe pixel_blend_mode in drm_plane_state
-drm-intel drm-intel-next-queued 48e905048f39ae97bd08dbbbc78a848d1d555d80
-	drm/i915: Explicitly mark Global GTT address spaces
-drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
-	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
-sound-upstream for-linus 16037643969e095509cd8446a3f8e406a6dc3a2c
-	ALSA: hda - Fix cancel_work_sync() stall from jackpoll work
-sound-upstream for-next 56e91b12688648fc69aa5896dce3190a1a795ef9
-	Merge tag 'hda-codec-h-move' of git://git.kernel.org/pub/scm/linux/kernel/git/broonie/sound into for-next
-drm-intel topic/core-for-CI 97263ba0a2a07e9c0fb2cc133ef8f7ebc4c5aea1
-	usb/icl: Work around ACPI boottime crash
+drm-tip/drm-tip 0892613a442a70a96cba33b12bb344033b557879
+	drm-tip: 2018y-09m-01d-16h-57m-58s UTC integration manifest
+vfio-upstream/for-linus 0e714d27786ce1fb3efa9aac58abc096e68b1c2a
+	vfio/pci: Fix potential Spectre v1
+vfio-upstream/next 0dd0e297f0ec780b6b3484ba38b27d18c8ca7af9
+	vfio-pci: Disable binding to PFs with SR-IOV enabled
+origin/gvt-fixes 54ff01fd0d44b9681615f77c15fe9ea6dfadb501
+	drm/i915/gvt: Give new born vGPU higher scheduling chance
+origin/gvt-next 69ca5af4ff9a3ff96e4595c2b7522c01a2641779
+	drm/i915/gvt: Move some MMIO definitions to reg.h
+origin/gvt-next-fixes 7590ebb8b456464e48840a6d106a0c07de6d723a
+	drm/i915/gvt: fix memory leak in intel_vgpu_ioctl()

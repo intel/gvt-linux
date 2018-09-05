@@ -1,0 +1,28 @@
+drm drm-fixes 49a51c4b4064c8a89ffd166434696138edef6b85
+	Merge tag 'drm-intel-fixes-2018-08-29' of git://anongit.freedesktop.org/drm/drm-intel into drm-fixes
+drm-misc drm-misc-fixes 12de17a0ceb6ecbeb699fc8ac961ad3b3cc64747
+	drm/sun4i: Remove R40 display pipeline compatibles
+drm-intel drm-intel-fixes 2b82435cb90bed2c5f8398730d964dd11602217c
+	drm/i915/dp_mst: Fix enabling pipe clock for all streams
+drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
+	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
+drm drm-next 5b394b2ddf0347bef56e50c69a58773c94343ff3
+	Linux 4.19-rc1
+drm-misc drm-misc-next-fixes 25da75043f8690fd083878447c91f289dfb63b87
+	drm/edid: Add 6 bpc quirk for SDC panel in Lenovo B50-80
+drm-intel drm-intel-next-fixes 2693efd99cad2509522a88722e04162b7e869333
+	drm/i915/audio: Hook up component bindings even if displays are disabled
+drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
+	Linux 4.14-rc1
+drm-misc drm-misc-next 3ee22b769fd761c98eeaceab49153c3eb7612821
+	drm/rockchip: rgb: add stub functions when rgb encoder is disabled
+drm-intel drm-intel-next-queued 31962ca6a26087eea255c000ea9fa4ffbdad697b
+	drm/i915: Move final cleanup of drm_i915_private to i915_driver_destroy
+drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
+	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
+sound-upstream for-linus f7c50fa636f72490baceb1664ba64973137266f2
+	ALSA: hda: Fix several mismatch for register mask and value
+sound-upstream for-next 70f7922c25cfb4cc7757f0964919d7d87e2ba250
+	Merge branch 'topic/pcm-indirect-fixes' into for-next
+drm-intel topic/core-for-CI e1b0737fa2126fb65089500b4bb97e1d4c2efcd7
+	kernel/panic: Show the stacktrace after additional notifier messages

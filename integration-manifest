@@ -1,0 +1,28 @@
+drm drm-fixes 2b6318a09fd346edea42a60f8d0c07b2eea2d079
+	Merge branch 'linux-4.19' of git://github.com/skeggsb/linux into drm-fixes
+drm-misc drm-misc-fixes 3c499ea0c662e2f38aafbd4f516b08aab8cfa0e5
+	drm/atomic: Use drm_drv_uses_atomic_modeset() for debugfs creation
+drm-intel drm-intel-fixes 7876320f88802b22d4e2daf7eb027dd14175a0f8
+	Linux 4.19-rc4
+drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
+	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
+drm drm-next 2dc7bad71cd310dc94d1c9907909324dd2b0618f
+	Merge tag 'drm-misc-next-2018-09-13' of git://anongit.freedesktop.org/drm/drm-misc into drm-next
+drm-misc drm-misc-next-fixes 25da75043f8690fd083878447c91f289dfb63b87
+	drm/edid: Add 6 bpc quirk for SDC panel in Lenovo B50-80
+drm-intel drm-intel-next-fixes 2693efd99cad2509522a88722e04162b7e869333
+	drm/i915/audio: Hook up component bindings even if displays are disabled
+drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
+	Linux 4.14-rc1
+drm-misc drm-misc-next 69fdf4206a8ba91a277b3d50a3a05b71247635b2
+	drm: Differentiate the lack of an interface from invalid parameter
+drm-intel drm-intel-next-queued 8e3ffa8d027554b5ba41131a31fcd96d248d1991
+	drm/i915: Limit number of capture objects
+drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
+	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
+sound-upstream for-linus 196f4eeeb78f53e0a598db8f9408b6f8b270c355
+	Merge tag 'asoc-v4.19-rc4' of https://git.kernel.org/pub/scm/linux/kernel/git/broonie/sound into for-linus
+sound-upstream for-next 05e2ec3b00edb277b325489e0d1de3570ad16359
+	ALSA: atiixp: fix fall-through annotations
+drm-intel topic/core-for-CI aa4e21f2ab8dd8a6fc100caa862287f81a59de52
+	kernel/panic: Show the stacktrace after additional notifier messages

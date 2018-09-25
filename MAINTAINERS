@@ -4871,9 +4871,10 @@ F:	Documentation/devicetree/bindings/display/tegra/nvidia,tegra20-host1x.txt
 
 DRM DRIVERS FOR RENESAS
 M:	Laurent Pinchart <laurent.pinchart@ideasonboard.com>
+M:	Kieran Bingham <kieran.bingham+renesas@ideasonboard.com>
 L:	dri-devel@lists.freedesktop.org
 L:	linux-renesas-soc@vger.kernel.org
-T:	git git://linuxtv.org/pinchartl/fbdev
+T:	git git://linuxtv.org/pinchartl/media drm/du/next
 S:	Supported
 F:	drivers/gpu/drm/rcar-du/
 F:	drivers/gpu/drm/shmobile/
@@ -15359,6 +15360,14 @@ F:	arch/um/
 F:	arch/x86/um/
 F:	fs/hostfs/
 F:	fs/hppfs/
+
+USERSPACE DMA BUFFER DRIVER
+M:	Gerd Hoffmann <kraxel@redhat.com>
+S:	Maintained
+L:	dri-devel@lists.freedesktop.org
+F:	drivers/dma-buf/udmabuf.c
+F:	include/uapi/linux/udmabuf.h
+T:	git git://anongit.freedesktop.org/drm/drm-misc
 
 USERSPACE I/O (UIO)
 M:	Greg Kroah-Hartman <gregkh@linuxfoundation.org>

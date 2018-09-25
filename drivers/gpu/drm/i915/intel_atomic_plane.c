@@ -113,81 +113,28 @@ int intel_plane_atomic_check_with_state(const struct intel_crtc_state *old_crtc_
 					struct intel_plane_state *intel_state)
 {
 	struct drm_plane *plane = intel_state->base.plane;
-	struct drm_i915_private *dev_priv = to_i915(plane->dev);
 	struct drm_plane_state *state = &intel_state->base;
 	struct intel_plane *intel_plane = to_intel_plane(plane);
-	const struct drm_display_mode *adjusted_mode =
-		&crtc_state->base.adjusted_mode;
 	int ret;
 
+	crtc_state->active_planes &= ~BIT(intel_plane->id);
+	crtc_state->nv12_planes &= ~BIT(intel_plane->id);
+	intel_state->base.visible = false;
+
+	/* If this is a cursor plane, no further checks are needed. */
 	if (!intel_state->base.crtc && !old_plane_state->base.crtc)
 		return 0;
 
-	if (state->fb && drm_rotation_90_or_270(state->rotation)) {
-		struct drm_format_name_buf format_name;
-
-		if (state->fb->modifier != I915_FORMAT_MOD_Y_TILED &&
-		    state->fb->modifier != I915_FORMAT_MOD_Yf_TILED) {
-			DRM_DEBUG_KMS("Y/Yf tiling required for 90/270!\n");
-			return -EINVAL;
-		}
-
-		/*
-		 * 90/270 is not allowed with RGB64 16:16:16:16,
-		 * RGB 16-bit 5:6:5, and Indexed 8-bit.
-		 * TBD: Add RGB64 case once its added in supported format list.
-		 */
-		switch (state->fb->format->format) {
-		case DRM_FORMAT_C8:
-		case DRM_FORMAT_RGB565:
-			DRM_DEBUG_KMS("Unsupported pixel format %s for 90/270!\n",
-			              drm_get_format_name(state->fb->format->format,
-			                                  &format_name));
-			return -EINVAL;
-
-		default:
-			break;
-		}
-	}
-
-	/* CHV ignores the mirror bit when the rotate bit is set :( */
-	if (IS_CHERRYVIEW(dev_priv) &&
-	    state->rotation & DRM_MODE_ROTATE_180 &&
-	    state->rotation & DRM_MODE_REFLECT_X) {
-		DRM_DEBUG_KMS("Cannot rotate and reflect at the same time\n");
-		return -EINVAL;
-	}
-
-	intel_state->base.visible = false;
 	ret = intel_plane->check_plane(crtc_state, intel_state);
 	if (ret)
 		return ret;
 
-	/*
-	 * Y-tiling is not supported in IF-ID Interlace mode in
-	 * GEN9 and above.
-	 */
-	if (state->fb && INTEL_GEN(dev_priv) >= 9 && crtc_state->base.enable &&
-	    adjusted_mode->flags & DRM_MODE_FLAG_INTERLACE) {
-		if (state->fb->modifier == I915_FORMAT_MOD_Y_TILED ||
-		    state->fb->modifier == I915_FORMAT_MOD_Yf_TILED ||
-		    state->fb->modifier == I915_FORMAT_MOD_Y_TILED_CCS ||
-		    state->fb->modifier == I915_FORMAT_MOD_Yf_TILED_CCS) {
-			DRM_DEBUG_KMS("Y/Yf tiling not supported in IF-ID mode\n");
-			return -EINVAL;
-		}
-	}
-
 	/* FIXME pre-g4x don't work like this */
 	if (state->visible)
 		crtc_state->active_planes |= BIT(intel_plane->id);
-	else
-		crtc_state->active_planes &= ~BIT(intel_plane->id);
 
 	if (state->visible && state->fb->format->format == DRM_FORMAT_NV12)
 		crtc_state->nv12_planes |= BIT(intel_plane->id);
-	else
-		crtc_state->nv12_planes &= ~BIT(intel_plane->id);
 
 	return intel_plane_atomic_calc_changes(old_crtc_state,
 					       &crtc_state->base,
@@ -205,6 +152,7 @@ static int intel_plane_atomic_check(struct drm_plane *plane,
 	const struct drm_crtc_state *old_crtc_state;
 	struct drm_crtc_state *new_crtc_state;
 
+	new_plane_state->visible = false;
 	if (!crtc)
 		return 0;
 
@@ -217,29 +165,33 @@ static int intel_plane_atomic_check(struct drm_plane *plane,
 						   to_intel_plane_state(new_plane_state));
 }
 
-static void intel_plane_atomic_update(struct drm_plane *plane,
-				      struct drm_plane_state *old_state)
+void intel_update_planes_on_crtc(struct intel_atomic_state *old_state,
+				 struct intel_crtc *crtc,
+				 struct intel_crtc_state *old_crtc_state,
+				 struct intel_crtc_state *new_crtc_state)
 {
-	struct intel_atomic_state *state = to_intel_atomic_state(old_state->state);
-	struct intel_plane *intel_plane = to_intel_plane(plane);
-	const struct intel_plane_state *new_plane_state =
-		intel_atomic_get_new_plane_state(state, intel_plane);
-	struct drm_crtc *crtc = new_plane_state->base.crtc ?: old_state->crtc;
+	struct intel_plane_state *new_plane_state;
+	struct intel_plane *plane;
+	u32 update_mask;
+	int i;
 
-	if (new_plane_state->base.visible) {
-		const struct intel_crtc_state *new_crtc_state =
-			intel_atomic_get_new_crtc_state(state, to_intel_crtc(crtc));
+	update_mask = old_crtc_state->active_planes;
+	update_mask |= new_crtc_state->active_planes;
 
-		trace_intel_update_plane(plane,
-					 to_intel_crtc(crtc));
+	for_each_new_intel_plane_in_state(old_state, plane, new_plane_state, i) {
+		if (crtc->pipe != plane->pipe ||
+		    !(update_mask & BIT(plane->id)))
+			continue;
 
-		intel_plane->update_plane(intel_plane,
-					  new_crtc_state, new_plane_state);
-	} else {
-		trace_intel_disable_plane(plane,
-					  to_intel_crtc(crtc));
+		if (new_plane_state->base.visible) {
+			trace_intel_update_plane(&plane->base, crtc);
 
-		intel_plane->disable_plane(intel_plane, to_intel_crtc(crtc));
+			plane->update_plane(plane, new_crtc_state, new_plane_state);
+		} else {
+			trace_intel_disable_plane(&plane->base, crtc);
+
+			plane->disable_plane(plane, crtc);
+		}
 	}
 }
 
@@ -247,7 +199,6 @@ const struct drm_plane_helper_funcs intel_plane_helper_funcs = {
 	.prepare_fb = intel_prepare_plane_fb,
 	.cleanup_fb = intel_cleanup_plane_fb,
 	.atomic_check = intel_plane_atomic_check,
-	.atomic_update = intel_plane_atomic_update,
 };
 
 /**

@@ -33,6 +33,14 @@
 #define mmUVD_POWER_STATUS_BASE_IDX                                                                    1
 #define mmCC_UVD_HARVESTING                                                                            0x00c7
 #define mmCC_UVD_HARVESTING_BASE_IDX                                                                   1
+#define mmUVD_DPG_LMA_CTL                                                                              0x00d1
+#define mmUVD_DPG_LMA_CTL_BASE_IDX                                                                     1
+#define mmUVD_DPG_LMA_DATA                                                                             0x00d2
+#define mmUVD_DPG_LMA_DATA_BASE_IDX                                                                    1
+#define mmUVD_DPG_LMA_MASK                                                                             0x00d3
+#define mmUVD_DPG_LMA_MASK_BASE_IDX                                                                    1
+#define mmUVD_DPG_PAUSE                                                                                0x00d4
+#define mmUVD_DPG_PAUSE_BASE_IDX                                                                       1
 #define mmUVD_SCRATCH1                                                                                 0x00d5
 #define mmUVD_SCRATCH1_BASE_IDX                                                                        1
 #define mmUVD_SCRATCH2                                                                                 0x00d6
@@ -307,6 +315,8 @@
 #define mmUVD_LMI_CTRL2_BASE_IDX                                                                       1
 #define mmUVD_MASTINT_EN                                                                               0x0540
 #define mmUVD_MASTINT_EN_BASE_IDX                                                                      1
+#define mmUVD_SYS_INT_EN                                                                               0x0541
+#define mmUVD_SYS_INT_EN_BASE_IDX                                                                      1
 #define mmJPEG_CGC_CTRL                                                                                0x0565
 #define mmJPEG_CGC_CTRL_BASE_IDX                                                                       1
 #define mmUVD_LMI_CTRL                                                                                 0x0566

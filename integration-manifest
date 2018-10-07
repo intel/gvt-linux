@@ -1,0 +1,28 @@
+drm drm-fixes bdf800c6fdf5674999bc0228d5040cc0ae218fa8
+	Merge branch 'drm-fixes-4.19' of git://people.freedesktop.org/~agd5f/linux into drm-fixes
+drm-misc drm-misc-fixes 064253c1c0625efd0362a0b7ecdbe8bee2a2904d
+	drm: fix use of freed memory in drm_mode_setcrtc
+drm-intel drm-intel-fixes 4c9613ce556fdeb671e779668b627ea3a2b61728
+	drm/i915: Handle incomplete Z_FINISH for compressed error states
+drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
+	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
+drm drm-next c530174b90fa3bcaa83d168b001b574bcb2da021
+	Merge branch 'for-upstream/mali-dp' of git://linux-arm.org/linux-ld into drm-next
+drm-misc drm-misc-next-fixes 8c1d1bb0f0bdebd174a6188ca345e44a03becda5
+	drm/imx: fix build failure without CONFIG_DRM_FBDEV_EMULATION
+drm-intel drm-intel-next-fixes 98a9bce38b3d93082353fda561abb73a4d7b8d94
+	drm/i915: Avoid compiler warning for maybe unused gu_misc_iir
+drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
+	Linux 4.14-rc1
+drm-misc drm-misc-next 84c0851794d40b1f438343b371bb0eaa8d36a4a3
+	drm: Unexport drm_plane_helper_check_update
+drm-intel drm-intel-next-queued 3a465b84ea383a09f102f8c08f1349c96bdb77ef
+	drm/i915/psr: Remove alpm from i915_psr
+drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
+	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
+sound-upstream for-linus 709ae62e8e6d9ac4df7dadb3b8ae432675c45ef9
+	ALSA: hda/realtek - Cannot adjust speaker's volume on Dell XPS 27 7760
+sound-upstream for-next d39f1d68fe1de1f9dbe167a73f0f605226905e27
+	ALSA: usb-audio: Add custom mixer status quirks for RME CC devices
+drm-intel topic/core-for-CI aa4e21f2ab8dd8a6fc100caa862287f81a59de52
+	kernel/panic: Show the stacktrace after additional notifier messages

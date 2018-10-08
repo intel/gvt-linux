@@ -161,8 +161,38 @@ void amdgpu_ucode_print_rlc_hdr(const struct common_firmware_header *hdr)
 			  le32_to_cpu(rlc_hdr->reg_list_format_separate_array_offset_bytes));
 		DRM_DEBUG("reg_list_separate_size_bytes: %u\n",
 			  le32_to_cpu(rlc_hdr->reg_list_separate_size_bytes));
-		DRM_DEBUG("reg_list_separate_size_bytes: %u\n",
-			  le32_to_cpu(rlc_hdr->reg_list_separate_size_bytes));
+		DRM_DEBUG("reg_list_separate_array_offset_bytes: %u\n",
+			  le32_to_cpu(rlc_hdr->reg_list_separate_array_offset_bytes));
+		if (version_minor == 1) {
+			const struct rlc_firmware_header_v2_1 *v2_1 =
+				container_of(rlc_hdr, struct rlc_firmware_header_v2_1, v2_0);
+			DRM_DEBUG("reg_list_format_direct_reg_list_length: %u\n",
+				  le32_to_cpu(v2_1->reg_list_format_direct_reg_list_length));
+			DRM_DEBUG("save_restore_list_cntl_ucode_ver: %u\n",
+				  le32_to_cpu(v2_1->save_restore_list_cntl_ucode_ver));
+			DRM_DEBUG("save_restore_list_cntl_feature_ver: %u\n",
+				  le32_to_cpu(v2_1->save_restore_list_cntl_feature_ver));
+			DRM_DEBUG("save_restore_list_cntl_size_bytes %u\n",
+				  le32_to_cpu(v2_1->save_restore_list_cntl_size_bytes));
+			DRM_DEBUG("save_restore_list_cntl_offset_bytes: %u\n",
+				  le32_to_cpu(v2_1->save_restore_list_cntl_offset_bytes));
+			DRM_DEBUG("save_restore_list_gpm_ucode_ver: %u\n",
+				  le32_to_cpu(v2_1->save_restore_list_gpm_ucode_ver));
+			DRM_DEBUG("save_restore_list_gpm_feature_ver: %u\n",
+				  le32_to_cpu(v2_1->save_restore_list_gpm_feature_ver));
+			DRM_DEBUG("save_restore_list_gpm_size_bytes %u\n",
+				  le32_to_cpu(v2_1->save_restore_list_gpm_size_bytes));
+			DRM_DEBUG("save_restore_list_gpm_offset_bytes: %u\n",
+				  le32_to_cpu(v2_1->save_restore_list_gpm_offset_bytes));
+			DRM_DEBUG("save_restore_list_srm_ucode_ver: %u\n",
+				  le32_to_cpu(v2_1->save_restore_list_srm_ucode_ver));
+			DRM_DEBUG("save_restore_list_srm_feature_ver: %u\n",
+				  le32_to_cpu(v2_1->save_restore_list_srm_feature_ver));
+			DRM_DEBUG("save_restore_list_srm_size_bytes %u\n",
+				  le32_to_cpu(v2_1->save_restore_list_srm_size_bytes));
+			DRM_DEBUG("save_restore_list_srm_offset_bytes: %u\n",
+				  le32_to_cpu(v2_1->save_restore_list_srm_offset_bytes));
+		}
 	} else {
 		DRM_ERROR("Unknown RLC ucode version: %u.%u\n", version_major, version_minor);
 	}
@@ -247,6 +277,7 @@ amdgpu_ucode_get_load_type(struct amdgpu_device *adev, int load_type)
 	case CHIP_PITCAIRN:
 	case CHIP_VERDE:
 	case CHIP_OLAND:
+	case CHIP_HAINAN:
 		return AMDGPU_FW_LOAD_DIRECT;
 #endif
 #ifdef CONFIG_DRM_AMDGPU_CIK
@@ -265,6 +296,7 @@ amdgpu_ucode_get_load_type(struct amdgpu_device *adev, int load_type)
 	case CHIP_POLARIS10:
 	case CHIP_POLARIS11:
 	case CHIP_POLARIS12:
+	case CHIP_VEGAM:
 		if (!load_type)
 			return AMDGPU_FW_LOAD_DIRECT;
 		else
@@ -272,6 +304,7 @@ amdgpu_ucode_get_load_type(struct amdgpu_device *adev, int load_type)
 	case CHIP_VEGA10:
 	case CHIP_RAVEN:
 	case CHIP_VEGA12:
+	case CHIP_VEGA20:
 		if (!load_type)
 			return AMDGPU_FW_LOAD_DIRECT;
 		else
@@ -289,6 +322,7 @@ static int amdgpu_ucode_init_single_fw(struct amdgpu_device *adev,
 {
 	const struct common_firmware_header *header = NULL;
 	const struct gfx_firmware_header_v1_0 *cp_hdr = NULL;
+	const struct dmcu_firmware_header_v1_0 *dmcu_hdr = NULL;
 
 	if (NULL == ucode->fw)
 		return 0;
@@ -300,14 +334,19 @@ static int amdgpu_ucode_init_single_fw(struct amdgpu_device *adev,
 		return 0;
 
 	header = (const struct common_firmware_header *)ucode->fw->data;
-
 	cp_hdr = (const struct gfx_firmware_header_v1_0 *)ucode->fw->data;
+	dmcu_hdr = (const struct dmcu_firmware_header_v1_0 *)ucode->fw->data;
 
 	if (adev->firmware.load_type != AMDGPU_FW_LOAD_PSP ||
 	    (ucode->ucode_id != AMDGPU_UCODE_ID_CP_MEC1 &&
 	     ucode->ucode_id != AMDGPU_UCODE_ID_CP_MEC2 &&
 	     ucode->ucode_id != AMDGPU_UCODE_ID_CP_MEC1_JT &&
-	     ucode->ucode_id != AMDGPU_UCODE_ID_CP_MEC2_JT)) {
+	     ucode->ucode_id != AMDGPU_UCODE_ID_CP_MEC2_JT &&
+	     ucode->ucode_id != AMDGPU_UCODE_ID_RLC_RESTORE_LIST_CNTL &&
+	     ucode->ucode_id != AMDGPU_UCODE_ID_RLC_RESTORE_LIST_GPM_MEM &&
+	     ucode->ucode_id != AMDGPU_UCODE_ID_RLC_RESTORE_LIST_SRM_MEM &&
+		 ucode->ucode_id != AMDGPU_UCODE_ID_DMCU_ERAM &&
+		 ucode->ucode_id != AMDGPU_UCODE_ID_DMCU_INTV)) {
 		ucode->ucode_size = le32_to_cpu(header->ucode_size_bytes);
 
 		memcpy(ucode->kaddr, (void *)((uint8_t *)ucode->fw->data +
@@ -328,6 +367,32 @@ static int amdgpu_ucode_init_single_fw(struct amdgpu_device *adev,
 		memcpy(ucode->kaddr, (void *)((uint8_t *)ucode->fw->data +
 					      le32_to_cpu(header->ucode_array_offset_bytes) +
 					      le32_to_cpu(cp_hdr->jt_offset) * 4),
+		       ucode->ucode_size);
+	} else if (ucode->ucode_id == AMDGPU_UCODE_ID_DMCU_ERAM) {
+		ucode->ucode_size = le32_to_cpu(header->ucode_size_bytes) -
+				le32_to_cpu(dmcu_hdr->intv_size_bytes);
+
+		memcpy(ucode->kaddr, (void *)((uint8_t *)ucode->fw->data +
+					      le32_to_cpu(header->ucode_array_offset_bytes)),
+		       ucode->ucode_size);
+	} else if (ucode->ucode_id == AMDGPU_UCODE_ID_DMCU_INTV) {
+		ucode->ucode_size = le32_to_cpu(dmcu_hdr->intv_size_bytes);
+
+		memcpy(ucode->kaddr, (void *)((uint8_t *)ucode->fw->data +
+					      le32_to_cpu(header->ucode_array_offset_bytes) +
+					      le32_to_cpu(dmcu_hdr->intv_offset_bytes)),
+		       ucode->ucode_size);
+	} else if (ucode->ucode_id == AMDGPU_UCODE_ID_RLC_RESTORE_LIST_CNTL) {
+		ucode->ucode_size = adev->gfx.rlc.save_restore_list_cntl_size_bytes;
+		memcpy(ucode->kaddr, adev->gfx.rlc.save_restore_list_cntl,
+		       ucode->ucode_size);
+	} else if (ucode->ucode_id == AMDGPU_UCODE_ID_RLC_RESTORE_LIST_GPM_MEM) {
+		ucode->ucode_size = adev->gfx.rlc.save_restore_list_gpm_size_bytes;
+		memcpy(ucode->kaddr, adev->gfx.rlc.save_restore_list_gpm,
+		       ucode->ucode_size);
+	} else if (ucode->ucode_id == AMDGPU_UCODE_ID_RLC_RESTORE_LIST_SRM_MEM) {
+		ucode->ucode_size = adev->gfx.rlc.save_restore_list_srm_size_bytes;
+		memcpy(ucode->kaddr, adev->gfx.rlc.save_restore_list_srm,
 		       ucode->ucode_size);
 	}
 

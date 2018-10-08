@@ -549,11 +549,9 @@ void intel_gvt_switch_mmio(struct intel_vgpu *pre,
 	 * performace for batch mmio read/write, so we need
 	 * handle forcewake mannually.
 	 */
-	intel_runtime_pm_get(dev_priv);
 	intel_uncore_forcewake_get(dev_priv, FORCEWAKE_ALL);
 	switch_mmio(pre, next, ring_id);
 	intel_uncore_forcewake_put(dev_priv, FORCEWAKE_ALL);
-	intel_runtime_pm_put(dev_priv);
 }
 
 /**
@@ -574,7 +572,9 @@ void intel_gvt_init_engine_mmio_context(struct intel_gvt *gvt)
 
 	for (mmio = gvt->engine_mmio_list.mmio;
 	     i915_mmio_reg_valid(mmio->reg); mmio++) {
-		if (mmio->in_context)
+		if (mmio->in_context) {
 			gvt->engine_mmio_list.ctx_mmio_count[mmio->ring_id]++;
+			intel_gvt_mmio_set_in_ctx(gvt, mmio->reg.reg);
+		}
 	}
 }

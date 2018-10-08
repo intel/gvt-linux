@@ -481,7 +481,7 @@ static int _wait_softreset_complete(struct omap_hwmod *oh)
 
 	sysc = oh->class->sysc;
 
-	if (sysc->sysc_flags & SYSS_HAS_RESET_STATUS)
+	if (sysc->sysc_flags & SYSS_HAS_RESET_STATUS && sysc->syss_offs > 0)
 		omap_test_timeout((omap_hwmod_read(oh, sysc->syss_offs)
 				   & SYSS_RESETDONE_MASK),
 				  MAX_MODULE_SOFTRESET_WAIT, c);
@@ -2161,6 +2161,37 @@ static int of_dev_hwmod_lookup(struct device_node *np,
 }
 
 /**
+ * omap_hwmod_fix_mpu_rt_idx - fix up mpu_rt_idx register offsets
+ *
+ * @oh: struct omap_hwmod *
+ * @np: struct device_node *
+ *
+ * Fix up module register offsets for modules with mpu_rt_idx.
+ * Only needed for cpsw with interconnect target module defined
+ * in device tree while still using legacy hwmod platform data
+ * for rev, sysc and syss registers.
+ *
+ * Can be removed when all cpsw hwmod platform data has been
+ * dropped.
+ */
+static void omap_hwmod_fix_mpu_rt_idx(struct omap_hwmod *oh,
+				      struct device_node *np,
+				      struct resource *res)
+{
+	struct device_node *child = NULL;
+	int error;
+
+	child = of_get_next_child(np, child);
+	if (!child)
+		return;
+
+	error = of_address_to_resource(child, oh->mpu_rt_idx, res);
+	if (error)
+		pr_err("%s: error mapping mpu_rt_idx: %i\n",
+		       __func__, error);
+}
+
+/**
  * omap_hwmod_parse_module_range - map module IO range from device tree
  * @oh: struct omap_hwmod *
  * @np: struct device_node *
@@ -2220,7 +2251,13 @@ int omap_hwmod_parse_module_range(struct omap_hwmod *oh,
 	size = be32_to_cpup(ranges);
 
 	pr_debug("omap_hwmod: %s %s at 0x%llx size 0x%llx\n",
-		 oh->name, np->name, base, size);
+		 oh ? oh->name : "", np->name, base, size);
+
+	if (oh && oh->mpu_rt_idx) {
+		omap_hwmod_fix_mpu_rt_idx(oh, np, res);
+
+		return 0;
+	}
 
 	res->start = base;
 	res->end = base + size - 1;
@@ -3171,19 +3208,19 @@ static int omap_hwmod_init_regbits(struct device *dev,
  */
 int omap_hwmod_init_reg_offs(struct device *dev,
 			     const struct ti_sysc_module_data *data,
-			     u32 *rev_offs, u32 *sysc_offs, u32 *syss_offs)
+			     s32 *rev_offs, s32 *sysc_offs, s32 *syss_offs)
 {
-	*rev_offs = 0;
+	*rev_offs = -ENODEV;
 	*sysc_offs = 0;
 	*syss_offs = 0;
 
-	if (data->offsets[SYSC_REVISION] > 0)
+	if (data->offsets[SYSC_REVISION] >= 0)
 		*rev_offs = data->offsets[SYSC_REVISION];
 
-	if (data->offsets[SYSC_SYSCONFIG] > 0)
+	if (data->offsets[SYSC_SYSCONFIG] >= 0)
 		*sysc_offs = data->offsets[SYSC_SYSCONFIG];
 
-	if (data->offsets[SYSC_SYSSTATUS] > 0)
+	if (data->offsets[SYSC_SYSSTATUS] >= 0)
 		*syss_offs = data->offsets[SYSC_SYSSTATUS];
 
 	return 0;
@@ -3312,8 +3349,8 @@ static int omap_hwmod_check_module(struct device *dev,
 				   struct omap_hwmod *oh,
 				   const struct ti_sysc_module_data *data,
 				   struct sysc_regbits *sysc_fields,
-				   u32 rev_offs, u32 sysc_offs,
-				   u32 syss_offs, u32 sysc_flags,
+				   s32 rev_offs, s32 sysc_offs,
+				   s32 syss_offs, u32 sysc_flags,
 				   u32 idlemodes)
 {
 	if (!oh->class->sysc)
@@ -3365,7 +3402,7 @@ static int omap_hwmod_check_module(struct device *dev,
 int omap_hwmod_allocate_module(struct device *dev, struct omap_hwmod *oh,
 			       const struct ti_sysc_module_data *data,
 			       struct sysc_regbits *sysc_fields,
-			       u32 rev_offs, u32 sysc_offs, u32 syss_offs,
+			       s32 rev_offs, s32 sysc_offs, s32 syss_offs,
 			       u32 sysc_flags, u32 idlemodes)
 {
 	struct omap_hwmod_class_sysconfig *sysc;
@@ -3425,7 +3462,8 @@ int omap_hwmod_init_module(struct device *dev,
 {
 	struct omap_hwmod *oh;
 	struct sysc_regbits *sysc_fields;
-	u32 rev_offs, sysc_offs, syss_offs, sysc_flags, idlemodes;
+	s32 rev_offs, sysc_offs, syss_offs;
+	u32 sysc_flags, idlemodes;
 	int error;
 
 	if (!dev || !data)

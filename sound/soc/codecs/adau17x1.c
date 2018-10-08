@@ -299,6 +299,7 @@ static const struct snd_soc_dapm_route adau17x1_dsp_dapm_routes[] = {
 
 	{ "DSP", NULL, "Left Decimator" },
 	{ "DSP", NULL, "Right Decimator" },
+	{ "DSP", NULL, "Playback" },
 };
 
 static const struct snd_soc_dapm_route adau17x1_no_dsp_dapm_routes[] = {
@@ -842,6 +843,15 @@ int adau17x1_setup_firmware(struct snd_soc_component *component,
 	int dspsr, dsp_run;
 	struct adau *adau = snd_soc_component_get_drvdata(component);
 	struct snd_soc_dapm_context *dapm = snd_soc_component_get_dapm(component);
+
+	/* Check if sample rate is the same as before. If it is there is no
+	 * point in performing the below steps as the call to
+	 * sigmadsp_setup(...) will return directly when it finds the sample
+	 * rate to be the same as before. By checking this we can prevent an
+	 * audiable popping noise which occours when toggling DSP_RUN.
+	 */
+	if (adau->sigmadsp->current_samplerate == rate)
+		return 0;
 
 	snd_soc_dapm_mutex_lock(dapm);
 

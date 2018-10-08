@@ -478,6 +478,23 @@ static void at24_properties_to_pdata(struct device *dev,
 	if (device_property_present(dev, "no-read-rollover"))
 		chip->flags |= AT24_FLAG_NO_RDROL;
 
+	err = device_property_read_u32(dev, "address-width", &val);
+	if (!err) {
+		switch (val) {
+		case 8:
+			if (chip->flags & AT24_FLAG_ADDR16)
+				dev_warn(dev, "Override address width to be 8, while default is 16\n");
+			chip->flags &= ~AT24_FLAG_ADDR16;
+			break;
+		case 16:
+			chip->flags |= AT24_FLAG_ADDR16;
+			break;
+		default:
+			dev_warn(dev, "Bad \"address-width\" property: %u\n",
+				 val);
+		}
+	}
+
 	err = device_property_read_u32(dev, "size", &val);
 	if (!err)
 		chip->byte_len = val;
@@ -518,7 +535,7 @@ static int at24_get_pdata(struct device *dev, struct at24_platform_data *pdata)
 	if (of_node && of_match_device(at24_of_match, dev))
 		cdata = of_device_get_match_data(dev);
 	else if (id)
-		cdata = (void *)&id->driver_data;
+		cdata = (void *)id->driver_data;
 	else
 		cdata = acpi_device_get_match_data(dev);
 
@@ -528,6 +545,45 @@ static int at24_get_pdata(struct device *dev, struct at24_platform_data *pdata)
 	pdata->byte_len = cdata->byte_len;
 	pdata->flags = cdata->flags;
 	at24_properties_to_pdata(dev, pdata);
+
+	return 0;
+}
+
+static void at24_remove_dummy_clients(struct at24_data *at24)
+{
+	int i;
+
+	for (i = 1; i < at24->num_addresses; i++)
+		i2c_unregister_device(at24->client[i].client);
+}
+
+static int at24_make_dummy_client(struct at24_data *at24, unsigned int index,
+				  struct regmap_config *regmap_config)
+{
+	struct i2c_client *base_client, *dummy_client;
+	unsigned short int addr;
+	struct regmap *regmap;
+	struct device *dev;
+
+	base_client = at24->client[0].client;
+	dev = &base_client->dev;
+	addr = base_client->addr + index;
+
+	dummy_client = i2c_new_dummy(base_client->adapter,
+				     base_client->addr + index);
+	if (!dummy_client) {
+		dev_err(dev, "address 0x%02x unavailable\n", addr);
+		return -EADDRINUSE;
+	}
+
+	regmap = devm_regmap_init_i2c(dummy_client, regmap_config);
+	if (IS_ERR(regmap)) {
+		i2c_unregister_device(dummy_client);
+		return PTR_ERR(regmap);
+	}
+
+	at24->client[index].client = dummy_client;
+	at24->client[index].regmap = regmap;
 
 	return 0;
 }
@@ -637,20 +693,10 @@ static int at24_probe(struct i2c_client *client)
 
 	/* use dummy devices for multiple-address chips */
 	for (i = 1; i < num_addresses; i++) {
-		at24->client[i].client = i2c_new_dummy(client->adapter,
-						       client->addr + i);
-		if (!at24->client[i].client) {
-			dev_err(dev, "address 0x%02x unavailable\n",
-				client->addr + i);
-			err = -EADDRINUSE;
-			goto err_clients;
-		}
-		at24->client[i].regmap = devm_regmap_init_i2c(
-						at24->client[i].client,
-						&regmap_config);
-		if (IS_ERR(at24->client[i].regmap)) {
-			err = PTR_ERR(at24->client[i].regmap);
-			goto err_clients;
+		err = at24_make_dummy_client(at24, i, &regmap_config);
+		if (err) {
+			at24_remove_dummy_clients(at24);
+			return err;
 		}
 	}
 
@@ -685,7 +731,7 @@ static int at24_probe(struct i2c_client *client)
 	nvmem_config.word_size = 1;
 	nvmem_config.size = pdata.byte_len;
 
-	at24->nvmem = nvmem_register(&nvmem_config);
+	at24->nvmem = devm_nvmem_register(dev, &nvmem_config);
 	if (IS_ERR(at24->nvmem)) {
 		err = PTR_ERR(at24->nvmem);
 		goto err_clients;
@@ -702,10 +748,7 @@ static int at24_probe(struct i2c_client *client)
 	return 0;
 
 err_clients:
-	for (i = 1; i < num_addresses; i++)
-		if (at24->client[i].client)
-			i2c_unregister_device(at24->client[i].client);
-
+	at24_remove_dummy_clients(at24);
 	pm_runtime_disable(dev);
 
 	return err;
@@ -714,15 +757,10 @@ err_clients:
 static int at24_remove(struct i2c_client *client)
 {
 	struct at24_data *at24;
-	int i;
 
 	at24 = i2c_get_clientdata(client);
 
-	nvmem_unregister(at24->nvmem);
-
-	for (i = 1; i < at24->num_addresses; i++)
-		i2c_unregister_device(at24->client[i].client);
-
+	at24_remove_dummy_clients(at24);
 	pm_runtime_disable(&client->dev);
 	pm_runtime_set_suspended(&client->dev);
 

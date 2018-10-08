@@ -32,6 +32,7 @@
 #include <linux/device.h>
 #include <linux/mm.h>
 #include <linux/mmu_context.h>
+#include <linux/sched/mm.h>
 #include <linux/types.h>
 #include <linux/list.h>
 #include <linux/rbtree.h>
@@ -42,6 +43,8 @@
 #include <linux/vfio.h>
 #include <linux/mdev.h>
 #include <linux/debugfs.h>
+
+#include <linux/nospec.h>
 
 #include "i915_drv.h"
 #include "gvt.h"
@@ -187,14 +190,14 @@ static int gvt_dma_map_page(struct intel_vgpu *vgpu, unsigned long gfn,
 
 	/* Setup DMA mapping. */
 	*dma_addr = dma_map_page(dev, page, 0, size, PCI_DMA_BIDIRECTIONAL);
-	ret = dma_mapping_error(dev, *dma_addr);
-	if (ret) {
+	if (dma_mapping_error(dev, *dma_addr)) {
 		gvt_vgpu_err("DMA mapping failed for pfn 0x%lx, ret %d\n",
 			     page_to_pfn(page), ret);
 		gvt_unpin_guest_page(vgpu, gfn, size);
+		return -ENOMEM;
 	}
 
-	return ret;
+	return 0;
 }
 
 static void gvt_dma_unmap_page(struct intel_vgpu *vgpu, unsigned long gfn,
@@ -644,6 +647,17 @@ out:
 	return ret;
 }
 
+static void intel_vgpu_release_msi_eventfd_ctx(struct intel_vgpu *vgpu)
+{
+	struct eventfd_ctx *trigger;
+
+	trigger = vgpu->vdev.msi_trigger;
+	if (trigger) {
+		eventfd_ctx_put(trigger);
+		vgpu->vdev.msi_trigger = NULL;
+	}
+}
+
 static void __intel_vgpu_release(struct intel_vgpu *vgpu)
 {
 	struct kvmgt_guest_info *info;
@@ -655,7 +669,7 @@ static void __intel_vgpu_release(struct intel_vgpu *vgpu)
 	if (atomic_cmpxchg(&vgpu->vdev.released, 0, 1))
 		return;
 
-	intel_gvt_ops->vgpu_deactivate(vgpu);
+	intel_gvt_ops->vgpu_release(vgpu);
 
 	ret = vfio_unregister_notifier(mdev_dev(vgpu->vdev.mdev), VFIO_IOMMU_NOTIFY,
 					&vgpu->vdev.iommu_notifier);
@@ -667,6 +681,8 @@ static void __intel_vgpu_release(struct intel_vgpu *vgpu)
 
 	info = (struct kvmgt_guest_info *)vgpu->handle;
 	kvmgt_guest_exit(info);
+
+	intel_vgpu_release_msi_eventfd_ctx(vgpu);
 
 	vgpu->vdev.kvm = NULL;
 	vgpu->handle = 0;
@@ -1048,7 +1064,8 @@ static int intel_vgpu_set_msi_trigger(struct intel_vgpu *vgpu,
 			return PTR_ERR(trigger);
 		}
 		vgpu->vdev.msi_trigger = trigger;
-	}
+	} else if ((flags & VFIO_IRQ_SET_DATA_NONE) && !count)
+		intel_vgpu_release_msi_eventfd_ctx(vgpu);
 
 	return 0;
 }
@@ -1125,7 +1142,8 @@ static long intel_vgpu_ioctl(struct mdev_device *mdev, unsigned int cmd,
 	} else if (cmd == VFIO_DEVICE_GET_REGION_INFO) {
 		struct vfio_region_info info;
 		struct vfio_info_cap caps = { .buf = NULL, .size = 0 };
-		int i, ret;
+		unsigned int i;
+		int ret;
 		struct vfio_region_info_cap_sparse_mmap *sparse = NULL;
 		size_t size;
 		int nr_areas = 1;
@@ -1210,6 +1228,10 @@ static long intel_vgpu_ioctl(struct mdev_device *mdev, unsigned int cmd,
 				if (info.index >= VFIO_PCI_NUM_REGIONS +
 						vgpu->vdev.num_regions)
 					return -EINVAL;
+				info.index =
+					array_index_nospec(info.index,
+							VFIO_PCI_NUM_REGIONS +
+							vgpu->vdev.num_regions);
 
 				i = info.index - VFIO_PCI_NUM_REGIONS;
 
@@ -1236,11 +1258,13 @@ static long intel_vgpu_ioctl(struct mdev_device *mdev, unsigned int cmd,
 					&sparse->header, sizeof(*sparse) +
 					(sparse->nr_areas *
 						sizeof(*sparse->areas)));
-				kfree(sparse);
-				if (ret)
+				if (ret) {
+					kfree(sparse);
 					return ret;
+				}
 				break;
 			default:
+				kfree(sparse);
 				return -EINVAL;
 			}
 		}
@@ -1256,6 +1280,7 @@ static long intel_vgpu_ioctl(struct mdev_device *mdev, unsigned int cmd,
 						  sizeof(info), caps.buf,
 						  caps.size)) {
 					kfree(caps.buf);
+					kfree(sparse);
 					return -EFAULT;
 				}
 				info.cap_offset = sizeof(info);
@@ -1264,6 +1289,7 @@ static long intel_vgpu_ioctl(struct mdev_device *mdev, unsigned int cmd,
 			kfree(caps.buf);
 		}
 
+		kfree(sparse);
 		return copy_to_user((void __user *)arg, &info, minsz) ?
 			-EFAULT : 0;
 	} else if (cmd == VFIO_DEVICE_GET_IRQ_INFO) {
@@ -1601,7 +1627,6 @@ static int kvmgt_guest_init(struct mdev_device *mdev)
 	kvmgt_protect_table_init(info);
 	gvt_cache_init(vgpu);
 
-	mutex_init(&vgpu->dmabuf_lock);
 	init_completion(&vgpu->vblank_done);
 
 	info->track_node.track_write = kvmgt_page_track_write;
@@ -1652,6 +1677,18 @@ static int kvmgt_inject_msi(unsigned long handle, u32 addr, u16 data)
 
 	info = (struct kvmgt_guest_info *)handle;
 	vgpu = info->vgpu;
+
+	/*
+	 * When guest is poweroff, msi_trigger is set to NULL, but vgpu's
+	 * config and mmio register isn't restored to default during guest
+	 * poweroff. If this vgpu is still used in next vm, this vgpu's pipe
+	 * may be enabled, then once this vgpu is active, it will get inject
+	 * vblank interrupt request. But msi_trigger is null until msi is
+	 * enabled by guest. so if msi_trigger is null, success is still
+	 * returned and don't inject interrupt into guest.
+	 */
+	if (vgpu->vdev.msi_trigger == NULL)
+		return 0;
 
 	if (eventfd_signal(vgpu->vdev.msi_trigger, 1) == 1)
 		return 0;
@@ -1756,16 +1793,21 @@ static int kvmgt_rw_gpa(unsigned long handle, unsigned long gpa,
 	info = (struct kvmgt_guest_info *)handle;
 	kvm = info->kvm;
 
-	if (kthread)
+	if (kthread) {
+		if (!mmget_not_zero(kvm->mm))
+			return -EFAULT;
 		use_mm(kvm->mm);
+	}
 
 	idx = srcu_read_lock(&kvm->srcu);
 	ret = write ? kvm_write_guest(kvm, gpa, buf, len) :
 		      kvm_read_guest(kvm, gpa, buf, len);
 	srcu_read_unlock(&kvm->srcu, idx);
 
-	if (kthread)
+	if (kthread) {
 		unuse_mm(kvm->mm);
+		mmput(kvm->mm);
+	}
 
 	return ret;
 }
@@ -1791,6 +1833,8 @@ static bool kvmgt_is_valid_gfn(unsigned long handle, unsigned long gfn)
 {
 	struct kvmgt_guest_info *info;
 	struct kvm *kvm;
+	int idx;
+	bool ret;
 
 	if (!handle_valid(handle))
 		return false;
@@ -1798,8 +1842,11 @@ static bool kvmgt_is_valid_gfn(unsigned long handle, unsigned long gfn)
 	info = (struct kvmgt_guest_info *)handle;
 	kvm = info->kvm;
 
-	return kvm_is_visible_gfn(kvm, gfn);
+	idx = srcu_read_lock(&kvm->srcu);
+	ret = kvm_is_visible_gfn(kvm, gfn);
+	srcu_read_unlock(&kvm->srcu, idx);
 
+	return ret;
 }
 
 struct intel_gvt_mpt kvmgt_mpt = {

@@ -98,12 +98,14 @@ static void intel_breadcrumbs_hangcheck(struct timer_list *t)
 	struct intel_engine_cs *engine =
 		from_timer(engine, t, breadcrumbs.hangcheck);
 	struct intel_breadcrumbs *b = &engine->breadcrumbs;
+	unsigned int irq_count;
 
 	if (!b->irq_armed)
 		return;
 
-	if (b->hangcheck_interrupts != atomic_read(&engine->irq_count)) {
-		b->hangcheck_interrupts = atomic_read(&engine->irq_count);
+	irq_count = READ_ONCE(b->irq_count);
+	if (b->hangcheck_interrupts != irq_count) {
+		b->hangcheck_interrupts = irq_count;
 		mod_timer(&b->hangcheck, wait_timeout());
 		return;
 	}
@@ -254,8 +256,7 @@ void intel_engine_disarm_breadcrumbs(struct intel_engine_cs *engine)
 	spin_unlock(&b->irq_lock);
 
 	rbtree_postorder_for_each_entry_safe(wait, n, &b->waiters, node) {
-		GEM_BUG_ON(!i915_seqno_passed(intel_engine_get_seqno(engine),
-					      wait->seqno));
+		GEM_BUG_ON(!intel_engine_signaled(engine, wait->seqno));
 		RB_CLEAR_NODE(&wait->node);
 		wake_up_process(wait->tsk);
 	}
@@ -272,13 +273,14 @@ static bool use_fake_irq(const struct intel_breadcrumbs *b)
 	if (!test_bit(engine->id, &engine->i915->gpu_error.missed_irq_rings))
 		return false;
 
-	/* Only start with the heavy weight fake irq timer if we have not
+	/*
+	 * Only start with the heavy weight fake irq timer if we have not
 	 * seen any interrupts since enabling it the first time. If the
 	 * interrupts are still arriving, it means we made a mistake in our
 	 * engine->seqno_barrier(), a timing error that should be transient
 	 * and unlikely to reoccur.
 	 */
-	return atomic_read(&engine->irq_count) == b->hangcheck_interrupts;
+	return READ_ONCE(b->irq_count) == b->hangcheck_interrupts;
 }
 
 static void enable_fake_irq(struct intel_breadcrumbs *b)
@@ -505,8 +507,7 @@ bool intel_engine_add_wait(struct intel_engine_cs *engine,
 		return armed;
 
 	/* Make the caller recheck if its request has already started. */
-	return i915_seqno_passed(intel_engine_get_seqno(engine),
-				 wait->seqno - 1);
+	return intel_engine_has_started(engine, wait->seqno);
 }
 
 static inline bool chain_wakeup(struct rb_node *rb, int priority)

@@ -3,13 +3,15 @@
 # ACPI Configuration
 #
 
+config ARCH_SUPPORTS_ACPI
+	bool
+
 menuconfig ACPI
 	bool "ACPI (Advanced Configuration and Power Interface) Support"
-	depends on !IA64_HP_SIM
-	depends on IA64 || X86 || ARM64
+	depends on ARCH_SUPPORTS_ACPI
 	depends on PCI
 	select PNP
-	default y if (IA64 || X86)
+	default y if X86
 	help
 	  Advanced Configuration and Power Interface (ACPI) support for 
 	  Linux requires an ACPI-compliant platform (hardware/firmware),
@@ -547,6 +549,9 @@ config ACPI_CONFIGFS
 
 if ARM64
 source "drivers/acpi/arm64/Kconfig"
+
+config ACPI_PPTT
+	bool
 endif
 
 config TPS68470_PMIC_OPREGION

@@ -1,13 +1,10 @@
-/*
- * Renesas R-Car
- *
- * Copyright (C) 2013 Renesas Solutions Corp.
- * Kuninori Morimoto <kuninori.morimoto.gx@renesas.com>
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- */
+// SPDX-License-Identifier: GPL-2.0
+//
+// Renesas R-Car
+//
+// Copyright (C) 2013 Renesas Solutions Corp.
+// Kuninori Morimoto <kuninori.morimoto.gx@renesas.com>
+
 #ifndef RSND_H
 #define RSND_H
 
@@ -283,6 +280,9 @@ struct rsnd_mod_ops {
 	int (*nolock_stop)(struct rsnd_mod *mod,
 		    struct rsnd_dai_stream *io,
 		    struct rsnd_priv *priv);
+	int (*prepare)(struct rsnd_mod *mod,
+		       struct rsnd_dai_stream *io,
+		       struct rsnd_priv *priv);
 };
 
 struct rsnd_dai_stream;
@@ -312,6 +312,7 @@ struct rsnd_mod {
  * H	0: fallback
  * H	0: hw_params
  * H	0: pointer
+ * H	0: prepare
  */
 #define __rsnd_mod_shift_nolock_start	0
 #define __rsnd_mod_shift_nolock_stop	0
@@ -326,6 +327,7 @@ struct rsnd_mod {
 #define __rsnd_mod_shift_fallback	28 /* always called */
 #define __rsnd_mod_shift_hw_params	28 /* always called */
 #define __rsnd_mod_shift_pointer	28 /* always called */
+#define __rsnd_mod_shift_prepare	28 /* always called */
 
 #define __rsnd_mod_add_probe		0
 #define __rsnd_mod_add_remove		0
@@ -340,6 +342,7 @@ struct rsnd_mod {
 #define __rsnd_mod_add_fallback		0
 #define __rsnd_mod_add_hw_params	0
 #define __rsnd_mod_add_pointer		0
+#define __rsnd_mod_add_prepare		0
 
 #define __rsnd_mod_call_probe		0
 #define __rsnd_mod_call_remove		0
@@ -354,6 +357,7 @@ struct rsnd_mod {
 #define __rsnd_mod_call_pointer		0
 #define __rsnd_mod_call_nolock_start	0
 #define __rsnd_mod_call_nolock_stop	1
+#define __rsnd_mod_call_prepare		0
 
 #define rsnd_mod_to_priv(mod)	((mod)->priv)
 #define rsnd_mod_name(mod)	((mod)->ops->name)
@@ -435,6 +439,7 @@ struct rsnd_dai_stream {
 	struct snd_pcm_substream *substream;
 	struct rsnd_mod *mod[RSND_MOD_MAX];
 	struct rsnd_dai *rdai;
+	struct device *dmac_dev; /* for IPMMU */
 	u32 parent_ssi_status;
 };
 #define rsnd_io_to_mod(io, i)	((i) < RSND_MOD_MAX ? (io)->mod[(i)] : NULL)
@@ -538,6 +543,7 @@ struct rsnd_priv {
 #define RSND_GEN_MASK	(0xF << 0)
 #define RSND_GEN1	(1 << 0)
 #define RSND_GEN2	(2 << 0)
+#define RSND_GEN3	(3 << 0)
 
 	/*
 	 * below value will be filled on rsnd_gen_probe()
@@ -609,6 +615,7 @@ struct rsnd_priv {
 
 #define rsnd_is_gen1(priv)	(((priv)->flags & RSND_GEN_MASK) == RSND_GEN1)
 #define rsnd_is_gen2(priv)	(((priv)->flags & RSND_GEN_MASK) == RSND_GEN2)
+#define rsnd_is_gen3(priv)	(((priv)->flags & RSND_GEN_MASK) == RSND_GEN3)
 
 #define rsnd_flags_has(p, f) ((p)->flags & (f))
 #define rsnd_flags_set(p, f) ((p)->flags |= (f))
@@ -775,7 +782,6 @@ struct rsnd_mod *rsnd_dvc_mod_get(struct rsnd_priv *priv, int id);
 int rsnd_cmd_probe(struct rsnd_priv *priv);
 void rsnd_cmd_remove(struct rsnd_priv *priv);
 int rsnd_cmd_attach(struct rsnd_dai_stream *io, int id);
-struct rsnd_mod *rsnd_cmd_mod_get(struct rsnd_priv *priv, int id);
 
 void rsnd_mod_make_sure(struct rsnd_mod *mod, enum rsnd_mod_type type);
 #ifdef DEBUG

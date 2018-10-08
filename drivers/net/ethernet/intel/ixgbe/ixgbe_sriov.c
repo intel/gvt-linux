@@ -1,30 +1,5 @@
-/*******************************************************************************
-
-  Intel 10 Gigabit PCI Express Linux driver
-  Copyright(c) 1999 - 2015 Intel Corporation.
-
-  This program is free software; you can redistribute it and/or modify it
-  under the terms and conditions of the GNU General Public License,
-  version 2, as published by the Free Software Foundation.
-
-  This program is distributed in the hope it will be useful, but WITHOUT
-  ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
-  more details.
-
-  You should have received a copy of the GNU General Public License along with
-  this program; if not, write to the Free Software Foundation, Inc.,
-  51 Franklin St - Fifth Floor, Boston, MA 02110-1301 USA.
-
-  The full GNU General Public License is included in this distribution in
-  the file called "COPYING".
-
-  Contact Information:
-  Linux NICS <linux.nics@intel.com>
-  e1000-devel Mailing List <e1000-devel@lists.sourceforge.net>
-  Intel Corporation, 5200 N.E. Elam Young Parkway, Hillsboro, OR 97124-6497
-
-*******************************************************************************/
+// SPDX-License-Identifier: GPL-2.0
+/* Copyright(c) 1999 - 2018 Intel Corporation. */
 
 #include <linux/types.h>
 #include <linux/module.h>
@@ -77,6 +52,11 @@ static int __ixgbe_enable_sriov(struct ixgbe_adapter *adapter,
 {
 	struct ixgbe_hw *hw = &adapter->hw;
 	int i;
+
+	if (adapter->xdp_prog) {
+		e_warn(probe, "SRIOV is not supported with XDP\n");
+		return -EINVAL;
+	}
 
 	/* Enable VMDq flag so device will be set in VM mode */
 	adapter->flags |= IXGBE_FLAG_SRIOV_ENABLED |
@@ -266,7 +246,7 @@ int ixgbe_disable_sriov(struct ixgbe_adapter *adapter)
 #endif
 
 	/* Disable VMDq flag so device will be set in VM mode */
-	if (adapter->ring_feature[RING_F_VMDQ].limit == 1) {
+	if (bitmap_weight(adapter->fwd_bitmask, adapter->num_rx_pools) == 1) {
 		adapter->flags &= ~IXGBE_FLAG_VMDQ_ENABLED;
 		adapter->flags &= ~IXGBE_FLAG_SRIOV_ENABLED;
 		rss = min_t(int, ixgbe_max_rss_indices(adapter),
@@ -312,7 +292,8 @@ static int ixgbe_pci_sriov_enable(struct pci_dev *dev, int num_vfs)
 	 * other values out of range.
 	 */
 	num_tc = adapter->hw_tcs;
-	num_rx_pools = adapter->num_rx_pools;
+	num_rx_pools = bitmap_weight(adapter->fwd_bitmask,
+				     adapter->num_rx_pools);
 	limit = (num_tc > 4) ? IXGBE_MAX_VFS_8TC :
 		(num_tc > 1) ? IXGBE_MAX_VFS_4TC : IXGBE_MAX_VFS_1TC;
 
@@ -712,8 +693,13 @@ static int ixgbe_set_vf_macvlan(struct ixgbe_adapter *adapter,
 static inline void ixgbe_vf_reset_event(struct ixgbe_adapter *adapter, u32 vf)
 {
 	struct ixgbe_hw *hw = &adapter->hw;
+	struct ixgbe_ring_feature *vmdq = &adapter->ring_feature[RING_F_VMDQ];
 	struct vf_data_storage *vfinfo = &adapter->vfinfo[vf];
+	u32 q_per_pool = __ALIGN_MASK(1, ~vmdq->mask);
 	u8 num_tcs = adapter->hw_tcs;
+	u32 reg_val;
+	u32 queue;
+	u32 word;
 
 	/* remove VLAN filters beloning to this VF */
 	ixgbe_clear_vf_vlans(adapter, vf);
@@ -750,6 +736,27 @@ static inline void ixgbe_vf_reset_event(struct ixgbe_adapter *adapter, u32 vf)
 
 	/* reset VF api back to unknown */
 	adapter->vfinfo[vf].vf_api = ixgbe_mbox_api_10;
+
+	/* Restart each queue for given VF */
+	for (queue = 0; queue < q_per_pool; queue++) {
+		unsigned int reg_idx = (vf * q_per_pool) + queue;
+
+		reg_val = IXGBE_READ_REG(hw, IXGBE_PVFTXDCTL(reg_idx));
+
+		/* Re-enabling only configured queues */
+		if (reg_val) {
+			reg_val |= IXGBE_TXDCTL_ENABLE;
+			IXGBE_WRITE_REG(hw, IXGBE_PVFTXDCTL(reg_idx), reg_val);
+			reg_val &= ~IXGBE_TXDCTL_ENABLE;
+			IXGBE_WRITE_REG(hw, IXGBE_PVFTXDCTL(reg_idx), reg_val);
+		}
+	}
+
+	/* Clear VF's mailbox memory */
+	for (word = 0; word < IXGBE_VFMAILBOX_SIZE; word++)
+		IXGBE_WRITE_REG_ARRAY(hw, IXGBE_PFMBMEM(vf), word, 0);
+
+	IXGBE_WRITE_FLUSH(hw);
 }
 
 static int ixgbe_set_vf_mac(struct ixgbe_adapter *adapter,
@@ -878,14 +885,11 @@ static int ixgbe_vf_reset_msg(struct ixgbe_adapter *adapter, u32 vf)
 
 	/* reply to reset with ack and vf mac address */
 	msgbuf[0] = IXGBE_VF_RESET;
-	if (!is_zero_ether_addr(vf_mac)) {
+	if (!is_zero_ether_addr(vf_mac) && adapter->vfinfo[vf].pf_set_mac) {
 		msgbuf[0] |= IXGBE_VT_MSGTYPE_ACK;
 		memcpy(addr, vf_mac, ETH_ALEN);
 	} else {
 		msgbuf[0] |= IXGBE_VT_MSGTYPE_NACK;
-		dev_warn(&adapter->pdev->dev,
-			 "VF %d has no MAC address assigned, you may have to assign one manually\n",
-			 vf);
 	}
 
 	/*

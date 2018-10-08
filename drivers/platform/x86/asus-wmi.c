@@ -67,6 +67,7 @@ MODULE_LICENSE("GPL");
 #define NOTIFY_BRNDOWN_MAX		0x2e
 #define NOTIFY_KBD_BRTUP		0xc4
 #define NOTIFY_KBD_BRTDWN		0xc5
+#define NOTIFY_KBD_BRTTOGGLE		0xc7
 
 /* WMI Methods */
 #define ASUS_WMI_METHODID_SPEC	        0x43455053 /* BIOS SPECification */
@@ -162,6 +163,16 @@ MODULE_LICENSE("GPL");
 #define PCI_DEVICE_ID_INTEL_LYNXPOINT_LP_XHCI	0x9c31
 
 static const char * const ashs_ids[] = { "ATK4001", "ATK4002", NULL };
+
+static bool ashs_present(void)
+{
+	int i = 0;
+	while (ashs_ids[i]) {
+		if (acpi_dev_found(ashs_ids[i++]))
+			return true;
+	}
+	return false;
+}
 
 struct bios_args {
 	u32 arg0;
@@ -460,6 +471,7 @@ static void kbd_led_update(struct work_struct *work)
 		ctrl_param = 0x80 | (asus->kbd_led_wk & 0x7F);
 
 	asus_wmi_set_devstate(ASUS_WMI_DEVID_KBD_BACKLIGHT, ctrl_param, NULL);
+	led_classdev_notify_brightness_hw_changed(&asus->kbd_led, asus->kbd_led_wk);
 }
 
 static int kbd_led_read(struct asus_wmi *asus, int *level, int *env)
@@ -490,20 +502,27 @@ static int kbd_led_read(struct asus_wmi *asus, int *level, int *env)
 	return retval;
 }
 
-static void kbd_led_set(struct led_classdev *led_cdev,
-			enum led_brightness value)
+static void do_kbd_led_set(struct led_classdev *led_cdev, int value)
 {
 	struct asus_wmi *asus;
+	int max_level;
 
 	asus = container_of(led_cdev, struct asus_wmi, kbd_led);
+	max_level = asus->kbd_led.max_brightness;
 
-	if (value > asus->kbd_led.max_brightness)
-		value = asus->kbd_led.max_brightness;
+	if (value > max_level)
+		value = max_level;
 	else if (value < 0)
 		value = 0;
 
 	asus->kbd_led_wk = value;
 	queue_work(asus->led_workqueue, &asus->kbd_led_work);
+}
+
+static void kbd_led_set(struct led_classdev *led_cdev,
+			enum led_brightness value)
+{
+	do_kbd_led_set(led_cdev, value);
 }
 
 static enum led_brightness kbd_led_get(struct led_classdev *led_cdev)
@@ -656,6 +675,7 @@ static int asus_wmi_led_init(struct asus_wmi *asus)
 
 		asus->kbd_led_wk = led_val;
 		asus->kbd_led.name = "asus::kbd_backlight";
+		asus->kbd_led.flags = LED_BRIGHT_HW_CHANGED;
 		asus->kbd_led.brightness_set = kbd_led_set;
 		asus->kbd_led.brightness_get = kbd_led_get;
 		asus->kbd_led.max_brightness = 3;
@@ -848,12 +868,6 @@ static int asus_get_adapter_status(struct hotplug_slot *hotplug_slot,
 	return 0;
 }
 
-static void asus_cleanup_pci_hotplug(struct hotplug_slot *hotplug_slot)
-{
-	kfree(hotplug_slot->info);
-	kfree(hotplug_slot);
-}
-
 static struct hotplug_slot_ops asus_hotplug_slot_ops = {
 	.owner = THIS_MODULE,
 	.get_adapter_status = asus_get_adapter_status,
@@ -895,7 +909,6 @@ static int asus_setup_pci_hotplug(struct asus_wmi *asus)
 		goto error_info;
 
 	asus->hotplug_slot->private = asus;
-	asus->hotplug_slot->release = &asus_cleanup_pci_hotplug;
 	asus->hotplug_slot->ops = &asus_hotplug_slot_ops;
 	asus_get_adapter_status(asus->hotplug_slot,
 				&asus->hotplug_slot->info->adapter_status);
@@ -1025,6 +1038,9 @@ static int asus_new_rfkill(struct asus_wmi *asus,
 
 static void asus_wmi_rfkill_exit(struct asus_wmi *asus)
 {
+	if (asus->driver->wlan_ctrl_by_user && ashs_present())
+		return;
+
 	asus_unregister_rfkill_notifier(asus, "\\_SB.PCI0.P0P5");
 	asus_unregister_rfkill_notifier(asus, "\\_SB.PCI0.P0P6");
 	asus_unregister_rfkill_notifier(asus, "\\_SB.PCI0.P0P7");
@@ -1038,8 +1054,11 @@ static void asus_wmi_rfkill_exit(struct asus_wmi *asus)
 	 * asus_unregister_rfkill_notifier()
 	 */
 	asus_rfkill_hotplug(asus);
-	if (asus->hotplug_slot)
+	if (asus->hotplug_slot) {
 		pci_hp_deregister(asus->hotplug_slot);
+		kfree(asus->hotplug_slot->info);
+		kfree(asus->hotplug_slot);
+	}
 	if (asus->hotplug_workqueue)
 		destroy_workqueue(asus->hotplug_workqueue);
 
@@ -1745,6 +1764,22 @@ static void asus_wmi_notify(u32 value, void *context)
 		}
 	}
 
+	if (code == NOTIFY_KBD_BRTUP) {
+		do_kbd_led_set(&asus->kbd_led, asus->kbd_led_wk + 1);
+		goto exit;
+	}
+	if (code == NOTIFY_KBD_BRTDWN) {
+		do_kbd_led_set(&asus->kbd_led, asus->kbd_led_wk - 1);
+		goto exit;
+	}
+	if (code == NOTIFY_KBD_BRTTOGGLE) {
+		if (asus->kbd_led_wk == asus->kbd_led.max_brightness)
+			do_kbd_led_set(&asus->kbd_led, 0);
+		else
+			do_kbd_led_set(&asus->kbd_led, asus->kbd_led_wk + 1);
+		goto exit;
+	}
+
 	if (is_display_toggle(code) &&
 	    asus->driver->quirks->no_display_toggle)
 		goto exit;
@@ -1862,8 +1897,7 @@ static umode_t asus_sysfs_is_visible(struct kobject *kobj,
 				    struct attribute *attr, int idx)
 {
 	struct device *dev = container_of(kobj, struct device, kobj);
-	struct platform_device *pdev = to_platform_device(dev);
-	struct asus_wmi *asus = platform_get_drvdata(pdev);
+	struct asus_wmi *asus = dev_get_drvdata(dev);
 	bool ok = true;
 	int devid = -1;
 
@@ -2119,16 +2153,6 @@ static int asus_wmi_fan_init(struct asus_wmi *asus)
 
 	pr_info("Number of fans: %d\n", asus->asus_hwmon_num_fans);
 	return 0;
-}
-
-static bool ashs_present(void)
-{
-	int i = 0;
-	while (ashs_ids[i]) {
-		if (acpi_dev_found(ashs_ids[i++]))
-			return true;
-	}
-	return false;
 }
 
 /*

@@ -351,7 +351,7 @@ found_key:
 	ret = -ERESTARTSYS;
 	if (afs_begin_vnode_operation(&fc, vnode, wbk->key)) {
 		while (afs_select_fileserver(&fc)) {
-			fc.cb_break = vnode->cb_break + vnode->cb_s_break;
+			fc.cb_break = afs_calc_vnode_cb_break(vnode);
 			afs_fs_store_data(&fc, mapping, first, last, offset, to);
 		}
 
@@ -753,7 +753,7 @@ int afs_fsync(struct file *file, loff_t start, loff_t end, int datasync)
  * notification that a previously read-only page is about to become writable
  * - if it returns an error, the caller will deliver a bus error signal
  */
-int afs_page_mkwrite(struct vm_fault *vmf)
+vm_fault_t afs_page_mkwrite(struct vm_fault *vmf)
 {
 	struct file *file = vmf->vma->vm_file;
 	struct inode *inode = file_inode(file);

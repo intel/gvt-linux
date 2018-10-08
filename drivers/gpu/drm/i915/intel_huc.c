@@ -32,6 +32,14 @@ void intel_huc_init_early(struct intel_huc *huc)
 	intel_huc_fw_init_early(huc);
 }
 
+int intel_huc_init_misc(struct intel_huc *huc)
+{
+	struct drm_i915_private *i915 = huc_to_i915(huc);
+
+	intel_uc_fw_fetch(i915, &huc->fw);
+	return 0;
+}
+
 /**
  * intel_huc_auth() - Authenticate HuC uCode
  * @huc: intel_huc structure
@@ -55,7 +63,7 @@ int intel_huc_auth(struct intel_huc *huc)
 		return -ENOEXEC;
 
 	vma = i915_gem_object_ggtt_pin(huc->fw.obj, NULL, 0, 0,
-				       PIN_OFFSET_BIAS | guc->ggtt_pin_bias);
+				       PIN_OFFSET_BIAS | i915->ggtt.pin_bias);
 	if (IS_ERR(vma)) {
 		ret = PTR_ERR(vma);
 		DRM_ERROR("HuC: Failed to pin huc fw object %d\n", ret);

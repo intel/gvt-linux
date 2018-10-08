@@ -72,7 +72,6 @@
 #ifdef __ASSEMBLY__
 
 #include <asm/alternative.h>
-#include <asm/cpufeature.h>
 
 /*
  * Convert a kernel VA into a HYP VA.
@@ -170,8 +169,12 @@ phys_addr_t kvm_get_idmap_vector(void);
 int kvm_mmu_init(void);
 void kvm_clear_hyp_idmap(void);
 
-#define	kvm_set_pte(ptep, pte)		set_pte(ptep, pte)
-#define	kvm_set_pmd(pmdp, pmd)		set_pmd(pmdp, pmd)
+#define kvm_mk_pmd(ptep)					\
+	__pmd(__phys_to_pmd_val(__pa(ptep)) | PMD_TYPE_TABLE)
+#define kvm_mk_pud(pmdp)					\
+	__pud(__phys_to_pud_val(__pa(pmdp)) | PMD_TYPE_TABLE)
+#define kvm_mk_pgd(pudp)					\
+	__pgd(__phys_to_pgd_val(__pa(pudp)) | PUD_TYPE_TABLE)
 
 static inline pte_t kvm_s2pte_mkwrite(pte_t pte)
 {
@@ -268,6 +271,15 @@ static inline void __clean_dcache_guest_page(kvm_pfn_t pfn, unsigned long size)
 {
 	void *va = page_address(pfn_to_page(pfn));
 
+	/*
+	 * With FWB, we ensure that the guest always accesses memory using
+	 * cacheable attributes, and we don't have to clean to PoC when
+	 * faulting in pages. Furthermore, FWB implies IDC, so cleaning to
+	 * PoU is not required either in this case.
+	 */
+	if (cpus_have_const_cap(ARM64_HAS_STAGE2_FWB))
+		return;
+
 	kvm_flush_dcache_to_poc(va, size);
 }
 
@@ -288,20 +300,26 @@ static inline void __invalidate_icache_guest_page(kvm_pfn_t pfn,
 
 static inline void __kvm_flush_dcache_pte(pte_t pte)
 {
-	struct page *page = pte_page(pte);
-	kvm_flush_dcache_to_poc(page_address(page), PAGE_SIZE);
+	if (!cpus_have_const_cap(ARM64_HAS_STAGE2_FWB)) {
+		struct page *page = pte_page(pte);
+		kvm_flush_dcache_to_poc(page_address(page), PAGE_SIZE);
+	}
 }
 
 static inline void __kvm_flush_dcache_pmd(pmd_t pmd)
 {
-	struct page *page = pmd_page(pmd);
-	kvm_flush_dcache_to_poc(page_address(page), PMD_SIZE);
+	if (!cpus_have_const_cap(ARM64_HAS_STAGE2_FWB)) {
+		struct page *page = pmd_page(pmd);
+		kvm_flush_dcache_to_poc(page_address(page), PMD_SIZE);
+	}
 }
 
 static inline void __kvm_flush_dcache_pud(pud_t pud)
 {
-	struct page *page = pud_page(pud);
-	kvm_flush_dcache_to_poc(page_address(page), PUD_SIZE);
+	if (!cpus_have_const_cap(ARM64_HAS_STAGE2_FWB)) {
+		struct page *page = pud_page(pud);
+		kvm_flush_dcache_to_poc(page_address(page), PUD_SIZE);
+	}
 }
 
 #define kvm_virt_to_phys(x)		__pa_symbol(x)
@@ -358,6 +376,22 @@ static inline unsigned int kvm_get_vmid_bits(void)
 	int reg = read_sanitised_ftr_reg(SYS_ID_AA64MMFR1_EL1);
 
 	return (cpuid_feature_extract_unsigned_field(reg, ID_AA64MMFR1_VMIDBITS_SHIFT) == 2) ? 16 : 8;
+}
+
+/*
+ * We are not in the kvm->srcu critical section most of the time, so we take
+ * the SRCU read lock here. Since we copy the data from the user page, we
+ * can immediately drop the lock again.
+ */
+static inline int kvm_read_guest_lock(struct kvm *kvm,
+				      gpa_t gpa, void *data, unsigned long len)
+{
+	int srcu_idx = srcu_read_lock(&kvm->srcu);
+	int ret = kvm_read_guest(kvm, gpa, data, len);
+
+	srcu_read_unlock(&kvm->srcu, srcu_idx);
+
+	return ret;
 }
 
 #ifdef CONFIG_KVM_INDIRECT_VECTORS
@@ -452,6 +486,30 @@ static inline void *kvm_get_hyp_vector(void)
 }
 
 static inline int kvm_map_vectors(void)
+{
+	return 0;
+}
+#endif
+
+#ifdef CONFIG_ARM64_SSBD
+DECLARE_PER_CPU_READ_MOSTLY(u64, arm64_ssbd_callback_required);
+
+static inline int hyp_map_aux_data(void)
+{
+	int cpu, err;
+
+	for_each_possible_cpu(cpu) {
+		u64 *ptr;
+
+		ptr = per_cpu_ptr(&arm64_ssbd_callback_required, cpu);
+		err = create_hyp_mappings(ptr, ptr + 1, PAGE_HYP);
+		if (err)
+			return err;
+	}
+	return 0;
+}
+#else
+static inline int hyp_map_aux_data(void)
 {
 	return 0;
 }

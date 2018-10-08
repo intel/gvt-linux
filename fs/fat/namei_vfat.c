@@ -577,7 +577,7 @@ xlate_to_uni(const unsigned char *name, int len, unsigned char *outname,
 
 static int vfat_build_slots(struct inode *dir, const unsigned char *name,
 			    int len, int is_dir, int cluster,
-			    struct timespec *ts,
+			    struct timespec64 *ts,
 			    struct msdos_dir_slot *slots, int *nr_slots)
 {
 	struct msdos_sb_info *sbi = MSDOS_SB(dir->i_sb);
@@ -653,7 +653,7 @@ out_free:
 }
 
 static int vfat_add_entry(struct inode *dir, const struct qstr *qname,
-			  int is_dir, int cluster, struct timespec *ts,
+			  int is_dir, int cluster, struct timespec64 *ts,
 			  struct fat_slot_info *sinfo)
 {
 	struct msdos_dir_slot *slots;
@@ -664,7 +664,7 @@ static int vfat_add_entry(struct inode *dir, const struct qstr *qname,
 	if (len == 0)
 		return -ENOENT;
 
-	slots = kmalloc(sizeof(*slots) * MSDOS_SLOTS, GFP_NOFS);
+	slots = kmalloc_array(MSDOS_SLOTS, sizeof(*slots), GFP_NOFS);
 	if (slots == NULL)
 		return -ENOMEM;
 
@@ -695,15 +695,6 @@ static int vfat_find(struct inode *dir, const struct qstr *qname,
 	if (len == 0)
 		return -ENOENT;
 	return fat_search_long(dir, qname->name, len, sinfo);
-}
-
-/*
- * (nfsd's) anonymous disconnected dentry?
- * NOTE: !IS_ROOT() is not anonymous (I.e. d_splice_alias() did the job).
- */
-static int vfat_d_anon_disconn(struct dentry *dentry)
-{
-	return IS_ROOT(dentry) && (dentry->d_flags & DCACHE_DISCONNECTED);
 }
 
 static struct dentry *vfat_lookup(struct inode *dir, struct dentry *dentry,
@@ -738,8 +729,7 @@ static struct dentry *vfat_lookup(struct inode *dir, struct dentry *dentry,
 	 * Checking "alias->d_parent == dentry->d_parent" to make sure
 	 * FS is not corrupted (especially double linked dir).
 	 */
-	if (alias && alias->d_parent == dentry->d_parent &&
-	    !vfat_d_anon_disconn(alias)) {
+	if (alias && alias->d_parent == dentry->d_parent) {
 		/*
 		 * This inode has non anonymous-DCACHE_DISCONNECTED
 		 * dentry. This means, the user did ->lookup() by an
@@ -747,7 +737,6 @@ static struct dentry *vfat_lookup(struct inode *dir, struct dentry *dentry,
 		 *
 		 * Switch to new one for reason of locality if possible.
 		 */
-		BUG_ON(d_unhashed(alias));
 		if (!S_ISDIR(inode->i_mode))
 			d_move(alias, dentry);
 		iput(inode);
@@ -772,7 +761,7 @@ static int vfat_create(struct inode *dir, struct dentry *dentry, umode_t mode,
 	struct super_block *sb = dir->i_sb;
 	struct inode *inode;
 	struct fat_slot_info sinfo;
-	struct timespec ts;
+	struct timespec64 ts;
 	int err;
 
 	mutex_lock(&MSDOS_SB(sb)->s_lock);
@@ -861,7 +850,7 @@ static int vfat_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode)
 	struct super_block *sb = dir->i_sb;
 	struct inode *inode;
 	struct fat_slot_info sinfo;
-	struct timespec ts;
+	struct timespec64 ts;
 	int err, cluster;
 
 	mutex_lock(&MSDOS_SB(sb)->s_lock);
@@ -910,7 +899,7 @@ static int vfat_rename(struct inode *old_dir, struct dentry *old_dentry,
 	struct msdos_dir_entry *dotdot_de;
 	struct inode *old_inode, *new_inode;
 	struct fat_slot_info old_sinfo, sinfo;
-	struct timespec ts;
+	struct timespec64 ts;
 	loff_t new_i_pos;
 	int err, is_dir, update_dotdot, corrupt = 0;
 	struct super_block *sb = old_dir->i_sb;

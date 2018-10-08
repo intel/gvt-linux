@@ -192,6 +192,7 @@ static void *__arm_v7s_alloc_table(int lvl, gfp_t gfp,
 {
 	struct io_pgtable_cfg *cfg = &data->iop.cfg;
 	struct device *dev = cfg->iommu_dev;
+	phys_addr_t phys;
 	dma_addr_t dma;
 	size_t size = ARM_V7S_TABLE_SIZE(lvl);
 	void *table = NULL;
@@ -200,6 +201,10 @@ static void *__arm_v7s_alloc_table(int lvl, gfp_t gfp,
 		table = (void *)__get_dma_pages(__GFP_ZERO, get_order(size));
 	else if (lvl == 2)
 		table = kmem_cache_zalloc(data->l2_tables, gfp | GFP_DMA);
+	phys = virt_to_phys(table);
+	if (phys != (arm_v7s_iopte)phys)
+		/* Doesn't fit in PTE */
+		goto out_free;
 	if (table && !(cfg->quirks & IO_PGTABLE_QUIRK_NO_DMA)) {
 		dma = dma_map_single(dev, table, size, DMA_TO_DEVICE);
 		if (dma_mapping_error(dev, dma))
@@ -209,7 +214,7 @@ static void *__arm_v7s_alloc_table(int lvl, gfp_t gfp,
 		 * address directly, so if the DMA layer suggests otherwise by
 		 * translating or truncating them, that bodes very badly...
 		 */
-		if (dma != virt_to_phys(table))
+		if (dma != phys)
 			goto out_unmap;
 	}
 	kmemleak_ignore(table);
@@ -898,8 +903,7 @@ static int __init arm_v7s_do_selftests(void)
 
 	/* Full unmap */
 	iova = 0;
-	i = find_first_bit(&cfg.pgsize_bitmap, BITS_PER_LONG);
-	while (i != BITS_PER_LONG) {
+	for_each_set_bit(i, &cfg.pgsize_bitmap, BITS_PER_LONG) {
 		size = 1UL << i;
 
 		if (ops->unmap(ops, iova, size) != size)
@@ -916,8 +920,6 @@ static int __init arm_v7s_do_selftests(void)
 			return __FAIL(ops);
 
 		iova += SZ_16M;
-		i++;
-		i = find_next_bit(&cfg.pgsize_bitmap, BITS_PER_LONG, i);
 	}
 
 	free_io_pgtable_ops(ops);

@@ -51,6 +51,8 @@ struct ttm_placement;
 
 struct ttm_place;
 
+struct ttm_lru_bulk_move;
+
 /**
  * struct ttm_bus_placement
  *
@@ -284,17 +286,29 @@ struct ttm_operation_ctx {
 #define TTM_OPT_FLAG_FORCE_ALLOC		0x2
 
 /**
+ * ttm_bo_get - reference a struct ttm_buffer_object
+ *
+ * @bo: The buffer object.
+ */
+static inline void ttm_bo_get(struct ttm_buffer_object *bo)
+{
+	kref_get(&bo->kref);
+}
+
+/**
  * ttm_bo_reference - reference a struct ttm_buffer_object
  *
  * @bo: The buffer object.
  *
  * Returns a refcounted pointer to a buffer object.
+ *
+ * This function is deprecated. Use @ttm_bo_get instead.
  */
 
 static inline struct ttm_buffer_object *
 ttm_bo_reference(struct ttm_buffer_object *bo)
 {
-	kref_get(&bo->kref);
+	ttm_bo_get(bo);
 	return bo;
 }
 
@@ -346,11 +360,22 @@ int ttm_bo_validate(struct ttm_buffer_object *bo,
 		    struct ttm_operation_ctx *ctx);
 
 /**
+ * ttm_bo_put
+ *
+ * @bo: The buffer object.
+ *
+ * Unreference a buffer object.
+ */
+void ttm_bo_put(struct ttm_buffer_object *bo);
+
+/**
  * ttm_bo_unref
  *
  * @bo: The buffer object.
  *
  * Unreference and clear a pointer to a buffer object.
+ *
+ * This function is deprecated. Use @ttm_bo_put instead.
  */
 void ttm_bo_unref(struct ttm_buffer_object **bo);
 
@@ -382,12 +407,24 @@ void ttm_bo_del_from_lru(struct ttm_buffer_object *bo);
  * ttm_bo_move_to_lru_tail
  *
  * @bo: The buffer object.
+ * @bulk: optional bulk move structure to remember BO positions
  *
  * Move this BO to the tail of all lru lists used to lookup and reserve an
  * object. This function must be called with struct ttm_bo_global::lru_lock
  * held, and is used to make a BO less likely to be considered for eviction.
  */
-void ttm_bo_move_to_lru_tail(struct ttm_buffer_object *bo);
+void ttm_bo_move_to_lru_tail(struct ttm_buffer_object *bo,
+			     struct ttm_lru_bulk_move *bulk);
+
+/**
+ * ttm_bo_bulk_move_lru_tail
+ *
+ * @bulk: bulk move structure
+ *
+ * Bulk move BOs to the LRU tail, only valid to use when driver makes sure that
+ * BO order never changes. Should be called with ttm_bo_global::lru_lock held.
+ */
+void ttm_bo_bulk_move_lru_tail(struct ttm_lru_bulk_move *bulk);
 
 /**
  * ttm_bo_lock_delayed_workqueue

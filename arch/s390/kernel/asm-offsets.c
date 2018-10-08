@@ -17,14 +17,6 @@
 #include <asm/gmap.h>
 #include <asm/nmi.h>
 
-/*
- * Make sure that the compiler is new enough. We want a compiler that
- * is known to work with the "Q" assembler constraint.
- */
-#if __GNUC__ < 4 || (__GNUC__ == 4 && __GNUC_MINOR__ < 3)
-#error Your compiler is too old; please use version 4.3 or newer
-#endif
-
 int main(void)
 {
 	/* task struct offsets */
@@ -181,6 +173,7 @@ int main(void)
 	OFFSET(__LC_MACHINE_FLAGS, lowcore, machine_flags);
 	OFFSET(__LC_PREEMPT_COUNT, lowcore, preempt_count);
 	OFFSET(__LC_GMAP, lowcore, gmap);
+	OFFSET(__LC_BR_R1, lowcore, br_r1_trampoline);
 	/* software defined ABI-relevant lowcore locations 0xe00 - 0xe20 */
 	OFFSET(__LC_DUMP_REIPL, lowcore, ipib);
 	/* hardware defined lowcore locations 0x1000 - 0x18ff */

@@ -120,7 +120,7 @@ bool is_sibling_entry(const struct radix_tree_node *parent, void *node)
 static inline unsigned long
 get_slot_offset(const struct radix_tree_node *parent, void __rcu **slot)
 {
-	return slot - parent->slots;
+	return parent ? slot - parent->slots : 0;
 }
 
 static unsigned int radix_tree_descend(const struct radix_tree_node *parent,
@@ -1612,11 +1612,9 @@ static void set_iter_tags(struct radix_tree_iter *iter,
 static void __rcu **skip_siblings(struct radix_tree_node **nodep,
 			void __rcu **slot, struct radix_tree_iter *iter)
 {
-	void *sib = node_to_entry(slot - 1);
-
 	while (iter->index < iter->next_index) {
 		*nodep = rcu_dereference_raw(*slot);
-		if (*nodep && *nodep != sib)
+		if (*nodep && !is_sibling_entry(iter->node, *nodep))
 			return slot;
 		slot++;
 		iter->index = __radix_tree_iter_add(iter, 1);
@@ -1631,7 +1629,7 @@ void __rcu **__radix_tree_next_slot(void __rcu **slot,
 				struct radix_tree_iter *iter, unsigned flags)
 {
 	unsigned tag = flags & RADIX_TREE_ITER_TAG_MASK;
-	struct radix_tree_node *node = rcu_dereference_raw(*slot);
+	struct radix_tree_node *node;
 
 	slot = skip_siblings(&node, slot, iter);
 
@@ -2036,10 +2034,12 @@ void *radix_tree_delete_item(struct radix_tree_root *root,
 			     unsigned long index, void *item)
 {
 	struct radix_tree_node *node = NULL;
-	void __rcu **slot;
+	void __rcu **slot = NULL;
 	void *entry;
 
 	entry = __radix_tree_lookup(root, index, &node, &slot);
+	if (!slot)
+		return NULL;
 	if (!entry && (!is_idr(root) || node_tag_get(root, node, IDR_FREE,
 						get_slot_offset(node, slot))))
 		return NULL;
@@ -2106,14 +2106,6 @@ void idr_preload(gfp_t gfp_mask)
 }
 EXPORT_SYMBOL(idr_preload);
 
-/**
- * ida_pre_get - reserve resources for ida allocation
- * @ida: ida handle
- * @gfp: memory allocation flags
- *
- * This function should be called before calling ida_get_new_above().  If it
- * is unable to allocate memory, it will return %0.  On success, it returns %1.
- */
 int ida_pre_get(struct ida *ida, gfp_t gfp)
 {
 	/*
@@ -2134,7 +2126,6 @@ int ida_pre_get(struct ida *ida, gfp_t gfp)
 
 	return 1;
 }
-EXPORT_SYMBOL(ida_pre_get);
 
 void __rcu **idr_get_free(struct radix_tree_root *root,
 			      struct radix_tree_iter *iter, gfp_t gfp,

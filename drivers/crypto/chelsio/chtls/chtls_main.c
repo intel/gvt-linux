@@ -160,6 +160,7 @@ static void chtls_register_dev(struct chtls_dev *cdev)
 	tlsdev->hash = chtls_create_hash;
 	tlsdev->unhash = chtls_destroy_hash;
 	tls_register_device(&cdev->tlsdev);
+	cdev->cdev_state = CHTLS_CDEV_STATE_UP;
 }
 
 static void chtls_unregister_dev(struct chtls_dev *cdev)
@@ -216,7 +217,6 @@ static void *chtls_uld_add(const struct cxgb4_lld_info *info)
 	cdev->lldi = lldi;
 	cdev->pdev = lldi->pdev;
 	cdev->tids = lldi->tids;
-	cdev->ports = (struct net_device **)(cdev + 1);
 	cdev->ports = lldi->ports;
 	cdev->mtus = lldi->mtus;
 	cdev->tids = lldi->tids;
@@ -239,6 +239,7 @@ static void *chtls_uld_add(const struct cxgb4_lld_info *info)
 	spin_lock_init(&cdev->idr_lock);
 	cdev->send_page_order = min_t(uint, get_order(32768),
 				      send_page_order);
+	cdev->max_host_sndbuf = 48 * 1024;
 
 	if (lldi->vr->key.size)
 		if (chtls_init_kmap(cdev, lldi))
@@ -250,7 +251,7 @@ static void *chtls_uld_add(const struct cxgb4_lld_info *info)
 
 	return cdev;
 out_rspq_skb:
-	for (j = 0; j <= i; j++)
+	for (j = 0; j < i; j++)
 		kfree_skb(cdev->rspq_skb_cache[j]);
 	kfree_skb(cdev->askb);
 out_skb:
@@ -281,8 +282,10 @@ static void chtls_free_all_uld(void)
 	struct chtls_dev *cdev, *tmp;
 
 	mutex_lock(&cdev_mutex);
-	list_for_each_entry_safe(cdev, tmp, &cdev_list, list)
-		chtls_free_uld(cdev);
+	list_for_each_entry_safe(cdev, tmp, &cdev_list, list) {
+		if (cdev->cdev_state == CHTLS_CDEV_STATE_UP)
+			chtls_free_uld(cdev);
+	}
 	mutex_unlock(&cdev_mutex);
 }
 
@@ -441,7 +444,7 @@ nomem:
 static int do_chtls_getsockopt(struct sock *sk, char __user *optval,
 			       int __user *optlen)
 {
-	struct tls_crypto_info crypto_info;
+	struct tls_crypto_info crypto_info = { 0 };
 
 	crypto_info.version = TLS_1_2_VERSION;
 	if (copy_to_user(optval, &crypto_info, sizeof(struct tls_crypto_info)))
@@ -491,9 +494,13 @@ static int do_chtls_setsockopt(struct sock *sk, int optname,
 
 	switch (tmp_crypto_info.cipher_type) {
 	case TLS_CIPHER_AES_GCM_128: {
-		rc = copy_from_user(crypto_info, optval,
-				    sizeof(struct
-					   tls12_crypto_info_aes_gcm_128));
+		/* Obtain version and type from previous copy */
+		crypto_info[0] = tmp_crypto_info;
+		/* Now copy the following data */
+		rc = copy_from_user((char *)crypto_info + sizeof(*crypto_info),
+				optval + sizeof(*crypto_info),
+				sizeof(struct tls12_crypto_info_aes_gcm_128)
+				- sizeof(*crypto_info));
 
 		if (rc) {
 			rc = -EFAULT;

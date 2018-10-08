@@ -15,7 +15,7 @@
 	compatible = "toradex,apalis-tk1-v1.2", "toradex,apalis-tk1",
 		     "nvidia,tegra124";
 
-	memory {
+	memory@80000000 {
 		reg = <0x0 0x80000000 0x0 0x80000000>;
 	};
 
@@ -1536,15 +1536,15 @@
 	};
 
 	serial@70006040 {
-		compatible = "nvidia,tegra124-hsuart";
+		compatible = "nvidia,tegra124-hsuart", "nvidia,tegra30-hsuart";
 	};
 
 	serial@70006200 {
-		compatible = "nvidia,tegra124-hsuart";
+		compatible = "nvidia,tegra124-hsuart", "nvidia,tegra30-hsuart";
 	};
 
 	serial@70006300 {
-		compatible = "nvidia,tegra124-hsuart";
+		compatible = "nvidia,tegra124-hsuart", "nvidia,tegra30-hsuart";
 	};
 
 	hdmi_ddc: i2c@7000c700 {

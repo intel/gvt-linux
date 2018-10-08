@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-2.0+
+/* SPDX-License-Identifier: GPL-2.0+ */
 /*
  * Copyright IBM Corp. 2006, 2012
  * Author(s): Cornelia Huck <cornelia.huck@de.ibm.com>
@@ -15,6 +15,7 @@
 
 #include <linux/device.h>
 #include <linux/types.h>
+#include <asm/isc.h>
 #include <asm/ap.h>
 
 #define AP_DEVICES 256		/* Number of AP devices. */
@@ -116,9 +117,18 @@ enum ap_wait {
 struct ap_device;
 struct ap_message;
 
+/*
+ * The ap driver struct includes a flags field which holds some info for
+ * the ap bus about the driver. Currently only one flag is supported and
+ * used: The DEFAULT flag marks an ap driver as a default driver which is
+ * used together with the apmask and aqmask whitelisting of the ap bus.
+ */
+#define AP_DRIVER_FLAG_DEFAULT 0x0001
+
 struct ap_driver {
 	struct device_driver driver;
 	struct ap_device_id *ids;
+	unsigned int flags;
 
 	int (*probe)(struct ap_device *);
 	void (*remove)(struct ap_device *);
@@ -166,7 +176,7 @@ struct ap_queue {
 	int pendingq_count;		/* # requests on pendingq list. */
 	int requestq_count;		/* # requests on requestq list. */
 	int total_request_count;	/* # requests ever for this AP device.*/
-	int request_timeout;		/* Request timout in jiffies. */
+	int request_timeout;		/* Request timeout in jiffies. */
 	struct timer_list timeout;	/* Timer for request timeouts. */
 	struct list_head pendingq;	/* List of message sent to AP queue. */
 	struct list_head requestq;	/* List of message yet to be sent. */
@@ -198,11 +208,18 @@ struct ap_message {
  */
 static inline void ap_init_message(struct ap_message *ap_msg)
 {
-	ap_msg->psmid = 0;
-	ap_msg->length = 0;
-	ap_msg->rc = 0;
-	ap_msg->special = 0;
-	ap_msg->receive = NULL;
+	memset(ap_msg, 0, sizeof(*ap_msg));
+}
+
+/**
+ * ap_release_message() - Release ap_message.
+ * Releases all memory used internal within the ap_message struct
+ * Currently this is the message and private field.
+ */
+static inline void ap_release_message(struct ap_message *ap_msg)
+{
+	kzfree(ap_msg->message);
+	kzfree(ap_msg->private);
 }
 
 #define for_each_ap_card(_ac) \
@@ -239,5 +256,28 @@ void ap_queue_resume(struct ap_device *ap_dev);
 
 struct ap_card *ap_card_create(int id, int queue_depth, int raw_device_type,
 			       int comp_device_type, unsigned int functions);
+
+/*
+ * check APQN for owned/reserved by ap bus and default driver(s).
+ * Checks if this APQN is or will be in use by the ap bus
+ * and the default set of drivers.
+ * If yes, returns 1, if not returns 0. On error a negative
+ * errno value is returned.
+ */
+int ap_owned_by_def_drv(int card, int queue);
+
+/*
+ * check 'matrix' of APQNs for owned/reserved by ap bus and
+ * default driver(s).
+ * Checks if there is at least one APQN in the given 'matrix'
+ * marked as owned/reserved by the ap bus and default driver(s).
+ * If such an APQN is found the return value is 1, otherwise
+ * 0 is returned. On error a negative errno value is returned.
+ * The parameter apm is a bitmask which should be declared
+ * as DECLARE_BITMAP(apm, AP_DEVICES), the aqm parameter is
+ * similar, should be declared as DECLARE_BITMAP(aqm, AP_DOMAINS).
+ */
+int ap_apqn_in_matrix_owned_by_def_drv(unsigned long *apm,
+				       unsigned long *aqm);
 
 #endif /* _AP_BUS_H_ */

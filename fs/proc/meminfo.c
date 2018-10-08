@@ -7,6 +7,7 @@
 #include <linux/mman.h>
 #include <linux/mmzone.h>
 #include <linux/proc_fs.h>
+#include <linux/percpu.h>
 #include <linux/quicklist.h>
 #include <linux/seq_file.h>
 #include <linux/swap.h>
@@ -121,6 +122,7 @@ static int meminfo_proc_show(struct seq_file *m, void *v)
 		   (unsigned long)VMALLOC_TOTAL >> 10);
 	show_val_kb(m, "VmallocUsed:    ", 0ul);
 	show_val_kb(m, "VmallocChunk:   ", 0ul);
+	show_val_kb(m, "Percpu:         ", pcpu_nr_pages());
 
 #ifdef CONFIG_MEMORY_FAILURE
 	seq_printf(m, "HardwareCorrupted: %5lu kB\n",
@@ -149,21 +151,9 @@ static int meminfo_proc_show(struct seq_file *m, void *v)
 	return 0;
 }
 
-static int meminfo_proc_open(struct inode *inode, struct file *file)
-{
-	return single_open(file, meminfo_proc_show, NULL);
-}
-
-static const struct file_operations meminfo_proc_fops = {
-	.open		= meminfo_proc_open,
-	.read		= seq_read,
-	.llseek		= seq_lseek,
-	.release	= single_release,
-};
-
 static int __init proc_meminfo_init(void)
 {
-	proc_create("meminfo", 0, NULL, &meminfo_proc_fops);
+	proc_create_single("meminfo", 0, NULL, meminfo_proc_show);
 	return 0;
 }
 fs_initcall(proc_meminfo_init);

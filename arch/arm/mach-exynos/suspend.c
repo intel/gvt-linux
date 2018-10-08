@@ -30,8 +30,6 @@
 #include <asm/smp_scu.h>
 #include <asm/suspend.h>
 
-#include <mach/map.h>
-
 #include <plat/pm-common.h>
 
 #include "common.h"
@@ -205,6 +203,7 @@ static int __init exynos_pmu_irq_init(struct device_node *node,
 					  NULL);
 	if (!domain) {
 		iounmap(pmu_base_addr);
+		pmu_base_addr = NULL;
 		return -ENOMEM;
 	}
 
@@ -274,7 +273,7 @@ static int exynos5420_cpu_suspend(unsigned long arg)
 static void exynos_pm_set_wakeup_mask(void)
 {
 	/* Set wake-up mask registers */
-	pmu_raw_writel(exynos_get_eint_wake_mask(), S5P_EINT_WAKEUP_MASK);
+	pmu_raw_writel(exynos_get_eint_wake_mask(), EXYNOS_EINT_WAKEUP_MASK);
 	pmu_raw_writel(exynos_irqwake_intmask & ~(1 << 31), S5P_WAKEUP_MASK);
 }
 
@@ -401,7 +400,7 @@ static void exynos_pm_resume(void)
 		goto early_wakeup;
 
 	if (cpuid == ARM_CPU_PART_CORTEX_A9)
-		scu_enable(S5P_VA_SCU);
+		exynos_scu_enable();
 
 	if (call_firmware_op(resume) == -ENOSYS
 	    && cpuid == ARM_CPU_PART_CORTEX_A9)

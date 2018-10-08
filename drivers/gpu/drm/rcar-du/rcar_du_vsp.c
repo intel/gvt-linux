@@ -1,14 +1,10 @@
+// SPDX-License-Identifier: GPL-2.0+
 /*
  * rcar_du_vsp.h  --  R-Car Display Unit VSP-Based Compositor
  *
  * Copyright (C) 2015 Renesas Electronics Corporation
  *
  * Contact: Laurent Pinchart (laurent.pinchart@ideasonboard.com)
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
  */
 
 #include <drm/drmP.h>
@@ -17,6 +13,7 @@
 #include <drm/drm_crtc_helper.h>
 #include <drm/drm_fb_cma_helper.h>
 #include <drm/drm_gem_cma_helper.h>
+#include <drm/drm_gem_framebuffer_helper.h>
 #include <drm/drm_plane_helper.h>
 
 #include <linux/bitops.h>
@@ -31,7 +28,7 @@
 #include "rcar_du_kms.h"
 #include "rcar_du_vsp.h"
 
-static void rcar_du_vsp_complete(void *private, bool completed)
+static void rcar_du_vsp_complete(void *private, bool completed, u32 crc)
 {
 	struct rcar_du_crtc *crtc = private;
 
@@ -40,6 +37,8 @@ static void rcar_du_vsp_complete(void *private, bool completed)
 
 	if (completed)
 		rcar_du_crtc_finish_page_flip(crtc);
+
+	drm_crtc_add_crc_entry(&crtc->crtc, false, 0, &crc);
 }
 
 void rcar_du_vsp_enable(struct rcar_du_crtc *crtc)
@@ -49,6 +48,7 @@ void rcar_du_vsp_enable(struct rcar_du_crtc *crtc)
 	struct vsp1_du_lif_config cfg = {
 		.width = mode->hdisplay,
 		.height = mode->vdisplay,
+		.interlaced = mode->flags & DRM_MODE_FLAG_INTERLACE,
 		.callback = rcar_du_vsp_complete,
 		.callback_data = crtc,
 	};
@@ -102,7 +102,13 @@ void rcar_du_vsp_atomic_begin(struct rcar_du_crtc *crtc)
 
 void rcar_du_vsp_atomic_flush(struct rcar_du_crtc *crtc)
 {
-	vsp1_du_atomic_flush(crtc->vsp->vsp, crtc->vsp_pipe);
+	struct vsp1_du_atomic_pipe_config cfg = { { 0, } };
+	struct rcar_du_crtc_state *state;
+
+	state = to_rcar_crtc_state(crtc->crtc.state);
+	cfg.crc = state->crc;
+
+	vsp1_du_atomic_flush(crtc->vsp->vsp, crtc->vsp_pipe, &cfg);
 }
 
 /* Keep the two tables in sync. */
@@ -120,7 +126,6 @@ static const u32 formats_kms[] = {
 	DRM_FORMAT_ARGB8888,
 	DRM_FORMAT_XRGB8888,
 	DRM_FORMAT_UYVY,
-	DRM_FORMAT_VYUY,
 	DRM_FORMAT_YUYV,
 	DRM_FORMAT_YVYU,
 	DRM_FORMAT_NV12,
@@ -149,7 +154,6 @@ static const u32 formats_v4l2[] = {
 	V4L2_PIX_FMT_ABGR32,
 	V4L2_PIX_FMT_XBGR32,
 	V4L2_PIX_FMT_UYVY,
-	V4L2_PIX_FMT_VYUY,
 	V4L2_PIX_FMT_YUYV,
 	V4L2_PIX_FMT_YVYU,
 	V4L2_PIX_FMT_NV12M,
@@ -237,6 +241,10 @@ static int rcar_du_vsp_plane_prepare_fb(struct drm_plane *plane,
 		}
 	}
 
+	ret = drm_gem_fb_prepare_fb(plane, state);
+	if (ret)
+		goto fail;
+
 	return 0;
 
 fail:
@@ -299,14 +307,12 @@ static const struct drm_plane_helper_funcs rcar_du_vsp_plane_helper_funcs = {
 static struct drm_plane_state *
 rcar_du_vsp_plane_atomic_duplicate_state(struct drm_plane *plane)
 {
-	struct rcar_du_vsp_plane_state *state;
 	struct rcar_du_vsp_plane_state *copy;
 
 	if (WARN_ON(!plane->state))
 		return NULL;
 
-	state = to_rcar_vsp_plane_state(plane->state);
-	copy = kmemdup(state, sizeof(*state), GFP_KERNEL);
+	copy = kzalloc(sizeof(*copy), GFP_KERNEL);
 	if (copy == NULL)
 		return NULL;
 
@@ -335,11 +341,8 @@ static void rcar_du_vsp_plane_reset(struct drm_plane *plane)
 	if (state == NULL)
 		return;
 
-	state->state.alpha = DRM_BLEND_ALPHA_OPAQUE;
+	__drm_atomic_helper_plane_reset(plane, &state->state);
 	state->state.zpos = plane->type == DRM_PLANE_TYPE_PRIMARY ? 0 : 1;
-
-	plane->state = &state->state;
-	plane->state->plane = plane;
 }
 
 static const struct drm_plane_funcs rcar_du_vsp_plane_funcs = {

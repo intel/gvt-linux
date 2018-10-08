@@ -6117,14 +6117,8 @@ void intel_enable_ipc(struct drm_i915_private *dev_priv)
 {
 	u32 val;
 
-	/* Display WA #0477 WaDisableIPC: skl */
-	if (IS_SKYLAKE(dev_priv))
-		dev_priv->ipc_enabled = false;
-
-	/* Display WA #1141: SKL:all KBL:all CFL */
-	if ((IS_KABYLAKE(dev_priv) || IS_COFFEELAKE(dev_priv)) &&
-	    !dev_priv->dram_info.symmetric_memory)
-		dev_priv->ipc_enabled = false;
+	if (!HAS_IPC(dev_priv))
+		return;
 
 	val = I915_READ(DISP_ARB_CTL2);
 
@@ -6138,11 +6132,15 @@ void intel_enable_ipc(struct drm_i915_private *dev_priv)
 
 void intel_init_ipc(struct drm_i915_private *dev_priv)
 {
-	dev_priv->ipc_enabled = false;
 	if (!HAS_IPC(dev_priv))
 		return;
 
-	dev_priv->ipc_enabled = true;
+	/* Display WA #1141: SKL:all KBL:all CFL */
+	if (IS_KABYLAKE(dev_priv) || IS_COFFEELAKE(dev_priv))
+		dev_priv->ipc_enabled = dev_priv->dram_info.symmetric_memory;
+	else
+		dev_priv->ipc_enabled = true;
+
 	intel_enable_ipc(dev_priv);
 }
 

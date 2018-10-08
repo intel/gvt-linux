@@ -1070,7 +1070,6 @@ struct intel_dp {
 	bool link_mst;
 	bool link_trained;
 	bool has_audio;
-	bool detect_done;
 	bool reset_link_params;
 	enum aux_ch aux_ch;
 	uint8_t dpcd[DP_RECEIVER_CAP_SIZE];
@@ -1173,15 +1172,15 @@ struct intel_digital_port {
 	enum intel_display_power_domain ddi_io_power_domain;
 	enum tc_port_type tc_type;
 
-	void (*write_infoframe)(struct drm_encoder *encoder,
+	void (*write_infoframe)(struct intel_encoder *encoder,
 				const struct intel_crtc_state *crtc_state,
 				unsigned int type,
 				const void *frame, ssize_t len);
-	void (*set_infoframes)(struct drm_encoder *encoder,
+	void (*set_infoframes)(struct intel_encoder *encoder,
 			       bool enable,
 			       const struct intel_crtc_state *crtc_state,
 			       const struct drm_connector_state *conn_state);
-	bool (*infoframe_enabled)(struct drm_encoder *encoder,
+	bool (*infoframe_enabled)(struct intel_encoder *encoder,
 				  const struct intel_crtc_state *pipe_config);
 };
 
@@ -1488,7 +1487,6 @@ void intel_dump_cdclk_state(const struct intel_cdclk_state *cdclk_state,
 void i830_enable_pipe(struct drm_i915_private *dev_priv, enum pipe pipe);
 void i830_disable_pipe(struct drm_i915_private *dev_priv, enum pipe pipe);
 enum pipe intel_crtc_pch_transcoder(struct intel_crtc *crtc);
-void intel_update_rawclk(struct drm_i915_private *dev_priv);
 int vlv_get_hpll_vco(struct drm_i915_private *dev_priv);
 int vlv_get_cck_clock(struct drm_i915_private *dev_priv,
 		      const char *name, u32 reg, int ref_freq);
@@ -2189,6 +2187,10 @@ struct drm_plane_state *intel_plane_duplicate_state(struct drm_plane *plane);
 void intel_plane_destroy_state(struct drm_plane *plane,
 			       struct drm_plane_state *state);
 extern const struct drm_plane_helper_funcs intel_plane_helper_funcs;
+void intel_update_planes_on_crtc(struct intel_atomic_state *old_state,
+				 struct intel_crtc *crtc,
+				 struct intel_crtc_state *old_crtc_state,
+				 struct intel_crtc_state *new_crtc_state);
 int intel_plane_atomic_check_with_state(const struct intel_crtc_state *old_crtc_state,
 					struct intel_crtc_state *crtc_state,
 					const struct intel_plane_state *old_plane_state,

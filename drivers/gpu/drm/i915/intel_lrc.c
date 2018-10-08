@@ -2538,7 +2538,7 @@ static void execlists_init_reg_state(u32 *regs,
 	CTX_REG(regs, CTX_PDP0_UDW, GEN8_RING_PDP_UDW(engine, 0), 0);
 	CTX_REG(regs, CTX_PDP0_LDW, GEN8_RING_PDP_LDW(engine, 0), 0);
 
-	if (i915_vm_is_48bit(&ctx->ppgtt->vm)) {
+	if (ctx->ppgtt && i915_vm_is_48bit(&ctx->ppgtt->vm)) {
 		/* 64b PPGTT (48bit canonical)
 		 * PDP0_DESCRIPTOR contains the base address to PML4 and
 		 * other PDP Descriptors are ignored.

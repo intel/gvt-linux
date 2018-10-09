@@ -1,0 +1,28 @@
+drm drm-fixes 5ba15878f23c4bafb95afa0dabe9d08d89520259
+	Merge branch 'linux-4.19' of git://github.com/skeggsb/linux into drm-fixes
+drm-misc drm-misc-fixes 064253c1c0625efd0362a0b7ecdbe8bee2a2904d
+	drm: fix use of freed memory in drm_mode_setcrtc
+drm-intel drm-intel-fixes 5abb01e541edaa98833d5721bc219beef2d51b6d
+	drm/i915: Fix intel_dp_mst_best_encoder()
+drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
+	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
+drm drm-next c530174b90fa3bcaa83d168b001b574bcb2da021
+	Merge branch 'for-upstream/mali-dp' of git://linux-arm.org/linux-ld into drm-next
+drm-misc drm-misc-next-fixes 7372fd049aa8836310f84da5f82dc9eb146915c8
+	MAINTAINERS: Add Maxime Ripard as drm-misc maintainer
+drm-intel drm-intel-next-fixes 98a9bce38b3d93082353fda561abb73a4d7b8d94
+	drm/i915: Avoid compiler warning for maybe unused gu_misc_iir
+drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
+	Linux 4.14-rc1
+drm-misc drm-misc-next 49c5c0769a919549d814de52f7aceaa1c86a3fc7
+	drm/sun4i: tcon: prevent tcon->panel dereference if NULL
+drm-intel drm-intel-next-queued 1e712535c51ab025ebc776d4405683d81521996d
+	drm/i915/dp: Link train Fallback on eDP only if fallback link BW can fit panel's native mode
+drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
+	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
+sound-upstream for-linus 709ae62e8e6d9ac4df7dadb3b8ae432675c45ef9
+	ALSA: hda/realtek - Cannot adjust speaker's volume on Dell XPS 27 7760
+sound-upstream for-next 5b7c5e1f4c36b99d0f694f38b9ad910f520cb7ef
+	ALSA: hda - Fix headphone pin config for ASUS G751
+drm-intel topic/core-for-CI aa4e21f2ab8dd8a6fc100caa862287f81a59de52
+	kernel/panic: Show the stacktrace after additional notifier messages

@@ -4195,7 +4195,7 @@ enum {
 #define   EDP_PSR_DEBUG_MASK_LPSP              (1 << 27)
 #define   EDP_PSR_DEBUG_MASK_MEMUP             (1 << 26)
 #define   EDP_PSR_DEBUG_MASK_HPD               (1 << 25)
-#define   EDP_PSR_DEBUG_MASK_DISP_REG_WRITE    (1 << 16)
+#define   EDP_PSR_DEBUG_MASK_DISP_REG_WRITE    (1 << 16) /* Reserved in ICL+ */
 #define   EDP_PSR_DEBUG_EXIT_ON_PIXEL_UNDERRUN (1 << 15) /* SKL+ */
 
 #define EDP_PSR2_CTL			_MMIO(0x6f900)
@@ -4232,7 +4232,7 @@ enum {
 #define  PSR_EVENT_FRONT_BUFFER_MODIFY		(1 << 9)
 #define  PSR_EVENT_WD_TIMER_EXPIRE		(1 << 8)
 #define  PSR_EVENT_PIPE_REGISTERS_UPDATE	(1 << 6)
-#define  PSR_EVENT_REGISTER_UPDATE		(1 << 5)
+#define  PSR_EVENT_REGISTER_UPDATE		(1 << 5) /* Reserved in ICL+ */
 #define  PSR_EVENT_HDCP_ENABLE			(1 << 4)
 #define  PSR_EVENT_KVMR_SESSION_ENABLE		(1 << 3)
 #define  PSR_EVENT_VBI_ENABLE			(1 << 2)
@@ -6554,8 +6554,10 @@ enum {
 #define _PLANE_KEYVAL_2_A			0x70294
 #define _PLANE_KEYMSK_1_A			0x70198
 #define _PLANE_KEYMSK_2_A			0x70298
+#define  PLANE_KEYMSK_ALPHA_ENABLE		(1 << 31)
 #define _PLANE_KEYMAX_1_A			0x701a0
 #define _PLANE_KEYMAX_2_A			0x702a0
+#define  PLANE_KEYMAX_ALPHA_SHIFT		24
 #define _PLANE_AUX_DIST_1_A			0x701c0
 #define _PLANE_AUX_DIST_2_A			0x702c0
 #define _PLANE_AUX_OFFSET_1_A			0x701c4
@@ -6850,11 +6852,12 @@ enum {
 #define _PS_2B_CTRL      0x68A80
 #define _PS_1C_CTRL      0x69180
 #define PS_SCALER_EN        (1 << 31)
-#define PS_SCALER_MODE_MASK (3 << 28)
-#define PS_SCALER_MODE_DYN  (0 << 28)
-#define PS_SCALER_MODE_HQ  (1 << 28)
+#define SKL_PS_SCALER_MODE_MASK (3 << 28)
+#define SKL_PS_SCALER_MODE_DYN  (0 << 28)
+#define SKL_PS_SCALER_MODE_HQ  (1 << 28)
 #define SKL_PS_SCALER_MODE_NV12 (2 << 28)
 #define PS_SCALER_MODE_PLANAR (1 << 29)
+#define PS_SCALER_MODE_PACKED (0 << 29)
 #define PS_PLANE_SEL_MASK  (7 << 25)
 #define PS_PLANE_SEL(plane) (((plane) + 1) << 25)
 #define PS_FILTER_MASK         (3 << 23)
@@ -7408,6 +7411,10 @@ enum {
 
 #define GEN9_SLICE_COMMON_ECO_CHICKEN1		_MMIO(0x731c)
 #define   GEN11_STATE_CACHE_REDIRECT_TO_CS	(1 << 11)
+
+#define GEN7_SARCHKMD				_MMIO(0xB000)
+#define GEN7_DISABLE_DEMAND_PREFETCH		(1 << 31)
+#define GEN7_DISABLE_SAMPLER_PREFETCH           (1 << 30)
 
 #define GEN7_L3SQCREG1				_MMIO(0xB010)
 #define  VLV_B0_WA_L3SQCREG1_VALUE		0x00D30000
@@ -10284,6 +10291,87 @@ enum skl_power_gate {
 #define ICL_DSI_T_INIT_MASTER(port)	_MMIO_PORT(port,	\
 						   _ICL_DSI_T_INIT_MASTER_0,\
 						   _ICL_DSI_T_INIT_MASTER_1)
+
+#define _DPHY_CLK_TIMING_PARAM_0	0x162180
+#define _DPHY_CLK_TIMING_PARAM_1	0x6c180
+#define DPHY_CLK_TIMING_PARAM(port)	_MMIO_PORT(port,	\
+						   _DPHY_CLK_TIMING_PARAM_0,\
+						   _DPHY_CLK_TIMING_PARAM_1)
+#define _DSI_CLK_TIMING_PARAM_0		0x6b080
+#define _DSI_CLK_TIMING_PARAM_1		0x6b880
+#define DSI_CLK_TIMING_PARAM(port)	_MMIO_PORT(port,	\
+						   _DSI_CLK_TIMING_PARAM_0,\
+						   _DSI_CLK_TIMING_PARAM_1)
+#define  CLK_PREPARE_OVERRIDE		(1 << 31)
+#define  CLK_PREPARE(x)		((x) << 28)
+#define  CLK_PREPARE_MASK		(0x7 << 28)
+#define  CLK_PREPARE_SHIFT		28
+#define  CLK_ZERO_OVERRIDE		(1 << 27)
+#define  CLK_ZERO(x)			((x) << 20)
+#define  CLK_ZERO_MASK			(0xf << 20)
+#define  CLK_ZERO_SHIFT		20
+#define  CLK_PRE_OVERRIDE		(1 << 19)
+#define  CLK_PRE(x)			((x) << 16)
+#define  CLK_PRE_MASK			(0x3 << 16)
+#define  CLK_PRE_SHIFT			16
+#define  CLK_POST_OVERRIDE		(1 << 15)
+#define  CLK_POST(x)			((x) << 8)
+#define  CLK_POST_MASK			(0x7 << 8)
+#define  CLK_POST_SHIFT		8
+#define  CLK_TRAIL_OVERRIDE		(1 << 7)
+#define  CLK_TRAIL(x)			((x) << 0)
+#define  CLK_TRAIL_MASK		(0xf << 0)
+#define  CLK_TRAIL_SHIFT		0
+
+#define _DPHY_DATA_TIMING_PARAM_0	0x162184
+#define _DPHY_DATA_TIMING_PARAM_1	0x6c184
+#define DPHY_DATA_TIMING_PARAM(port)	_MMIO_PORT(port,	\
+						   _DPHY_DATA_TIMING_PARAM_0,\
+						   _DPHY_DATA_TIMING_PARAM_1)
+#define _DSI_DATA_TIMING_PARAM_0	0x6B084
+#define _DSI_DATA_TIMING_PARAM_1	0x6B884
+#define DSI_DATA_TIMING_PARAM(port)	_MMIO_PORT(port,	\
+						   _DSI_DATA_TIMING_PARAM_0,\
+						   _DSI_DATA_TIMING_PARAM_1)
+#define  HS_PREPARE_OVERRIDE		(1 << 31)
+#define  HS_PREPARE(x)			((x) << 24)
+#define  HS_PREPARE_MASK		(0x7 << 24)
+#define  HS_PREPARE_SHIFT		24
+#define  HS_ZERO_OVERRIDE		(1 << 23)
+#define  HS_ZERO(x)			((x) << 16)
+#define  HS_ZERO_MASK			(0xf << 16)
+#define  HS_ZERO_SHIFT			16
+#define  HS_TRAIL_OVERRIDE		(1 << 15)
+#define  HS_TRAIL(x)			((x) << 8)
+#define  HS_TRAIL_MASK			(0x7 << 8)
+#define  HS_TRAIL_SHIFT		8
+#define  HS_EXIT_OVERRIDE		(1 << 7)
+#define  HS_EXIT(x)			((x) << 0)
+#define  HS_EXIT_MASK			(0x7 << 0)
+#define  HS_EXIT_SHIFT			0
+
+#define _DPHY_TA_TIMING_PARAM_0		0x162188
+#define _DPHY_TA_TIMING_PARAM_1		0x6c188
+#define DPHY_TA_TIMING_PARAM(port)	_MMIO_PORT(port,	\
+						   _DPHY_TA_TIMING_PARAM_0,\
+						   _DPHY_TA_TIMING_PARAM_1)
+#define _DSI_TA_TIMING_PARAM_0		0x6b098
+#define _DSI_TA_TIMING_PARAM_1		0x6b898
+#define DSI_TA_TIMING_PARAM(port)	_MMIO_PORT(port,	\
+						   _DSI_TA_TIMING_PARAM_0,\
+						   _DSI_TA_TIMING_PARAM_1)
+#define  TA_SURE_OVERRIDE		(1 << 31)
+#define  TA_SURE(x)			((x) << 16)
+#define  TA_SURE_MASK			(0x1f << 16)
+#define  TA_SURE_SHIFT			16
+#define  TA_GO_OVERRIDE		(1 << 15)
+#define  TA_GO(x)			((x) << 8)
+#define  TA_GO_MASK			(0xf << 8)
+#define  TA_GO_SHIFT			8
+#define  TA_GET_OVERRIDE		(1 << 7)
+#define  TA_GET(x)			((x) << 0)
+#define  TA_GET_MASK			(0xf << 0)
+#define  TA_GET_SHIFT			0
 
 /* bits 31:0 */
 #define _MIPIA_DBI_BW_CTRL		(dev_priv->mipi_mmio_base + 0xb084)

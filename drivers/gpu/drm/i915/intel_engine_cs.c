@@ -335,7 +335,10 @@ int intel_engines_init_mmio(struct drm_i915_private *dev_priv)
 
 	WARN_ON(ring_mask == 0);
 	WARN_ON(ring_mask &
-		GENMASK(sizeof(mask) * BITS_PER_BYTE - 1, I915_NUM_ENGINES));
+		GENMASK(BITS_PER_TYPE(mask) - 1, I915_NUM_ENGINES));
+
+	if (i915_inject_load_failure())
+		return -ENODEV;
 
 	for (i = 0; i < ARRAY_SIZE(intel_engines); i++) {
 		if (!HAS_ENGINE(dev_priv, i))
@@ -1534,10 +1537,10 @@ void intel_engine_dump(struct intel_engine_cs *engine,
 	count = 0;
 	drm_printf(m, "\t\tQueue priority: %d\n", execlists->queue_priority);
 	for (rb = rb_first_cached(&execlists->queue); rb; rb = rb_next(rb)) {
-		struct i915_priolist *p =
-			rb_entry(rb, typeof(*p), node);
+		struct i915_priolist *p = rb_entry(rb, typeof(*p), node);
+		int i;
 
-		list_for_each_entry(rq, &p->requests, sched.link) {
+		priolist_for_each_request(rq, p, i) {
 			if (count++ < MAX_REQUESTS_TO_SHOW - 1)
 				print_request(m, rq, "\t\tQ ");
 			else

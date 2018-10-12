@@ -1,28 +1,12 @@
-drm drm-fixes 5ba15878f23c4bafb95afa0dabe9d08d89520259
-	Merge branch 'linux-4.19' of git://github.com/skeggsb/linux into drm-fixes
-drm-misc drm-misc-fixes 064253c1c0625efd0362a0b7ecdbe8bee2a2904d
-	drm: fix use of freed memory in drm_mode_setcrtc
-drm-intel drm-intel-fixes 0238df646e6224016a45505d2c111a24669ebe21
-	Linux 4.19-rc7
-drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
-	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
-drm drm-next ca4b869240d5810ebac6b1570ad7beffcfbac2f5
-	Merge branch 'drm-next-4.20' of git://people.freedesktop.org/~agd5f/linux into drm-next
-drm-misc drm-misc-next-fixes 7372fd049aa8836310f84da5f82dc9eb146915c8
-	MAINTAINERS: Add Maxime Ripard as drm-misc maintainer
-drm-intel drm-intel-next-fixes 98a9bce38b3d93082353fda561abb73a4d7b8d94
-	drm/i915: Avoid compiler warning for maybe unused gu_misc_iir
-drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
-	Linux 4.14-rc1
-drm-misc drm-misc-next 7323001549804be70b179a8b636f78e758aeb28d
-	drm: Do not call drm_dp_cec_set_edid() while registering DP connectors
-drm-intel drm-intel-next-queued b9117149fefdcdc6fcd12a14a26d71979582c057
-	drm/i915: promote ddb update message to DRM_DEBUG_KMS
-drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
-	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
-sound-upstream for-linus 709ae62e8e6d9ac4df7dadb3b8ae432675c45ef9
-	ALSA: hda/realtek - Cannot adjust speaker's volume on Dell XPS 27 7760
-sound-upstream for-next 3babca4555b20fc80aff4776662fb237257d9afd
-	ALSA: firewire: simplify cleanup process when failing to register sound card
-drm-intel topic/core-for-CI 7a70ed313e25667243e6f7cb15a4a5ee06e1d486
-	libata: Downgrade unsupported feature warnings to notifications
+drm-tip/drm-tip dec9886eff39d38332bb5ea438b9b053d6b2177c
+	drm-tip: 2018y-10m-12d-01h-08m-48s UTC integration manifest
+vfio-upstream/for-linus 0e714d27786ce1fb3efa9aac58abc096e68b1c2a
+	vfio/pci: Fix potential Spectre v1
+vfio-upstream/next 104c7405a64d937254b6a154938e6151f91c9e0d
+	vfio: add edid support to mbochs sample driver
+origin/gvt-fixes f42259ef810ce83f3e1a8ea4ce12dfda873fbe44
+	drm/i915/gvt: invalidate old ggtt page when update ggtt entry
+origin/gvt-next 8a3eb1ae054a905f943dbaff1f6a6623cc0c14e8
+	drm/i915/gvt: support inconsecutive partial gtt entry write
+origin/gvt-next-fixes 7590ebb8b456464e48840a6d106a0c07de6d723a
+	drm/i915/gvt: fix memory leak in intel_vgpu_ioctl()

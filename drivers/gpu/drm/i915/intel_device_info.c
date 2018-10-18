@@ -750,8 +750,7 @@ void intel_device_info_runtime_init(struct intel_device_info *info)
 		info->num_scalers[PIPE_C] = 1;
 	}
 
-	BUILD_BUG_ON(I915_NUM_ENGINES >
-		     sizeof(intel_ring_mask_t) * BITS_PER_BYTE);
+	BUILD_BUG_ON(I915_NUM_ENGINES > BITS_PER_TYPE(intel_ring_mask_t));
 
 	/*
 	 * Skylake and Broxton currently don't expose the topmost plane as its
@@ -850,6 +849,11 @@ void intel_device_info_runtime_init(struct intel_device_info *info)
 		gen10_sseu_info_init(dev_priv);
 	else if (INTEL_GEN(dev_priv) >= 11)
 		gen11_sseu_info_init(dev_priv);
+
+	if (IS_GEN6(dev_priv) && intel_vtd_active()) {
+		DRM_INFO("Disabling ppGTT for VT-d support\n");
+		info->ppgtt = INTEL_PPGTT_NONE;
+	}
 
 	/* Initialize command stream timestamp frequency */
 	info->cs_timestamp_frequency_khz = read_timestamp_frequency(dev_priv);

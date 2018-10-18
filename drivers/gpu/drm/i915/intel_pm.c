@@ -3613,7 +3613,7 @@ static bool
 intel_has_sagv(struct drm_i915_private *dev_priv)
 {
 	if (IS_KABYLAKE(dev_priv) || IS_COFFEELAKE(dev_priv) ||
-	    IS_CANNONLAKE(dev_priv))
+	    IS_CANNONLAKE(dev_priv) || IS_ICELAKE(dev_priv))
 		return true;
 
 	if (IS_SKYLAKE(dev_priv) &&
@@ -4672,15 +4672,24 @@ static int skl_compute_plane_wm(const struct drm_i915_private *dev_priv,
 	} else {
 		if ((wp->cpp * cstate->base.adjusted_mode.crtc_htotal /
 		     wp->dbuf_block_size < 1) &&
-		     (wp->plane_bytes_per_line / wp->dbuf_block_size < 1))
+		     (wp->plane_bytes_per_line / wp->dbuf_block_size < 1)) {
 			selected_result = method2;
-		else if (ddb_allocation >=
-			 fixed16_to_u32_round_up(wp->plane_blocks_per_line))
-			selected_result = min_fixed16(method1, method2);
-		else if (latency >= wp->linetime_us)
-			selected_result = min_fixed16(method1, method2);
-		else
+		} else if (ddb_allocation >=
+			 fixed16_to_u32_round_up(wp->plane_blocks_per_line)) {
+			if (INTEL_GEN(dev_priv) == 9 &&
+			    !IS_GEMINILAKE(dev_priv))
+				selected_result = min_fixed16(method1, method2);
+			else
+				selected_result = method2;
+		} else if (latency >= wp->linetime_us) {
+			if (INTEL_GEN(dev_priv) == 9 &&
+			    !IS_GEMINILAKE(dev_priv))
+				selected_result = min_fixed16(method1, method2);
+			else
+				selected_result = method2;
+		} else {
 			selected_result = method1;
+		}
 	}
 
 	res_blocks = fixed16_to_u32_round_up(selected_result) + 1;
@@ -4862,7 +4871,7 @@ static void skl_compute_transition_wm(struct intel_crtc_state *cstate,
 	const struct drm_i915_private *dev_priv = to_i915(dev);
 	uint16_t trans_min, trans_y_tile_min;
 	const uint16_t trans_amount = 10; /* This is configurable amount */
-	uint16_t trans_offset_b, res_blocks;
+	uint16_t wm0_sel_res_b, trans_offset_b, res_blocks;
 
 	if (!cstate->base.active)
 		goto exit;
@@ -4875,19 +4884,31 @@ static void skl_compute_transition_wm(struct intel_crtc_state *cstate,
 	if (!dev_priv->ipc_enabled)
 		goto exit;
 
-	trans_min = 0;
-	if (INTEL_GEN(dev_priv) >= 10)
+	trans_min = 14;
+	if (INTEL_GEN(dev_priv) >= 11)
 		trans_min = 4;
 
 	trans_offset_b = trans_min + trans_amount;
 
+	/*
+	 * The spec asks for Selected Result Blocks for wm0 (the real value),
+	 * not Result Blocks (the integer value). Pay attention to the capital
+	 * letters. The value wm_l0->plane_res_b is actually Result Blocks, but
+	 * since Result Blocks is the ceiling of Selected Result Blocks plus 1,
+	 * and since we later will have to get the ceiling of the sum in the
+	 * transition watermarks calculation, we can just pretend Selected
+	 * Result Blocks is Result Blocks minus 1 and it should work for the
+	 * current platforms.
+	 */
+	wm0_sel_res_b = wm_l0->plane_res_b - 1;
+
 	if (wp->y_tiled) {
 		trans_y_tile_min = (uint16_t) mul_round_up_u32_fixed16(2,
 							wp->y_tile_minimum);
-		res_blocks = max(wm_l0->plane_res_b, trans_y_tile_min) +
+		res_blocks = max(wm0_sel_res_b, trans_y_tile_min) +
 				trans_offset_b;
 	} else {
-		res_blocks = wm_l0->plane_res_b + trans_offset_b;
+		res_blocks = wm0_sel_res_b + trans_offset_b;
 
 		/* WA BUG:1938466 add one block for non y-tile planes */
 		if (IS_CNL_REVID(dev_priv, CNL_REVID_A0, CNL_REVID_A0))
@@ -5016,8 +5037,6 @@ static void skl_write_plane_wm(struct intel_crtc *intel_crtc,
 	skl_write_wm_level(dev_priv, PLANE_WM_TRANS(pipe, plane_id),
 			   &wm->trans_wm);
 
-	skl_ddb_entry_write(dev_priv, PLANE_BUF_CFG(pipe, plane_id),
-			    &ddb->plane[pipe][plane_id]);
 	/* FIXME: add proper NV12 support for ICL. */
 	if (INTEL_GEN(dev_priv) >= 11)
 		return skl_ddb_entry_write(dev_priv,
@@ -5211,11 +5230,11 @@ skl_print_wm_changes(const struct drm_atomic_state *state)
 			if (skl_ddb_entry_equal(old, new))
 				continue;
 
-			DRM_DEBUG_ATOMIC("[PLANE:%d:%s] ddb (%d - %d) -> (%d - %d)\n",
-					 intel_plane->base.base.id,
-					 intel_plane->base.name,
-					 old->start, old->end,
-					 new->start, new->end);
+			DRM_DEBUG_KMS("[PLANE:%d:%s] ddb (%d - %d) -> (%d - %d)\n",
+				      intel_plane->base.base.id,
+				      intel_plane->base.name,
+				      old->start, old->end,
+				      new->start, new->end);
 		}
 	}
 }
@@ -6117,14 +6136,8 @@ void intel_enable_ipc(struct drm_i915_private *dev_priv)
 {
 	u32 val;
 
-	/* Display WA #0477 WaDisableIPC: skl */
-	if (IS_SKYLAKE(dev_priv))
-		dev_priv->ipc_enabled = false;
-
-	/* Display WA #1141: SKL:all KBL:all CFL */
-	if ((IS_KABYLAKE(dev_priv) || IS_COFFEELAKE(dev_priv)) &&
-	    !dev_priv->dram_info.symmetric_memory)
-		dev_priv->ipc_enabled = false;
+	if (!HAS_IPC(dev_priv))
+		return;
 
 	val = I915_READ(DISP_ARB_CTL2);
 
@@ -6138,11 +6151,15 @@ void intel_enable_ipc(struct drm_i915_private *dev_priv)
 
 void intel_init_ipc(struct drm_i915_private *dev_priv)
 {
-	dev_priv->ipc_enabled = false;
 	if (!HAS_IPC(dev_priv))
 		return;
 
-	dev_priv->ipc_enabled = true;
+	/* Display WA #1141: SKL:all KBL:all CFL */
+	if (IS_KABYLAKE(dev_priv) || IS_COFFEELAKE(dev_priv))
+		dev_priv->ipc_enabled = dev_priv->dram_info.symmetric_memory;
+	else
+		dev_priv->ipc_enabled = true;
+
 	intel_enable_ipc(dev_priv);
 }
 

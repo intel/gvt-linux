@@ -1,28 +1,12 @@
-drm drm-fixes 5ba15878f23c4bafb95afa0dabe9d08d89520259
-	Merge branch 'linux-4.19' of git://github.com/skeggsb/linux into drm-fixes
-drm-misc drm-misc-fixes 4364bcb2cd21d042bde4776448417ddffbc54045
-	drm: Get ref on CRTC commit object when waiting for flip_done
-drm-intel drm-intel-fixes 35a7f35ad1b150ddf59a41dcac7b2fa32982be0e
-	Linux 4.19-rc8
-drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
-	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
-drm drm-next c13bbf4a78aafed144de0250a3c71265672c9bda
-	Merge branch 'drm-next-4.20' of git://people.freedesktop.org/~agd5f/linux into drm-next
-drm-misc drm-misc-next-fixes 0e8afefd5da4875ddea9aa4ad17a2540a2bf9736
-	drm: panel-orientation-quirks: Add quirk for Acer One 10 (S1003)
-drm-intel drm-intel-next-fixes 835fe6d75d14c1513910ed7f5665127fee12acc8
-	firmware/dmc/icl: Add missing MODULE_FIRMWARE() for Icelake.
-drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
-	Linux 4.14-rc1
-drm-misc drm-misc-next 4035cc5738d95911e6382f4cd716d3f02d51d343
-	drm: sti: don't pass GFP_DMA32 to dma_alloc_wc
-drm-intel drm-intel-next-queued 73f522bad1794f7144caff1f46f1ffb31966a386
-	drm/i915: Use i915_gem_object_get_dma_address() to populate rotated vmas
-drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
-	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
-sound-upstream for-linus 709ae62e8e6d9ac4df7dadb3b8ae432675c45ef9
-	ALSA: hda/realtek - Cannot adjust speaker's volume on Dell XPS 27 7760
-sound-upstream for-next 5cb6b5fc013ee711d19bfc4e9deb8d6ae80741db
-	ALSA: hda: Add 2 more models to the power_save blacklist
-drm-intel topic/core-for-CI 7a70ed313e25667243e6f7cb15a4a5ee06e1d486
-	libata: Downgrade unsupported feature warnings to notifications
+drm-tip/drm-tip f66154472620fdd1f364c577ade311ce2b9d445a
+	drm-tip: 2018y-10m-18d-20h-53m-28s UTC integration manifest
+vfio-upstream/for-linus 0e714d27786ce1fb3efa9aac58abc096e68b1c2a
+	vfio/pci: Fix potential Spectre v1
+vfio-upstream/next 104c7405a64d937254b6a154938e6151f91c9e0d
+	vfio: add edid support to mbochs sample driver
+origin/gvt-fixes f42259ef810ce83f3e1a8ea4ce12dfda873fbe44
+	drm/i915/gvt: invalidate old ggtt page when update ggtt entry
+origin/gvt-next 8a3eb1ae054a905f943dbaff1f6a6623cc0c14e8
+	drm/i915/gvt: support inconsecutive partial gtt entry write
+origin/gvt-next-fixes 3e740f0ec37acecaa364c19d2d2826df83c8bf20
+	drm/i915/gvt: correct mask setting for CSFE_CHICKEN1

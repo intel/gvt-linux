@@ -82,10 +82,6 @@ i915_param_named_unsafe(enable_hangcheck, bool, 0644,
 	"WARNING: Disabling this can cause system wide hangs. "
 	"(default: true)");
 
-i915_param_named_unsafe(enable_ppgtt, int, 0400,
-	"Override PPGTT usage. "
-	"(-1=auto [default], 0=disabled, 1=aliasing, 2=full, 3=full with extended address space)");
-
 i915_param_named_unsafe(enable_psr, int, 0600,
 	"Enable PSR "
 	"(0=disabled, 1=enabled) "
@@ -188,7 +184,8 @@ static __always_inline void _print_param(struct drm_printer *p,
 	else if (!__builtin_strcmp(type, "char *"))
 		drm_printf(p, "i915.%s=%s\n", name, *(const char **)x);
 	else
-		BUILD_BUG();
+		WARN_ONCE(1, "no printer defined for param type %s (i915.%s)\n",
+			  type, name);
 }
 
 /**

@@ -465,8 +465,10 @@ struct drm_i915_display_funcs {
 struct intel_csr {
 	struct work_struct work;
 	const char *fw_path;
+	uint32_t required_version;
+	uint32_t max_fw_size; /* bytes */
 	uint32_t *dmc_payload;
-	uint32_t dmc_fw_size;
+	uint32_t dmc_fw_size; /* dwords */
 	uint32_t version;
 	uint32_t mmio_count;
 	i915_reg_t mmioaddr[8];
@@ -546,6 +548,8 @@ struct intel_fbc {
 			int adjusted_y;
 
 			int y;
+
+			uint16_t pixel_blend_mode;
 		} plane;
 
 		struct {
@@ -630,7 +634,6 @@ struct i915_psr {
 	bool sink_psr2_support;
 	bool link_standby;
 	bool colorimetry_support;
-	bool alpm;
 	bool psr2_enabled;
 	u8 sink_sync_latency;
 	ktime_t last_entry_attempt;
@@ -2323,6 +2326,8 @@ static inline struct scatterlist *__sg_next(struct scatterlist *sg)
 	     (((__iter).curr += PAGE_SIZE) >= (__iter).max) ?		\
 	     (__iter) = __sgt_iter(__sg_next((__iter).sgp), false), 0 : 0)
 
+bool i915_sg_trim(struct sg_table *orig_st);
+
 static inline unsigned int i915_sg_page_sizes(struct scatterlist *sg)
 {
 	unsigned int page_sizes;
@@ -2462,6 +2467,8 @@ intel_info(const struct drm_i915_private *dev_priv)
 #define IS_KBL_ULX(dev_priv)	(INTEL_DEVID(dev_priv) == 0x590E || \
 				 INTEL_DEVID(dev_priv) == 0x5915 || \
 				 INTEL_DEVID(dev_priv) == 0x591E)
+#define IS_AML_ULX(dev_priv)	(INTEL_DEVID(dev_priv) == 0x591C || \
+				 INTEL_DEVID(dev_priv) == 0x87C0)
 #define IS_SKL_GT2(dev_priv)	(IS_SKYLAKE(dev_priv) && \
 				 (dev_priv)->info.gt == 2)
 #define IS_SKL_GT3(dev_priv)	(IS_SKYLAKE(dev_priv) && \
@@ -2593,9 +2600,14 @@ intel_info(const struct drm_i915_private *dev_priv)
 
 #define HAS_EXECLISTS(dev_priv) HAS_LOGICAL_RING_CONTEXTS(dev_priv)
 
-#define USES_PPGTT(dev_priv)		(i915_modparams.enable_ppgtt)
-#define USES_FULL_PPGTT(dev_priv)	(i915_modparams.enable_ppgtt >= 2)
-#define USES_FULL_48BIT_PPGTT(dev_priv)	(i915_modparams.enable_ppgtt == 3)
+#define INTEL_PPGTT(dev_priv) (INTEL_INFO(dev_priv)->ppgtt)
+#define HAS_PPGTT(dev_priv) \
+	(INTEL_PPGTT(dev_priv) != INTEL_PPGTT_NONE)
+#define HAS_FULL_PPGTT(dev_priv) \
+	(INTEL_PPGTT(dev_priv) >= INTEL_PPGTT_FULL)
+#define HAS_FULL_48BIT_PPGTT(dev_priv)	\
+	(INTEL_PPGTT(dev_priv) >= INTEL_PPGTT_FULL_4LVL)
+
 #define HAS_PAGE_SIZES(dev_priv, sizes) ({ \
 	GEM_BUG_ON((sizes) == 0); \
 	((sizes) & ~(dev_priv)->info.page_sizes) == 0; \
@@ -2742,9 +2754,6 @@ intel_ggtt_update_needs_vtd_wa(struct drm_i915_private *dev_priv)
 {
 	return IS_BROXTON(dev_priv) && intel_vtd_active();
 }
-
-int intel_sanitize_enable_ppgtt(struct drm_i915_private *dev_priv,
-				int enable_ppgtt);
 
 /* i915_drv.c */
 void __printf(3, 4)
@@ -3230,7 +3239,7 @@ int i915_gem_object_wait(struct drm_i915_gem_object *obj,
 int i915_gem_object_wait_priority(struct drm_i915_gem_object *obj,
 				  unsigned int flags,
 				  const struct i915_sched_attr *attr);
-#define I915_PRIORITY_DISPLAY I915_PRIORITY_MAX
+#define I915_PRIORITY_DISPLAY I915_USER_PRIORITY(I915_PRIORITY_MAX)
 
 int __must_check
 i915_gem_object_set_to_wc_domain(struct drm_i915_gem_object *obj, bool write);
@@ -3483,8 +3492,6 @@ mkwrite_device_info(struct drm_i915_private *dev_priv)
 extern void intel_modeset_init_hw(struct drm_device *dev);
 extern int intel_modeset_init(struct drm_device *dev);
 extern void intel_modeset_cleanup(struct drm_device *dev);
-extern int intel_connector_register(struct drm_connector *);
-extern void intel_connector_unregister(struct drm_connector *);
 extern int intel_modeset_vga_set_state(struct drm_i915_private *dev_priv,
 				       bool state);
 extern void intel_display_resume(struct drm_device *dev);

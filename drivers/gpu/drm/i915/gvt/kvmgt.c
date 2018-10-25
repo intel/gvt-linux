@@ -732,7 +732,6 @@ static int intel_vgpu_open(struct mdev_device *mdev)
 
 	kvmgt_init_migration(vgpu);
 
-	intel_gvt_ops->vgpu_activate(vgpu);
 
 	atomic_set(&vgpu->vdev.released, 0);
 	return ret;

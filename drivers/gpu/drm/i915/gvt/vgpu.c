@@ -215,6 +215,7 @@ void intel_gvt_activate_vgpu(struct intel_vgpu *vgpu)
 	vgpu->active = true;
 	intel_vgpu_start_schedule(vgpu);
 	mutex_unlock(&vgpu->gvt->lock);
+	intel_gvt_check_vblank_emulation(vgpu->gvt);
 }
 
 /**

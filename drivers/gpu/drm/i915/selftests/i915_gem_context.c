@@ -39,7 +39,8 @@ struct live_test {
 	const char *func;
 	const char *name;
 
-	unsigned int reset_count;
+	unsigned int reset_global;
+	unsigned int reset_engine[I915_NUM_ENGINES];
 };
 
 static int begin_live_test(struct live_test *t,
@@ -47,6 +48,8 @@ static int begin_live_test(struct live_test *t,
 			   const char *func,
 			   const char *name)
 {
+	struct intel_engine_cs *engine;
+	enum intel_engine_id id;
 	int err;
 
 	t->i915 = i915;
@@ -63,7 +66,11 @@ static int begin_live_test(struct live_test *t,
 	}
 
 	i915->gpu_error.missed_irq_rings = 0;
-	t->reset_count = i915_reset_count(&i915->gpu_error);
+	t->reset_global = i915_reset_count(&i915->gpu_error);
+
+	for_each_engine(engine, i915, id)
+		t->reset_engine[id] =
+			i915_reset_engine_count(&i915->gpu_error, engine);
 
 	return 0;
 }
@@ -71,14 +78,28 @@ static int begin_live_test(struct live_test *t,
 static int end_live_test(struct live_test *t)
 {
 	struct drm_i915_private *i915 = t->i915;
+	struct intel_engine_cs *engine;
+	enum intel_engine_id id;
 
 	if (igt_flush_test(i915, I915_WAIT_LOCKED))
 		return -EIO;
 
-	if (t->reset_count != i915_reset_count(&i915->gpu_error)) {
+	if (t->reset_global != i915_reset_count(&i915->gpu_error)) {
 		pr_err("%s(%s): GPU was reset %d times!\n",
 		       t->func, t->name,
-		       i915_reset_count(&i915->gpu_error) - t->reset_count);
+		       i915_reset_count(&i915->gpu_error) - t->reset_global);
+		return -EIO;
+	}
+
+	for_each_engine(engine, i915, id) {
+		if (t->reset_engine[id] ==
+		    i915_reset_engine_count(&i915->gpu_error, engine))
+			continue;
+
+		pr_err("%s(%s): engine '%s' was reset %d times!\n",
+		       t->func, t->name, engine->name,
+		       i915_reset_engine_count(&i915->gpu_error, engine) -
+		       t->reset_engine[id]);
 		return -EIO;
 	}
 
@@ -531,11 +552,11 @@ static int igt_ctx_exec(void *arg)
 {
 	struct drm_i915_private *i915 = arg;
 	struct drm_i915_gem_object *obj = NULL;
+	unsigned long ncontexts, ndwords, dw;
 	struct drm_file *file;
 	IGT_TIMEOUT(end_time);
 	LIST_HEAD(objects);
-	unsigned long ncontexts, ndwords, dw;
-	bool first_shared_gtt = true;
+	struct live_test t;
 	int err = -ENODEV;
 
 	/*
@@ -553,6 +574,10 @@ static int igt_ctx_exec(void *arg)
 
 	mutex_lock(&i915->drm.struct_mutex);
 
+	err = begin_live_test(&t, i915, __func__, "");
+	if (err)
+		goto out_unlock;
+
 	ncontexts = 0;
 	ndwords = 0;
 	dw = 0;
@@ -561,12 +586,7 @@ static int igt_ctx_exec(void *arg)
 		struct i915_gem_context *ctx;
 		unsigned int id;
 
-		if (first_shared_gtt) {
-			ctx = __create_hw_context(i915, file->driver_priv);
-			first_shared_gtt = false;
-		} else {
-			ctx = i915_gem_create_context(i915, file->driver_priv);
-		}
+		ctx = i915_gem_create_context(i915, file->driver_priv);
 		if (IS_ERR(ctx)) {
 			err = PTR_ERR(ctx);
 			goto out_unlock;
@@ -622,7 +642,7 @@ static int igt_ctx_exec(void *arg)
 	}
 
 out_unlock:
-	if (igt_flush_test(i915, I915_WAIT_LOCKED))
+	if (end_live_test(&t))
 		err = -EIO;
 	mutex_unlock(&i915->drm.struct_mutex);
 
@@ -634,13 +654,14 @@ static int igt_ctx_readonly(void *arg)
 {
 	struct drm_i915_private *i915 = arg;
 	struct drm_i915_gem_object *obj = NULL;
+	struct i915_gem_context *ctx;
+	struct i915_hw_ppgtt *ppgtt;
+	unsigned long ndwords, dw;
 	struct drm_file *file;
 	I915_RND_STATE(prng);
 	IGT_TIMEOUT(end_time);
 	LIST_HEAD(objects);
-	struct i915_gem_context *ctx;
-	struct i915_hw_ppgtt *ppgtt;
-	unsigned long ndwords, dw;
+	struct live_test t;
 	int err = -ENODEV;
 
 	/*
@@ -654,6 +675,10 @@ static int igt_ctx_readonly(void *arg)
 		return PTR_ERR(file);
 
 	mutex_lock(&i915->drm.struct_mutex);
+
+	err = begin_live_test(&t, i915, __func__, "");
+	if (err)
+		goto out_unlock;
 
 	ctx = i915_gem_create_context(i915, file->driver_priv);
 	if (IS_ERR(ctx)) {
@@ -727,7 +752,7 @@ static int igt_ctx_readonly(void *arg)
 	}
 
 out_unlock:
-	if (igt_flush_test(i915, I915_WAIT_LOCKED))
+	if (end_live_test(&t))
 		err = -EIO;
 	mutex_unlock(&i915->drm.struct_mutex);
 
@@ -865,33 +890,6 @@ out_unlock:
 	return err;
 }
 
-static int fake_aliasing_ppgtt_enable(struct drm_i915_private *i915)
-{
-	struct drm_i915_gem_object *obj;
-	int err;
-
-	err = i915_gem_init_aliasing_ppgtt(i915);
-	if (err)
-		return err;
-
-	list_for_each_entry(obj, &i915->mm.bound_list, mm.link) {
-		struct i915_vma *vma;
-
-		vma = i915_vma_instance(obj, &i915->ggtt.vm, NULL);
-		if (IS_ERR(vma))
-			continue;
-
-		vma->flags &= ~I915_VMA_LOCAL_BIND;
-	}
-
-	return 0;
-}
-
-static void fake_aliasing_ppgtt_disable(struct drm_i915_private *i915)
-{
-	i915_gem_fini_aliasing_ppgtt(i915);
-}
-
 int i915_gem_context_mock_selftests(void)
 {
 	static const struct i915_subtest tests[] = {
@@ -918,31 +916,9 @@ int i915_gem_context_live_selftests(struct drm_i915_private *dev_priv)
 		SUBTEST(igt_ctx_exec),
 		SUBTEST(igt_ctx_readonly),
 	};
-	bool fake_alias = false;
-	int err;
 
 	if (i915_terminally_wedged(&dev_priv->gpu_error))
 		return 0;
 
-	/* Install a fake aliasing gtt for exercise */
-	if (USES_PPGTT(dev_priv) && !dev_priv->mm.aliasing_ppgtt) {
-		mutex_lock(&dev_priv->drm.struct_mutex);
-		err = fake_aliasing_ppgtt_enable(dev_priv);
-		mutex_unlock(&dev_priv->drm.struct_mutex);
-		if (err)
-			return err;
-
-		GEM_BUG_ON(!dev_priv->mm.aliasing_ppgtt);
-		fake_alias = true;
-	}
-
-	err = i915_subtests(tests, dev_priv);
-
-	if (fake_alias) {
-		mutex_lock(&dev_priv->drm.struct_mutex);
-		fake_aliasing_ppgtt_disable(dev_priv);
-		mutex_unlock(&dev_priv->drm.struct_mutex);
-	}
-
-	return err;
+	return i915_subtests(tests, dev_priv);
 }

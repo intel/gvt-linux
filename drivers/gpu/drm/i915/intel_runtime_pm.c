@@ -436,6 +436,15 @@ icl_combo_phy_aux_power_well_enable(struct drm_i915_private *dev_priv,
 	I915_WRITE(ICL_PORT_CL_DW12(port), val | ICL_LANE_ENABLE_AUX);
 
 	hsw_wait_for_power_well_enable(dev_priv, power_well);
+
+	/* Display WA #1178: icl */
+	if (IS_ICELAKE(dev_priv) &&
+	    pw_idx >= ICL_PW_CTL_IDX_AUX_A && pw_idx <= ICL_PW_CTL_IDX_AUX_B &&
+	    !intel_bios_is_port_edp(dev_priv, port)) {
+		val = I915_READ(ICL_AUX_ANAOVRD1(pw_idx));
+		val |= ICL_AUX_ANAOVRD1_ENABLE | ICL_AUX_ANAOVRD1_LDO_BYPASS;
+		I915_WRITE(ICL_AUX_ANAOVRD1(pw_idx), val);
+	}
 }
 
 static void
@@ -3075,12 +3084,6 @@ int intel_power_domains_init(struct drm_i915_private *dev_priv)
 	 */
 	if (IS_ICELAKE(dev_priv)) {
 		err = set_power_wells(power_domains, icl_power_wells);
-	} else if (IS_HASWELL(dev_priv)) {
-		err = set_power_wells(power_domains, hsw_power_wells);
-	} else if (IS_BROADWELL(dev_priv)) {
-		err = set_power_wells(power_domains, bdw_power_wells);
-	} else if (IS_GEN9_BC(dev_priv)) {
-		err = set_power_wells(power_domains, skl_power_wells);
 	} else if (IS_CANNONLAKE(dev_priv)) {
 		err = set_power_wells(power_domains, cnl_power_wells);
 
@@ -3092,13 +3095,18 @@ int intel_power_domains_init(struct drm_i915_private *dev_priv)
 		 */
 		if (!IS_CNL_WITH_PORT_F(dev_priv))
 			power_domains->power_well_count -= 2;
-
-	} else if (IS_BROXTON(dev_priv)) {
-		err = set_power_wells(power_domains, bxt_power_wells);
 	} else if (IS_GEMINILAKE(dev_priv)) {
 		err = set_power_wells(power_domains, glk_power_wells);
+	} else if (IS_BROXTON(dev_priv)) {
+		err = set_power_wells(power_domains, bxt_power_wells);
+	} else if (IS_GEN9_BC(dev_priv)) {
+		err = set_power_wells(power_domains, skl_power_wells);
 	} else if (IS_CHERRYVIEW(dev_priv)) {
 		err = set_power_wells(power_domains, chv_power_wells);
+	} else if (IS_BROADWELL(dev_priv)) {
+		err = set_power_wells(power_domains, bdw_power_wells);
+	} else if (IS_HASWELL(dev_priv)) {
+		err = set_power_wells(power_domains, hsw_power_wells);
 	} else if (IS_VALLEYVIEW(dev_priv)) {
 		err = set_power_wells(power_domains, vlv_power_wells);
 	} else if (IS_I830(dev_priv)) {
@@ -3240,18 +3248,40 @@ static void icl_mbus_init(struct drm_i915_private *dev_priv)
 	I915_WRITE(MBUS_ABOX_CTL, val);
 }
 
+static void intel_pch_reset_handshake(struct drm_i915_private *dev_priv,
+				      bool enable)
+{
+	i915_reg_t reg;
+	u32 reset_bits, val;
+
+	if (IS_IVYBRIDGE(dev_priv)) {
+		reg = GEN7_MSG_CTL;
+		reset_bits = WAIT_FOR_PCH_FLR_ACK | WAIT_FOR_PCH_RESET_ACK;
+	} else {
+		reg = HSW_NDE_RSTWRN_OPT;
+		reset_bits = RESET_PCH_HANDSHAKE_ENABLE;
+	}
+
+	val = I915_READ(reg);
+
+	if (enable)
+		val |= reset_bits;
+	else
+		val &= ~reset_bits;
+
+	I915_WRITE(reg, val);
+}
+
 static void skl_display_core_init(struct drm_i915_private *dev_priv,
 				   bool resume)
 {
 	struct i915_power_domains *power_domains = &dev_priv->power_domains;
 	struct i915_power_well *well;
-	uint32_t val;
 
 	gen9_set_dc_state(dev_priv, DC_STATE_DISABLE);
 
 	/* enable PCH reset handshake */
-	val = I915_READ(HSW_NDE_RSTWRN_OPT);
-	I915_WRITE(HSW_NDE_RSTWRN_OPT, val | RESET_PCH_HANDSHAKE_ENABLE);
+	intel_pch_reset_handshake(dev_priv, !HAS_PCH_NOP(dev_priv));
 
 	/* enable PG1 and Misc I/O */
 	mutex_lock(&power_domains->lock);
@@ -3307,7 +3337,6 @@ void bxt_display_core_init(struct drm_i915_private *dev_priv,
 {
 	struct i915_power_domains *power_domains = &dev_priv->power_domains;
 	struct i915_power_well *well;
-	uint32_t val;
 
 	gen9_set_dc_state(dev_priv, DC_STATE_DISABLE);
 
@@ -3317,9 +3346,7 @@ void bxt_display_core_init(struct drm_i915_private *dev_priv,
 	 * Move the handshake programming to initialization sequence.
 	 * Previously was left up to BIOS.
 	 */
-	val = I915_READ(HSW_NDE_RSTWRN_OPT);
-	val &= ~RESET_PCH_HANDSHAKE_ENABLE;
-	I915_WRITE(HSW_NDE_RSTWRN_OPT, val);
+	intel_pch_reset_handshake(dev_priv, false);
 
 	/* Enable PG1 */
 	mutex_lock(&power_domains->lock);
@@ -3440,9 +3467,7 @@ static void cnl_display_core_init(struct drm_i915_private *dev_priv, bool resume
 	gen9_set_dc_state(dev_priv, DC_STATE_DISABLE);
 
 	/* 1. Enable PCH Reset Handshake */
-	val = I915_READ(HSW_NDE_RSTWRN_OPT);
-	val |= RESET_PCH_HANDSHAKE_ENABLE;
-	I915_WRITE(HSW_NDE_RSTWRN_OPT, val);
+	intel_pch_reset_handshake(dev_priv, !HAS_PCH_NOP(dev_priv));
 
 	/* 2. Enable Comp */
 	val = I915_READ(CHICKEN_MISC_2);
@@ -3525,9 +3550,7 @@ static void icl_display_core_init(struct drm_i915_private *dev_priv,
 	gen9_set_dc_state(dev_priv, DC_STATE_DISABLE);
 
 	/* 1. Enable PCH reset handshake. */
-	val = I915_READ(HSW_NDE_RSTWRN_OPT);
-	val |= RESET_PCH_HANDSHAKE_ENABLE;
-	I915_WRITE(HSW_NDE_RSTWRN_OPT, val);
+	intel_pch_reset_handshake(dev_priv, !HAS_PCH_NOP(dev_priv));
 
 	for (port = PORT_A; port <= PORT_B; port++) {
 		/* 2. Enable DDI combo PHY comp. */
@@ -3759,7 +3782,8 @@ void intel_power_domains_init_hw(struct drm_i915_private *dev_priv, bool resume)
 		mutex_lock(&power_domains->lock);
 		vlv_cmnlane_wa(dev_priv);
 		mutex_unlock(&power_domains->lock);
-	}
+	} else if (IS_IVYBRIDGE(dev_priv) || INTEL_GEN(dev_priv) >= 7)
+		intel_pch_reset_handshake(dev_priv, !HAS_PCH_NOP(dev_priv));
 
 	/*
 	 * Keep all power wells enabled for any dependent HW access during

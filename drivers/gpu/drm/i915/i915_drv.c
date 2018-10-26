@@ -345,7 +345,7 @@ static int i915_getparam_ioctl(struct drm_device *dev, void *data,
 		value = HAS_WT(dev_priv);
 		break;
 	case I915_PARAM_HAS_ALIASING_PPGTT:
-		value = USES_PPGTT(dev_priv);
+		value = min_t(int, INTEL_PPGTT(dev_priv), I915_GEM_PPGTT_FULL);
 		break;
 	case I915_PARAM_HAS_SEMAPHORES:
 		value = HAS_LEGACY_SEMAPHORES(dev_priv);
@@ -1030,6 +1030,7 @@ static int i915_driver_init_mmio(struct drm_i915_private *dev_priv)
 
 err_uncore:
 	intel_uncore_fini(dev_priv);
+	i915_mmio_cleanup(dev_priv);
 err_bridge:
 	pci_dev_put(dev_priv->bridge_dev);
 
@@ -1049,17 +1050,6 @@ static void i915_driver_cleanup_mmio(struct drm_i915_private *dev_priv)
 
 static void intel_sanitize_options(struct drm_i915_private *dev_priv)
 {
-	/*
-	 * i915.enable_ppgtt is read-only, so do an early pass to validate the
-	 * user's requested state against the hardware/driver capabilities.  We
-	 * do this now so that we can print out any log messages once rather
-	 * than every time we check intel_enable_ppgtt().
-	 */
-	i915_modparams.enable_ppgtt =
-		intel_sanitize_enable_ppgtt(dev_priv,
-					    i915_modparams.enable_ppgtt);
-	DRM_DEBUG_DRIVER("ppgtt mode: %i\n", i915_modparams.enable_ppgtt);
-
 	intel_gvt_sanitize_options(dev_priv);
 }
 
@@ -1175,8 +1165,6 @@ skl_dram_get_channels_info(struct drm_i915_private *dev_priv)
 		return -EINVAL;
 	}
 
-	dram_info->valid_dimm = true;
-
 	/*
 	 * If any of the channel is single rank channel, worst case output
 	 * will be same as if single rank memory, so consider single rank
@@ -1193,8 +1181,7 @@ skl_dram_get_channels_info(struct drm_i915_private *dev_priv)
 		return -EINVAL;
 	}
 
-	if (ch0.is_16gb_dimm || ch1.is_16gb_dimm)
-		dram_info->is_16gb_dimm = true;
+	dram_info->is_16gb_dimm = ch0.is_16gb_dimm || ch1.is_16gb_dimm;
 
 	dev_priv->dram_info.symmetric_memory = intel_is_dram_symmetric(val_ch0,
 								       val_ch1,
@@ -1314,7 +1301,6 @@ bxt_get_dram_info(struct drm_i915_private *dev_priv)
 		return -EINVAL;
 	}
 
-	dram_info->valid_dimm = true;
 	dram_info->valid = true;
 	return 0;
 }
@@ -1327,11 +1313,16 @@ intel_get_dram_info(struct drm_i915_private *dev_priv)
 	int ret;
 
 	dram_info->valid = false;
-	dram_info->valid_dimm = false;
-	dram_info->is_16gb_dimm = false;
 	dram_info->rank = I915_DRAM_RANK_INVALID;
 	dram_info->bandwidth_kbps = 0;
 	dram_info->num_channels = 0;
+
+	/*
+	 * Assume 16Gb DIMMs are present until proven otherwise.
+	 * This is only used for the level 0 watermark latency
+	 * w/a which does not apply to bxt/glk.
+	 */
+	dram_info->is_16gb_dimm = !IS_GEN9_LP(dev_priv);
 
 	if (INTEL_GEN(dev_priv) < 9 || IS_GEMINILAKE(dev_priv))
 		return;
@@ -1373,6 +1364,15 @@ static int i915_driver_init_hw(struct drm_i915_private *dev_priv)
 		return -ENODEV;
 
 	intel_device_info_runtime_init(mkwrite_device_info(dev_priv));
+
+	if (HAS_PPGTT(dev_priv)) {
+		if (intel_vgpu_active(dev_priv) &&
+		    !intel_vgpu_has_full_48bit_ppgtt(dev_priv)) {
+			i915_report_error(dev_priv,
+					  "incompatible vGPU found, support for isolated ppGTT required\n");
+			return -ENXIO;
+		}
+	}
 
 	intel_sanitize_options(dev_priv);
 
@@ -1629,14 +1629,16 @@ i915_driver_create(struct pci_dev *pdev, const struct pci_device_id *ent)
 		(struct intel_device_info *)ent->driver_data;
 	struct intel_device_info *device_info;
 	struct drm_i915_private *i915;
+	int err;
 
 	i915 = kzalloc(sizeof(*i915), GFP_KERNEL);
 	if (!i915)
-		return NULL;
+		return ERR_PTR(-ENOMEM);
 
-	if (drm_dev_init(&i915->drm, &driver, &pdev->dev)) {
+	err = drm_dev_init(&i915->drm, &driver, &pdev->dev);
+	if (err) {
 		kfree(i915);
-		return NULL;
+		return ERR_PTR(err);
 	}
 
 	i915->drm.pdev = pdev;
@@ -1649,8 +1651,8 @@ i915_driver_create(struct pci_dev *pdev, const struct pci_device_id *ent)
 	device_info->device_id = pdev->device;
 
 	BUILD_BUG_ON(INTEL_MAX_PLATFORMS >
-		     sizeof(device_info->platform_mask) * BITS_PER_BYTE);
-	BUG_ON(device_info->gen > sizeof(device_info->gen_mask) * BITS_PER_BYTE);
+		     BITS_PER_TYPE(device_info->platform_mask));
+	BUG_ON(device_info->gen > BITS_PER_TYPE(device_info->gen_mask));
 
 	return i915;
 }
@@ -1685,8 +1687,8 @@ int i915_driver_load(struct pci_dev *pdev, const struct pci_device_id *ent)
 	int ret;
 
 	dev_priv = i915_driver_create(pdev, ent);
-	if (!dev_priv)
-		return -ENOMEM;
+	if (IS_ERR(dev_priv))
+		return PTR_ERR(dev_priv);
 
 	/* Disable nuclear pageflip by default on pre-ILK */
 	if (!i915_modparams.nuclear_pageflip && match_info->gen < 5)

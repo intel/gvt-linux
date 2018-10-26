@@ -1,0 +1,28 @@
+drm drm-fixes fe7acd1e303d74584040a902d78726ba5a4b9b4a
+	Merge tag 'drm-misc-fixes-2018-10-19' of git://anongit.freedesktop.org/drm/drm-misc into drm-fixes
+drm-misc drm-misc-fixes e84cb605e02f1b3d0aee8d7157419cd8aaa06038
+	drm/sun4i: Fix an ulong overflow in the dotclock driver
+drm-intel drm-intel-fixes 84df9525b0c27f3ebc2ebb1864fa62a97fdedb7d
+	Linux 4.19
+drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
+	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
+drm drm-next f2bfc71aee75feff33ca659322b72ffeed5a243d
+	Merge tag 'drm-intel-next-fixes-2018-10-18' of git://anongit.freedesktop.org/drm/drm-intel into drm-next
+drm-misc drm-misc-next-fixes f2bfc71aee75feff33ca659322b72ffeed5a243d
+	Merge tag 'drm-intel-next-fixes-2018-10-18' of git://anongit.freedesktop.org/drm/drm-intel into drm-next
+drm-intel drm-intel-next-fixes f9776280c29e77a18cbc7ebb6d48f7885e494990
+	drm/i915/dp: Restrict link retrain workaround to external monitors
+drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
+	Linux 4.14-rc1
+drm-misc drm-misc-next 47164e0b0df88494235e6416a68ffcb993503b8d
+	drm/i915/hdmi: Detect HDMI 2.0 monitors using multiple EDID capabilities
+drm-intel drm-intel-next-queued 1e016a8693368c163b18104a28c4edc71858f2d2
+	drm/i915: Park signaling thread while wrapping the seqno
+drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
+	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
+sound-upstream for-linus de7d83da84bdf0b5ec50b3b09249e608c0e4b81d
+	Merge tag 'asoc-v5.0-2' of https://git.kernel.org/pub/scm/linux/kernel/git/broonie/sound into for-linus
+sound-upstream for-next de7d83da84bdf0b5ec50b3b09249e608c0e4b81d
+	Merge tag 'asoc-v5.0-2' of https://git.kernel.org/pub/scm/linux/kernel/git/broonie/sound into for-linus
+drm-intel topic/core-for-CI 7a70ed313e25667243e6f7cb15a4a5ee06e1d486
+	libata: Downgrade unsupported feature warnings to notifications

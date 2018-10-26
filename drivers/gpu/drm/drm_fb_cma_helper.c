@@ -124,10 +124,7 @@ int drm_fb_cma_fbdev_init(struct drm_device *dev, unsigned int preferred_bpp,
 
 	/* dev->fb_helper will indirectly point to fbdev_cma after this call */
 	fbdev_cma = drm_fbdev_cma_init(dev, preferred_bpp, max_conn_count);
-	if (IS_ERR(fbdev_cma))
-		return PTR_ERR(fbdev_cma);
-
-	return 0;
+	return PTR_ERR_OR_ZERO(fbdev_cma);
 }
 EXPORT_SYMBOL_GPL(drm_fb_cma_fbdev_init);
 
@@ -226,21 +223,3 @@ void drm_fbdev_cma_hotplug_event(struct drm_fbdev_cma *fbdev_cma)
 		drm_fb_helper_hotplug_event(&fbdev_cma->fb_helper);
 }
 EXPORT_SYMBOL_GPL(drm_fbdev_cma_hotplug_event);
-
-/**
- * drm_fbdev_cma_set_suspend_unlocked - wrapper around
- *                                      drm_fb_helper_set_suspend_unlocked
- * @fbdev_cma: The drm_fbdev_cma struct, may be NULL
- * @state: desired state, zero to resume, non-zero to suspend
- *
- * Calls drm_fb_helper_set_suspend, which is a wrapper around
- * fb_set_suspend implemented by fbdev core.
- */
-void drm_fbdev_cma_set_suspend_unlocked(struct drm_fbdev_cma *fbdev_cma,
-					bool state)
-{
-	if (fbdev_cma)
-		drm_fb_helper_set_suspend_unlocked(&fbdev_cma->fb_helper,
-						   state);
-}
-EXPORT_SYMBOL(drm_fbdev_cma_set_suspend_unlocked);

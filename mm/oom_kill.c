@@ -49,6 +49,8 @@
 #define CREATE_TRACE_POINTS
 #include <trace/events/oom.h>
 
+static bool task_will_free_mem(struct task_struct *task);
+
 int sysctl_panic_on_oom;
 int sysctl_oom_kill_allocating_task;
 int sysctl_oom_dump_tasks = 1;
@@ -209,19 +211,27 @@ unsigned long oom_badness(struct task_struct *p, struct mem_cgroup *memcg,
 	if (oom_unkillable_task(p, memcg, nodemask))
 		return 0;
 
+	/*
+	 * If we cannot lock the task's mm, it is in the process of being
+	 * removed, so select it as the target of the repear and see if it
+	 * recovers enough memory to continue.
+	 */
 	p = find_lock_task_mm(p);
 	if (!p)
-		return 0;
+		return ULONG_MAX;
+
+	if (task_will_free_mem(p)) {
+		task_unlock(p);
+		return ULONG_MAX;
+	}
 
 	/*
 	 * Do not even consider tasks which are explicitly marked oom
-	 * unkillable or have been already oom reaped or the are in
-	 * the middle of vfork
+	 * unkillable or are in the middle of vfork (and so still share their
+	 * parent's mm).
 	 */
 	adj = (long)p->signal->oom_score_adj;
-	if (adj == OOM_SCORE_ADJ_MIN ||
-			test_bit(MMF_OOM_SKIP, &p->mm->flags) ||
-			in_vfork(p)) {
+	if (adj == OOM_SCORE_ADJ_MIN || in_vfork(p)) {
 		task_unlock(p);
 		return 0;
 	}
@@ -801,11 +811,12 @@ static bool task_will_free_mem(struct task_struct *task)
 		return false;
 
 	/*
-	 * This task has already been drained by the oom reaper so there are
-	 * only small chances it will free some more
+	 * This task has already been selected for the oom reaper, but
+	 * the reaper is unable to make progress. Continue to dogpile
+	 * on top until it succeeds.
 	 */
 	if (test_bit(MMF_OOM_SKIP, &mm->flags))
-		return false;
+		return true;
 
 	if (atomic_read(&mm->mm_users) <= 1)
 		return true;

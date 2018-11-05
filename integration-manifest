@@ -1,28 +1,12 @@
-drm drm-fixes 651022382c7f8da46cb4872a545ee1da6d097d2a
-	Linux 4.20-rc1
-drm-misc drm-misc-fixes e84cb605e02f1b3d0aee8d7157419cd8aaa06038
-	drm/sun4i: Fix an ulong overflow in the dotclock driver
-drm-intel drm-intel-fixes 84df9525b0c27f3ebc2ebb1864fa62a97fdedb7d
-	Linux 4.19
-drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
-	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
-drm drm-next 651022382c7f8da46cb4872a545ee1da6d097d2a
-	Linux 4.20-rc1
-drm-misc drm-misc-next-fixes 8f054b6f53ff34fb787bde4c5940f86a9c175177
-	drm/panel: simple: Innolux TV123WAM is actually P120ZDG-BF1
-drm-intel drm-intel-next-fixes f9776280c29e77a18cbc7ebb6d48f7885e494990
-	drm/i915/dp: Restrict link retrain workaround to external monitors
-drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
-	Linux 4.14-rc1
-drm-misc drm-misc-next 6caec6a04717c01cb31d018ff60d5a3c32eb32b9
-	drm/lease: drop EXPORT_SYMBOL
-drm-intel drm-intel-next-queued 857d828374cc84d07c7b94db2cf535aa517444dd
-	drm/dp/fec: DRM helper for Forward Error Correction
-drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
-	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
-sound-upstream for-linus 826b5de90c0bca4e9de6231da9e1730480621588
-	ALSA: firewire-lib: fix insufficient PCM rule for period/buffer size
-sound-upstream for-next 826b5de90c0bca4e9de6231da9e1730480621588
-	ALSA: firewire-lib: fix insufficient PCM rule for period/buffer size
-drm-intel topic/core-for-CI 7a70ed313e25667243e6f7cb15a4a5ee06e1d486
-	libata: Downgrade unsupported feature warnings to notifications
+drm-tip/drm-tip 6ae61ee5db4af12c0b21bf39e0400ccf024187c4
+	drm-tip: 2018y-11m-05d-05h-17m-28s UTC integration manifest
+vfio-upstream/for-linus 0e714d27786ce1fb3efa9aac58abc096e68b1c2a
+	vfio/pci: Fix potential Spectre v1
+vfio-upstream/next 104c7405a64d937254b6a154938e6151f91c9e0d
+	vfio: add edid support to mbochs sample driver
+origin/gvt-fixes 5e7154ff5e8e21dc9acac4f8dba7533552365374
+	drm/i915/gvt: Handle values of EDP_PSR_IMR and EDP_PSR_IIR
+origin/gvt-next 8a3eb1ae054a905f943dbaff1f6a6623cc0c14e8
+	drm/i915/gvt: support inconsecutive partial gtt entry write
+origin/gvt-next-fixes 348589205265049eda2e365371eec18d56809699
+	drm/i915/gvt: correct mask setting for CSFE_CHICKEN1

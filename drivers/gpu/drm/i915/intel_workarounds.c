@@ -905,6 +905,13 @@ static void icl_gt_workarounds_apply(struct drm_i915_private *dev_priv)
 	I915_WRITE(GAMT_CHKN_BIT_REG,
 		   I915_READ(GAMT_CHKN_BIT_REG) |
 		   GAMT_CHKN_DISABLE_L3_COH_PIPE);
+
+	/* Wa_1406609255:icl (pre-prod) */
+	if (IS_ICL_REVID(dev_priv, ICL_REVID_A0, ICL_REVID_B0))
+		I915_WRITE(GEN7_SARCHKMD,
+			   I915_READ(GEN7_SARCHKMD) |
+			   GEN7_DISABLE_DEMAND_PREFETCH |
+			   GEN7_DISABLE_SAMPLER_PREFETCH);
 }
 
 void intel_gt_workarounds_apply(struct drm_i915_private *dev_priv)
@@ -941,7 +948,7 @@ struct whitelist {
 
 static void whitelist_reg(struct whitelist *w, i915_reg_t reg)
 {
-	if (GEM_WARN_ON(w->count >= RING_MAX_NONPRIV_SLOTS))
+	if (GEM_DEBUG_WARN_ON(w->count >= RING_MAX_NONPRIV_SLOTS))
 		return;
 
 	w->reg[w->count++] = reg;
@@ -1009,6 +1016,11 @@ static void cnl_whitelist_build(struct whitelist *w)
 
 static void icl_whitelist_build(struct whitelist *w)
 {
+	/* WaAllowUMDToModifyHalfSliceChicken7:icl */
+	whitelist_reg(w, GEN9_HALF_SLICE_CHICKEN7);
+
+	/* WaAllowUMDToModifySamplerMode:icl */
+	whitelist_reg(w, GEN10_SAMPLER_MODE);
 }
 
 static struct whitelist *whitelist_build(struct intel_engine_cs *engine,

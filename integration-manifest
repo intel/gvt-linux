@@ -1,28 +1,12 @@
-drm drm-fixes d08f44b18ccbe4de36282df6343dc098922d1159
-	Merge tag 'exynos-drm-fixes-for-v4.20-rc2' of git://git.kernel.org/pub/scm/linux/kernel/git/daeinki/drm-exynos into drm-fixes
-drm-misc drm-misc-fixes cf3d02a185edf449d30465dae8d22a4979545829
-	drm: Fix htmldocs warnings in drm_fourcc.c
-drm-intel drm-intel-fixes 214782da8fe8497b9af39095c784f3a633e377ec
-	Merge tag 'gvt-fixes-2018-11-07' of https://github.com/intel/gvt-linux into drm-intel-fixes
-drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
-	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
-drm drm-next 651022382c7f8da46cb4872a545ee1da6d097d2a
-	Linux 4.20-rc1
-drm-misc drm-misc-next-fixes 8f054b6f53ff34fb787bde4c5940f86a9c175177
-	drm/panel: simple: Innolux TV123WAM is actually P120ZDG-BF1
-drm-intel drm-intel-next-fixes 651022382c7f8da46cb4872a545ee1da6d097d2a
-	Linux 4.20-rc1
-drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
-	Linux 4.14-rc1
-drm-misc drm-misc-next d9be05b784225e68cf0c9b95180d3081b4663745
-	drm/atomic: Use explicit old/new state in drm_atomic_plane_check()
-drm-intel drm-intel-next-queued a33e1ece777996ddddb1f23a30f8c66422ed0b68
-	drm/i915/icl: Fix power well 2 wrt. DC-off toggling order
-drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
-	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
-sound-upstream for-linus 5e93a125f521efd00d71af31c2a301f3d46af48c
-	ALSA: hda - Fix incorrect clearance of thinkpad_acpi hooks
-sound-upstream for-next ad43d528a7ac5636cf113cb09644d3ec18129123
-	ALSA: usb-audio: Define registers for CM6206
-drm-intel topic/core-for-CI e544b7a02dd829ff8f130118ce973739572ad53f
-	efi: Fix debugobjects warning on efi_rts_work
+drm-tip/drm-tip 23c1138030ad65402f698ab0b356e2f55722bc77
+	drm-tip: 2018y-11m-07d-21h-25m-23s UTC integration manifest
+vfio-upstream/for-linus 0e714d27786ce1fb3efa9aac58abc096e68b1c2a
+	vfio/pci: Fix potential Spectre v1
+vfio-upstream/next 104c7405a64d937254b6a154938e6151f91c9e0d
+	vfio: add edid support to mbochs sample driver
+origin/gvt-fixes 5e7154ff5e8e21dc9acac4f8dba7533552365374
+	drm/i915/gvt: Handle values of EDP_PSR_IMR and EDP_PSR_IIR
+origin/gvt-next ea830279d49e0a1b46871fb4345a690e983361c6
+	drm/i915/gvt: fix a typo: "registeration" -> "registration".
+origin/gvt-next-fixes 348589205265049eda2e365371eec18d56809699
+	drm/i915/gvt: correct mask setting for CSFE_CHICKEN1

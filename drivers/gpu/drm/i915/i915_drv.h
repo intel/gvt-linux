@@ -87,8 +87,8 @@
 
 #define DRIVER_NAME		"i915"
 #define DRIVER_DESC		"Intel Graphics"
-#define DRIVER_DATE		"20180921"
-#define DRIVER_TIMESTAMP	1537521997
+#define DRIVER_DATE		"20181102"
+#define DRIVER_TIMESTAMP	1541153051
 
 /* Use I915_STATE_WARN(x) and I915_STATE_WARN_ON() (rather than WARN() and
  * WARN_ON()) for hw state sanity checks to check for unexpected conditions
@@ -283,7 +283,8 @@ enum hpd_pin {
 #define for_each_hpd_pin(__pin) \
 	for ((__pin) = (HPD_NONE + 1); (__pin) < HPD_NUM_PINS; (__pin)++)
 
-#define HPD_STORM_DEFAULT_THRESHOLD 5
+/* Threshold == 5 for long IRQs, 50 for short */
+#define HPD_STORM_DEFAULT_THRESHOLD 50
 
 struct i915_hotplug {
 	struct work_struct hotplug_work;
@@ -308,6 +309,8 @@ struct i915_hotplug {
 	bool poll_enabled;
 
 	unsigned int hpd_storm_threshold;
+	/* Whether or not to count short HPD IRQs in HPD storms */
+	u8 hpd_short_storm_enabled;
 
 	/*
 	 * if we get a HPD irq from DP and a HPD irq from non-DP
@@ -465,8 +468,10 @@ struct drm_i915_display_funcs {
 struct intel_csr {
 	struct work_struct work;
 	const char *fw_path;
+	uint32_t required_version;
+	uint32_t max_fw_size; /* bytes */
 	uint32_t *dmc_payload;
-	uint32_t dmc_fw_size;
+	uint32_t dmc_fw_size; /* dwords */
 	uint32_t version;
 	uint32_t mmio_count;
 	i915_reg_t mmioaddr[8];
@@ -546,6 +551,8 @@ struct intel_fbc {
 			int adjusted_y;
 
 			int y;
+
+			uint16_t pixel_blend_mode;
 		} plane;
 
 		struct {
@@ -630,7 +637,6 @@ struct i915_psr {
 	bool sink_psr2_support;
 	bool link_standby;
 	bool colorimetry_support;
-	bool alpm;
 	bool psr2_enabled;
 	u8 sink_sync_latency;
 	ktime_t last_entry_attempt;
@@ -918,6 +924,11 @@ struct i915_power_well_desc {
 			/* The pw is backing the VGA functionality */
 			bool has_vga:1;
 			bool has_fuses:1;
+			/*
+			 * The pw is for an ICL+ TypeC PHY port in
+			 * Thunderbolt mode.
+			 */
+			bool is_tc_tbt:1;
 		} hsw;
 	};
 	const struct i915_power_well_ops *ops;
@@ -1240,9 +1251,9 @@ struct skl_ddb_values {
 };
 
 struct skl_wm_level {
-	bool plane_en;
 	uint16_t plane_res_b;
 	uint8_t plane_res_l;
+	bool plane_en;
 };
 
 /* Stores plane specific WM parameters */
@@ -1520,30 +1531,12 @@ struct i915_oa_ops {
 	bool (*is_valid_flex_reg)(struct drm_i915_private *dev_priv, u32 addr);
 
 	/**
-	 * @init_oa_buffer: Resets the head and tail pointers of the
-	 * circular buffer for periodic OA reports.
-	 *
-	 * Called when first opening a stream for OA metrics, but also may be
-	 * called in response to an OA buffer overflow or other error
-	 * condition.
-	 *
-	 * Note it may be necessary to clear the full OA buffer here as part of
-	 * maintaining the invariable that new reports must be written to
-	 * zeroed memory for us to be able to reliable detect if an expected
-	 * report has not yet landed in memory.  (At least on Haswell the OA
-	 * buffer tail pointer is not synchronized with reports being visible
-	 * to the CPU)
-	 */
-	void (*init_oa_buffer)(struct drm_i915_private *dev_priv);
-
-	/**
 	 * @enable_metric_set: Selects and applies any MUX configuration to set
 	 * up the Boolean and Custom (B/C) counters that are part of the
 	 * counter reports being sampled. May apply system constraints such as
 	 * disabling EU clock gating as required.
 	 */
-	int (*enable_metric_set)(struct drm_i915_private *dev_priv,
-				 const struct i915_oa_config *oa_config);
+	int (*enable_metric_set)(struct i915_perf_stream *stream);
 
 	/**
 	 * @disable_metric_set: Remove system constraints associated with using
@@ -1554,12 +1547,12 @@ struct i915_oa_ops {
 	/**
 	 * @oa_enable: Enable periodic sampling
 	 */
-	void (*oa_enable)(struct drm_i915_private *dev_priv);
+	void (*oa_enable)(struct i915_perf_stream *stream);
 
 	/**
 	 * @oa_disable: Disable periodic sampling
 	 */
-	void (*oa_disable)(struct drm_i915_private *dev_priv);
+	void (*oa_disable)(struct i915_perf_stream *stream);
 
 	/**
 	 * @read: Copy data from the circular OA buffer into a given userspace
@@ -2020,6 +2013,7 @@ struct drm_i915_private {
 				u32 last_ctx_id;
 				int format;
 				int format_size;
+				int size_exponent;
 
 				/**
 				 * Locks reads and writes to all head/tail state
@@ -2322,6 +2316,8 @@ static inline struct scatterlist *__sg_next(struct scatterlist *sg)
 	     (((__iter).curr += PAGE_SIZE) >= (__iter).max) ?		\
 	     (__iter) = __sgt_iter(__sg_next((__iter).sgp), false), 0 : 0)
 
+bool i915_sg_trim(struct sg_table *orig_st);
+
 static inline unsigned int i915_sg_page_sizes(struct scatterlist *sg)
 {
 	unsigned int page_sizes;
@@ -2367,20 +2363,12 @@ intel_info(const struct drm_i915_private *dev_priv)
 #define REVID_FOREVER		0xff
 #define INTEL_REVID(dev_priv)	((dev_priv)->drm.pdev->revision)
 
-#define GEN_FOREVER (0)
-
 #define INTEL_GEN_MASK(s, e) ( \
 	BUILD_BUG_ON_ZERO(!__builtin_constant_p(s)) + \
 	BUILD_BUG_ON_ZERO(!__builtin_constant_p(e)) + \
-	GENMASK((e) != GEN_FOREVER ? (e) - 1 : BITS_PER_LONG - 1, \
-		(s) != GEN_FOREVER ? (s) - 1 : 0) \
-)
+	GENMASK((e) - 1, (s) - 1))
 
-/*
- * Returns true if Gen is in inclusive range [Start, End].
- *
- * Use GEN_FOREVER for unbound start and or end.
- */
+/* Returns true if Gen is in inclusive range [Start, End] */
 #define IS_GEN(dev_priv, s, e) \
 	(!!((dev_priv)->info.gen_mask & INTEL_GEN_MASK((s), (e))))
 
@@ -2461,6 +2449,8 @@ intel_info(const struct drm_i915_private *dev_priv)
 #define IS_KBL_ULX(dev_priv)	(INTEL_DEVID(dev_priv) == 0x590E || \
 				 INTEL_DEVID(dev_priv) == 0x5915 || \
 				 INTEL_DEVID(dev_priv) == 0x591E)
+#define IS_AML_ULX(dev_priv)	(INTEL_DEVID(dev_priv) == 0x591C || \
+				 INTEL_DEVID(dev_priv) == 0x87C0)
 #define IS_SKL_GT2(dev_priv)	(IS_SKYLAKE(dev_priv) && \
 				 (dev_priv)->info.gt == 2)
 #define IS_SKL_GT3(dev_priv)	(IS_SKYLAKE(dev_priv) && \
@@ -2592,9 +2582,14 @@ intel_info(const struct drm_i915_private *dev_priv)
 
 #define HAS_EXECLISTS(dev_priv) HAS_LOGICAL_RING_CONTEXTS(dev_priv)
 
-#define USES_PPGTT(dev_priv)		(i915_modparams.enable_ppgtt)
-#define USES_FULL_PPGTT(dev_priv)	(i915_modparams.enable_ppgtt >= 2)
-#define USES_FULL_48BIT_PPGTT(dev_priv)	(i915_modparams.enable_ppgtt == 3)
+#define INTEL_PPGTT(dev_priv) (INTEL_INFO(dev_priv)->ppgtt)
+#define HAS_PPGTT(dev_priv) \
+	(INTEL_PPGTT(dev_priv) != INTEL_PPGTT_NONE)
+#define HAS_FULL_PPGTT(dev_priv) \
+	(INTEL_PPGTT(dev_priv) >= INTEL_PPGTT_FULL)
+#define HAS_FULL_48BIT_PPGTT(dev_priv)	\
+	(INTEL_PPGTT(dev_priv) >= INTEL_PPGTT_FULL_4LVL)
+
 #define HAS_PAGE_SIZES(dev_priv, sizes) ({ \
 	GEM_BUG_ON((sizes) == 0); \
 	((sizes) & ~(dev_priv)->info.page_sizes) == 0; \
@@ -2741,9 +2736,6 @@ intel_ggtt_update_needs_vtd_wa(struct drm_i915_private *dev_priv)
 {
 	return IS_BROXTON(dev_priv) && intel_vtd_active();
 }
-
-int intel_sanitize_enable_ppgtt(struct drm_i915_private *dev_priv,
-				int enable_ppgtt);
 
 /* i915_drv.c */
 void __printf(3, 4)
@@ -3229,7 +3221,7 @@ int i915_gem_object_wait(struct drm_i915_gem_object *obj,
 int i915_gem_object_wait_priority(struct drm_i915_gem_object *obj,
 				  unsigned int flags,
 				  const struct i915_sched_attr *attr);
-#define I915_PRIORITY_DISPLAY I915_PRIORITY_MAX
+#define I915_PRIORITY_DISPLAY I915_USER_PRIORITY(I915_PRIORITY_MAX)
 
 int __must_check
 i915_gem_object_set_to_wc_domain(struct drm_i915_gem_object *obj, bool write);
@@ -3461,6 +3453,7 @@ bool intel_bios_is_port_hpd_inverted(struct drm_i915_private *dev_priv,
 				     enum port port);
 bool intel_bios_is_lspcon_present(struct drm_i915_private *dev_priv,
 				enum port port);
+enum aux_ch intel_aux_ch(struct drm_i915_private *dev_priv, enum port port);
 
 /* intel_acpi.c */
 #ifdef CONFIG_ACPI
@@ -3482,8 +3475,6 @@ mkwrite_device_info(struct drm_i915_private *dev_priv)
 extern void intel_modeset_init_hw(struct drm_device *dev);
 extern int intel_modeset_init(struct drm_device *dev);
 extern void intel_modeset_cleanup(struct drm_device *dev);
-extern int intel_connector_register(struct drm_connector *);
-extern void intel_connector_unregister(struct drm_connector *);
 extern int intel_modeset_vga_set_state(struct drm_i915_private *dev_priv,
 				       bool state);
 extern void intel_display_resume(struct drm_device *dev);
@@ -3582,6 +3573,12 @@ void vlv_phy_pre_encoder_enable(struct intel_encoder *encoder,
 				const struct intel_crtc_state *crtc_state);
 void vlv_phy_reset_lanes(struct intel_encoder *encoder,
 			 const struct intel_crtc_state *old_crtc_state);
+
+/* intel_combo_phy.c */
+void icl_combo_phys_init(struct drm_i915_private *dev_priv);
+void icl_combo_phys_uninit(struct drm_i915_private *dev_priv);
+void cnl_combo_phys_init(struct drm_i915_private *dev_priv);
+void cnl_combo_phys_uninit(struct drm_i915_private *dev_priv);
 
 int intel_gpu_freq(struct drm_i915_private *dev_priv, int val);
 int intel_freq_opcode(struct drm_i915_private *dev_priv, int val);

@@ -1,28 +1,12 @@
-drm drm-fixes 73b6f96cbc0162787bcbdac5f538167084c8d605
-	Merge branch 'drm-fixes-4.20' of git://people.freedesktop.org/~agd5f/linux into drm-fixes
-drm-misc drm-misc-fixes 23d8003907d094f77cf959228e2248d6db819fa7
-	drm/dp_mst: Check if primary mstb is null
-drm-intel drm-intel-fixes 214782da8fe8497b9af39095c784f3a633e377ec
-	Merge tag 'gvt-fixes-2018-11-07' of https://github.com/intel/gvt-linux into drm-intel-fixes
-drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
-	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
-drm drm-next 651022382c7f8da46cb4872a545ee1da6d097d2a
-	Linux 4.20-rc1
-drm-misc drm-misc-next-fixes 8f054b6f53ff34fb787bde4c5940f86a9c175177
-	drm/panel: simple: Innolux TV123WAM is actually P120ZDG-BF1
-drm-intel drm-intel-next-fixes 651022382c7f8da46cb4872a545ee1da6d097d2a
-	Linux 4.20-rc1
-drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
-	Linux 4.14-rc1
-drm-misc drm-misc-next eb8dd3abeb4dffab6c373e87d09fc3b5858ac158
-	drm/vc4: Prefer PPF over TPZ when dst >= 2/3 src
-drm-intel drm-intel-next-queued eef4670eadcfcf4bc444be89d8a1fb1ad3c8dc4d
-	drm/i915/query: fix subslice length
-drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
-	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
-sound-upstream for-linus 5e93a125f521efd00d71af31c2a301f3d46af48c
-	ALSA: hda - Fix incorrect clearance of thinkpad_acpi hooks
-sound-upstream for-next ad43d528a7ac5636cf113cb09644d3ec18129123
-	ALSA: usb-audio: Define registers for CM6206
-drm-intel topic/core-for-CI e544b7a02dd829ff8f130118ce973739572ad53f
-	efi: Fix debugobjects warning on efi_rts_work
+drm-tip/drm-tip b3838255012c19d53b41003462d87303eff4d38f
+	drm-tip: 2018y-11m-10d-18h-37m-13s UTC integration manifest
+vfio-upstream/for-linus 0e714d27786ce1fb3efa9aac58abc096e68b1c2a
+	vfio/pci: Fix potential Spectre v1
+vfio-upstream/next 104c7405a64d937254b6a154938e6151f91c9e0d
+	vfio: add edid support to mbochs sample driver
+origin/gvt-fixes f3be657d96b0709c832b165501170f072882df3c
+	drm/i915/gvt: ensure gpu is powered before do i915_gem_gtt_insert
+origin/gvt-next ea830279d49e0a1b46871fb4345a690e983361c6
+	drm/i915/gvt: fix a typo: "registeration" -> "registration".
+origin/gvt-next-fixes 348589205265049eda2e365371eec18d56809699
+	drm/i915/gvt: correct mask setting for CSFE_CHICKEN1

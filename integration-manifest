@@ -1,28 +1,12 @@
-drm drm-fixes 5478ad10e7850ce3d8b7056db05ddfa3c9ddad9a
-	drm/ast: Remove existing framebuffers before loading driver
-drm-misc drm-misc-fixes 5c074eeabbd332b11559f7fc1e89d456f94801fb
-	udmabuf: set read/write flag when exporting
-drm-intel drm-intel-fixes f8577fb3c273bcae821a5254c8fbcf82016d9a8d
-	drm/i915: Write GPU relocs harder with gen3
-drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
-	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
-drm drm-next 9235dd441af43599b9cdcce599a3da4083fcad3c
-	Merge branch 'drm-next-4.21' of git://people.freedesktop.org/~agd5f/linux into drm-next
-drm-misc drm-misc-next-fixes 8f054b6f53ff34fb787bde4c5940f86a9c175177
-	drm/panel: simple: Innolux TV123WAM is actually P120ZDG-BF1
-drm-intel drm-intel-next-fixes 651022382c7f8da46cb4872a545ee1da6d097d2a
-	Linux 4.20-rc1
-drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
-	Linux 4.14-rc1
-drm-misc drm-misc-next 0081cdfe63f0b5e72b14d13f45a93ca7b0b8092f
-	qxl: Make sure qxl_cursor memory is pinned
-drm-intel drm-intel-next-queued 3c64ea8c98eeb28707ce901c313b6c1e490b27b2
-	drm/i915: fix spelling mistake "reserverd" -> "reserved"
-drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
-	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
-sound-upstream for-linus a6b0961b39896a9f9f1350d26d202f078a7d9dbc
-	ALSA: hda/ca0132 - fix AE-5 pincfg
-sound-upstream for-next c12faa2bc56cb1e7a12b49f0b3a935c0c64fd0b4
-	ALSA: aoa: Use device_type helpers to access the node type
-drm-intel topic/core-for-CI dafdf69736d66075836b7bc291584cd0889e7601
-	perf/core: Avoid removing shared pmu_context on unregister
+drm-tip/drm-tip 8759c0f014158d654aac23bb4d29dd7a08da8638
+	drm-tip: 2018y-11m-21d-09h-22m-19s UTC integration manifest
+vfio-upstream/for-linus 0e714d27786ce1fb3efa9aac58abc096e68b1c2a
+	vfio/pci: Fix potential Spectre v1
+vfio-upstream/next 104c7405a64d937254b6a154938e6151f91c9e0d
+	vfio: add edid support to mbochs sample driver
+origin/gvt-fixes 7513edbc096a006f967eaf39088091442e623b83
+	drm/i915/gvt: Avoid use-after-free iterating the gtt list
+origin/gvt-next ea830279d49e0a1b46871fb4345a690e983361c6
+	drm/i915/gvt: fix a typo: "registeration" -> "registration".
+origin/gvt-next-fixes 835fe6d75d14c1513910ed7f5665127fee12acc8
+	firmware/dmc/icl: Add missing MODULE_FIRMWARE() for Icelake.

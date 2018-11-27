@@ -160,6 +160,20 @@ enum intel_vgpu_edid {
 	GVT_EDID_NUM,
 };
 
+struct intel_vgpu_plane_info {
+	u32 id;; /* vgpu plane id */
+	enum plane_id plane;
+	struct intel_vgpu *vgpu;
+
+	/* vGPU plane registers values. */
+	u32 offset;
+	u32 stride;
+	u32 control;
+	u32 plane_offset;
+
+	u32 size;
+};
+
 static inline char *vgpu_edid_str(enum intel_vgpu_edid id)
 {
 	switch (id) {
@@ -180,5 +194,9 @@ void intel_vgpu_reset_display(struct intel_vgpu *vgpu);
 void intel_vgpu_clean_display(struct intel_vgpu *vgpu);
 
 int pipe_is_enabled(struct intel_vgpu *vgpu, int pipe);
+
+
+void intel_vgpu_plane_update(struct intel_gvt *gvt,
+		       struct intel_vgpu_plane_info *plane_info);
 
 #endif

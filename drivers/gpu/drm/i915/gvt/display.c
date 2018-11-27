@@ -32,6 +32,9 @@
  *
  */
 
+#include <drm/drm_mode.h>
+#include <drm/drm_atomic_uapi.h>
+#include <drm/drm_atomic_helper.h>
 #include "i915_drv.h"
 #include "gvt.h"
 
@@ -441,6 +444,268 @@ void intel_gvt_emulate_vblank(struct intel_gvt *gvt)
 		emulate_vblank(vgpu);
 	mutex_unlock(&gvt->lock);
 }
+
+static bool check_vgpu_plane_table(struct intel_gvt *gvt, u32 vgpu_plane_id,
+				   enum pipe *pipe, enum plane_id *plane_id,
+				   u32 *framebuffer_id)
+{
+	int i, j;
+
+	for (i = 0; i < I915_MAX_PIPES; i++) {
+		for (j = 0; j < I915_MAX_PLANES; j++)
+			if (gvt->assigned_plane[i][j].vgpu_plane_id ==
+			    vgpu_plane_id) {
+				*pipe = i;
+				*plane_id = j;
+				*framebuffer_id =
+				gvt->assigned_plane[i][j].framebuffer_id;
+				break;
+			}
+
+		if (j < I915_MAX_PLANES)
+			return true;
+	}
+
+	return false;
+}
+
+static u64 plane_ctl_modifier(u64 fb_tiling)
+{
+	switch (fb_tiling) {
+	case PLANE_CTL_TILED_LINEAR:
+		return DRM_FORMAT_MOD_LINEAR;
+	case PLANE_CTL_TILED_X:
+		return I915_FORMAT_MOD_X_TILED;
+	case PLANE_CTL_TILED_Y:
+		return I915_FORMAT_MOD_Y_TILED;
+	case PLANE_CTL_TILED_Y | PLANE_CTL_RENDER_DECOMPRESSION_ENABLE:
+		return I915_FORMAT_MOD_Y_TILED_CCS;
+	case PLANE_CTL_TILED_YF:
+		return I915_FORMAT_MOD_Yf_TILED;
+	case PLANE_CTL_TILED_YF | PLANE_CTL_RENDER_DECOMPRESSION_ENABLE:
+		return I915_FORMAT_MOD_Yf_TILED_CCS;
+	default:
+		MISSING_CASE(fb_tiling);
+	}
+
+	return 0;
+}
+
+static int vgpu_fb_update(struct intel_gvt *gvt,
+			  struct drm_framebuffer *fb,
+			  struct intel_vgpu_plane_info *vgpu_plane_info,
+			  struct drm_mode_fb_cmd2 *mode_cmd)
+{
+	int ret;
+
+	if (vgpu_plane_info->plane == PLANE_PRIMARY) {
+		struct intel_vgpu_primary_plane_format plane;
+
+		ret = intel_vgpu_decode_primary_plane(vgpu_plane_info->vgpu, &plane);
+		if (ret)
+			return ret;
+
+		mode_cmd->pixel_format = plane.drm_format;
+		mode_cmd->width = plane.width;
+		mode_cmd->height = plane.height;
+		mode_cmd->handles[0] = 0;
+		mode_cmd->offsets[0] = 0;
+		mode_cmd->pitches[0] = plane.stride;
+		mode_cmd->flags = DRM_MODE_FB_MODIFIERS;
+		mode_cmd->modifier[0] = plane_ctl_modifier(plane.tiled);
+	} else if (vgpu_plane_info->plane == PLANE_CURSOR) {
+		struct intel_vgpu_cursor_plane_format plane;
+
+		ret = intel_vgpu_decode_cursor_plane(vgpu_plane_info->vgpu, &plane);
+		if (ret)
+			return ret;
+
+		mode_cmd->pixel_format = plane.drm_format;
+		mode_cmd->width = plane.width;
+		mode_cmd->height = plane.height;
+		mode_cmd->handles[0] = 0;
+		mode_cmd->offsets[0] = 0;
+		mode_cmd->pitches[0] = plane.width * (plane.bpp / 8);
+		mode_cmd->flags = DRM_MODE_FB_MODIFIERS;
+		mode_cmd->modifier[0] = 0;
+	} else {
+		struct intel_vgpu_sprite_plane_format plane;
+
+		ret = intel_vgpu_decode_sprite_plane(vgpu_plane_info->vgpu, &plane);
+		if (ret)
+			return ret;
+
+		mode_cmd->pixel_format = plane.hw_format;
+		mode_cmd->width = plane.width;
+		mode_cmd->height = plane.height;
+		mode_cmd->handles[0] = 0;
+		mode_cmd->offsets[0] = 0;
+		mode_cmd->pitches[0] = plane.stride;
+		mode_cmd->flags = DRM_MODE_FB_MODIFIERS;
+		mode_cmd->modifier[0] = plane_ctl_modifier(plane.tiled);
+	}
+
+	return ret;
+}
+
+static int update_vgpu_assigned_plane(struct intel_gvt *gvt,
+				    struct drm_plane *plane,
+				    struct drm_crtc *crtc,
+				    struct drm_framebuffer *fb,
+				    struct drm_modeset_acquire_ctx *ctx,
+				    struct intel_vgpu_plane_info *vgpu_plane_info)
+{
+	struct drm_device *drm = &gvt->dev_priv->drm;
+	struct intel_framebuffer *intel_fb = to_intel_framebuffer(fb);
+	struct drm_atomic_state *state;
+	struct drm_plane_state *plane_state;
+	struct drm_mode_fb_cmd2 mode_cmd;
+	int ret = 0;
+
+	state = drm_atomic_state_alloc(plane->dev);
+	if (!state)
+		return -ENOMEM;
+
+	state->acquire_ctx = ctx;
+	plane_state = drm_atomic_get_plane_state(state, plane);
+	if (IS_ERR(plane_state)) {
+		ret = PTR_ERR(plane_state);
+		goto fail;
+	}
+
+	ret = drm_atomic_set_crtc_for_plane(plane_state, crtc);
+	if (ret != 0)
+		goto fail;
+	drm_atomic_set_fb_for_plane(plane_state, fb);
+
+	ret = vgpu_fb_update(gvt, fb, vgpu_plane_info, &mode_cmd);
+	if (ret)
+		goto fail;
+
+	if (memcmp(mode_cmd.pitches, fb->pitches, 16) ||
+	    memcmp(mode_cmd.offsets, fb->offsets, 16) ||
+	    drm_get_format_info(drm, &mode_cmd) != fb->format ||
+	    mode_cmd.modifier[0] != fb->modifier ||
+	    drm_atomic_helper_async_check(drm, state))
+		state->async_update = false;
+	else
+		state->async_update = true;
+
+	drm_helper_mode_fill_fb_struct(plane->dev, fb, &mode_cmd);
+	plane_state->src_x = vgpu_plane_info->plane_offset & 0x0000ffff;
+	plane_state->src_y = (vgpu_plane_info->plane_offset >> 16) & 0x0000ffff;
+	plane_state->src_w = mode_cmd.width << 16;
+	plane_state->src_h = mode_cmd.height << 16;
+
+	intel_fb->meta_fb.ggtt_offset = vgpu_plane_info->offset;
+
+	/* Don't allow full modeset */
+	state->allow_modeset = false;
+
+	ret = drm_atomic_commit(state);
+fail:
+	drm_atomic_state_put(state);
+	return ret;
+}
+
+static int vgpu_plane_update_internal(struct intel_gvt *gvt,
+				   struct drm_plane *plane,
+				   struct drm_crtc *crtc,
+				   struct drm_framebuffer *fb,
+				   struct drm_modeset_acquire_ctx *ctx,
+				   struct intel_vgpu_plane_info *vgpu_plane_info)
+{
+	int ret = 0;
+
+	/* Check whether this plane is usable on this CRTC */
+	if (!(plane->possible_crtcs & drm_crtc_mask(crtc))) {
+		DRM_DEBUG_KMS("Invalid crtc for plane\n");
+		ret = -EINVAL;
+		goto out;
+	}
+
+	ret = update_vgpu_assigned_plane(gvt, plane, crtc, fb, ctx, vgpu_plane_info);
+
+out:
+	return ret;
+}
+
+void intel_vgpu_plane_update(struct intel_gvt *gvt,
+		       struct intel_vgpu_plane_info *vgpu_plane_info)
+{
+	struct drm_device *drm = &gvt->dev_priv->drm;
+	struct drm_modeset_acquire_ctx ctx;
+	struct drm_mode_object *obj_fb = NULL;
+	struct drm_plane *plane;
+	struct intel_plane *intel_plane = NULL;
+	struct intel_crtc *intel_crtc;
+	struct intel_framebuffer *intel_fb;
+	u32 framebuffer_id = 0;
+	enum pipe pipe;
+	enum plane_id plane_id;
+	int ret;
+
+	drm_modeset_acquire_init(&ctx, DRM_MODESET_ACQUIRE_INTERRUPTIBLE);
+retry:
+	ret = drm_modeset_lock_all_ctx(drm, &ctx);
+	if (ret)
+		goto fail;
+
+	ret = check_vgpu_plane_table(gvt, vgpu_plane_info->id, &pipe,
+			       &plane_id, &framebuffer_id);
+	if (!ret) {
+		ret = -EINVAL;
+		goto fail;
+	}
+
+	DRM_DEBUG_KMS("%s: pipe is %d, plane_id is %d, fb_id is %d\n",
+		      __func__, pipe, plane_id, framebuffer_id);
+
+	if (framebuffer_id) {
+		intel_crtc = intel_get_crtc_for_pipe(gvt->dev_priv, pipe);
+
+		drm_for_each_plane(plane, drm) {
+			intel_plane = to_intel_plane(plane);
+			if (intel_plane->pipe == pipe &&
+				intel_plane->id == plane_id)
+				break;
+
+			intel_plane = NULL;
+		}
+		if (!intel_plane)
+			goto fail;
+
+		//vGPU might want to disable the assigned plane
+		if (vgpu_plane_info->offset == 0) {
+			intel_plane->disable_plane(intel_plane, intel_crtc);
+			goto out;
+		}
+
+		obj_fb = idr_find(&drm->mode_config.crtc_idr, framebuffer_id);
+		intel_fb = to_intel_framebuffer(obj_to_fb(obj_fb));
+
+	} else {
+		DRM_DEBUG_KMS("no assgined plane for the vGPU plane 0x%x\n",
+							vgpu_plane_info->id);
+		goto fail;
+	}
+
+	ret = vgpu_plane_update_internal(gvt, &intel_plane->base,
+					 &intel_crtc->base, &intel_fb->base,
+					 &ctx, vgpu_plane_info);
+
+fail:
+	if (ret == -EDEADLK) {
+		ret = drm_modeset_backoff(&ctx);
+		if (!ret)
+			goto retry;
+	}
+out:
+	drm_modeset_drop_locks(&ctx);
+	drm_modeset_acquire_fini(&ctx);
+}
+
+
 
 struct intel_vgpu_fb_meta_data {
 	u32 vgpu_plane_id; /* vgpu_id(23:16):vgpu_pipe(15:8):vgpu_plane(7:0)*/

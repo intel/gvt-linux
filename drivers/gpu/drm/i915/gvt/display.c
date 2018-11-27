@@ -442,6 +442,152 @@ void intel_gvt_emulate_vblank(struct intel_gvt *gvt)
 	mutex_unlock(&gvt->lock);
 }
 
+struct intel_vgpu_fb_meta_data {
+	u32 vgpu_plane_id; /* vgpu_id(23:16):vgpu_pipe(15:8):vgpu_plane(7:0)*/
+	struct intel_vgpu *vgpu; // the vGPU this meta_fb belongs to
+};
+
+static void meta_fb_destroy(struct drm_framebuffer *fb)
+{
+	struct intel_framebuffer *intel_fb = to_intel_framebuffer(fb);
+
+	if (intel_fb->meta_fb.type_id != INTEL_META_FB_VGPU)
+		return;
+
+	kfree(intel_fb->meta_fb.private);
+	intel_fb->meta_fb.private = NULL;
+
+	drm_framebuffer_cleanup(fb);
+	kfree(intel_fb);
+}
+
+static void clean_meta_fb(struct intel_vgpu *vgpu)
+{
+	enum pipe pipe;
+	enum plane_id plane_id;
+	struct intel_framebuffer *intel_fb;
+
+	for (pipe = 0; pipe < I915_MAX_PIPES; pipe++) {
+		for (plane_id = 0; plane_id < I915_MAX_PLANES; plane_id++) {
+			intel_fb = vgpu->display.meta_fbs.meta_fb[pipe][plane_id];
+			if (!intel_fb)
+				drm_framebuffer_put(&intel_fb->base);
+
+			intel_fb = NULL;
+		}
+	}
+}
+
+static int meta_fb_create_handle(struct drm_framebuffer *fb,
+				 struct drm_file *file,
+				 unsigned int *handle)
+{
+	return -ENODEV;
+}
+
+static int meta_fb_dirty(struct drm_framebuffer *fb,
+			 struct drm_file *file,
+			 unsigned int flags,
+			 unsigned int color,
+			 struct drm_clip_rect *clips,
+			 unsigned int num_clips)
+{
+	return 0;
+}
+
+static const struct drm_framebuffer_funcs meta_fb_funcs = {
+	.destroy = meta_fb_destroy,
+	.create_handle = meta_fb_create_handle,
+	.dirty = meta_fb_dirty,
+};
+
+static void meta_fb_update(struct intel_framebuffer *intel_fb,
+			   enum pipe pipe, enum plane_id plane_id)
+{
+	struct intel_vgpu_fb_meta_data *meta_data;
+	struct intel_gvt *gvt;
+
+	if (!intel_fb || intel_fb->meta_fb.type_id != INTEL_META_FB_VGPU)
+		return;
+
+	meta_data = intel_fb->meta_fb.private;
+	gvt = meta_data->vgpu->gvt;
+
+	if (gvt->assigned_plane[pipe][plane_id].vgpu_plane_id !=
+						meta_data->vgpu_plane_id) {
+		gvt->assigned_plane[pipe][plane_id].vgpu_plane_id =
+						meta_data->vgpu_plane_id;
+		gvt->assigned_plane[pipe][plane_id].framebuffer_id =
+						intel_fb->base.base.id;
+		intel_fb->meta_fb.ggtt_offset = 0;
+		intel_fb->meta_fb.should_be_offscreen = true;
+	} else if (!intel_fb->meta_fb.ggtt_offset) {
+		intel_fb->meta_fb.should_be_offscreen = true;
+	} else {
+		intel_fb->meta_fb.should_be_offscreen = false;
+	}
+}
+
+static int init_meta_fb(struct intel_vgpu *vgpu)
+{
+	struct drm_i915_private *dev_priv = vgpu->gvt->dev_priv;
+	struct intel_vgpu_fb_meta_data *meta_data;
+	struct drm_mode_fb_cmd2 mode_cmd;
+	struct intel_framebuffer *intel_fb;
+	enum pipe pipe;
+	enum plane_id plane_id;
+	int ret = 0;
+
+	for (pipe = 0; pipe < I915_MAX_PIPES; pipe++) {
+		for (plane_id = 0; plane_id < I915_MAX_PLANES; plane_id++) {
+			intel_fb = kzalloc(sizeof(*intel_fb), GFP_KERNEL);
+			if (!intel_fb)
+				return -ENOMEM;
+
+			/*
+			 * Create a drm_framebuffer with defaults.
+			 */
+			mode_cmd.pixel_format = DRM_FORMAT_XRGB8888;
+			mode_cmd.width = dev_priv->drm.mode_config.max_width;
+			mode_cmd.height = dev_priv->drm.mode_config.max_height;
+			mode_cmd.flags = DRM_MODE_FB_MODIFIERS;
+			mode_cmd.handles[0] = 0;
+			mode_cmd.pitches[0] = mode_cmd.width * 4;
+			mode_cmd.offsets[0] = 0;
+			mode_cmd.modifier[0] = DRM_FORMAT_MOD_LINEAR;
+
+			drm_helper_mode_fill_fb_struct(&dev_priv->drm,
+						       &intel_fb->base, &mode_cmd);
+
+			ret = drm_framebuffer_init(&dev_priv->drm,
+						   &intel_fb->base, &meta_fb_funcs);
+			if (ret) {
+				DRM_ERROR("%s: framebuffer init failed %d\n",
+					  __func__, ret);
+				kfree(intel_fb);
+				return ret;
+			}
+
+			meta_data = kmalloc(sizeof(struct intel_vgpu_fb_meta_data),
+					    GFP_KERNEL);
+			if (unlikely(!meta_data)) {
+				return -ENOMEM;
+			}
+
+			meta_data->vgpu_plane_id = (vgpu->id << 16) |
+				(pipe << 8) | plane_id;
+			meta_data->vgpu = vgpu;
+
+			intel_fb->meta_fb.private = meta_data;
+			intel_fb->meta_fb.update = meta_fb_update;
+			intel_fb->meta_fb.type_id = INTEL_META_FB_VGPU;
+
+			vgpu->display.meta_fbs.meta_fb[pipe][plane_id] = intel_fb;
+		}
+	}
+	return 0;
+}
+
 /**
  * intel_vgpu_clean_display - clean vGPU virtual display emulation
  * @vgpu: a vGPU
@@ -457,6 +603,8 @@ void intel_vgpu_clean_display(struct intel_vgpu *vgpu)
 		clean_virtual_dp_monitor(vgpu, PORT_D);
 	else
 		clean_virtual_dp_monitor(vgpu, PORT_B);
+
+	clean_meta_fb(vgpu);
 }
 
 /**
@@ -475,6 +623,8 @@ int intel_vgpu_init_display(struct intel_vgpu *vgpu, u64 resolution)
 	struct drm_i915_private *dev_priv = vgpu->gvt->dev_priv;
 
 	intel_vgpu_init_i2c_edid(vgpu);
+
+	init_meta_fb(vgpu);
 
 	if (IS_SKYLAKE(dev_priv) || IS_KABYLAKE(dev_priv))
 		return setup_virtual_dp_monitor(vgpu, PORT_D, GVT_DP_D,

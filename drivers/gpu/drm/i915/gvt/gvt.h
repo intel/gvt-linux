@@ -131,10 +131,16 @@ struct intel_vgpu_opregion {
 
 #define vgpu_opregion(vgpu) (&(vgpu->opregion))
 
+struct intel_vgpu_meta_fbs {
+	struct intel_framebuffer *meta_fb[I915_MAX_PIPES][I915_MAX_PLANES];
+	u32 plane_id_index;
+};
+
 struct intel_vgpu_display {
 	struct intel_vgpu_i2c_edid i2c_edid;
 	struct intel_vgpu_port ports[I915_MAX_PORTS];
 	struct intel_vgpu_sbi sbi;
+	struct intel_vgpu_meta_fbs meta_fbs;
 };
 
 struct vgpu_sched_ctl {
@@ -301,6 +307,13 @@ struct intel_vgpu_type {
 	enum intel_vgpu_edid resolution;
 };
 
+struct assigned_plane {
+	u32 vgpu_plane_id;
+
+	/* userspace visible identifier */
+	int framebuffer_id;
+};
+
 struct intel_gvt {
 	/* GVT scope lock, protect GVT itself, and all resource currently
 	 * not yet protected by special locks(vgpu and scheduler lock).
@@ -340,6 +353,9 @@ struct intel_gvt {
 	} engine_mmio_list;
 
 	struct dentry *debugfs_root;
+
+	/* vGPU plane assignment */
+	struct assigned_plane assigned_plane[I915_MAX_PIPES][I915_MAX_PLANES];
 };
 
 static inline struct intel_gvt *to_gvt(struct drm_i915_private *i915)

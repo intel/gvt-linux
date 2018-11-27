@@ -1420,12 +1420,58 @@ hw_id_show(struct device *dev, struct device_attribute *attr,
 	return sprintf(buf, "\n");
 }
 
+static ssize_t
+plane_id_index_show(struct device *dev, struct device_attribute *attr,
+	 char *buf)
+{
+	struct mdev_device *mdev = mdev_from_dev(dev);
+
+	if (mdev) {
+		struct intel_vgpu *vgpu = (struct intel_vgpu *)
+			mdev_get_drvdata(mdev);
+		enum pipe pipe = vgpu->display.meta_fbs.plane_id_index &
+			0x000000F0;
+		enum plane_id plane_id = vgpu->display.meta_fbs.plane_id_index &
+			0x0000000F;
+
+		if ((pipe < I915_MAX_PIPES || plane_id < I915_MAX_PLANES) &&
+			vgpu->display.meta_fbs.meta_fb[pipe][plane_id]) {
+			return sprintf(buf, "%u\n",
+			       vgpu->display.meta_fbs.meta_fb[pipe][plane_id]->base.base.id);
+		}
+	}
+	return sprintf(buf, "\n");
+}
+
+static ssize_t
+plane_id_index_store(struct device *dev, struct device_attribute *attr,
+			     const char *buf, size_t n)
+{
+	struct mdev_device *mdev = mdev_from_dev(dev);
+	ssize_t ret;
+	u32 val;
+
+	ret = kstrtou32(buf, 0, &val);
+	if (ret)
+		return ret;
+
+	if (mdev) {
+		struct intel_vgpu *vgpu = (struct intel_vgpu *)
+			mdev_get_drvdata(mdev);
+		vgpu->display.meta_fbs.plane_id_index = val;
+	}
+
+	return n;
+}
+
 static DEVICE_ATTR_RO(vgpu_id);
 static DEVICE_ATTR_RO(hw_id);
+static DEVICE_ATTR_RW(plane_id_index);
 
 static struct attribute *intel_vgpu_attrs[] = {
 	&dev_attr_vgpu_id.attr,
 	&dev_attr_hw_id.attr,
+	&dev_attr_plane_id_index.attr,
 	NULL
 };
 

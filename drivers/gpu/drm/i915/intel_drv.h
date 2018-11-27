@@ -187,6 +187,12 @@ enum intel_output_type {
 #define INTEL_DSI_VIDEO_MODE	0
 #define INTEL_DSI_COMMAND_MODE	1
 
+
+enum {
+	INTEL_META_FB_VGPU = 1,
+	INTEL_META_FB_MAX,
+};
+
 struct intel_framebuffer {
 	struct drm_framebuffer base;
 	struct intel_rotation_info rot_info;
@@ -200,6 +206,15 @@ struct intel_framebuffer {
 		unsigned int x, y;
 		unsigned int pitch; /* pixels */
 	} rotated[2];
+
+	struct {
+		u32 type_id;
+		u32 ggtt_offset;
+		void *private;
+		void (*update)(struct intel_framebuffer *intel_fb,
+			       enum pipe pipe, enum plane_id plane_id);
+		bool should_be_offscreen;
+	} meta_fb;
 };
 
 struct intel_fbdev {

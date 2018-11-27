@@ -486,9 +486,26 @@ skl_program_plane(struct intel_plane *plane,
 	uint32_t src_h = drm_rect_height(&plane_state->base.src) >> 16;
 	struct intel_plane *linked = plane_state->linked_plane;
 	const struct drm_framebuffer *fb = plane_state->base.fb;
+	struct intel_framebuffer *intel_fb = to_intel_framebuffer(fb);
 	u8 alpha = plane_state->base.alpha >> 8;
 	unsigned long irqflags;
 	u32 keymsk, keymax;
+	u32 offset;
+
+	if (intel_fb->meta_fb.type_id == INTEL_META_FB_VGPU) {
+
+		if (!intel_fb->meta_fb.update)
+			return;
+
+		intel_fb->meta_fb.update(intel_fb, pipe, plane_id);
+
+		if (intel_fb->meta_fb.should_be_offscreen)
+			return;
+
+		offset = intel_fb->meta_fb.ggtt_offset;
+	} else {
+		offset = intel_plane_ggtt_offset(plane_state);
+	}
 
 	/* Sizes are 0 based */
 	src_w--;
@@ -558,7 +575,7 @@ skl_program_plane(struct intel_plane *plane,
 
 	I915_WRITE_FW(PLANE_CTL(pipe, plane_id), plane_ctl);
 	I915_WRITE_FW(PLANE_SURF(pipe, plane_id),
-		      intel_plane_ggtt_offset(plane_state) + surf_addr);
+		      offset + surf_addr);
 
 	spin_unlock_irqrestore(&dev_priv->uncore.lock, irqflags);
 }

@@ -743,6 +743,35 @@ static int south_chicken2_mmio_write(struct intel_vgpu *vgpu,
 	return 0;
 }
 
+static int handle_vgpu_page_flip(struct intel_vgpu *vgpu, int pipe,
+							enum plane_id plane)
+{
+	struct drm_i915_private *dev_priv = vgpu->gvt->dev_priv;
+	struct intel_vgpu_plane_info vgpu_plane_info;
+	u32 vgpu_id = vgpu->id;
+	u32 pipe_id = pipe;
+	u32 plane_id = plane;
+	u32 vgpu_plane_id = (vgpu_id << 16) | (pipe_id << 8) | plane_id;
+
+	if (plane == PLANE_CURSOR) {
+		DRM_DEBUG_KMS("Assigning CURSOR plane hasn't been supported\n");
+	} else { /* primary plane and sprite plane */
+		vgpu_plane_info.id = vgpu_plane_id;
+		vgpu_plane_info.plane = PLANE_PRIMARY;
+		vgpu_plane_info.offset = vgpu_vreg_t(vgpu, DSPSURF(pipe)) &
+							I915_GTT_PAGE_MASK;
+		vgpu_plane_info.stride = vgpu_vreg_t(vgpu, DSPSTRIDE(pipe)) & 0x3ff;
+		vgpu_plane_info.control = vgpu_vreg_t(vgpu, DSPCNTR(pipe));
+		vgpu_plane_info.size = vgpu_vreg_t(vgpu, DSPSIZE(pipe));
+		vgpu_plane_info.plane_offset = vgpu_vreg_t(vgpu, DSPOFFSET(pipe));
+		vgpu_plane_info.vgpu = vgpu;
+	}
+
+	intel_vgpu_plane_update(vgpu->gvt, &vgpu_plane_info);
+
+	return 0;
+}
+
 #define DSPSURF_TO_PIPE(offset) \
 	calc_index(offset, _DSPASURF, _DSPBSURF, 0, DSPSURF(PIPE_C))
 
@@ -761,6 +790,8 @@ static int pri_surf_mmio_write(struct intel_vgpu *vgpu, unsigned int offset,
 	write_vreg(vgpu, offset, p_data, bytes);
 	vgpu_vreg_t(vgpu, surflive_reg) = vgpu_vreg(vgpu, offset);
 
+	handle_vgpu_page_flip(vgpu, index, PLANE_PRIMARY);
+
 	set_bit(flip_event[index], vgpu->irq.flip_done_event[index]);
 	return 0;
 }
@@ -768,10 +799,15 @@ static int pri_surf_mmio_write(struct intel_vgpu *vgpu, unsigned int offset,
 #define SPRSURF_TO_PIPE(offset) \
 	calc_index(offset, _SPRA_SURF, _SPRB_SURF, 0, SPRSURF(PIPE_C))
 
+#define SPRSURF_TO_PLANE(offset, pipe) \
+	calc_index(offset, _PLANE_SURF_1(pipe), _PLANE_SURF_2(pipe), \
+			_PLANE_SURF_3(pipe), PLANE_SURF(PIPE_C, PLANE_CURSOR))
+
 static int spr_surf_mmio_write(struct intel_vgpu *vgpu, unsigned int offset,
 		void *p_data, unsigned int bytes)
 {
 	unsigned int index = SPRSURF_TO_PIPE(offset);
+	unsigned int plane = SPRSURF_TO_PLANE(offset, index);
 	i915_reg_t surflive_reg = SPRSURFLIVE(index);
 	int flip_event[] = {
 		[PIPE_A] = SPRITE_A_FLIP_DONE,
@@ -781,6 +817,8 @@ static int spr_surf_mmio_write(struct intel_vgpu *vgpu, unsigned int offset,
 
 	write_vreg(vgpu, offset, p_data, bytes);
 	vgpu_vreg_t(vgpu, surflive_reg) = vgpu_vreg(vgpu, offset);
+
+	handle_vgpu_page_flip(vgpu, index, plane);
 
 	set_bit(flip_event[index], vgpu->irq.flip_done_event[index]);
 	return 0;

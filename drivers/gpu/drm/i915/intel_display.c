@@ -13050,6 +13050,14 @@ static int intel_atomic_commit(struct drm_device *dev,
 	struct drm_i915_private *dev_priv = to_i915(dev);
 	int ret = 0;
 
+	if (state->async_update) {
+		ret = drm_atomic_helper_prepare_planes(dev, state);
+		if (ret)
+			return ret;
+		drm_atomic_helper_async_commit(dev, state);
+		return 0;
+	}
+
 	drm_atomic_state_get(state);
 	i915_sw_fence_init(&intel_state->commit_ready,
 			   intel_atomic_commit_ready);
@@ -13274,6 +13282,9 @@ intel_prepare_plane_fb(struct drm_plane *plane,
 	struct drm_i915_gem_object *obj = intel_fb_obj(fb);
 	struct drm_i915_gem_object *old_obj = intel_fb_obj(plane->state->fb);
 	int ret;
+
+	if (new_state->state->async_update)
+		return 0;
 
 	if (old_obj) {
 		struct drm_crtc_state *crtc_state =

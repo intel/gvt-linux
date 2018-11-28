@@ -222,9 +222,6 @@ static int intel_plane_atomic_async_check(struct drm_plane *plane,
 {
 	struct drm_crtc_state *crtc_state;
 
-	if (plane->type != DRM_PLANE_TYPE_CURSOR)
-		return -EINVAL;
-
 	crtc_state = drm_atomic_get_existing_crtc_state(state->state,
 							state->crtc);
 	if (WARN_ON(!crtc_state))

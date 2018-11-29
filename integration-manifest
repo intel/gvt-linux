@@ -1,28 +1,12 @@
-drm drm-fixes ebcdcef30333660d3314158bac362425ade3d28c
-	Merge tag 'drm-misc-fixes-2018-11-28-1' of git://anongit.freedesktop.org/drm/drm-misc into drm-fixes
-drm-misc drm-misc-fixes 9765635b30756eb74e05e260ac812659c296cd28
-	Revert "drm/dp_mst: Skip validating ports during destruction, just ref"
-drm-intel drm-intel-fixes 2455facbb700e3c3ca26b9255956d6ed45cb6217
-	Merge tag 'gvt-fixes-2018-11-26' of https://github.com/intel/gvt-linux into drm-intel-fixes
-drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
-	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
-drm drm-next 1ec28f8b8ada4e4f77d1af006a3a474f4f83b8e3
-	Merge v4.20-rc4 into drm-next
-drm-misc drm-misc-next-fixes 8f054b6f53ff34fb787bde4c5940f86a9c175177
-	drm/panel: simple: Innolux TV123WAM is actually P120ZDG-BF1
-drm-intel drm-intel-next-fixes 651022382c7f8da46cb4872a545ee1da6d097d2a
-	Linux 4.20-rc1
-drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
-	Linux 4.14-rc1
-drm-misc drm-misc-next 45fdfdb6475905704134afba3c0ef5f24c2b5921
-	drm/pl111: add of_node_put()
-drm-intel drm-intel-next-queued 1fdee7582cce4c9d56b24e6caf1a87cd47a11825
-	drm/i915: Pass the plane to icl_program_input_csc_coeff()
-drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
-	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
-sound-upstream for-linus 8159a6a4a7d2a092d5375f695ecfca22b4562b5f
-	ALSA: usb-audio: Add vendor and product name for Dell WD19 Dock
-sound-upstream for-next 3103c08f968ddba3fff339a59aba40389b3f724f
-	ALSA: control: Consolidate helpers for adding and replacing ctl elements
-drm-intel topic/core-for-CI dafdf69736d66075836b7bc291584cd0889e7601
-	perf/core: Avoid removing shared pmu_context on unregister
+drm-tip/drm-tip b3a448de6828d0bd0397318d15ec143a3dfb553a
+	drm-tip: 2018y-11m-29d-01h-49m-02s UTC integration manifest
+vfio-upstream/for-linus 0e714d27786ce1fb3efa9aac58abc096e68b1c2a
+	vfio/pci: Fix potential Spectre v1
+vfio-upstream/next 104c7405a64d937254b6a154938e6151f91c9e0d
+	vfio: add edid support to mbochs sample driver
+origin/gvt-fixes 7513edbc096a006f967eaf39088091442e623b83
+	drm/i915/gvt: Avoid use-after-free iterating the gtt list
+origin/gvt-next bac394377373ce791b7da256e77b88aec58ef999
+	drm/i915/gvt: fix spelling mistake "Interupts" -> "Interrupts"
+origin/gvt-next-fixes 835fe6d75d14c1513910ed7f5665127fee12acc8
+	firmware/dmc/icl: Add missing MODULE_FIRMWARE() for Icelake.

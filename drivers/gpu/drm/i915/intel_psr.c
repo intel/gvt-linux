@@ -169,6 +169,7 @@ void intel_psr_irq_handler(struct drm_i915_private *dev_priv, u32 psr_iir)
 	u32 transcoders = BIT(TRANSCODER_EDP);
 	enum transcoder cpu_transcoder;
 	ktime_t time_ns =  ktime_get();
+	u32 mask = 0;
 
 	if (INTEL_GEN(dev_priv) >= 8)
 		transcoders |= BIT(TRANSCODER_A) |
@@ -178,10 +179,22 @@ void intel_psr_irq_handler(struct drm_i915_private *dev_priv, u32 psr_iir)
 	for_each_cpu_transcoder_masked(dev_priv, cpu_transcoder, transcoders) {
 		int shift = edp_psr_shift(cpu_transcoder);
 
-		/* FIXME: Exit PSR and link train manually when this happens. */
-		if (psr_iir & EDP_PSR_ERROR(shift))
-			DRM_DEBUG_KMS("[transcoder %s] PSR aux error\n",
-				      transcoder_name(cpu_transcoder));
+		if (psr_iir & EDP_PSR_ERROR(shift)) {
+			DRM_WARN("[transcoder %s] PSR aux error\n",
+				 transcoder_name(cpu_transcoder));
+
+			dev_priv->psr.irq_aux_error = true;
+
+			/*
+			 * If this interruption is not masked it will keep
+			 * interrupting so fast that it prevents the scheduled
+			 * work to run.
+			 * Also after a PSR error, we don't want to arm PSR
+			 * again so we don't care about unmask the interruption
+			 * or unset irq_aux_error.
+			 */
+			mask |= EDP_PSR_ERROR(shift);
+		}
 
 		if (psr_iir & EDP_PSR_PRE_ENTRY(shift)) {
 			dev_priv->psr.last_entry_attempt = time_ns;
@@ -202,6 +215,13 @@ void intel_psr_irq_handler(struct drm_i915_private *dev_priv, u32 psr_iir)
 				psr_event_print(val, psr2_enabled);
 			}
 		}
+	}
+
+	if (mask) {
+		mask |= I915_READ(EDP_PSR_IMR);
+		I915_WRITE(EDP_PSR_IMR, mask);
+
+		schedule_work(&dev_priv->psr.work);
 	}
 }
 
@@ -527,10 +547,8 @@ void intel_psr_compute_config(struct intel_dp *intel_dp,
 		return;
 	}
 
-	if (IS_HASWELL(dev_priv) &&
-	    I915_READ(HSW_STEREO_3D_CTL(crtc_state->cpu_transcoder)) &
-		      S3D_ENABLE) {
-		DRM_DEBUG_KMS("PSR condition failed: Stereo 3D is Enabled\n");
+	if (dev_priv->psr.sink_not_reliable) {
+		DRM_DEBUG_KMS("PSR sink implementation is not reliable\n");
 		return;
 	}
 
@@ -933,6 +951,16 @@ int intel_psr_set_debugfs_mode(struct drm_i915_private *dev_priv,
 	return ret;
 }
 
+static void intel_psr_handle_irq(struct drm_i915_private *dev_priv)
+{
+	struct i915_psr *psr = &dev_priv->psr;
+
+	intel_psr_disable_locked(psr->dp);
+	psr->sink_not_reliable = true;
+	/* let's make sure that sink is awaken */
+	drm_dp_dpcd_writeb(&psr->dp->aux, DP_SET_POWER, DP_SET_POWER_D0);
+}
+
 static void intel_psr_work(struct work_struct *work)
 {
 	struct drm_i915_private *dev_priv =
@@ -942,6 +970,9 @@ static void intel_psr_work(struct work_struct *work)
 
 	if (!dev_priv->psr.enabled)
 		goto unlock;
+
+	if (READ_ONCE(dev_priv->psr.irq_aux_error))
+		intel_psr_handle_irq(dev_priv);
 
 	/*
 	 * We have to make sure PSR is ready for re-enable
@@ -1073,6 +1104,8 @@ void intel_psr_flush(struct drm_i915_private *dev_priv,
  */
 void intel_psr_init(struct drm_i915_private *dev_priv)
 {
+	u32 val;
+
 	if (!HAS_PSR(dev_priv))
 		return;
 
@@ -1085,6 +1118,22 @@ void intel_psr_init(struct drm_i915_private *dev_priv)
 	if (i915_modparams.enable_psr == -1)
 		if (INTEL_GEN(dev_priv) < 9 || !dev_priv->vbt.psr.enable)
 			i915_modparams.enable_psr = 0;
+
+	/*
+	 * If a PSR error happened and the driver is reloaded, the EDP_PSR_IIR
+	 * will still keep the error set even after the reset done in the
+	 * irq_preinstall and irq_uninstall hooks.
+	 * And enabling in this situation cause the screen to freeze in the
+	 * first time that PSR HW tries to activate so lets keep PSR disabled
+	 * to avoid any rendering problems.
+	 */
+	val = I915_READ(EDP_PSR_IIR);
+	val &= EDP_PSR_ERROR(edp_psr_shift(TRANSCODER_EDP));
+	if (val) {
+		DRM_DEBUG_KMS("PSR interruption error set\n");
+		dev_priv->psr.sink_not_reliable = true;
+		return;
+	}
 
 	/* Set link_standby x link_off defaults */
 	if (IS_HASWELL(dev_priv) || IS_BROADWELL(dev_priv))
@@ -1123,6 +1172,7 @@ void intel_psr_short_pulse(struct intel_dp *intel_dp)
 	if ((val & DP_PSR_SINK_STATE_MASK) == DP_PSR_SINK_INTERNAL_ERROR) {
 		DRM_DEBUG_KMS("PSR sink internal error, disabling PSR\n");
 		intel_psr_disable_locked(intel_dp);
+		psr->sink_not_reliable = true;
 	}
 
 	if (drm_dp_dpcd_readb(&intel_dp->aux, DP_PSR_ERROR_STATUS, &val) != 1) {
@@ -1140,10 +1190,27 @@ void intel_psr_short_pulse(struct intel_dp *intel_dp)
 	if (val & ~errors)
 		DRM_ERROR("PSR_ERROR_STATUS unhandled errors %x\n",
 			  val & ~errors);
-	if (val & errors)
+	if (val & errors) {
 		intel_psr_disable_locked(intel_dp);
+		psr->sink_not_reliable = true;
+	}
 	/* clear status register */
 	drm_dp_dpcd_writeb(&intel_dp->aux, DP_PSR_ERROR_STATUS, val);
 exit:
 	mutex_unlock(&psr->lock);
+}
+
+bool intel_psr_enabled(struct intel_dp *intel_dp)
+{
+	struct drm_i915_private *dev_priv = dp_to_i915(intel_dp);
+	bool ret;
+
+	if (!CAN_PSR(dev_priv) || !intel_dp_is_edp(intel_dp))
+		return false;
+
+	mutex_lock(&dev_priv->psr.lock);
+	ret = (dev_priv->psr.dp == intel_dp && dev_priv->psr.enabled);
+	mutex_unlock(&dev_priv->psr.lock);
+
+	return ret;
 }

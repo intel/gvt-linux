@@ -3936,8 +3936,6 @@ intel_edp_init_dpcd(struct intel_dp *intel_dp)
 static bool
 intel_dp_get_dpcd(struct intel_dp *intel_dp)
 {
-	u8 sink_count;
-
 	if (!intel_dp_read_dpcd(intel_dp))
 		return false;
 
@@ -3947,25 +3945,35 @@ intel_dp_get_dpcd(struct intel_dp *intel_dp)
 		intel_dp_set_common_rates(intel_dp);
 	}
 
-	if (drm_dp_dpcd_readb(&intel_dp->aux, DP_SINK_COUNT, &sink_count) <= 0)
-		return false;
-
 	/*
-	 * Sink count can change between short pulse hpd hence
-	 * a member variable in intel_dp will track any changes
-	 * between short pulse interrupts.
+	 * Some eDP panels do not set a valid value for sink count, that is why
+	 * it don't care about read it here and in intel_edp_init_dpcd().
 	 */
-	intel_dp->sink_count = DP_GET_SINK_COUNT(sink_count);
+	if (!intel_dp_is_edp(intel_dp)) {
+		u8 count;
+		ssize_t r;
 
-	/*
-	 * SINK_COUNT == 0 and DOWNSTREAM_PORT_PRESENT == 1 implies that
-	 * a dongle is present but no display. Unless we require to know
-	 * if a dongle is present or not, we don't need to update
-	 * downstream port information. So, an early return here saves
-	 * time from performing other operations which are not required.
-	 */
-	if (!intel_dp_is_edp(intel_dp) && !intel_dp->sink_count)
-		return false;
+		r = drm_dp_dpcd_readb(&intel_dp->aux, DP_SINK_COUNT, &count);
+		if (r < 1)
+			return false;
+
+		/*
+		 * Sink count can change between short pulse hpd hence
+		 * a member variable in intel_dp will track any changes
+		 * between short pulse interrupts.
+		 */
+		intel_dp->sink_count = DP_GET_SINK_COUNT(count);
+
+		/*
+		 * SINK_COUNT == 0 and DOWNSTREAM_PORT_PRESENT == 1 implies that
+		 * a dongle is present but no display. Unless we require to know
+		 * if a dongle is present or not, we don't need to update
+		 * downstream port information. So, an early return here saves
+		 * time from performing other operations which are not required.
+		 */
+		if (!intel_dp->sink_count)
+			return false;
+	}
 
 	if (!drm_dp_is_branch(intel_dp->dpcd))
 		return true; /* native DP sink */
@@ -4373,6 +4381,17 @@ intel_dp_needs_link_retrain(struct intel_dp *intel_dp)
 	u8 link_status[DP_LINK_STATUS_SIZE];
 
 	if (!intel_dp->link_trained)
+		return false;
+
+	/*
+	 * While PSR source HW is enabled, it will control main-link sending
+	 * frames, enabling and disabling it so trying to do a retrain will fail
+	 * as the link would or not be on or it could mix training patterns
+	 * and frame data at the same time causing retrain to fail.
+	 * Also when exiting PSR, HW will retrain the link anyways fixing
+	 * any link status error.
+	 */
+	if (intel_psr_enabled(intel_dp))
 		return false;
 
 	if (!intel_dp_get_link_status(intel_dp, link_status))

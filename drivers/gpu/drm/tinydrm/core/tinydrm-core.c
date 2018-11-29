@@ -135,7 +135,7 @@ static int tinydrm_init(struct device *parent, struct tinydrm_device *tdev,
 	/*
 	 * We don't embed drm_device, because that prevent us from using
 	 * devm_kzalloc() to allocate tinydrm_device in the driver since
-	 * drm_dev_unref() frees the structure. The devm_ functions provide
+	 * drm_dev_put() frees the structure. The devm_ functions provide
 	 * for easy error handling.
 	 */
 	drm = drm_dev_alloc(driver, parent);
@@ -146,6 +146,7 @@ static int tinydrm_init(struct device *parent, struct tinydrm_device *tdev,
 	drm->dev_private = tdev;
 	drm_mode_config_init(drm);
 	drm->mode_config.funcs = &tinydrm_mode_config_funcs;
+	drm->mode_config.allow_fb_modifiers = true;
 
 	return 0;
 }
@@ -155,7 +156,7 @@ static void tinydrm_fini(struct tinydrm_device *tdev)
 	drm_mode_config_cleanup(tdev->drm);
 	mutex_destroy(&tdev->dirty_lock);
 	tdev->drm->dev_private = NULL;
-	drm_dev_unref(tdev->drm);
+	drm_dev_put(tdev->drm);
 }
 
 static void devm_tinydrm_release(void *data)
@@ -172,7 +173,7 @@ static void devm_tinydrm_release(void *data)
  *
  * This function initializes @tdev, the underlying DRM device and it's
  * mode_config. Resources will be automatically freed on driver detach (devres)
- * using drm_mode_config_cleanup() and drm_dev_unref().
+ * using drm_mode_config_cleanup() and drm_dev_put().
  *
  * Returns:
  * Zero on success, negative error code on failure.
@@ -204,7 +205,7 @@ static int tinydrm_register(struct tinydrm_device *tdev)
 	if (ret)
 		return ret;
 
-	ret = drm_fb_cma_fbdev_init_with_funcs(drm, 0, 0, tdev->fb_funcs);
+	ret = drm_fbdev_generic_setup(drm, 0);
 	if (ret)
 		DRM_ERROR("Failed to initialize fbdev: %d\n", ret);
 
@@ -214,7 +215,6 @@ static int tinydrm_register(struct tinydrm_device *tdev)
 static void tinydrm_unregister(struct tinydrm_device *tdev)
 {
 	drm_atomic_helper_shutdown(tdev->drm);
-	drm_fb_cma_fbdev_fini(tdev->drm);
 	drm_dev_unregister(tdev->drm);
 }
 

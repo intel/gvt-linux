@@ -25,6 +25,8 @@
 #ifndef _INTEL_DEVICE_INFO_H_
 #define _INTEL_DEVICE_INFO_H_
 
+#include <uapi/drm/i915_drm.h>
+
 #include "intel_display.h"
 
 struct drm_printer;
@@ -74,21 +76,25 @@ enum intel_platform {
 	INTEL_MAX_PLATFORMS
 };
 
+enum intel_ppgtt {
+	INTEL_PPGTT_NONE = I915_GEM_PPGTT_NONE,
+	INTEL_PPGTT_ALIASING = I915_GEM_PPGTT_ALIASING,
+	INTEL_PPGTT_FULL = I915_GEM_PPGTT_FULL,
+	INTEL_PPGTT_FULL_4LVL,
+};
+
 #define DEV_INFO_FOR_EACH_FLAG(func) \
 	func(is_mobile); \
 	func(is_lp); \
 	func(is_alpha_support); \
 	/* Keep has_* in alphabetical order */ \
 	func(has_64bit_reloc); \
-	func(has_aliasing_ppgtt); \
 	func(has_csr); \
 	func(has_ddi); \
 	func(has_dp_mst); \
 	func(has_reset_engine); \
 	func(has_fbc); \
 	func(has_fpga_dbg); \
-	func(has_full_ppgtt); \
-	func(has_full_48bit_ppgtt); \
 	func(has_gmch_display); \
 	func(has_guc); \
 	func(has_guc_ct); \
@@ -103,9 +109,9 @@ enum intel_platform {
 	func(has_psr); \
 	func(has_rc6); \
 	func(has_rc6p); \
-	func(has_resource_streamer); \
 	func(has_runtime_pm); \
 	func(has_snoop); \
+	func(has_coherent_ggtt); \
 	func(unfenced_needs_alignment); \
 	func(cursor_needs_physical); \
 	func(hws_needs_physical); \
@@ -118,7 +124,7 @@ enum intel_platform {
 
 struct sseu_dev_info {
 	u8 slice_mask;
-	u8 subslice_mask[GEN_MAX_SUBSLICES];
+	u8 subslice_mask[GEN_MAX_SLICES];
 	u16 eu_total;
 	u8 eu_per_subslice;
 	u8 min_eu_in_pool;
@@ -154,6 +160,7 @@ struct intel_device_info {
 	enum intel_platform platform;
 	u32 platform_mask;
 
+	enum intel_ppgtt ppgtt;
 	unsigned int page_sizes; /* page sizes supported by the HW */
 
 	u32 display_mmio_offset;
@@ -170,13 +177,16 @@ struct intel_device_info {
 	/* Register offsets for the various display pipes and transcoders */
 	int pipe_offsets[I915_MAX_TRANSCODERS];
 	int trans_offsets[I915_MAX_TRANSCODERS];
-	int palette_offsets[I915_MAX_PIPES];
 	int cursor_offsets[I915_MAX_PIPES];
 
 	/* Slice/subslice/EU info */
 	struct sseu_dev_info sseu;
 
 	u32 cs_timestamp_frequency_khz;
+
+	/* Enabled (not fused off) media engine bitmasks. */
+	u8 vdbox_enable;
+	u8 vebox_enable;
 
 	struct color_luts {
 		u16 degamma_lut_size;
@@ -186,6 +196,7 @@ struct intel_device_info {
 
 struct intel_driver_caps {
 	unsigned int scheduler;
+	bool has_logical_contexts:1;
 };
 
 static inline unsigned int sseu_subslice_total(const struct sseu_dev_info *sseu)

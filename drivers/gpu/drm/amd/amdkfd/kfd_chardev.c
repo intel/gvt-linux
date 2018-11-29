@@ -37,6 +37,7 @@
 #include "kfd_priv.h"
 #include "kfd_device_queue_manager.h"
 #include "kfd_dbgmgr.h"
+#include "amdgpu_amdkfd.h"
 
 static long kfd_ioctl(struct file *, unsigned int, unsigned long);
 static int kfd_open(struct inode *, struct file *);
@@ -121,6 +122,9 @@ static int kfd_open(struct inode *inode, struct file *filep)
 	process = kfd_create_process(filep);
 	if (IS_ERR(process))
 		return PTR_ERR(process);
+
+	if (kfd_is_locked())
+		return -EAGAIN;
 
 	dev_dbg(kfd_device, "process %d opened, compat mode (32 bit) - %d\n",
 		process->pasid, process->is_32bit_user_mode);
@@ -233,7 +237,7 @@ static int set_queue_properties_from_user(struct queue_properties *q_properties,
 	pr_debug("Queue Size: 0x%llX, %u\n",
 			q_properties->queue_size, args->ring_size);
 
-	pr_debug("Queue r/w Pointers: %p, %p\n",
+	pr_debug("Queue r/w Pointers: %px, %px\n",
 			q_properties->read_ptr,
 			q_properties->write_ptr);
 
@@ -292,8 +296,16 @@ static int kfd_ioctl_create_queue(struct file *filep, struct kfd_process *p,
 
 
 	/* Return gpu_id as doorbell offset for mmap usage */
-	args->doorbell_offset = (KFD_MMAP_DOORBELL_MASK | args->gpu_id);
+	args->doorbell_offset = KFD_MMAP_TYPE_DOORBELL;
+	args->doorbell_offset |= KFD_MMAP_GPU_ID(args->gpu_id);
 	args->doorbell_offset <<= PAGE_SHIFT;
+	if (KFD_IS_SOC15(dev->device_info->asic_family))
+		/* On SOC15 ASICs, doorbell allocation must be
+		 * per-device, and independent from the per-process
+		 * queue_id. Return the doorbell offset within the
+		 * doorbell aperture to user mode.
+		 */
+		args->doorbell_offset |= q_properties.doorbell_off;
 
 	mutex_unlock(&p->mutex);
 
@@ -379,6 +391,79 @@ static int kfd_ioctl_update_queue(struct file *filp, struct kfd_process *p,
 	mutex_unlock(&p->mutex);
 
 	return retval;
+}
+
+static int kfd_ioctl_set_cu_mask(struct file *filp, struct kfd_process *p,
+					void *data)
+{
+	int retval;
+	const int max_num_cus = 1024;
+	struct kfd_ioctl_set_cu_mask_args *args = data;
+	struct queue_properties properties;
+	uint32_t __user *cu_mask_ptr = (uint32_t __user *)args->cu_mask_ptr;
+	size_t cu_mask_size = sizeof(uint32_t) * (args->num_cu_mask / 32);
+
+	if ((args->num_cu_mask % 32) != 0) {
+		pr_debug("num_cu_mask 0x%x must be a multiple of 32",
+				args->num_cu_mask);
+		return -EINVAL;
+	}
+
+	properties.cu_mask_count = args->num_cu_mask;
+	if (properties.cu_mask_count == 0) {
+		pr_debug("CU mask cannot be 0");
+		return -EINVAL;
+	}
+
+	/* To prevent an unreasonably large CU mask size, set an arbitrary
+	 * limit of max_num_cus bits.  We can then just drop any CU mask bits
+	 * past max_num_cus bits and just use the first max_num_cus bits.
+	 */
+	if (properties.cu_mask_count > max_num_cus) {
+		pr_debug("CU mask cannot be greater than 1024 bits");
+		properties.cu_mask_count = max_num_cus;
+		cu_mask_size = sizeof(uint32_t) * (max_num_cus/32);
+	}
+
+	properties.cu_mask = kzalloc(cu_mask_size, GFP_KERNEL);
+	if (!properties.cu_mask)
+		return -ENOMEM;
+
+	retval = copy_from_user(properties.cu_mask, cu_mask_ptr, cu_mask_size);
+	if (retval) {
+		pr_debug("Could not copy CU mask from userspace");
+		kfree(properties.cu_mask);
+		return -EFAULT;
+	}
+
+	mutex_lock(&p->mutex);
+
+	retval = pqm_set_cu_mask(&p->pqm, args->queue_id, &properties);
+
+	mutex_unlock(&p->mutex);
+
+	if (retval)
+		kfree(properties.cu_mask);
+
+	return retval;
+}
+
+static int kfd_ioctl_get_queue_wave_state(struct file *filep,
+					  struct kfd_process *p, void *data)
+{
+	struct kfd_ioctl_get_queue_wave_state_args *args = data;
+	int r;
+
+	mutex_lock(&p->mutex);
+
+	r = pqm_get_wave_state(&p->pqm, args->queue_id,
+			       (void __user *)args->ctl_stack_address,
+			       &args->ctl_stack_used_size,
+			       &args->save_area_used_size);
+
+	mutex_unlock(&p->mutex);
+
+	return r;
 }
 
 static int kfd_ioctl_set_memory_policy(struct file *filep,
@@ -746,23 +831,18 @@ static int kfd_ioctl_get_clock_counters(struct file *filep,
 {
 	struct kfd_ioctl_get_clock_counters_args *args = data;
 	struct kfd_dev *dev;
-	struct timespec64 time;
 
 	dev = kfd_device_by_id(args->gpu_id);
 	if (dev)
 		/* Reading GPU clock counter from KGD */
-		args->gpu_clock_counter =
-			dev->kfd2kgd->get_gpu_clock_counter(dev->kgd);
+		args->gpu_clock_counter = amdgpu_amdkfd_get_gpu_clock_counter(dev->kgd);
 	else
 		/* Node without GPU resource */
 		args->gpu_clock_counter = 0;
 
 	/* No access to rdtsc. Using raw monotonic time */
-	getrawmonotonic64(&time);
-	args->cpu_clock_counter = (uint64_t)timespec64_to_ns(&time);
-
-	get_monotonic_boottime64(&time);
-	args->system_clock_counter = (uint64_t)timespec64_to_ns(&time);
+	args->cpu_clock_counter = ktime_get_raw_ns();
+	args->system_clock_counter = ktime_get_boot_ns();
 
 	/* Since the counter is in nano-seconds we use 1GHz frequency */
 	args->system_clock_freq = 1000000000;
@@ -962,7 +1042,7 @@ static int kfd_ioctl_create_event(struct file *filp, struct kfd_process *p,
 		}
 		mutex_unlock(&p->mutex);
 
-		err = kfd->kfd2kgd->map_gtt_bo_to_kernel(kfd->kgd,
+		err = amdgpu_amdkfd_gpuvm_map_gtt_bo_to_kernel(kfd->kgd,
 						mem, &kern_addr, &size);
 		if (err) {
 			pr_err("Failed to map event page to kernel\n");
@@ -1148,7 +1228,7 @@ err_unlock:
 	return ret;
 }
 
-static bool kfd_dev_is_large_bar(struct kfd_dev *dev)
+bool kfd_dev_is_large_bar(struct kfd_dev *dev)
 {
 	struct kfd_local_mem_info mem_info;
 
@@ -1160,7 +1240,7 @@ static bool kfd_dev_is_large_bar(struct kfd_dev *dev)
 	if (dev->device_info->needs_iommu_device)
 		return false;
 
-	dev->kfd2kgd->get_local_mem_info(dev->kgd, &mem_info);
+	amdgpu_amdkfd_get_local_mem_info(dev->kgd, &mem_info);
 	if (mem_info.local_mem_size_private == 0 &&
 			mem_info.local_mem_size_public > 0)
 		return true;
@@ -1201,7 +1281,7 @@ static int kfd_ioctl_alloc_memory_of_gpu(struct file *filep,
 		goto err_unlock;
 	}
 
-	err = dev->kfd2kgd->alloc_memory_of_gpu(
+	err = amdgpu_amdkfd_gpuvm_alloc_memory_of_gpu(
 		dev->kgd, args->va_addr, args->size,
 		pdd->vm, (struct kgd_mem **) &mem, &offset,
 		flags);
@@ -1223,7 +1303,7 @@ static int kfd_ioctl_alloc_memory_of_gpu(struct file *filep,
 	return 0;
 
 err_free:
-	dev->kfd2kgd->free_memory_of_gpu(dev->kgd, (struct kgd_mem *)mem);
+	amdgpu_amdkfd_gpuvm_free_memory_of_gpu(dev->kgd, (struct kgd_mem *)mem);
 err_unlock:
 	mutex_unlock(&p->mutex);
 	return err;
@@ -1258,7 +1338,8 @@ static int kfd_ioctl_free_memory_of_gpu(struct file *filep,
 		goto err_unlock;
 	}
 
-	ret = dev->kfd2kgd->free_memory_of_gpu(dev->kgd, (struct kgd_mem *)mem);
+	ret = amdgpu_amdkfd_gpuvm_free_memory_of_gpu(dev->kgd,
+						(struct kgd_mem *)mem);
 
 	/* If freeing the buffer failed, leave the handle in place for
 	 * clean-up during process tear-down.
@@ -1296,8 +1377,8 @@ static int kfd_ioctl_map_memory_to_gpu(struct file *filep,
 		return -EINVAL;
 	}
 
-	devices_arr = kmalloc(args->n_devices * sizeof(*devices_arr),
-			      GFP_KERNEL);
+	devices_arr = kmalloc_array(args->n_devices, sizeof(*devices_arr),
+				    GFP_KERNEL);
 	if (!devices_arr)
 		return -ENOMEM;
 
@@ -1338,7 +1419,7 @@ static int kfd_ioctl_map_memory_to_gpu(struct file *filep,
 			err = PTR_ERR(peer_pdd);
 			goto get_mem_obj_from_handle_failed;
 		}
-		err = peer->kfd2kgd->map_memory_to_gpu(
+		err = amdgpu_amdkfd_gpuvm_map_memory_to_gpu(
 			peer->kgd, (struct kgd_mem *)mem, peer_pdd->vm);
 		if (err) {
 			pr_err("Failed to map to gpu %d/%d\n",
@@ -1350,7 +1431,7 @@ static int kfd_ioctl_map_memory_to_gpu(struct file *filep,
 
 	mutex_unlock(&p->mutex);
 
-	err = dev->kfd2kgd->sync_memory(dev->kgd, (struct kgd_mem *) mem, true);
+	err = amdgpu_amdkfd_gpuvm_sync_memory(dev->kgd, (struct kgd_mem *) mem, true);
 	if (err) {
 		pr_debug("Sync memory failed, wait interrupted by user signal\n");
 		goto sync_memory_failed;
@@ -1405,8 +1486,8 @@ static int kfd_ioctl_unmap_memory_from_gpu(struct file *filep,
 		return -EINVAL;
 	}
 
-	devices_arr = kmalloc(args->n_devices * sizeof(*devices_arr),
-			      GFP_KERNEL);
+	devices_arr = kmalloc_array(args->n_devices, sizeof(*devices_arr),
+				    GFP_KERNEL);
 	if (!devices_arr)
 		return -ENOMEM;
 
@@ -1445,7 +1526,7 @@ static int kfd_ioctl_unmap_memory_from_gpu(struct file *filep,
 			err = -ENODEV;
 			goto get_mem_obj_from_handle_failed;
 		}
-		err = dev->kfd2kgd->unmap_memory_to_gpu(
+		err = amdgpu_amdkfd_gpuvm_unmap_memory_from_gpu(
 			peer->kgd, (struct kgd_mem *)mem, peer_pdd->vm);
 		if (err) {
 			pr_err("Failed to unmap from gpu %d/%d\n",
@@ -1550,6 +1631,12 @@ static const struct amdkfd_ioctl_desc amdkfd_ioctls[] = {
 	AMDKFD_IOCTL_DEF(AMDKFD_IOC_UNMAP_MEMORY_FROM_GPU,
 			kfd_ioctl_unmap_memory_from_gpu, 0),
 
+	AMDKFD_IOCTL_DEF(AMDKFD_IOC_SET_CU_MASK,
+			kfd_ioctl_set_cu_mask, 0),
+
+	AMDKFD_IOCTL_DEF(AMDKFD_IOC_GET_QUEUE_WAVE_STATE,
+			kfd_ioctl_get_queue_wave_state, 0)
+
 };
 
 #define AMDKFD_CORE_IOCTL_COUNT	ARRAY_SIZE(amdkfd_ioctls)
@@ -1645,23 +1732,33 @@ err_i1:
 static int kfd_mmap(struct file *filp, struct vm_area_struct *vma)
 {
 	struct kfd_process *process;
+	struct kfd_dev *dev = NULL;
+	unsigned long vm_pgoff;
+	unsigned int gpu_id;
 
 	process = kfd_get_process(current);
 	if (IS_ERR(process))
 		return PTR_ERR(process);
 
-	if ((vma->vm_pgoff & KFD_MMAP_DOORBELL_MASK) ==
-			KFD_MMAP_DOORBELL_MASK) {
-		vma->vm_pgoff = vma->vm_pgoff ^ KFD_MMAP_DOORBELL_MASK;
-		return kfd_doorbell_mmap(process, vma);
-	} else if ((vma->vm_pgoff & KFD_MMAP_EVENTS_MASK) ==
-			KFD_MMAP_EVENTS_MASK) {
-		vma->vm_pgoff = vma->vm_pgoff ^ KFD_MMAP_EVENTS_MASK;
+	vm_pgoff = vma->vm_pgoff;
+	vma->vm_pgoff = KFD_MMAP_OFFSET_VALUE_GET(vm_pgoff);
+	gpu_id = KFD_MMAP_GPU_ID_GET(vm_pgoff);
+	if (gpu_id)
+		dev = kfd_device_by_id(gpu_id);
+
+	switch (vm_pgoff & KFD_MMAP_TYPE_MASK) {
+	case KFD_MMAP_TYPE_DOORBELL:
+		if (!dev)
+			return -ENODEV;
+		return kfd_doorbell_mmap(dev, process, vma);
+
+	case KFD_MMAP_TYPE_EVENTS:
 		return kfd_event_mmap(process, vma);
-	} else if ((vma->vm_pgoff & KFD_MMAP_RESERVED_MEM_MASK) ==
-			KFD_MMAP_RESERVED_MEM_MASK) {
-		vma->vm_pgoff = vma->vm_pgoff ^ KFD_MMAP_RESERVED_MEM_MASK;
-		return kfd_reserved_mem_mmap(process, vma);
+
+	case KFD_MMAP_TYPE_RESERVED_MEM:
+		if (!dev)
+			return -ENODEV;
+		return kfd_reserved_mem_mmap(dev, process, vma);
 	}
 
 	return -EFAULT;

@@ -135,6 +135,7 @@ struct i915_gpu_state {
 		struct drm_i915_error_object {
 			u64 gtt_offset;
 			u64 gtt_size;
+			int num_pages;
 			int page_count;
 			int unused;
 			u32 *pages[0];
@@ -177,7 +178,7 @@ struct i915_gpu_state {
 	struct drm_i915_error_buffer {
 		u32 size;
 		u32 name;
-		u32 rseqno[I915_NUM_ENGINES], wseqno;
+		u32 wseqno;
 		u64 gtt_offset;
 		u32 read_domains;
 		u32 write_domain;
@@ -342,6 +343,7 @@ static inline void i915_gpu_state_put(struct i915_gpu_state *gpu)
 
 struct i915_gpu_state *i915_first_error_state(struct drm_i915_private *i915);
 void i915_reset_error_state(struct drm_i915_private *i915);
+void i915_disable_error_state(struct drm_i915_private *i915, int err);
 
 #else
 
@@ -354,10 +356,15 @@ static inline void i915_capture_error_state(struct drm_i915_private *dev_priv,
 static inline struct i915_gpu_state *
 i915_first_error_state(struct drm_i915_private *i915)
 {
-	return NULL;
+	return ERR_PTR(-ENODEV);
 }
 
 static inline void i915_reset_error_state(struct drm_i915_private *i915)
+{
+}
+
+static inline void i915_disable_error_state(struct drm_i915_private *i915,
+					    int err)
 {
 }
 

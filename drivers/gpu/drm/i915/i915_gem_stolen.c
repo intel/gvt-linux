@@ -167,10 +167,8 @@ static int i915_adjust_stolen(struct drm_i915_private *dev_priv,
 	return 0;
 }
 
-void i915_gem_cleanup_stolen(struct drm_device *dev)
+void i915_gem_cleanup_stolen(struct drm_i915_private *dev_priv)
 {
-	struct drm_i915_private *dev_priv = to_i915(dev);
-
 	if (!drm_mm_initialized(&dev_priv->mm.stolen))
 		return;
 
@@ -254,6 +252,7 @@ static void vlv_get_stolen_reserved(struct drm_i915_private *dev_priv,
 	switch (reg_val & GEN7_STOLEN_RESERVED_SIZE_MASK) {
 	default:
 		MISSING_CASE(reg_val & GEN7_STOLEN_RESERVED_SIZE_MASK);
+		/* fall through */
 	case GEN7_STOLEN_RESERVED_1M:
 		*size = 1024 * 1024;
 		break;
@@ -343,6 +342,35 @@ static void bdw_get_stolen_reserved(struct drm_i915_private *dev_priv,
 	*size = stolen_top - *base;
 }
 
+static void icl_get_stolen_reserved(struct drm_i915_private *dev_priv,
+				    resource_size_t *base,
+				    resource_size_t *size)
+{
+	u64 reg_val = I915_READ64(GEN6_STOLEN_RESERVED);
+
+	DRM_DEBUG_DRIVER("GEN6_STOLEN_RESERVED = 0x%016llx\n", reg_val);
+
+	*base = reg_val & GEN11_STOLEN_RESERVED_ADDR_MASK;
+
+	switch (reg_val & GEN8_STOLEN_RESERVED_SIZE_MASK) {
+	case GEN8_STOLEN_RESERVED_1M:
+		*size = 1024 * 1024;
+		break;
+	case GEN8_STOLEN_RESERVED_2M:
+		*size = 2 * 1024 * 1024;
+		break;
+	case GEN8_STOLEN_RESERVED_4M:
+		*size = 4 * 1024 * 1024;
+		break;
+	case GEN8_STOLEN_RESERVED_8M:
+		*size = 8 * 1024 * 1024;
+		break;
+	default:
+		*size = 8 * 1024 * 1024;
+		MISSING_CASE(reg_val & GEN8_STOLEN_RESERVED_SIZE_MASK);
+	}
+}
+
 int i915_gem_init_stolen(struct drm_i915_private *dev_priv)
 {
 	resource_size_t reserved_base, stolen_top;
@@ -399,13 +427,20 @@ int i915_gem_init_stolen(struct drm_i915_private *dev_priv)
 			gen7_get_stolen_reserved(dev_priv,
 						 &reserved_base, &reserved_size);
 		break;
-	default:
+	case 8:
+	case 9:
+	case 10:
 		if (IS_LP(dev_priv))
 			chv_get_stolen_reserved(dev_priv,
 						&reserved_base, &reserved_size);
 		else
 			bdw_get_stolen_reserved(dev_priv,
 						&reserved_base, &reserved_size);
+		break;
+	case 11:
+	default:
+		icl_get_stolen_reserved(dev_priv, &reserved_base,
+					&reserved_size);
 		break;
 	}
 

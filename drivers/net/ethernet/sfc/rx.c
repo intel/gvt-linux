@@ -634,7 +634,12 @@ static void efx_rx_deliver(struct efx_channel *channel, u8 *eh,
 			return;
 
 	/* Pass the packet up */
-	netif_receive_skb(skb);
+	if (channel->rx_list != NULL)
+		/* Add to list, will pass up later */
+		list_add_tail(&skb->list, channel->rx_list);
+	else
+		/* No list, so pass it up now */
+		netif_receive_skb(skb);
 }
 
 /* Handle a received packet.  Second half: Touches packet payload. */
@@ -839,6 +844,8 @@ static void efx_filter_rfs_work(struct work_struct *data)
 	int rc;
 
 	rc = efx->type->filter_insert(efx, &req->spec, true);
+	if (rc >= 0)
+		rc %= efx->type->max_rx_ip_filters;
 	if (efx->rps_hash_table) {
 		spin_lock_bh(&efx->rps_hash_lock);
 		rule = efx_rps_hash_find(efx, &req->spec);

@@ -1,7 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0+
 /*
- *  zcrypt 2.1.0
- *
  *  Copyright IBM Corp. 2001, 2012
  *  Author(s): Robert Burroughs
  *	       Eric Rossman (edrossma@us.ibm.com)
@@ -43,8 +41,8 @@
 #define CEX3A_CLEANUP_TIME	CEX2A_CLEANUP_TIME
 
 MODULE_AUTHOR("IBM Corporation");
-MODULE_DESCRIPTION("CEX2A Cryptographic Coprocessor device driver, " \
-		   "Copyright IBM Corp. 2001, 2012");
+MODULE_DESCRIPTION("CEX2A/CEX3A Cryptographic Coprocessor device driver, " \
+		   "Copyright IBM Corp. 2001, 2018");
 MODULE_LICENSE("GPL");
 
 static struct ap_device_id zcrypt_cex2a_card_ids[] = {
@@ -145,6 +143,7 @@ static struct ap_driver zcrypt_cex2a_card_driver = {
 	.probe = zcrypt_cex2a_card_probe,
 	.remove = zcrypt_cex2a_card_remove,
 	.ids = zcrypt_cex2a_card_ids,
+	.flags = AP_DRIVER_FLAG_DEFAULT,
 };
 
 /**
@@ -208,6 +207,7 @@ static struct ap_driver zcrypt_cex2a_queue_driver = {
 	.suspend = ap_queue_suspend,
 	.resume = ap_queue_resume,
 	.ids = zcrypt_cex2a_queue_ids,
+	.flags = AP_DRIVER_FLAG_DEFAULT,
 };
 
 int __init zcrypt_cex2a_init(void)

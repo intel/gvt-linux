@@ -13,6 +13,7 @@
 #define _NET_RXRPC_H
 
 #include <linux/rxrpc.h>
+#include <linux/ktime.h>
 
 struct key;
 struct sock;
@@ -61,7 +62,7 @@ int rxrpc_kernel_send_data(struct socket *, struct rxrpc_call *,
 			   struct msghdr *, size_t,
 			   rxrpc_notify_end_tx_t);
 int rxrpc_kernel_recv_data(struct socket *, struct rxrpc_call *,
-			   void *, size_t, size_t *, bool, u32 *, u16 *);
+			   struct iov_iter *, bool, u32 *, u16 *);
 bool rxrpc_kernel_abort_call(struct socket *, struct rxrpc_call *,
 			     u32, int, const char *);
 void rxrpc_kernel_end_call(struct socket *, struct rxrpc_call *);
@@ -77,5 +78,8 @@ int rxrpc_kernel_retry_call(struct socket *, struct rxrpc_call *,
 int rxrpc_kernel_check_call(struct socket *, struct rxrpc_call *,
 			    enum rxrpc_call_completion *, u32 *);
 u32 rxrpc_kernel_check_life(struct socket *, struct rxrpc_call *);
+u32 rxrpc_kernel_get_epoch(struct socket *, struct rxrpc_call *);
+bool rxrpc_kernel_get_reply_time(struct socket *, struct rxrpc_call *,
+				 ktime_t *);
 
 #endif /* _NET_RXRPC_H */

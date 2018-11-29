@@ -125,7 +125,7 @@ int intel_gvt_init_vgpu_types(struct intel_gvt *gvt)
 	high_avail = gvt_hidden_sz(gvt) - HOST_HIGH_GM_SIZE;
 	num_types = sizeof(vgpu_types) / sizeof(vgpu_types[0]);
 
-	gvt->types = kzalloc(num_types * sizeof(struct intel_vgpu_type),
+	gvt->types = kcalloc(num_types, sizeof(struct intel_vgpu_type),
 			     GFP_KERNEL);
 	if (!gvt->types)
 		return -ENOMEM;
@@ -222,7 +222,7 @@ void intel_gvt_activate_vgpu(struct intel_vgpu *vgpu)
  * @vgpu: virtual GPU
  *
  * This function is called when user wants to deactivate a virtual GPU.
- * All virtual GPU runtime information will be destroyed.
+ * The virtual GPU will be stopped.
  *
  */
 void intel_gvt_deactivate_vgpu(struct intel_vgpu *vgpu)
@@ -238,8 +238,26 @@ void intel_gvt_deactivate_vgpu(struct intel_vgpu *vgpu)
 	}
 
 	intel_vgpu_stop_schedule(vgpu);
-	intel_vgpu_dmabuf_cleanup(vgpu);
 
+	mutex_unlock(&vgpu->vgpu_lock);
+}
+
+/**
+ * intel_gvt_release_vgpu - release a virtual GPU
+ * @vgpu: virtual GPU
+ *
+ * This function is called when user wants to release a virtual GPU.
+ * The virtual GPU will be stopped and all runtime information will be
+ * destroyed.
+ *
+ */
+void intel_gvt_release_vgpu(struct intel_vgpu *vgpu)
+{
+	intel_gvt_deactivate_vgpu(vgpu);
+
+	mutex_lock(&vgpu->vgpu_lock);
+	intel_vgpu_clean_workloads(vgpu, ALL_ENGINES);
+	intel_vgpu_dmabuf_cleanup(vgpu);
 	mutex_unlock(&vgpu->vgpu_lock);
 }
 
@@ -263,6 +281,7 @@ void intel_gvt_destroy_vgpu(struct intel_vgpu *vgpu)
 	intel_vgpu_clean_submission(vgpu);
 	intel_vgpu_clean_display(vgpu);
 	intel_vgpu_clean_opregion(vgpu);
+	intel_vgpu_reset_ggtt(vgpu, true);
 	intel_vgpu_clean_gtt(vgpu);
 	intel_gvt_hypervisor_detach_vgpu(vgpu);
 	intel_vgpu_free_resource(vgpu);
@@ -361,6 +380,7 @@ static struct intel_vgpu *__intel_gvt_create_vgpu(struct intel_gvt *gvt,
 	vgpu->gvt = gvt;
 	vgpu->sched_ctl.weight = param->weight;
 	mutex_init(&vgpu->vgpu_lock);
+	mutex_init(&vgpu->dmabuf_lock);
 	INIT_LIST_HEAD(&vgpu->dmabuf_obj_list_head);
 	INIT_RADIX_TREE(&vgpu->page_track_tree, GFP_KERNEL);
 	idr_init(&vgpu->object_idr);

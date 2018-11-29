@@ -50,12 +50,6 @@ static const char *qxl_get_timeline_name(struct dma_fence *fence)
 	return "release";
 }
 
-static bool qxl_nop_signaling(struct dma_fence *fence)
-{
-	/* fences are always automatically signaled, so just pretend we did this.. */
-	return true;
-}
-
 static long qxl_fence_wait(struct dma_fence *fence, bool intr,
 			   signed long timeout)
 {
@@ -119,7 +113,6 @@ signaled:
 static const struct dma_fence_ops qxl_fence_ops = {
 	.get_driver_name = qxl_get_driver_name,
 	.get_timeline_name = qxl_get_timeline_name,
-	.enable_signaling = qxl_nop_signaling,
 	.wait = qxl_fence_wait,
 };
 
@@ -241,7 +234,7 @@ static int qxl_release_validate_bo(struct qxl_bo *bo)
 			return ret;
 	}
 
-	ret = reservation_object_reserve_shared(bo->tbo.resv);
+	ret = reservation_object_reserve_shared(bo->tbo.resv, 1);
 	if (ret)
 		return ret;
 
@@ -288,7 +281,6 @@ void qxl_release_backoff_reserve_list(struct qxl_release *release)
 
 	ttm_eu_backoff_reservation(&release->ticket, &release->bos);
 }
-
 
 int qxl_alloc_surface_release_reserved(struct qxl_device *qdev,
 				       enum qxl_surface_cmd_type surface_cmd_type,

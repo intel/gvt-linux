@@ -215,6 +215,9 @@ intel_dvo_mode_valid(struct drm_connector *connector,
 	int max_dotclk = to_i915(connector->dev)->max_dotclk_freq;
 	int target_clock = mode->clock;
 
+	if (mode->flags & DRM_MODE_FLAG_DBLSCAN)
+		return MODE_NO_DBLESCAN;
+
 	/* XXX: Validate clock range */
 
 	if (fixed_mode) {
@@ -250,6 +253,10 @@ static bool intel_dvo_compute_config(struct intel_encoder *encoder,
 	if (fixed_mode)
 		intel_fixed_panel_mode(fixed_mode, adjusted_mode);
 
+	if (adjusted_mode->flags & DRM_MODE_FLAG_DBLSCAN)
+		return false;
+
+	pipe_config->output_format = INTEL_OUTPUT_FORMAT_RGB;
 	return true;
 }
 
@@ -327,18 +334,11 @@ static int intel_dvo_get_modes(struct drm_connector *connector)
 	return 0;
 }
 
-static void intel_dvo_destroy(struct drm_connector *connector)
-{
-	drm_connector_cleanup(connector);
-	intel_panel_fini(&to_intel_connector(connector)->panel);
-	kfree(connector);
-}
-
 static const struct drm_connector_funcs intel_dvo_connector_funcs = {
 	.detect = intel_dvo_detect,
 	.late_register = intel_connector_register,
 	.early_unregister = intel_connector_unregister,
-	.destroy = intel_dvo_destroy,
+	.destroy = intel_connector_destroy,
 	.fill_modes = drm_helper_probe_single_connector_modes,
 	.atomic_destroy_state = drm_atomic_helper_connector_destroy_state,
 	.atomic_duplicate_state = drm_atomic_helper_connector_duplicate_state,
@@ -432,7 +432,7 @@ void intel_dvo_init(struct drm_i915_private *dev_priv)
 		int gpio;
 		bool dvoinit;
 		enum pipe pipe;
-		uint32_t dpll[I915_MAX_PIPES];
+		u32 dpll[I915_MAX_PIPES];
 		enum port port;
 
 		/*

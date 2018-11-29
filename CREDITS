@@ -2138,6 +2138,10 @@ E: paul@laufernet.com
 D: Soundblaster driver fixes, ISAPnP quirk
 S: California, USA
 
+N: Jarkko Lavinen
+E: jarkko.lavinen@nokia.com
+D: OMAP MMC support
+
 N: Jonathan Layes
 D: ARPD support
 
@@ -2570,6 +2574,11 @@ S: Editorial Board iX Mag
 S: Helstorfer Str. 7
 S: D-30625 Hannover
 S: Germany
+
+N: Ron Minnich
+E: rminnich@sandia.gov
+E: rminnich@gmail.com
+D: 9p filesystem development
 
 N: Corey Minyard
 E: minyard@wf-rch.cirr.com

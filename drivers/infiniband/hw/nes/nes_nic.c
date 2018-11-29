@@ -146,8 +146,6 @@ static int nes_netdev_open(struct net_device *netdev)
 	struct list_head *list_pos, *list_temp;
 	unsigned long flags;
 
-	assert(nesdev != NULL);
-
 	if (nesvnic->netdev_open == 1)
 		return 0;
 
@@ -461,7 +459,7 @@ static bool nes_nic_send(struct sk_buff *skb, struct net_device *netdev)
 /**
  * nes_netdev_start_xmit
  */
-static int nes_netdev_start_xmit(struct sk_buff *skb, struct net_device *netdev)
+static netdev_tx_t nes_netdev_start_xmit(struct sk_buff *skb, struct net_device *netdev)
 {
 	struct nes_vnic *nesvnic = netdev_priv(netdev);
 	struct nes_device *nesdev = nesvnic->nesdev;
@@ -904,7 +902,7 @@ static void nes_netdev_set_multicast_list(struct net_device *netdev)
 		int i;
 		struct netdev_hw_addr *ha;
 
-		addrs = kmalloc(ETH_ALEN * mc_count, GFP_ATOMIC);
+		addrs = kmalloc_array(mc_count, ETH_ALEN, GFP_ATOMIC);
 		if (!addrs) {
 			set_allmulti(nesdev, nic_active_bit);
 			goto unlock;

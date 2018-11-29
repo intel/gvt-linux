@@ -240,10 +240,10 @@ static int mipi_dbi_fb_dirty(struct drm_framebuffer *fb,
 
 	mipi_dbi_command(mipi, MIPI_DCS_SET_COLUMN_ADDRESS,
 			 (clip.x1 >> 8) & 0xFF, clip.x1 & 0xFF,
-			 (clip.x2 >> 8) & 0xFF, (clip.x2 - 1) & 0xFF);
+			 ((clip.x2 - 1) >> 8) & 0xFF, (clip.x2 - 1) & 0xFF);
 	mipi_dbi_command(mipi, MIPI_DCS_SET_PAGE_ADDRESS,
 			 (clip.y1 >> 8) & 0xFF, clip.y1 & 0xFF,
-			 (clip.y2 >> 8) & 0xFF, (clip.y2 - 1) & 0xFF);
+			 ((clip.y2 - 1) >> 8) & 0xFF, (clip.y2 - 1) & 0xFF);
 
 	ret = mipi_dbi_command_buf(mipi, MIPI_DCS_WRITE_MEMORY_START, tr,
 				(clip.x2 - clip.x1) * (clip.y2 - clip.y1) * 2);
@@ -260,6 +260,8 @@ static const struct drm_framebuffer_funcs mipi_dbi_fb_funcs = {
 /**
  * mipi_dbi_enable_flush - MIPI DBI enable helper
  * @mipi: MIPI DBI structure
+ * @crtc_state: CRTC state
+ * @plane_state: Plane state
  *
  * This function sets &mipi_dbi->enabled, flushes the whole framebuffer and
  * enables the backlight. Drivers can use this in their

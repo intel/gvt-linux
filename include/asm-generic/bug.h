@@ -17,10 +17,8 @@
 #ifndef __ASSEMBLY__
 #include <linux/kernel.h>
 
-#ifdef CONFIG_BUG
-
-#ifdef CONFIG_GENERIC_BUG
 struct bug_entry {
+#ifdef CONFIG_GENERIC_BUG
 #ifndef CONFIG_GENERIC_BUG_RELATIVE_POINTERS
 	unsigned long	bug_addr;
 #else
@@ -35,8 +33,10 @@ struct bug_entry {
 	unsigned short	line;
 #endif
 	unsigned short	flags;
-};
 #endif	/* CONFIG_GENERIC_BUG */
+};
+
+#ifdef CONFIG_BUG
 
 /*
  * Don't use BUG() or BUG_ON() unless there's really no way out; one
@@ -75,9 +75,19 @@ struct bug_entry {
 
 /*
  * WARN(), WARN_ON(), WARN_ON_ONCE, and so on can be used to report
- * significant issues that need prompt attention if they should ever
- * appear at runtime.  Use the versions with printk format strings
- * to provide better diagnostics.
+ * significant kernel issues that need prompt attention if they should ever
+ * appear at runtime.
+ *
+ * Do not use these macros when checking for invalid external inputs
+ * (e.g. invalid system call arguments, or invalid data coming from
+ * network/devices), and on transient conditions like ENOMEM or EAGAIN.
+ * These macros should be used for recoverable kernel issues only.
+ * For invalid external inputs, transient conditions, etc use
+ * pr_err[_once/_ratelimited]() followed by dump_stack(), if necessary.
+ * Do not include "BUG"/"WARNING" in format strings manually to make these
+ * conditions distinguishable from kernel issues.
+ *
+ * Use the versions with printk format strings to provide better diagnostics.
  */
 #ifndef __WARN_TAINT
 extern __printf(3, 4)

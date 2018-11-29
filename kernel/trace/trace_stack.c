@@ -111,7 +111,7 @@ check_stack(unsigned long ip, unsigned long *stack)
 	stack_trace_max_size = this_size;
 
 	stack_trace_max.nr_entries = 0;
-	stack_trace_max.skip = 3;
+	stack_trace_max.skip = 0;
 
 	save_stack_trace(&stack_trace_max);
 
@@ -472,7 +472,7 @@ static __init int stack_trace_init(void)
 			NULL, &stack_trace_fops);
 
 #ifdef CONFIG_DYNAMIC_FTRACE
-	trace_create_file("stack_trace_filter", 0444, d_tracer,
+	trace_create_file("stack_trace_filter", 0644, d_tracer,
 			  &trace_ops, &stack_trace_filter_fops);
 #endif
 

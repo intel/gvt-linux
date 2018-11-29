@@ -334,6 +334,28 @@ static void release_shadow_wa_ctx(struct intel_shadow_wa_ctx *wa_ctx)
 	i915_gem_object_put(wa_ctx->indirect_ctx.obj);
 }
 
+static int set_context_ppgtt_from_shadow(struct intel_vgpu_workload *workload,
+					 struct i915_gem_context *ctx)
+{
+	struct intel_vgpu_mm *mm = workload->shadow_mm;
+	struct i915_hw_ppgtt *ppgtt = ctx->ppgtt;
+	int i = 0;
+
+	if (mm->type != INTEL_GVT_MM_PPGTT || !mm->ppgtt_mm.shadowed)
+		return -1;
+
+	if (mm->ppgtt_mm.root_entry_type == GTT_TYPE_PPGTT_ROOT_L4_ENTRY) {
+		px_dma(&ppgtt->pml4) = mm->ppgtt_mm.shadow_pdps[0];
+	} else {
+		for (i = 0; i < GVT_RING_CTX_NR_PDPS; i++) {
+			px_dma(ppgtt->pdp.page_directory[i]) =
+				mm->ppgtt_mm.shadow_pdps[i];
+		}
+	}
+
+	return 0;
+}
+
 /**
  * intel_gvt_scan_and_shadow_workload - audit the workload by scanning and
  * shadow it as well, include ringbuffer,wa_ctx and ctx.
@@ -357,6 +379,12 @@ int intel_gvt_scan_and_shadow_workload(struct intel_vgpu_workload *workload)
 
 	if (workload->req)
 		return 0;
+
+	ret = set_context_ppgtt_from_shadow(workload, shadow_ctx);
+	if (ret < 0) {
+		gvt_vgpu_err("workload shadow ppgtt isn't ready\n");
+		return ret;
+	}
 
 	/* pin shadow context by gvt even the shadow context will be pinned
 	 * when i915 alloc request. That is because gvt will update the guest
@@ -478,7 +506,11 @@ static int prepare_shadow_batch_buffer(struct intel_vgpu_workload *workload)
 			i915_gem_obj_finish_shmem_access(bb->obj);
 			bb->accessing = false;
 
-			i915_vma_move_to_active(bb->vma, workload->req, 0);
+			ret = i915_vma_move_to_active(bb->vma,
+						      workload->req,
+						      0);
+			if (ret)
+				goto err;
 		}
 	}
 	return 0;
@@ -782,7 +814,8 @@ static void update_guest_context(struct intel_vgpu_workload *workload)
 	kunmap(page);
 }
 
-static void clean_workloads(struct intel_vgpu *vgpu, unsigned long engine_mask)
+void intel_vgpu_clean_workloads(struct intel_vgpu *vgpu,
+				unsigned long engine_mask)
 {
 	struct intel_vgpu_submission *s = &vgpu->submission;
 	struct drm_i915_private *dev_priv = vgpu->gvt->dev_priv;
@@ -877,7 +910,7 @@ static void complete_current_workload(struct intel_gvt *gvt, int ring_id)
 		 * cleaned up during the resetting process later, so doing
 		 * the workload clean up here doesn't have any impact.
 		 **/
-		clean_workloads(vgpu, ENGINE_MASK(ring_id));
+		intel_vgpu_clean_workloads(vgpu, ENGINE_MASK(ring_id));
 	}
 
 	workload->complete(workload);
@@ -1079,7 +1112,7 @@ void intel_vgpu_reset_submission(struct intel_vgpu *vgpu,
 	if (!s->active)
 		return;
 
-	clean_workloads(vgpu, engine_mask);
+	intel_vgpu_clean_workloads(vgpu, engine_mask);
 	s->ops->reset(vgpu, engine_mask);
 }
 

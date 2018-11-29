@@ -351,7 +351,7 @@ static int igt_evict_contexts(void *arg)
 	 * where the GTT space of the request is separate from the GGTT
 	 * allocation required to build the request.
 	 */
-	if (!USES_FULL_PPGTT(i915))
+	if (!HAS_FULL_PPGTT(i915))
 		return 0;
 
 	mutex_lock(&i915->drm.struct_mutex);
@@ -490,7 +490,7 @@ int i915_gem_evict_mock_selftests(void)
 	err = i915_subtests(tests, i915);
 	mutex_unlock(&i915->drm.struct_mutex);
 
-	drm_dev_unref(&i915->drm);
+	drm_dev_put(&i915->drm);
 	return err;
 }
 
@@ -499,6 +499,9 @@ int i915_gem_evict_live_selftests(struct drm_i915_private *i915)
 	static const struct i915_subtest tests[] = {
 		SUBTEST(igt_evict_contexts),
 	};
+
+	if (i915_terminally_wedged(&i915->gpu_error))
+		return 0;
 
 	return i915_subtests(tests, i915);
 }

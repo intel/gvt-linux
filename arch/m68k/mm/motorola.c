@@ -18,7 +18,7 @@
 #include <linux/string.h>
 #include <linux/types.h>
 #include <linux/init.h>
-#include <linux/bootmem.h>
+#include <linux/memblock.h>
 #include <linux/gfp.h>
 
 #include <asm/setup.h>
@@ -54,7 +54,7 @@ static pte_t * __init kernel_page_table(void)
 {
 	pte_t *ptablep;
 
-	ptablep = (pte_t *)alloc_bootmem_low_pages(PAGE_SIZE);
+	ptablep = (pte_t *)memblock_alloc_low(PAGE_SIZE, PAGE_SIZE);
 
 	clear_page(ptablep);
 	__flush_page_to_ram(ptablep);
@@ -94,7 +94,8 @@ static pmd_t * __init kernel_ptr_table(void)
 
 	last_pgtable += PTRS_PER_PMD;
 	if (((unsigned long)last_pgtable & ~PAGE_MASK) == 0) {
-		last_pgtable = (pmd_t *)alloc_bootmem_low_pages(PAGE_SIZE);
+		last_pgtable = (pmd_t *)memblock_alloc_low(PAGE_SIZE,
+							   PAGE_SIZE);
 
 		clear_page(last_pgtable);
 		__flush_page_to_ram(last_pgtable);
@@ -208,7 +209,7 @@ void __init paging_init(void)
 {
 	unsigned long zones_size[MAX_NR_ZONES] = { 0, };
 	unsigned long min_addr, max_addr;
-	unsigned long addr, size, end;
+	unsigned long addr;
 	int i;
 
 #ifdef DEBUG
@@ -253,34 +254,20 @@ void __init paging_init(void)
 	min_low_pfn = availmem >> PAGE_SHIFT;
 	max_pfn = max_low_pfn = max_addr >> PAGE_SHIFT;
 
-	for (i = 0; i < m68k_num_memory; i++) {
-		addr = m68k_memory[i].addr;
-		end = addr + m68k_memory[i].size;
-		m68k_setup_node(i);
-		availmem = PAGE_ALIGN(availmem);
-		availmem += init_bootmem_node(NODE_DATA(i),
-					      availmem >> PAGE_SHIFT,
-					      addr >> PAGE_SHIFT,
-					      end >> PAGE_SHIFT);
-	}
+	/* Reserve kernel text/data/bss and the memory allocated in head.S */
+	memblock_reserve(m68k_memory[0].addr, availmem - m68k_memory[0].addr);
 
 	/*
 	 * Map the physical memory available into the kernel virtual
-	 * address space. First initialize the bootmem allocator with
-	 * the memory we already mapped, so map_node() has something
-	 * to allocate.
+	 * address space. Make sure memblock will not try to allocate
+	 * pages beyond the memory we already mapped in head.S
 	 */
-	addr = m68k_memory[0].addr;
-	size = m68k_memory[0].size;
-	free_bootmem_node(NODE_DATA(0), availmem,
-			  min(m68k_init_mapped_size, size) - (availmem - addr));
-	map_node(0);
-	if (size > m68k_init_mapped_size)
-		free_bootmem_node(NODE_DATA(0), addr + m68k_init_mapped_size,
-				  size - m68k_init_mapped_size);
+	memblock_set_bottom_up(true);
 
-	for (i = 1; i < m68k_num_memory; i++)
+	for (i = 0; i < m68k_num_memory; i++) {
+		m68k_setup_node(i);
 		map_node(i);
+	}
 
 	flush_tlb_all();
 
@@ -288,7 +275,7 @@ void __init paging_init(void)
 	 * initialize the bad page table and bad page to point
 	 * to a couple of allocated pages
 	 */
-	empty_zero_page = alloc_bootmem_pages(PAGE_SIZE);
+	empty_zero_page = memblock_alloc(PAGE_SIZE, PAGE_SIZE);
 
 	/*
 	 * Set up SFC/DFC registers

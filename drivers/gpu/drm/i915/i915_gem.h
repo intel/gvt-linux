@@ -47,17 +47,19 @@ struct drm_i915_private;
 #define GEM_DEBUG_DECL(var) var
 #define GEM_DEBUG_EXEC(expr) expr
 #define GEM_DEBUG_BUG_ON(expr) GEM_BUG_ON(expr)
+#define GEM_DEBUG_WARN_ON(expr) GEM_WARN_ON(expr)
 
 #else
 
 #define GEM_SHOW_DEBUG() (0)
 
 #define GEM_BUG_ON(expr) BUILD_BUG_ON_INVALID(expr)
-#define GEM_WARN_ON(expr) (BUILD_BUG_ON_INVALID(expr), 0)
+#define GEM_WARN_ON(expr) ({ unlikely(!!(expr)); })
 
 #define GEM_DEBUG_DECL(var)
 #define GEM_DEBUG_EXEC(expr) do { } while (0)
 #define GEM_DEBUG_BUG_ON(expr)
+#define GEM_DEBUG_WARN_ON(expr) ({ BUILD_BUG_ON_INVALID(expr); 0; })
 #endif
 
 #if IS_ENABLED(CONFIG_DRM_I915_TRACE_GEM)
@@ -82,10 +84,9 @@ static inline void __tasklet_disable_sync_once(struct tasklet_struct *t)
 		tasklet_unlock_wait(t);
 }
 
-static inline void __tasklet_enable_sync_once(struct tasklet_struct *t)
+static inline bool __tasklet_is_enabled(const struct tasklet_struct *t)
 {
-	if (atomic_dec_return(&t->count) == 0)
-		tasklet_kill(t);
+	return !atomic_read(&t->count);
 }
 
 #endif /* __I915_GEM_H__ */

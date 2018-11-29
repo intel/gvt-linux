@@ -19,8 +19,6 @@
 #include <drm/drm_atomic_helper.h>
 #include <drm/drm_crtc_helper.h>
 #include <drm/drm_plane_helper.h>
-#include <drm/drm_fb_helper.h>
-#include <drm/drm_fb_cma_helper.h>
 #include <drm/drm_gem_framebuffer_helper.h>
 #include "vc4_drv.h"
 #include "vc4_regs.h"
@@ -153,18 +151,11 @@ vc4_atomic_complete_commit(struct drm_atomic_state *state)
 
 	drm_atomic_helper_commit_modeset_enables(dev, state);
 
-	/* Make sure that drm_atomic_helper_wait_for_vblanks()
-	 * actually waits for vblank.  If we're doing a full atomic
-	 * modeset (as opposed to a vc4_update_plane() short circuit),
-	 * then we need to wait for scanout to be done with our
-	 * display lists before we free it and potentially reallocate
-	 * and overwrite the dlist memory with a new modeset.
-	 */
-	state->legacy_cursor_update = false;
+	drm_atomic_helper_fake_vblank(state);
 
 	drm_atomic_helper_commit_hw_done(state);
 
-	drm_atomic_helper_wait_for_vblanks(dev, state);
+	drm_atomic_helper_wait_for_flip_done(dev, state);
 
 	drm_atomic_helper_cleanup_planes(dev, state);
 
@@ -401,7 +392,6 @@ vc4_atomic_check(struct drm_device *dev, struct drm_atomic_state *state)
 }
 
 static const struct drm_mode_config_funcs vc4_mode_funcs = {
-	.output_poll_changed = drm_fb_helper_output_poll_changed,
 	.atomic_check = vc4_atomic_check,
 	.atomic_commit = vc4_atomic_commit,
 	.fb_create = vc4_fb_create,
@@ -440,9 +430,6 @@ int vc4_kms_load(struct drm_device *dev)
 				    &vc4_ctm_state_funcs);
 
 	drm_mode_config_reset(dev);
-
-	if (dev->mode_config.num_connector)
-		drm_fb_cma_fbdev_init(dev, 32, 0);
 
 	drm_kms_helper_poll_init(dev);
 

@@ -31,7 +31,7 @@
 #include "dml/display_mode_structs.h"
 
 struct dchub_init_data;
-struct cstate_pstate_watermarks_st {
+struct cstate_pstate_watermarks_st1 {
 	uint32_t cstate_exit_ns;
 	uint32_t cstate_enter_plus_exit_ns;
 	uint32_t pstate_change_ns;
@@ -40,7 +40,7 @@ struct cstate_pstate_watermarks_st {
 struct dcn_watermarks {
 	uint32_t pte_meta_urgent_ns;
 	uint32_t urgent_ns;
-	struct cstate_pstate_watermarks_st cstate_pstate;
+	struct cstate_pstate_watermarks_st1 cstate_pstate;
 };
 
 struct dcn_watermark_set {
@@ -64,7 +64,7 @@ struct stutter_modes {
 };
 
 struct mem_input {
-	struct mem_input_funcs *funcs;
+	const struct mem_input_funcs *funcs;
 	struct dc_context *ctx;
 	struct dc_plane_address request_address;
 	struct dc_plane_address current_address;
@@ -104,6 +104,7 @@ struct mem_input_funcs {
 		struct mem_input *mem_input,
 		struct dce_watermarks nbp,
 		struct dce_watermarks stutter,
+		struct dce_watermarks stutter_enter,
 		struct dce_watermarks urgent,
 		uint32_t total_dest_line_time_ns);
 

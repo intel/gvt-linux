@@ -140,6 +140,28 @@ const unsigned int amdtp_rate_table[CIP_SFC_COUNT] = {
 };
 EXPORT_SYMBOL(amdtp_rate_table);
 
+static int apply_constraint_to_size(struct snd_pcm_hw_params *params,
+				    struct snd_pcm_hw_rule *rule)
+{
+	struct snd_interval *s = hw_param_interval(params, rule->var);
+	const struct snd_interval *r =
+		hw_param_interval_c(params, SNDRV_PCM_HW_PARAM_RATE);
+	struct snd_interval t = {0};
+	unsigned int step = 0;
+	int i;
+
+	for (i = 0; i < CIP_SFC_COUNT; ++i) {
+		if (snd_interval_test(r, amdtp_rate_table[i]))
+			step = max(step, amdtp_syt_intervals[i]);
+	}
+
+	t.min = roundup(s->min, step);
+	t.max = rounddown(s->max, step);
+	t.integer = 1;
+
+	return snd_interval_refine(s, &t);
+}
+
 /**
  * amdtp_stream_add_pcm_hw_constraints - add hw constraints for PCM substream
  * @s:		the AMDTP stream, which must be initialized.
@@ -194,16 +216,19 @@ int amdtp_stream_add_pcm_hw_constraints(struct amdtp_stream *s,
 	 * number equals to SYT_INTERVAL. So the number is 8, 16 or 32,
 	 * depending on its sampling rate. For accurate period interrupt, it's
 	 * preferrable to align period/buffer sizes to current SYT_INTERVAL.
-	 *
-	 * TODO: These constraints can be improved with proper rules.
-	 * Currently apply LCM of SYT_INTERVALs.
 	 */
-	err = snd_pcm_hw_constraint_step(runtime, 0,
-					 SNDRV_PCM_HW_PARAM_PERIOD_SIZE, 32);
+	err = snd_pcm_hw_rule_add(runtime, 0, SNDRV_PCM_HW_PARAM_PERIOD_SIZE,
+				  apply_constraint_to_size, NULL,
+				  SNDRV_PCM_HW_PARAM_PERIOD_SIZE,
+				  SNDRV_PCM_HW_PARAM_RATE, -1);
 	if (err < 0)
 		goto end;
-	err = snd_pcm_hw_constraint_step(runtime, 0,
-					 SNDRV_PCM_HW_PARAM_BUFFER_SIZE, 32);
+	err = snd_pcm_hw_rule_add(runtime, 0, SNDRV_PCM_HW_PARAM_BUFFER_SIZE,
+				  apply_constraint_to_size, NULL,
+				  SNDRV_PCM_HW_PARAM_BUFFER_SIZE,
+				  SNDRV_PCM_HW_PARAM_RATE, -1);
+	if (err < 0)
+		goto end;
 end:
 	return err;
 }
@@ -773,8 +798,6 @@ static void amdtp_stream_first_callback(struct fw_iso_context *context,
 	u32 cycle;
 	unsigned int packets;
 
-	s->max_payload_length = amdtp_stream_get_max_payload(s);
-
 	/*
 	 * For in-stream, first packet has come.
 	 * For out-stream, prepared to transmit first packet
@@ -878,6 +901,9 @@ int amdtp_stream_start(struct amdtp_stream *s, int channel, int speed)
 	}
 
 	amdtp_stream_update(s);
+
+	if (s->direction == AMDTP_IN_STREAM)
+		s->max_payload_length = amdtp_stream_get_max_payload(s);
 
 	if (s->flags & CIP_NO_HEADER)
 		s->tag = TAG_NO_CIP_HEADER;

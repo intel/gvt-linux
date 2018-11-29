@@ -26,6 +26,7 @@
 
 #include <linux/compiler.h>
 #include <linux/rbtree.h>
+#include <linux/rcupdate.h>
 
 /*
  * Please note - only struct rb_augment_callbacks and the prototypes for
@@ -50,8 +51,8 @@ extern void __rb_insert_augmented(struct rb_node *node,
  *
  * On insertion, the user must update the augmented information on the path
  * leading to the inserted node, then call rb_link_node() as usual and
- * rb_augment_inserted() instead of the usual rb_insert_color() call.
- * If rb_augment_inserted() rebalances the rbtree, it will callback into
+ * rb_insert_augmented() instead of the usual rb_insert_color() call.
+ * If rb_insert_augmented() rebalances the rbtree, it will callback into
  * a user provided function to update the augmented information on the
  * affected subtrees.
  */

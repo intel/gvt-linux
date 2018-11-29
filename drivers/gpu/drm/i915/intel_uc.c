@@ -171,24 +171,11 @@ void intel_uc_init_early(struct drm_i915_private *i915)
 	intel_huc_init_early(huc);
 
 	sanitize_options_early(i915);
-
-	if (USES_GUC(i915))
-		intel_uc_fw_fetch(i915, &guc->fw);
-
-	if (USES_HUC(i915))
-		intel_uc_fw_fetch(i915, &huc->fw);
 }
 
 void intel_uc_cleanup_early(struct drm_i915_private *i915)
 {
 	struct intel_guc *guc = &i915->guc;
-	struct intel_huc *huc = &i915->huc;
-
-	if (USES_HUC(i915))
-		intel_uc_fw_fini(&huc->fw);
-
-	if (USES_GUC(i915))
-		intel_uc_fw_fini(&guc->fw);
 
 	guc_free_load_err_log(guc);
 }
@@ -207,7 +194,7 @@ void intel_uc_init_mmio(struct drm_i915_private *i915)
 
 static void guc_capture_load_err_log(struct intel_guc *guc)
 {
-	if (!guc->log.vma || !i915_modparams.guc_log_level)
+	if (!guc->log.vma || !intel_guc_log_get_level(&guc->log))
 		return;
 
 	if (!guc->load_err_log)
@@ -252,28 +239,41 @@ static void guc_disable_communication(struct intel_guc *guc)
 int intel_uc_init_misc(struct drm_i915_private *i915)
 {
 	struct intel_guc *guc = &i915->guc;
+	struct intel_huc *huc = &i915->huc;
 	int ret;
 
 	if (!USES_GUC(i915))
 		return 0;
 
-	intel_guc_init_ggtt_pin_bias(guc);
-
-	ret = intel_guc_init_wq(guc);
+	ret = intel_guc_init_misc(guc);
 	if (ret)
 		return ret;
 
+	if (USES_HUC(i915)) {
+		ret = intel_huc_init_misc(huc);
+		if (ret)
+			goto err_guc;
+	}
+
 	return 0;
+
+err_guc:
+	intel_guc_fini_misc(guc);
+	return ret;
 }
 
 void intel_uc_fini_misc(struct drm_i915_private *i915)
 {
 	struct intel_guc *guc = &i915->guc;
+	struct intel_huc *huc = &i915->huc;
 
 	if (!USES_GUC(i915))
 		return;
 
-	intel_guc_fini_wq(guc);
+	if (USES_HUC(i915))
+		intel_huc_fini_misc(huc);
+
+	intel_guc_fini_misc(guc);
 }
 
 int intel_uc_init(struct drm_i915_private *i915)
@@ -376,7 +376,7 @@ int intel_uc_init_hw(struct drm_i915_private *i915)
 
 		intel_guc_init_params(guc);
 		ret = intel_guc_fw_upload(guc);
-		if (ret == 0 || ret != -EAGAIN)
+		if (ret == 0 || ret != -ETIMEDOUT)
 			break;
 
 		DRM_DEBUG_DRIVER("GuC fw load failed: %d; will reset and "
@@ -399,6 +399,10 @@ int intel_uc_init_hw(struct drm_i915_private *i915)
 
 	if (USES_GUC_SUBMISSION(i915)) {
 		ret = intel_guc_submission_enable(guc);
+		if (ret)
+			goto err_communication;
+	} else if (INTEL_GEN(i915) < 11) {
+		ret = intel_guc_sample_forcewake(guc);
 		if (ret)
 			goto err_communication;
 	}

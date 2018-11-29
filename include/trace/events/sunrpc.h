@@ -224,6 +224,8 @@ TRACE_EVENT(rpc_stats_latency,
 	TP_ARGS(task, backlog, rtt, execute),
 
 	TP_STRUCT__entry(
+		__field(unsigned int, task_id)
+		__field(unsigned int, client_id)
 		__field(u32, xid)
 		__field(int, version)
 		__string(progname, task->tk_client->cl_program->name)
@@ -231,13 +233,11 @@ TRACE_EVENT(rpc_stats_latency,
 		__field(unsigned long, backlog)
 		__field(unsigned long, rtt)
 		__field(unsigned long, execute)
-		__string(addr,
-			 task->tk_xprt->address_strings[RPC_DISPLAY_ADDR])
-		__string(port,
-			 task->tk_xprt->address_strings[RPC_DISPLAY_PORT])
 	),
 
 	TP_fast_assign(
+		__entry->client_id = task->tk_client->cl_clid;
+		__entry->task_id = task->tk_pid;
 		__entry->xid = be32_to_cpu(task->tk_rqstp->rq_xid);
 		__entry->version = task->tk_client->cl_vers;
 		__assign_str(progname, task->tk_client->cl_program->name)
@@ -245,14 +245,10 @@ TRACE_EVENT(rpc_stats_latency,
 		__entry->backlog = ktime_to_us(backlog);
 		__entry->rtt = ktime_to_us(rtt);
 		__entry->execute = ktime_to_us(execute);
-		__assign_str(addr,
-			     task->tk_xprt->address_strings[RPC_DISPLAY_ADDR]);
-		__assign_str(port,
-			     task->tk_xprt->address_strings[RPC_DISPLAY_PORT]);
 	),
 
-	TP_printk("peer=[%s]:%s xid=0x%08x %sv%d %s backlog=%lu rtt=%lu execute=%lu",
-		__get_str(addr), __get_str(port), __entry->xid,
+	TP_printk("task:%u@%d xid=0x%08x %sv%d %s backlog=%lu rtt=%lu execute=%lu",
+		__entry->task_id, __entry->client_id, __entry->xid,
 		__get_str(progname), __entry->version, __get_str(procname),
 		__entry->backlog, __entry->rtt, __entry->execute)
 );
@@ -474,14 +470,14 @@ TRACE_EVENT(xprt_ping,
 			__get_str(addr), __get_str(port), __entry->status)
 );
 
-TRACE_EVENT(xs_tcp_data_ready,
-	TP_PROTO(struct rpc_xprt *xprt, int err, unsigned int total),
+TRACE_EVENT(xs_stream_read_data,
+	TP_PROTO(struct rpc_xprt *xprt, ssize_t err, size_t total),
 
 	TP_ARGS(xprt, err, total),
 
 	TP_STRUCT__entry(
-		__field(int, err)
-		__field(unsigned int, total)
+		__field(ssize_t, err)
+		__field(size_t, total)
 		__string(addr, xprt ? xprt->address_strings[RPC_DISPLAY_ADDR] :
 				"(null)")
 		__string(port, xprt ? xprt->address_strings[RPC_DISPLAY_PORT] :
@@ -497,21 +493,11 @@ TRACE_EVENT(xs_tcp_data_ready,
 			xprt->address_strings[RPC_DISPLAY_PORT] : "(null)");
 	),
 
-	TP_printk("peer=[%s]:%s err=%d total=%u", __get_str(addr),
+	TP_printk("peer=[%s]:%s err=%zd total=%zu", __get_str(addr),
 			__get_str(port), __entry->err, __entry->total)
 );
 
-#define rpc_show_sock_xprt_flags(flags) \
-	__print_flags(flags, "|", \
-		{ TCP_RCV_LAST_FRAG, "TCP_RCV_LAST_FRAG" }, \
-		{ TCP_RCV_COPY_FRAGHDR, "TCP_RCV_COPY_FRAGHDR" }, \
-		{ TCP_RCV_COPY_XID, "TCP_RCV_COPY_XID" }, \
-		{ TCP_RCV_COPY_DATA, "TCP_RCV_COPY_DATA" }, \
-		{ TCP_RCV_READ_CALLDIR, "TCP_RCV_READ_CALLDIR" }, \
-		{ TCP_RCV_COPY_CALLDIR, "TCP_RCV_COPY_CALLDIR" }, \
-		{ TCP_RPC_REPLY, "TCP_RPC_REPLY" })
-
-TRACE_EVENT(xs_tcp_data_recv,
+TRACE_EVENT(xs_stream_read_request,
 	TP_PROTO(struct sock_xprt *xs),
 
 	TP_ARGS(xs),
@@ -520,25 +506,22 @@ TRACE_EVENT(xs_tcp_data_recv,
 		__string(addr, xs->xprt.address_strings[RPC_DISPLAY_ADDR])
 		__string(port, xs->xprt.address_strings[RPC_DISPLAY_PORT])
 		__field(u32, xid)
-		__field(unsigned long, flags)
 		__field(unsigned long, copied)
 		__field(unsigned int, reclen)
-		__field(unsigned long, offset)
+		__field(unsigned int, offset)
 	),
 
 	TP_fast_assign(
 		__assign_str(addr, xs->xprt.address_strings[RPC_DISPLAY_ADDR]);
 		__assign_str(port, xs->xprt.address_strings[RPC_DISPLAY_PORT]);
-		__entry->xid = be32_to_cpu(xs->tcp_xid);
-		__entry->flags = xs->tcp_flags;
-		__entry->copied = xs->tcp_copied;
-		__entry->reclen = xs->tcp_reclen;
-		__entry->offset = xs->tcp_offset;
+		__entry->xid = be32_to_cpu(xs->recv.xid);
+		__entry->copied = xs->recv.copied;
+		__entry->reclen = xs->recv.len;
+		__entry->offset = xs->recv.offset;
 	),
 
-	TP_printk("peer=[%s]:%s xid=0x%08x flags=%s copied=%lu reclen=%u offset=%lu",
+	TP_printk("peer=[%s]:%s xid=0x%08x copied=%lu reclen=%u offset=%u",
 			__get_str(addr), __get_str(port), __entry->xid,
-			rpc_show_sock_xprt_flags(__entry->flags),
 			__entry->copied, __entry->reclen, __entry->offset)
 );
 

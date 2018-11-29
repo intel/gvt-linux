@@ -40,6 +40,8 @@ static void sti_crtc_atomic_disable(struct drm_crtc *crtc,
 	DRM_DEBUG_DRIVER("\n");
 
 	mixer->status = STI_MIXER_DISABLING;
+
+	drm_crtc_wait_one_vblank(crtc);
 }
 
 static int
@@ -357,7 +359,7 @@ int sti_crtc_init(struct drm_device *drm_dev, struct sti_mixer *mixer,
 	res = drm_crtc_init_with_planes(drm_dev, crtc, primary, cursor,
 					&sti_crtc_funcs, NULL);
 	if (res) {
-		DRM_ERROR("Can't initialze CRTC\n");
+		DRM_ERROR("Can't initialize CRTC\n");
 		return -EINVAL;
 	}
 

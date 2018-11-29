@@ -209,15 +209,12 @@ v3d_flush_caches(struct v3d_dev *v3d)
 static void
 v3d_attach_object_fences(struct v3d_exec_info *exec)
 {
-	struct dma_fence *out_fence = &exec->render.base.s_fence->finished;
-	struct v3d_bo *bo;
+	struct dma_fence *out_fence = exec->render_done_fence;
 	int i;
 
 	for (i = 0; i < exec->bo_count; i++) {
-		bo = to_v3d_bo(&exec->bo[i]->base);
-
 		/* XXX: Use shared fences for read-only objects. */
-		reservation_object_add_excl_fence(bo->resv, out_fence);
+		reservation_object_add_excl_fence(exec->bo[i]->resv, out_fence);
 	}
 }
 
@@ -228,11 +225,8 @@ v3d_unlock_bo_reservations(struct drm_device *dev,
 {
 	int i;
 
-	for (i = 0; i < exec->bo_count; i++) {
-		struct v3d_bo *bo = to_v3d_bo(&exec->bo[i]->base);
-
-		ww_mutex_unlock(&bo->resv->lock);
-	}
+	for (i = 0; i < exec->bo_count; i++)
+		ww_mutex_unlock(&exec->bo[i]->resv->lock);
 
 	ww_acquire_fini(acquire_ctx);
 }
@@ -251,13 +245,13 @@ v3d_lock_bo_reservations(struct drm_device *dev,
 {
 	int contended_lock = -1;
 	int i, ret;
-	struct v3d_bo *bo;
 
 	ww_acquire_init(acquire_ctx, &reservation_ww_class);
 
 retry:
 	if (contended_lock != -1) {
-		bo = to_v3d_bo(&exec->bo[contended_lock]->base);
+		struct v3d_bo *bo = exec->bo[contended_lock];
+
 		ret = ww_mutex_lock_slow_interruptible(&bo->resv->lock,
 						       acquire_ctx);
 		if (ret) {
@@ -270,19 +264,16 @@ retry:
 		if (i == contended_lock)
 			continue;
 
-		bo = to_v3d_bo(&exec->bo[i]->base);
-
-		ret = ww_mutex_lock_interruptible(&bo->resv->lock, acquire_ctx);
+		ret = ww_mutex_lock_interruptible(&exec->bo[i]->resv->lock,
+						  acquire_ctx);
 		if (ret) {
 			int j;
 
-			for (j = 0; j < i; j++) {
-				bo = to_v3d_bo(&exec->bo[j]->base);
-				ww_mutex_unlock(&bo->resv->lock);
-			}
+			for (j = 0; j < i; j++)
+				ww_mutex_unlock(&exec->bo[j]->resv->lock);
 
 			if (contended_lock != -1 && contended_lock >= i) {
-				bo = to_v3d_bo(&exec->bo[contended_lock]->base);
+				struct v3d_bo *bo = exec->bo[contended_lock];
 
 				ww_mutex_unlock(&bo->resv->lock);
 			}
@@ -303,9 +294,7 @@ retry:
 	 * before we commit the CL to the hardware.
 	 */
 	for (i = 0; i < exec->bo_count; i++) {
-		bo = to_v3d_bo(&exec->bo[i]->base);
-
-		ret = reservation_object_reserve_shared(bo->resv);
+		ret = reservation_object_reserve_shared(exec->bo[i]->resv, 1);
 		if (ret) {
 			v3d_unlock_bo_reservations(dev, exec, acquire_ctx);
 			return ret;
@@ -409,6 +398,7 @@ v3d_exec_cleanup(struct kref *ref)
 	dma_fence_put(exec->render.done_fence);
 
 	dma_fence_put(exec->bin_done_fence);
+	dma_fence_put(exec->render_done_fence);
 
 	for (i = 0; i < exec->bo_count; i++)
 		drm_gem_object_put_unlocked(&exec->bo[i]->base);
@@ -521,12 +511,12 @@ v3d_submit_cl_ioctl(struct drm_device *dev, void *data,
 	kref_init(&exec->refcount);
 
 	ret = drm_syncobj_find_fence(file_priv, args->in_sync_bcl,
-				     0, &exec->bin.in_fence);
+				     0, 0, &exec->bin.in_fence);
 	if (ret == -EINVAL)
 		goto fail;
 
 	ret = drm_syncobj_find_fence(file_priv, args->in_sync_rcl,
-				     0, &exec->render.in_fence);
+				     0, 0, &exec->render.in_fence);
 	if (ret == -EINVAL)
 		goto fail;
 
@@ -572,6 +562,9 @@ v3d_submit_cl_ioctl(struct drm_device *dev, void *data,
 	if (ret)
 		goto fail_unreserve;
 
+	exec->render_done_fence =
+		dma_fence_get(&exec->render.base.s_fence->finished);
+
 	kref_get(&exec->refcount); /* put by scheduler job completion */
 	drm_sched_entity_push_job(&exec->render.base,
 				  &v3d_priv->sched_entity[V3D_RENDER]);
@@ -585,7 +578,7 @@ v3d_submit_cl_ioctl(struct drm_device *dev, void *data,
 	sync_out = drm_syncobj_find(file_priv, args->out_sync);
 	if (sync_out) {
 		drm_syncobj_replace_fence(sync_out, 0,
-					  &exec->render.base.s_fence->finished);
+					  exec->render_done_fence);
 		drm_syncobj_put(sync_out);
 	}
 

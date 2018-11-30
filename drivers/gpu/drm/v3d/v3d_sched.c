@@ -35,11 +35,13 @@ v3d_job_free(struct drm_sched_job *sched_job)
 {
 	struct v3d_job *job = to_v3d_job(sched_job);
 
+	drm_sched_job_cleanup(sched_job);
+
 	v3d_exec_put(job->exec);
 }
 
 /**
- * Returns the fences that the bin job depends on, one by one.
+ * Returns the fences that the bin or render job depends on, one by one.
  * v3d_job_run() won't be called until all of them have been signaled.
  */
 static struct dma_fence *
@@ -167,9 +169,6 @@ v3d_job_timedout(struct drm_sched_job *sched_job)
 	if (job->timedout_ctca != ctca || job->timedout_ctra != ctra) {
 		job->timedout_ctca = ctca;
 		job->timedout_ctra = ctra;
-
-		schedule_delayed_work(&job->base.sched->work_tdr,
-				      job->base.sched->timeout);
 		return;
 	}
 

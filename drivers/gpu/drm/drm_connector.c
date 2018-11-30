@@ -260,9 +260,7 @@ int drm_connector_init(struct drm_device *dev,
 
 	if (connector_type != DRM_MODE_CONNECTOR_VIRTUAL &&
 	    connector_type != DRM_MODE_CONNECTOR_WRITEBACK)
-		drm_object_attach_property(&connector->base,
-					      config->edid_property,
-					      0);
+		drm_connector_attach_edid_property(connector);
 
 	drm_object_attach_property(&connector->base,
 				      config->dpms_property, 0);
@@ -293,6 +291,24 @@ out_put:
 	return ret;
 }
 EXPORT_SYMBOL(drm_connector_init);
+
+/**
+ * drm_connector_attach_edid_property - attach edid property.
+ * @connector: the connector
+ *
+ * Some connector types like DRM_MODE_CONNECTOR_VIRTUAL do not get a
+ * edid property attached by default.  This function can be used to
+ * explicitly enable the edid property in these cases.
+ */
+void drm_connector_attach_edid_property(struct drm_connector *connector)
+{
+	struct drm_mode_config *config = &connector->dev->mode_config;
+
+	drm_object_attach_property(&connector->base,
+				   config->edid_property,
+				   0);
+}
+EXPORT_SYMBOL(drm_connector_attach_edid_property);
 
 /**
  * drm_connector_attach_encoder - attach a connector to an encoder
@@ -915,6 +931,13 @@ DRM_ENUM_NAME_FN(drm_get_content_protection_name, drm_cp_enum_list)
  *	  the value transitions from ENABLED to DESIRED. This signifies the link
  *	  is no longer protected and userspace should take appropriate action
  *	  (whatever that might be).
+ *
+ * max bpc:
+ *	This range property is used by userspace to limit the bit depth. When
+ *	used the driver would limit the bpc in accordance with the valid range
+ *	supported by the hardware and sink. Drivers to use the function
+ *	drm_connector_attach_max_bpc_property() to create and attach the
+ *	property to the connector during initialization.
  *
  * Connectors also have one standardized atomic property:
  *
@@ -1582,6 +1605,40 @@ void drm_connector_set_link_status_property(struct drm_connector *connector,
 	drm_modeset_unlock(&dev->mode_config.connection_mutex);
 }
 EXPORT_SYMBOL(drm_connector_set_link_status_property);
+
+/**
+ * drm_connector_attach_max_bpc_property - attach "max bpc" property
+ * @connector: connector to attach max bpc property on.
+ * @min: The minimum bit depth supported by the connector.
+ * @max: The maximum bit depth supported by the connector.
+ *
+ * This is used to add support for limiting the bit depth on a connector.
+ *
+ * Returns:
+ * Zero on success, negative errno on failure.
+ */
+int drm_connector_attach_max_bpc_property(struct drm_connector *connector,
+					  int min, int max)
+{
+	struct drm_device *dev = connector->dev;
+	struct drm_property *prop;
+
+	prop = connector->max_bpc_property;
+	if (!prop) {
+		prop = drm_property_create_range(dev, 0, "max bpc", min, max);
+		if (!prop)
+			return -ENOMEM;
+
+		connector->max_bpc_property = prop;
+	}
+
+	drm_object_attach_property(&connector->base, prop, max);
+	connector->state->max_requested_bpc = max;
+	connector->state->max_bpc = max;
+
+	return 0;
+}
+EXPORT_SYMBOL(drm_connector_attach_max_bpc_property);
 
 /**
  * drm_connector_init_panel_orientation_property -

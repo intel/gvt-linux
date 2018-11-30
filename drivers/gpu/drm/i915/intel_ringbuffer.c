@@ -546,10 +546,11 @@ static int init_ring_common(struct intel_engine_cs *engine)
 	/* Check that the ring offsets point within the ring! */
 	GEM_BUG_ON(!intel_ring_offset_valid(ring, ring->head));
 	GEM_BUG_ON(!intel_ring_offset_valid(ring, ring->tail));
-
 	intel_ring_update_space(ring);
+
+	/* First wake the ring up to an empty/idle ring */
 	I915_WRITE_HEAD(engine, ring->head);
-	I915_WRITE_TAIL(engine, ring->tail);
+	I915_WRITE_TAIL(engine, ring->head);
 	(void)I915_READ_TAIL(engine);
 
 	I915_WRITE_CTL(engine, RING_CTL_SIZE(ring->size) | RING_VALID);
@@ -573,6 +574,12 @@ static int init_ring_common(struct intel_engine_cs *engine)
 
 	if (INTEL_GEN(dev_priv) > 2)
 		I915_WRITE_MODE(engine, _MASKED_BIT_DISABLE(STOP_RING));
+
+	/* Now awake, let it get started */
+	if (ring->tail != ring->head) {
+		I915_WRITE_TAIL(engine, ring->tail);
+		(void)I915_READ_TAIL(engine);
+	}
 
 	/* Papering over lost _interrupts_ immediately following the restart */
 	intel_engine_wakeup(engine);
@@ -659,8 +666,6 @@ static int init_render_ring(struct intel_engine_cs *engine)
 	int ret = init_ring_common(engine);
 	if (ret)
 		return ret;
-
-	intel_whitelist_workarounds_apply(engine);
 
 	/* WaTimedSingleVertexDispatch:cl,bw,ctg,elk,ilk,snb */
 	if (IS_GEN(dev_priv, 4, 6))

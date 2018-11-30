@@ -384,11 +384,6 @@ static int kbl_ctx_workarounds_init(struct drm_i915_private *dev_priv)
 	if (ret)
 		return ret;
 
-	/* WaDisableFenceDestinationToSLM:kbl (pre-prod) */
-	if (IS_KBL_REVID(dev_priv, KBL_REVID_A0, KBL_REVID_A0))
-		WA_SET_BIT_MASKED(HDC_CHICKEN0,
-				  HDC_FENCE_DEST_SLM_DISABLE);
-
 	/* WaToEnableHwFixForPushConstHWBug:kbl */
 	if (IS_KBL_REVID(dev_priv, KBL_REVID_C0, REVID_FOREVER))
 		WA_SET_BIT_MASKED(COMMON_SLICE_CHICKEN2,
@@ -886,11 +881,6 @@ static void icl_gt_workarounds_apply(struct drm_i915_private *dev_priv)
 	I915_WRITE(SUBSLICE_UNIT_LEVEL_CLKGATE,
 		   I915_READ(SUBSLICE_UNIT_LEVEL_CLKGATE) |
 		   GWUNIT_CLKGATE_DIS);
-
-	/* Wa_1604302699:icl */
-	I915_WRITE(GEN10_L3_CHICKEN_MODE_REGISTER,
-		   I915_READ(GEN10_L3_CHICKEN_MODE_REGISTER) |
-		   GEN11_I2M_WRITE_DISABLE);
 
 	/* Wa_1406838659:icl (pre-prod) */
 	if (IS_ICL_REVID(dev_priv, ICL_REVID_A0, ICL_REVID_B0))

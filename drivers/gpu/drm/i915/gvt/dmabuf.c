@@ -373,6 +373,19 @@ int intel_vgpu_query_plane(struct intel_vgpu *vgpu, void *args)
 	struct intel_vgpu_fb_info fb_info;
 	int ret = 0;
 
+	if (gfx_plane_info->flags == (VFIO_GFX_PLANE_TYPE_DRM_FB |
+				       VFIO_GFX_PLANE_TYPE_PROBE)) {
+		if (gfx_plane_info->drm_plane_type == DRM_PLANE_TYPE_PRIMARY) {
+			gfx_plane_info->drm_fb_id =
+				vgpu->display.meta_fbs.meta_fb[0][0]->base.base.id;
+
+			return ret;
+		} else {
+			/* Other plane types haven't been supported yet. */
+			return -EINVAL;
+		}
+	}
+
 	if (gfx_plane_info->flags == (VFIO_GFX_PLANE_TYPE_DMABUF |
 				       VFIO_GFX_PLANE_TYPE_PROBE))
 		return ret;

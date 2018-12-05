@@ -596,6 +596,7 @@ struct vfio_device_gfx_plane_info {
 #define VFIO_GFX_PLANE_TYPE_PROBE (1 << 0)
 #define VFIO_GFX_PLANE_TYPE_DMABUF (1 << 1)
 #define VFIO_GFX_PLANE_TYPE_REGION (1 << 2)
+#define VFIO_GFX_PLANE_TYPE_DRM_FB (1 << 3)
 	/* in */
 	__u32 drm_plane_type;	/* type of plane: DRM_PLANE_TYPE_* */
 	/* out */
@@ -612,6 +613,7 @@ struct vfio_device_gfx_plane_info {
 	union {
 		__u32 region_index;	/* region index */
 		__u32 dmabuf_id;	/* dma-buf id */
+		__u32 drm_fb_id;        /* drm framebuffer id */
 	};
 };
 

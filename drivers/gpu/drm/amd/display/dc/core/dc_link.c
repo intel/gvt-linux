@@ -1357,28 +1357,13 @@ static enum dc_status enable_link_dp(
 	struct dc_link *link = stream->sink->link;
 	struct dc_link_settings link_settings = {0};
 	enum dp_panel_mode panel_mode;
-	enum dc_link_rate max_link_rate = LINK_RATE_HIGH2;
 
 	/* get link settings for video mode timing */
 	decide_link_settings(stream, &link_settings);
 
-	/* raise clock state for HBR3 if required. Confirmed with HW DCE/DPCS
-	 * logic for HBR3 still needs Nominal (0.8V) on VDDC rail
-	 */
-	if (link->link_enc->features.flags.bits.IS_HBR3_CAPABLE)
-		max_link_rate = LINK_RATE_HIGH3;
-
-	if (link_settings.link_rate == max_link_rate) {
-		struct dc_clocks clocks = state->bw.dcn.clk;
-
-		/* dce/dcn compat, do not update dispclk */
-		clocks.dispclk_khz = 0;
-		/* 27mhz = 27000000hz= 27000khz */
-		clocks.phyclk_khz = link_settings.link_rate * 27000;
-
-		state->dis_clk->funcs->update_clocks(
-				state->dis_clk, &clocks, false);
-	}
+	pipe_ctx->stream_res.pix_clk_params.requested_sym_clk =
+			link_settings.link_rate * LINK_RATE_REF_FREQ_IN_KHZ;
+	state->dccg->funcs->update_clocks(state->dccg, state, false);
 
 	dp_enable_link_phy(
 		link,
@@ -1410,8 +1395,6 @@ static enum dc_status enable_link_dp(
 	}
 	else
 		status = DC_FAIL_DP_LINK_TRAINING;
-
-	enable_stream_features(pipe_ctx);
 
 	return status;
 }
@@ -2156,14 +2139,16 @@ int dc_link_get_backlight_level(const struct dc_link *link)
 {
 	struct abm *abm = link->ctx->dc->res_pool->abm;
 
-	if (abm == NULL || abm->funcs->get_current_backlight_8_bit == NULL)
+	if (abm == NULL || abm->funcs->get_current_backlight == NULL)
 		return DC_ERROR_UNEXPECTED;
 
-	return (int) abm->funcs->get_current_backlight_8_bit(abm);
+	return (int) abm->funcs->get_current_backlight(abm);
 }
 
-bool dc_link_set_backlight_level(const struct dc_link *link, uint32_t level,
-		uint32_t frame_ramp, const struct dc_stream_state *stream)
+bool dc_link_set_backlight_level(const struct dc_link *link,
+		uint32_t backlight_pwm_u16_16,
+		uint32_t frame_ramp,
+		const struct dc_stream_state *stream)
 {
 	struct dc  *core_dc = link->ctx->dc;
 	struct abm *abm = core_dc->res_pool->abm;
@@ -2175,26 +2160,24 @@ bool dc_link_set_backlight_level(const struct dc_link *link, uint32_t level,
 
 	if ((dmcu == NULL) ||
 		(abm == NULL) ||
-		(abm->funcs->set_backlight_level == NULL))
+		(abm->funcs->set_backlight_level_pwm == NULL))
 		return false;
 
-	if (stream) {
-		if (stream->bl_pwm_level == EDP_BACKLIGHT_RAMP_DISABLE_LEVEL)
-			frame_ramp = 0;
-
-		((struct dc_stream_state *)stream)->bl_pwm_level = level;
-	}
+	if (stream)
+		((struct dc_stream_state *)stream)->bl_pwm_level =
+				backlight_pwm_u16_16;
 
 	use_smooth_brightness = dmcu->funcs->is_dmcu_initialized(dmcu);
 
-	DC_LOG_BACKLIGHT("New Backlight level: %d (0x%X)\n", level, level);
+	DC_LOG_BACKLIGHT("New Backlight level: %d (0x%X)\n",
+			backlight_pwm_u16_16, backlight_pwm_u16_16);
 
 	if (dc_is_embedded_signal(link->connector_signal)) {
-		if (stream != NULL) {
-			for (i = 0; i < MAX_PIPES; i++) {
+		for (i = 0; i < MAX_PIPES; i++) {
+			if (core_dc->current_state->res_ctx.pipe_ctx[i].stream) {
 				if (core_dc->current_state->res_ctx.
-						pipe_ctx[i].stream
-						== stream)
+						pipe_ctx[i].stream->sink->link
+						== link)
 					/* DMCU -1 for all controller id values,
 					 * therefore +1 here
 					 */
@@ -2204,9 +2187,9 @@ bool dc_link_set_backlight_level(const struct dc_link *link, uint32_t level,
 						1;
 			}
 		}
-		abm->funcs->set_backlight_level(
+		abm->funcs->set_backlight_level_pwm(
 				abm,
-				level,
+				backlight_pwm_u16_16,
 				frame_ramp,
 				controller_id,
 				use_smooth_brightness);
@@ -2220,7 +2203,7 @@ bool dc_link_set_abm_disable(const struct dc_link *link)
 	struct dc  *core_dc = link->ctx->dc;
 	struct abm *abm = core_dc->res_pool->abm;
 
-	if ((abm == NULL) || (abm->funcs->set_backlight_level == NULL))
+	if ((abm == NULL) || (abm->funcs->set_backlight_level_pwm == NULL))
 		return false;
 
 	abm->funcs->set_abm_immediate_disable(abm);
@@ -2233,7 +2216,7 @@ bool dc_link_set_psr_enable(const struct dc_link *link, bool enable, bool wait)
 	struct dc  *core_dc = link->ctx->dc;
 	struct dmcu *dmcu = core_dc->res_pool->dmcu;
 
-	if (dmcu != NULL && link->psr_enabled)
+	if ((dmcu != NULL && dmcu->funcs->is_dmcu_initialized(dmcu)) && link->psr_enabled)
 		dmcu->funcs->set_psr_enable(dmcu, enable, wait);
 
 	return true;
@@ -2609,6 +2592,13 @@ void core_link_enable_stream(
 		core_dc->hwss.unblank_stream(pipe_ctx,
 			&pipe_ctx->stream->sink->link->cur_link_settings);
 
+		if (dc_is_dp_signal(pipe_ctx->stream->signal))
+			enable_stream_features(pipe_ctx);
+
+		dc_link_set_backlight_level(pipe_ctx->stream->sink->link,
+				pipe_ctx->stream->bl_pwm_level,
+				0,
+				pipe_ctx->stream);
 	}
 
 }

@@ -69,19 +69,28 @@ unsigned int intel_ring_update_space(struct intel_ring *ring)
 static int
 gen2_render_ring_flush(struct i915_request *rq, u32 mode)
 {
+	unsigned int num_store_dw;
 	u32 cmd, *cs;
 
 	cmd = MI_FLUSH;
-
+	num_store_dw = 0;
 	if (mode & EMIT_INVALIDATE)
 		cmd |= MI_READ_FLUSH;
+	if (mode & EMIT_FLUSH)
+		num_store_dw = 4;
 
-	cs = intel_ring_begin(rq, 2);
+	cs = intel_ring_begin(rq, 2 + 3 * num_store_dw);
 	if (IS_ERR(cs))
 		return PTR_ERR(cs);
 
 	*cs++ = cmd;
-	*cs++ = MI_NOOP;
+	while (num_store_dw--) {
+		*cs++ = MI_STORE_DWORD_IMM | MI_MEM_VIRTUAL;
+		*cs++ = i915_scratch_offset(rq->i915);
+		*cs++ = 0;
+	}
+	*cs++ = MI_FLUSH | MI_NO_WRITE_FLUSH;
+
 	intel_ring_advance(rq, cs);
 
 	return 0;
@@ -1820,17 +1829,19 @@ static int ring_request_alloc(struct i915_request *request)
 
 	GEM_BUG_ON(!request->hw_context->pin_count);
 
-	/* Flush enough space to reduce the likelihood of waiting after
+	/*
+	 * Flush enough space to reduce the likelihood of waiting after
 	 * we start building the request - in which case we will just
 	 * have to repeat work.
 	 */
 	request->reserved_space += LEGACY_REQUEST_SIZE;
 
-	ret = intel_ring_wait_for_space(request->ring, request->reserved_space);
+	ret = switch_context(request);
 	if (ret)
 		return ret;
 
-	ret = switch_context(request);
+	/* Unconditionally invalidate GPU caches and TLBs. */
+	ret = request->engine->emit_flush(request, EMIT_INVALIDATE);
 	if (ret)
 		return ret;
 

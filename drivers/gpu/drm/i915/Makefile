@@ -204,3 +204,4 @@ i915-y += intel_lpe_audio.o
 
 obj-$(CONFIG_DRM_I915) += i915.o
 obj-$(CONFIG_DRM_I915_GVT_KVMGT) += gvt/kvmgt.o
+obj-$(CONFIG_DRM_I915_GVT_XENGT) += gvt/xengt.o

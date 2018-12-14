@@ -2200,16 +2200,16 @@ void gen6_rps_busy(struct drm_i915_private *dev_priv);
 void gen6_rps_reset_ei(struct drm_i915_private *dev_priv);
 void gen6_rps_idle(struct drm_i915_private *dev_priv);
 void gen6_rps_boost(struct i915_request *rq, struct intel_rps_client *rps);
-void g4x_wm_get_hw_state(struct drm_device *dev);
-void vlv_wm_get_hw_state(struct drm_device *dev);
-void ilk_wm_get_hw_state(struct drm_device *dev);
-void skl_wm_get_hw_state(struct drm_device *dev);
+void g4x_wm_get_hw_state(struct drm_i915_private *dev_priv);
+void vlv_wm_get_hw_state(struct drm_i915_private *dev_priv);
+void ilk_wm_get_hw_state(struct drm_i915_private *dev_priv);
+void skl_wm_get_hw_state(struct drm_i915_private *dev_priv);
 void skl_pipe_ddb_get_hw_state(struct intel_crtc *crtc,
 			       struct skl_ddb_entry *ddb_y,
 			       struct skl_ddb_entry *ddb_uv);
 void skl_ddb_get_hw_state(struct drm_i915_private *dev_priv,
 			  struct skl_ddb_allocation *ddb /* out */);
-void skl_pipe_wm_get_hw_state(struct drm_crtc *crtc,
+void skl_pipe_wm_get_hw_state(struct intel_crtc *crtc,
 			      struct skl_pipe_wm *out);
 void g4x_wm_sanitize(struct drm_i915_private *dev_priv);
 void vlv_wm_sanitize(struct drm_i915_private *dev_priv);
@@ -2327,10 +2327,10 @@ int intel_plane_atomic_check_with_state(const struct intel_crtc_state *old_crtc_
 					struct intel_plane_state *intel_state);
 
 /* intel_color.c */
-void intel_color_init(struct drm_crtc *crtc);
-int intel_color_check(struct drm_crtc *crtc, struct drm_crtc_state *state);
-void intel_color_set_csc(struct drm_crtc_state *crtc_state);
-void intel_color_load_luts(struct drm_crtc_state *crtc_state);
+void intel_color_init(struct intel_crtc *crtc);
+int intel_color_check(struct intel_crtc_state *crtc_state);
+void intel_color_set_csc(struct intel_crtc_state *crtc_state);
+void intel_color_load_luts(struct intel_crtc_state *crtc_state);
 
 /* intel_lspcon.c */
 bool lspcon_init(struct intel_digital_port *intel_dig_port);

@@ -344,7 +344,7 @@ intel_dp_set_source_rates(struct intel_dp *intel_dp)
 	if (INTEL_GEN(dev_priv) >= 10) {
 		source_rates = cnl_rates;
 		size = ARRAY_SIZE(cnl_rates);
-		if (IS_GEN10(dev_priv))
+		if (IS_GEN(dev_priv, 10))
 			max_rate = cnl_max_source_rate(intel_dp);
 		else
 			max_rate = icl_max_source_rate(intel_dp);
@@ -1128,7 +1128,7 @@ static uint32_t g4x_get_aux_send_ctl(struct intel_dp *intel_dp,
 			to_i915(intel_dig_port->base.base.dev);
 	uint32_t precharge, timeout;
 
-	if (IS_GEN6(dev_priv))
+	if (IS_GEN(dev_priv, 6))
 		precharge = 3;
 	else
 		precharge = 5;
@@ -2585,7 +2585,7 @@ static void edp_panel_on(struct intel_dp *intel_dp)
 
 	pp_ctrl_reg = _pp_ctrl_reg(intel_dp);
 	pp = ironlake_get_pp_control(intel_dp);
-	if (IS_GEN5(dev_priv)) {
+	if (IS_GEN(dev_priv, 5)) {
 		/* ILK workaround: disable reset around power sequence */
 		pp &= ~PANEL_POWER_RESET;
 		I915_WRITE(pp_ctrl_reg, pp);
@@ -2593,7 +2593,7 @@ static void edp_panel_on(struct intel_dp *intel_dp)
 	}
 
 	pp |= PANEL_POWER_ON;
-	if (!IS_GEN5(dev_priv))
+	if (!IS_GEN(dev_priv, 5))
 		pp |= PANEL_POWER_RESET;
 
 	I915_WRITE(pp_ctrl_reg, pp);
@@ -2602,7 +2602,7 @@ static void edp_panel_on(struct intel_dp *intel_dp)
 	wait_panel_on(intel_dp);
 	intel_dp->last_power_on = jiffies;
 
-	if (IS_GEN5(dev_priv)) {
+	if (IS_GEN(dev_priv, 5)) {
 		pp |= PANEL_POWER_RESET; /* restore panel reset bit */
 		I915_WRITE(pp_ctrl_reg, pp);
 		POSTING_READ(pp_ctrl_reg);
@@ -2831,7 +2831,7 @@ static void ironlake_edp_pll_on(struct intel_dp *intel_dp,
 	 * 1. Wait for the start of vertical blank on the enabled pipe going to FDI
 	 * 2. Program DP PLL enable
 	 */
-	if (IS_GEN5(dev_priv))
+	if (IS_GEN(dev_priv, 5))
 		intel_wait_for_vblank_if_active(dev_priv, !crtc->pipe);
 
 	intel_dp->DP |= DP_PLL_ENABLE;
@@ -3849,7 +3849,7 @@ intel_dp_set_signal_levels(struct intel_dp *intel_dp)
 	} else if (IS_IVYBRIDGE(dev_priv) && port == PORT_A) {
 		signal_levels = ivb_cpu_edp_signal_levels(train_set);
 		mask = EDP_LINK_TRAIN_VOL_EMP_MASK_IVB;
-	} else if (IS_GEN6(dev_priv) && port == PORT_A) {
+	} else if (IS_GEN(dev_priv, 6) && port == PORT_A) {
 		signal_levels = snb_cpu_edp_signal_levels(train_set);
 		mask = EDP_LINK_TRAIN_VOL_EMP_MASK_SNB;
 	} else {
@@ -3991,12 +3991,50 @@ intel_dp_link_down(struct intel_encoder *encoder,
 	}
 }
 
+static void
+intel_dp_extended_receiver_capabilities(struct intel_dp *intel_dp)
+{
+	u8 dpcd_ext[6];
+
+	/*
+	 * Prior to DP1.3 the bit represented by
+	 * DP_EXTENDED_RECEIVER_CAP_FIELD_PRESENT was reserved.
+	 * if it is set DP_DPCD_REV at 0000h could be at a value less than
+	 * the true capability of the panel. The only way to check is to
+	 * then compare 0000h and 2200h.
+	 */
+	if (!(intel_dp->dpcd[DP_TRAINING_AUX_RD_INTERVAL] &
+	      DP_EXTENDED_RECEIVER_CAP_FIELD_PRESENT))
+		return;
+
+	if (drm_dp_dpcd_read(&intel_dp->aux, DP_DP13_DPCD_REV,
+			     &dpcd_ext, sizeof(dpcd_ext)) != sizeof(dpcd_ext)) {
+		DRM_ERROR("DPCD failed read at extended capabilities\n");
+		return;
+	}
+
+	if (intel_dp->dpcd[DP_DPCD_REV] > dpcd_ext[DP_DPCD_REV]) {
+		DRM_DEBUG_KMS("DPCD extended DPCD rev less than base DPCD rev\n");
+		return;
+	}
+
+	if (!memcmp(intel_dp->dpcd, dpcd_ext, sizeof(dpcd_ext)))
+		return;
+
+	DRM_DEBUG_KMS("Base DPCD: %*ph\n",
+		      (int)sizeof(intel_dp->dpcd), intel_dp->dpcd);
+
+	memcpy(intel_dp->dpcd, dpcd_ext, sizeof(dpcd_ext));
+}
+
 bool
 intel_dp_read_dpcd(struct intel_dp *intel_dp)
 {
 	if (drm_dp_dpcd_read(&intel_dp->aux, 0x000, intel_dp->dpcd,
 			     sizeof(intel_dp->dpcd)) < 0)
 		return false; /* aux transfer failed */
+
+	intel_dp_extended_receiver_capabilities(intel_dp);
 
 	DRM_DEBUG_KMS("DPCD: %*ph\n", (int) sizeof(intel_dp->dpcd), intel_dp->dpcd);
 
@@ -5233,17 +5271,17 @@ bool intel_digital_port_connected(struct intel_encoder *encoder)
 
 	if (INTEL_GEN(dev_priv) >= 11)
 		return icl_digital_port_connected(encoder);
-	else if (IS_GEN10(dev_priv) || IS_GEN9_BC(dev_priv))
+	else if (IS_GEN(dev_priv, 10) || IS_GEN9_BC(dev_priv))
 		return spt_digital_port_connected(encoder);
 	else if (IS_GEN9_LP(dev_priv))
 		return bxt_digital_port_connected(encoder);
-	else if (IS_GEN8(dev_priv))
+	else if (IS_GEN(dev_priv, 8))
 		return bdw_digital_port_connected(encoder);
-	else if (IS_GEN7(dev_priv))
+	else if (IS_GEN(dev_priv, 7))
 		return ivb_digital_port_connected(encoder);
-	else if (IS_GEN6(dev_priv))
+	else if (IS_GEN(dev_priv, 6))
 		return snb_digital_port_connected(encoder);
-	else if (IS_GEN5(dev_priv))
+	else if (IS_GEN(dev_priv, 5))
 		return ilk_digital_port_connected(encoder);
 
 	MISSING_CASE(INTEL_GEN(dev_priv));
@@ -5578,7 +5616,12 @@ int intel_dp_hdcp_write_an_aksv(struct intel_digital_port *intel_dig_port,
 	}
 
 	reply = (rxbuf[0] >> 4) & DP_AUX_NATIVE_REPLY_MASK;
-	return reply == DP_AUX_NATIVE_REPLY_ACK ? 0 : -EIO;
+	if (reply != DP_AUX_NATIVE_REPLY_ACK) {
+		DRM_DEBUG_KMS("Aksv write: no DP_AUX_NATIVE_REPLY_ACK %x\n",
+			      reply);
+		return -EIO;
+	}
+	return 0;
 }
 
 static int intel_dp_hdcp_read_bksv(struct intel_digital_port *intel_dig_port,

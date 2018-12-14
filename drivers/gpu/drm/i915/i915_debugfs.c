@@ -984,8 +984,8 @@ static int i915_gpu_info_open(struct inode *inode, struct file *file)
 	intel_runtime_pm_get(i915);
 	gpu = i915_capture_gpu_state(i915);
 	intel_runtime_pm_put(i915);
-	if (!gpu)
-		return -ENOMEM;
+	if (IS_ERR(gpu))
+		return PTR_ERR(gpu);
 
 	file->private_data = gpu;
 	return 0;
@@ -1018,7 +1018,13 @@ i915_error_state_write(struct file *filp,
 
 static int i915_error_state_open(struct inode *inode, struct file *file)
 {
-	file->private_data = i915_first_error_state(inode->i_private);
+	struct i915_gpu_state *error;
+
+	error = i915_first_error_state(inode->i_private);
+	if (IS_ERR(error))
+		return PTR_ERR(error);
+
+	file->private_data  = error;
 	return 0;
 }
 
@@ -1064,7 +1070,7 @@ static int i915_frequency_info(struct seq_file *m, void *unused)
 
 	intel_runtime_pm_get(dev_priv);
 
-	if (IS_GEN5(dev_priv)) {
+	if (IS_GEN(dev_priv, 5)) {
 		u16 rgvswctl = I915_READ16(MEMSWCTL);
 		u16 rgvstat = I915_READ16(MEMSTAT_ILK);
 
@@ -1785,7 +1791,7 @@ static int i915_emon_status(struct seq_file *m, void *unused)
 	unsigned long temp, chipset, gfx;
 	int ret;
 
-	if (!IS_GEN5(dev_priv))
+	if (!IS_GEN(dev_priv, 5))
 		return -ENODEV;
 
 	intel_runtime_pm_get(dev_priv);
@@ -2034,7 +2040,7 @@ static int i915_swizzle_info(struct seq_file *m, void *data)
 	seq_printf(m, "bit6 swizzle for Y-tiling = %s\n",
 		   swizzle_string(dev_priv->mm.bit_6_swizzle_y));
 
-	if (IS_GEN3(dev_priv) || IS_GEN4(dev_priv)) {
+	if (IS_GEN_RANGE(dev_priv, 3, 4)) {
 		seq_printf(m, "DDC = 0x%08x\n",
 			   I915_READ(DCC));
 		seq_printf(m, "DDC2 = 0x%08x\n",
@@ -2119,12 +2125,12 @@ static void gen6_ppgtt_info(struct seq_file *m,
 	struct intel_engine_cs *engine;
 	enum intel_engine_id id;
 
-	if (IS_GEN6(dev_priv))
+	if (IS_GEN(dev_priv, 6))
 		seq_printf(m, "GFX_MODE: 0x%08x\n", I915_READ(GFX_MODE));
 
 	for_each_engine(engine, dev_priv, id) {
 		seq_printf(m, "%s\n", engine->name);
-		if (IS_GEN7(dev_priv))
+		if (IS_GEN(dev_priv, 7))
 			seq_printf(m, "GFX_MODE: 0x%08x\n",
 				   I915_READ(RING_MODE_GEN7(engine)));
 		seq_printf(m, "PP_DIR_BASE: 0x%08x\n",
@@ -4268,7 +4274,7 @@ i915_cache_sharing_get(void *data, u64 *val)
 	struct drm_i915_private *dev_priv = data;
 	u32 snpcr;
 
-	if (!(IS_GEN6(dev_priv) || IS_GEN7(dev_priv)))
+	if (!(IS_GEN_RANGE(dev_priv, 6, 7)))
 		return -ENODEV;
 
 	intel_runtime_pm_get(dev_priv);
@@ -4288,7 +4294,7 @@ i915_cache_sharing_set(void *data, u64 val)
 	struct drm_i915_private *dev_priv = data;
 	u32 snpcr;
 
-	if (!(IS_GEN6(dev_priv) || IS_GEN7(dev_priv)))
+	if (!(IS_GEN_RANGE(dev_priv, 6, 7)))
 		return -ENODEV;
 
 	if (val > 3)
@@ -4545,7 +4551,7 @@ static int i915_sseu_status(struct seq_file *m, void *unused)
 		cherryview_sseu_device_status(dev_priv, &sseu);
 	} else if (IS_BROADWELL(dev_priv)) {
 		broadwell_sseu_device_status(dev_priv, &sseu);
-	} else if (IS_GEN9(dev_priv)) {
+	} else if (IS_GEN(dev_priv, 9)) {
 		gen9_sseu_device_status(dev_priv, &sseu);
 	} else if (INTEL_GEN(dev_priv) >= 10) {
 		gen10_sseu_device_status(dev_priv, &sseu);

@@ -1,0 +1,28 @@
+drm drm-fixes b6aac625e579ca684448f8ace632f8dceb972afb
+	Merge tag 'drm-misc-fixes-2018-12-20' of git://anongit.freedesktop.org/drm/drm-misc into drm-fixes
+drm-misc drm-misc-fixes 505b5240329b922f21f91d5b5d1e535c805eca6d
+	drm/ioctl: Fix Spectre v1 vulnerabilities
+drm-intel drm-intel-fixes 7566ec393f4161572ba6f11ad5171fd5d59b0fbd
+	Linux 4.20-rc7
+drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
+	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
+drm drm-next 221b35fedee1b38b9cee99320f0c60263d229e14
+	Merge branch 'etnaviv/next' of https://git.pengutronix.de/git/lst/linux into drm-next
+drm-misc drm-misc-next-fixes 0b258ed1a219a9776e8f6967eb34837ae0332e64
+	drm: revert "expand replace_fence to support timeline point v2"
+drm-intel drm-intel-next-fixes cb6f4c2c3478b2ff68bd5d0b6020394120075e30
+	Merge tag 'gvt-next-2018-12-07' of https://github.com/intel/gvt-linux into drm-intel-next-fixes
+drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
+	Linux 4.14-rc1
+drm-misc drm-misc-next 70bce993a7aa57c00798d8f13ebbbddd81cbbef9
+	drm/bochs: add edid present check
+drm-intel drm-intel-next-queued d4de753526f4d99f541f1b6ed1d963005c09700c
+	drm/i915: Unwind failure on pinning the gen7 ppgtt
+drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
+	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
+sound-upstream for-linus 0bea4cc8383519f78f3f74caca7bdebdfb346d3b
+	ALSA: hda/realtek: Enable audio jacks of ASUS UX433FN/UX333FA with ALC294
+sound-upstream for-next d82b51c855a20eb456ac09f2f40ea98312373263
+	ALSA: HD-Audio: SKL+: force HDaudio legacy or SKL+ driver selection
+drm-intel topic/core-for-CI fab1039545df2badc9f3ed5679ed17b285adc134
+	sysfs: Disable lockdep for driver bind/unbind files

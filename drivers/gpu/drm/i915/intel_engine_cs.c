@@ -261,6 +261,31 @@ static void __sprint_engine_name(char *name, const struct engine_info *info)
 			 info->instance) >= INTEL_ENGINE_CS_MAX_NAME);
 }
 
+void intel_engine_set_hwsp_writemask(struct intel_engine_cs *engine, u32 mask)
+{
+	struct drm_i915_private *dev_priv = engine->i915;
+	i915_reg_t hwstam;
+
+	/*
+	 * Though they added more rings on g4x/ilk, they did not add
+	 * per-engine HWSTAM until gen6.
+	 */
+	if (INTEL_GEN(dev_priv) < 6 && engine->class != RENDER_CLASS)
+		return;
+
+	hwstam = RING_HWSTAM(engine->mmio_base);
+	if (INTEL_GEN(dev_priv) >= 3)
+		I915_WRITE(hwstam, mask);
+	else
+		I915_WRITE16(hwstam, mask);
+}
+
+static void intel_engine_sanitize_mmio(struct intel_engine_cs *engine)
+{
+	/* Mask off all writes into the unknown HWSP */
+	intel_engine_set_hwsp_writemask(engine, ~0u);
+}
+
 static int
 intel_engine_setup(struct drm_i915_private *dev_priv,
 		   enum intel_engine_id id)
@@ -311,6 +336,9 @@ intel_engine_setup(struct drm_i915_private *dev_priv,
 	seqlock_init(&engine->stats.lock);
 
 	ATOMIC_INIT_NOTIFIER_HEAD(&engine->context_status_notifier);
+
+	/* Scrub mmio state on takeover */
+	intel_engine_sanitize_mmio(engine);
 
 	dev_priv->engine_class[info->class][info->instance] = engine;
 	dev_priv->engine[id] = engine;
@@ -438,7 +466,7 @@ void intel_engine_init_global_seqno(struct intel_engine_cs *engine, u32 seqno)
 	 * the semaphore value, then when the seqno moves backwards all
 	 * future waits will complete instantly (causing rendering corruption).
 	 */
-	if (IS_GEN6(dev_priv) || IS_GEN7(dev_priv)) {
+	if (IS_GEN_RANGE(dev_priv, 6, 7)) {
 		I915_WRITE(RING_SYNC_0(engine->mmio_base), 0);
 		I915_WRITE(RING_SYNC_1(engine->mmio_base), 0);
 		if (HAS_VEBOX(dev_priv))
@@ -495,6 +523,9 @@ void intel_engine_setup_common(struct intel_engine_cs *engine)
 
 static void cleanup_status_page(struct intel_engine_cs *engine)
 {
+	/* Prevent writes into HWSP after returning the page to the system */
+	intel_engine_set_hwsp_writemask(engine, ~0u);
+
 	if (HWS_NEEDS_PHYSICAL(engine->i915)) {
 		void *addr = fetch_and_zero(&engine->status_page.page_addr);
 
@@ -774,7 +805,7 @@ u32 intel_calculate_mcr_s_ss_select(struct drm_i915_private *dev_priv)
 	u32 slice = fls(sseu->slice_mask);
 	u32 subslice = fls(sseu->subslice_mask[slice]);
 
-	if (IS_GEN10(dev_priv))
+	if (IS_GEN(dev_priv, 10))
 		mcr_s_ss_select = GEN8_MCR_SLICE(slice) |
 				  GEN8_MCR_SUBSLICE(subslice);
 	else if (INTEL_GEN(dev_priv) >= 11)
@@ -1248,7 +1279,7 @@ static void intel_engine_print_registers(const struct intel_engine_cs *engine,
 		&engine->execlists;
 	u64 addr;
 
-	if (engine->id == RCS && IS_GEN(dev_priv, 4, 7))
+	if (engine->id == RCS && IS_GEN_RANGE(dev_priv, 4, 7))
 		drm_printf(m, "\tCCID: 0x%08x\n", I915_READ(CCID));
 	drm_printf(m, "\tRING_START: 0x%08x\n",
 		   I915_READ(RING_START(engine->mmio_base)));

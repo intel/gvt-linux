@@ -236,7 +236,7 @@ engine_stuck(struct intel_engine_cs *engine, u64 acthd)
 	if (ha != ENGINE_DEAD)
 		return ha;
 
-	if (IS_GEN2(dev_priv))
+	if (IS_GEN(dev_priv, 2))
 		return ENGINE_DEAD;
 
 	/* Is the chip hanging on a WAIT_FOR_EVENT?
@@ -252,7 +252,7 @@ engine_stuck(struct intel_engine_cs *engine, u64 acthd)
 		return ENGINE_WAIT_KICK;
 	}
 
-	if (IS_GEN(dev_priv, 6, 7) && tmp & RING_WAIT_SEMAPHORE) {
+	if (IS_GEN_RANGE(dev_priv, 6, 7) && tmp & RING_WAIT_SEMAPHORE) {
 		switch (semaphore_passed(engine)) {
 		default:
 			return ENGINE_DEAD;

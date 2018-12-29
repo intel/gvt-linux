@@ -1,30 +1,12 @@
-drm drm-fixes b6aac625e579ca684448f8ace632f8dceb972afb
-	Merge tag 'drm-misc-fixes-2018-12-20' of git://anongit.freedesktop.org/drm/drm-misc into drm-fixes
-drm-misc drm-misc-fixes 505b5240329b922f21f91d5b5d1e535c805eca6d
-	drm/ioctl: Fix Spectre v1 vulnerabilities
-drm-intel drm-intel-fixes 8fe28cb58bcb235034b64cbbb7550a8a43fd88be
-	Linux 4.20
-drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
-	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
-drm drm-next 4bcd2ffd214c1dad269c8ec40ac935770d208534
-	Merge tag 'drm-intel-next-fixes-2018-12-27' of git://anongit.freedesktop.org/drm/drm-intel into drm-next
-drm-misc drm-misc-next-fixes c75ff001f4fe21a8c9f15aad799a8949aea109f7
-	drm: Put damage blob when destroy plane state
-drm-intel drm-intel-next-fixes cb6f4c2c3478b2ff68bd5d0b6020394120075e30
-	Merge tag 'gvt-next-2018-12-07' of https://github.com/intel/gvt-linux into drm-intel-next-fixes
-drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
-	Linux 4.14-rc1
-drm-misc drm-misc-next ecb2e2fd5a442e8639b9648df54b77a32ca4c906
-	drm: move DRM_IF_VERSION to drm_internal.h
-drm-intel drm-intel-next-queued caa5915bb3c1e61bd895383364011a8921fee053
-	drm/i915/ringbuffer: Pull the render flush into breadcrumb emission
-drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
-	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
-sound-upstream for-linus 0bea4cc8383519f78f3f74caca7bdebdfb346d3b
-	ALSA: hda/realtek: Enable audio jacks of ASUS UX433FN/UX333FA with ALC294
-sound-upstream for-next d82b51c855a20eb456ac09f2f40ea98312373263
-	ALSA: HD-Audio: SKL+: force HDaudio legacy or SKL+ driver selection
-drm-intel topic/core-for-CI fab1039545df2badc9f3ed5679ed17b285adc134
-	sysfs: Disable lockdep for driver bind/unbind files
-drm-intel topic/drmp-cleanup 2a8665a477068314d960bc2d75f938af5f8df63e
-	drm: forward declare struct drm_file in drm_syncobj.h
+drm-tip/drm-tip 28f592191f34b55d93b2e8e94f2815be0f6c7598
+	drm-tip: 2018y-12m-28d-17h-07m-26s UTC integration manifest
+vfio-upstream/for-linus 0e714d27786ce1fb3efa9aac58abc096e68b1c2a
+	vfio/pci: Fix potential Spectre v1
+vfio-upstream/next 8ba35b3a0046d6573c98f00461d9bd1b86250d35
+	vfio-mdev/samples: Use u8 instead of char for handle functions
+origin/gvt-fixes a40fa231bb64b33e2cd54cf8ef44a9f89875fa11
+	drm/i915/gvt: Fix tiled memory decoding bug on BDW
+origin/gvt-next 1bf2e56b7ce02851c4d2ecbecbd40903d3fa2f01
+	drm/i915/gvt: Change KVMGT as self load module
+origin/gvt-next-fixes 835fe6d75d14c1513910ed7f5665127fee12acc8
+	firmware/dmc/icl: Add missing MODULE_FIRMWARE() for Icelake.

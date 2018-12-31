@@ -984,8 +984,8 @@ static int i915_gpu_info_open(struct inode *inode, struct file *file)
 	intel_runtime_pm_get(i915);
 	gpu = i915_capture_gpu_state(i915);
 	intel_runtime_pm_put(i915);
-	if (!gpu)
-		return -ENOMEM;
+	if (IS_ERR(gpu))
+		return PTR_ERR(gpu);
 
 	file->private_data = gpu;
 	return 0;
@@ -1018,7 +1018,13 @@ i915_error_state_write(struct file *filp,
 
 static int i915_error_state_open(struct inode *inode, struct file *file)
 {
-	file->private_data = i915_first_error_state(inode->i_private);
+	struct i915_gpu_state *error;
+
+	error = i915_first_error_state(inode->i_private);
+	if (IS_ERR(error))
+		return PTR_ERR(error);
+
+	file->private_data  = error;
 	return 0;
 }
 
@@ -1032,30 +1038,6 @@ static const struct file_operations i915_error_state_fops = {
 };
 #endif
 
-static int
-i915_next_seqno_set(void *data, u64 val)
-{
-	struct drm_i915_private *dev_priv = data;
-	struct drm_device *dev = &dev_priv->drm;
-	int ret;
-
-	ret = mutex_lock_interruptible(&dev->struct_mutex);
-	if (ret)
-		return ret;
-
-	intel_runtime_pm_get(dev_priv);
-	ret = i915_gem_set_global_seqno(dev, val);
-	intel_runtime_pm_put(dev_priv);
-
-	mutex_unlock(&dev->struct_mutex);
-
-	return ret;
-}
-
-DEFINE_SIMPLE_ATTRIBUTE(i915_next_seqno_fops,
-			NULL, i915_next_seqno_set,
-			"0x%llx\n");
-
 static int i915_frequency_info(struct seq_file *m, void *unused)
 {
 	struct drm_i915_private *dev_priv = node_to_i915(m->private);
@@ -1064,7 +1046,7 @@ static int i915_frequency_info(struct seq_file *m, void *unused)
 
 	intel_runtime_pm_get(dev_priv);
 
-	if (IS_GEN5(dev_priv)) {
+	if (IS_GEN(dev_priv, 5)) {
 		u16 rgvswctl = I915_READ16(MEMSWCTL);
 		u16 rgvstat = I915_READ16(MEMSTAT_ILK);
 
@@ -1785,7 +1767,7 @@ static int i915_emon_status(struct seq_file *m, void *unused)
 	unsigned long temp, chipset, gfx;
 	int ret;
 
-	if (!IS_GEN5(dev_priv))
+	if (!IS_GEN(dev_priv, 5))
 		return -ENODEV;
 
 	intel_runtime_pm_get(dev_priv);
@@ -2034,7 +2016,7 @@ static int i915_swizzle_info(struct seq_file *m, void *data)
 	seq_printf(m, "bit6 swizzle for Y-tiling = %s\n",
 		   swizzle_string(dev_priv->mm.bit_6_swizzle_y));
 
-	if (IS_GEN3(dev_priv) || IS_GEN4(dev_priv)) {
+	if (IS_GEN_RANGE(dev_priv, 3, 4)) {
 		seq_printf(m, "DDC = 0x%08x\n",
 			   I915_READ(DCC));
 		seq_printf(m, "DDC2 = 0x%08x\n",
@@ -2068,124 +2050,6 @@ static int i915_swizzle_info(struct seq_file *m, void *data)
 	intel_runtime_pm_put(dev_priv);
 
 	return 0;
-}
-
-static int per_file_ctx(int id, void *ptr, void *data)
-{
-	struct i915_gem_context *ctx = ptr;
-	struct seq_file *m = data;
-	struct i915_hw_ppgtt *ppgtt = ctx->ppgtt;
-
-	if (!ppgtt) {
-		seq_printf(m, "  no ppgtt for context %d\n",
-			   ctx->user_handle);
-		return 0;
-	}
-
-	if (i915_gem_context_is_default(ctx))
-		seq_puts(m, "  default context:\n");
-	else
-		seq_printf(m, "  context %d:\n", ctx->user_handle);
-	ppgtt->debug_dump(ppgtt, m);
-
-	return 0;
-}
-
-static void gen8_ppgtt_info(struct seq_file *m,
-			    struct drm_i915_private *dev_priv)
-{
-	struct i915_hw_ppgtt *ppgtt = dev_priv->mm.aliasing_ppgtt;
-	struct intel_engine_cs *engine;
-	enum intel_engine_id id;
-	int i;
-
-	if (!ppgtt)
-		return;
-
-	for_each_engine(engine, dev_priv, id) {
-		seq_printf(m, "%s\n", engine->name);
-		for (i = 0; i < 4; i++) {
-			u64 pdp = I915_READ(GEN8_RING_PDP_UDW(engine, i));
-			pdp <<= 32;
-			pdp |= I915_READ(GEN8_RING_PDP_LDW(engine, i));
-			seq_printf(m, "\tPDP%d 0x%016llx\n", i, pdp);
-		}
-	}
-}
-
-static void gen6_ppgtt_info(struct seq_file *m,
-			    struct drm_i915_private *dev_priv)
-{
-	struct intel_engine_cs *engine;
-	enum intel_engine_id id;
-
-	if (IS_GEN6(dev_priv))
-		seq_printf(m, "GFX_MODE: 0x%08x\n", I915_READ(GFX_MODE));
-
-	for_each_engine(engine, dev_priv, id) {
-		seq_printf(m, "%s\n", engine->name);
-		if (IS_GEN7(dev_priv))
-			seq_printf(m, "GFX_MODE: 0x%08x\n",
-				   I915_READ(RING_MODE_GEN7(engine)));
-		seq_printf(m, "PP_DIR_BASE: 0x%08x\n",
-			   I915_READ(RING_PP_DIR_BASE(engine)));
-		seq_printf(m, "PP_DIR_BASE_READ: 0x%08x\n",
-			   I915_READ(RING_PP_DIR_BASE_READ(engine)));
-		seq_printf(m, "PP_DIR_DCLV: 0x%08x\n",
-			   I915_READ(RING_PP_DIR_DCLV(engine)));
-	}
-	if (dev_priv->mm.aliasing_ppgtt) {
-		struct i915_hw_ppgtt *ppgtt = dev_priv->mm.aliasing_ppgtt;
-
-		seq_puts(m, "aliasing PPGTT:\n");
-		seq_printf(m, "pd gtt offset: 0x%08x\n", ppgtt->pd.base.ggtt_offset);
-
-		ppgtt->debug_dump(ppgtt, m);
-	}
-
-	seq_printf(m, "ECOCHK: 0x%08x\n", I915_READ(GAM_ECOCHK));
-}
-
-static int i915_ppgtt_info(struct seq_file *m, void *data)
-{
-	struct drm_i915_private *dev_priv = node_to_i915(m->private);
-	struct drm_device *dev = &dev_priv->drm;
-	struct drm_file *file;
-	int ret;
-
-	mutex_lock(&dev->filelist_mutex);
-	ret = mutex_lock_interruptible(&dev->struct_mutex);
-	if (ret)
-		goto out_unlock;
-
-	intel_runtime_pm_get(dev_priv);
-
-	if (INTEL_GEN(dev_priv) >= 8)
-		gen8_ppgtt_info(m, dev_priv);
-	else if (INTEL_GEN(dev_priv) >= 6)
-		gen6_ppgtt_info(m, dev_priv);
-
-	list_for_each_entry_reverse(file, &dev->filelist, lhead) {
-		struct drm_i915_file_private *file_priv = file->driver_priv;
-		struct task_struct *task;
-
-		task = get_pid_task(file->pid, PIDTYPE_PID);
-		if (!task) {
-			ret = -ESRCH;
-			goto out_rpm;
-		}
-		seq_printf(m, "\nproc: %s\n", task->comm);
-		put_task_struct(task);
-		idr_for_each(&file_priv->context_idr, per_file_ctx,
-			     (void *)(unsigned long)m);
-	}
-
-out_rpm:
-	intel_runtime_pm_put(dev_priv);
-	mutex_unlock(&dev->struct_mutex);
-out_unlock:
-	mutex_unlock(&dev->filelist_mutex);
-	return ret;
 }
 
 static int count_irq_waiters(struct drm_i915_private *i915)
@@ -4213,9 +4077,6 @@ i915_drop_caches_set(void *data, u64 val)
 						     I915_WAIT_LOCKED,
 						     MAX_SCHEDULE_TIMEOUT);
 
-		if (ret == 0 && val & DROP_RESET_SEQNO)
-			ret = i915_gem_set_global_seqno(&i915->drm, 1);
-
 		if (val & DROP_RETIRE)
 			i915_retire_requests(i915);
 
@@ -4268,7 +4129,7 @@ i915_cache_sharing_get(void *data, u64 *val)
 	struct drm_i915_private *dev_priv = data;
 	u32 snpcr;
 
-	if (!(IS_GEN6(dev_priv) || IS_GEN7(dev_priv)))
+	if (!(IS_GEN_RANGE(dev_priv, 6, 7)))
 		return -ENODEV;
 
 	intel_runtime_pm_get(dev_priv);
@@ -4288,7 +4149,7 @@ i915_cache_sharing_set(void *data, u64 val)
 	struct drm_i915_private *dev_priv = data;
 	u32 snpcr;
 
-	if (!(IS_GEN6(dev_priv) || IS_GEN7(dev_priv)))
+	if (!(IS_GEN_RANGE(dev_priv, 6, 7)))
 		return -ENODEV;
 
 	if (val > 3)
@@ -4545,7 +4406,7 @@ static int i915_sseu_status(struct seq_file *m, void *unused)
 		cherryview_sseu_device_status(dev_priv, &sseu);
 	} else if (IS_BROADWELL(dev_priv)) {
 		broadwell_sseu_device_status(dev_priv, &sseu);
-	} else if (IS_GEN9(dev_priv)) {
+	} else if (IS_GEN(dev_priv, 9)) {
 		gen9_sseu_device_status(dev_priv, &sseu);
 	} else if (INTEL_GEN(dev_priv) >= 10) {
 		gen10_sseu_device_status(dev_priv, &sseu);
@@ -4906,7 +4767,6 @@ static const struct drm_info_list i915_debugfs_list[] = {
 	{"i915_context_status", i915_context_status, 0},
 	{"i915_forcewake_domains", i915_forcewake_domains, 0},
 	{"i915_swizzle_info", i915_swizzle_info, 0},
-	{"i915_ppgtt_info", i915_ppgtt_info, 0},
 	{"i915_llc", i915_llc, 0},
 	{"i915_edp_psr_status", i915_edp_psr_status, 0},
 	{"i915_energy_uJ", i915_energy_uJ, 0},
@@ -4941,7 +4801,6 @@ static const struct i915_debugfs_files {
 	{"i915_gpu_info", &i915_gpu_info_fops},
 #endif
 	{"i915_fifo_underrun_reset", &i915_fifo_underrun_reset_ops},
-	{"i915_next_seqno", &i915_next_seqno_fops},
 	{"i915_pri_wm_latency", &i915_pri_wm_latency_fops},
 	{"i915_spr_wm_latency", &i915_spr_wm_latency_fops},
 	{"i915_cur_wm_latency", &i915_cur_wm_latency_fops},
@@ -5088,6 +4947,106 @@ static int i915_hdcp_sink_capability_show(struct seq_file *m, void *data)
 }
 DEFINE_SHOW_ATTRIBUTE(i915_hdcp_sink_capability);
 
+static int i915_dsc_fec_support_show(struct seq_file *m, void *data)
+{
+	struct drm_connector *connector = m->private;
+	struct drm_device *dev = connector->dev;
+	struct drm_crtc *crtc;
+	struct intel_dp *intel_dp;
+	struct drm_modeset_acquire_ctx ctx;
+	struct intel_crtc_state *crtc_state = NULL;
+	int ret = 0;
+	bool try_again = false;
+
+	drm_modeset_acquire_init(&ctx, DRM_MODESET_ACQUIRE_INTERRUPTIBLE);
+
+	do {
+		try_again = false;
+		ret = drm_modeset_lock(&dev->mode_config.connection_mutex,
+				       &ctx);
+		if (ret) {
+			ret = -EINTR;
+			break;
+		}
+		crtc = connector->state->crtc;
+		if (connector->status != connector_status_connected || !crtc) {
+			ret = -ENODEV;
+			break;
+		}
+		ret = drm_modeset_lock(&crtc->mutex, &ctx);
+		if (ret == -EDEADLK) {
+			ret = drm_modeset_backoff(&ctx);
+			if (!ret) {
+				try_again = true;
+				continue;
+			}
+			break;
+		} else if (ret) {
+			break;
+		}
+		intel_dp = enc_to_intel_dp(&intel_attached_encoder(connector)->base);
+		crtc_state = to_intel_crtc_state(crtc->state);
+		seq_printf(m, "DSC_Enabled: %s\n",
+			   yesno(crtc_state->dsc_params.compression_enable));
+		if (intel_dp->dsc_dpcd)
+			seq_printf(m, "DSC_Sink_Support: %s\n",
+				   yesno(drm_dp_sink_supports_dsc(intel_dp->dsc_dpcd)));
+		if (!intel_dp_is_edp(intel_dp))
+			seq_printf(m, "FEC_Sink_Support: %s\n",
+				   yesno(drm_dp_sink_supports_fec(intel_dp->fec_capable)));
+	} while (try_again);
+
+	drm_modeset_drop_locks(&ctx);
+	drm_modeset_acquire_fini(&ctx);
+
+	return ret;
+}
+
+static ssize_t i915_dsc_fec_support_write(struct file *file,
+					  const char __user *ubuf,
+					  size_t len, loff_t *offp)
+{
+	bool dsc_enable = false;
+	int ret;
+	struct drm_connector *connector =
+		((struct seq_file *)file->private_data)->private;
+	struct intel_encoder *encoder = intel_attached_encoder(connector);
+	struct intel_dp *intel_dp = enc_to_intel_dp(&encoder->base);
+
+	if (len == 0)
+		return 0;
+
+	DRM_DEBUG_DRIVER("Copied %zu bytes from user to force DSC\n",
+			 len);
+
+	ret = kstrtobool_from_user(ubuf, len, &dsc_enable);
+	if (ret < 0)
+		return ret;
+
+	DRM_DEBUG_DRIVER("Got %s for DSC Enable\n",
+			 (dsc_enable) ? "true" : "false");
+	intel_dp->force_dsc_en = dsc_enable;
+
+	*offp += len;
+	return len;
+}
+
+static int i915_dsc_fec_support_open(struct inode *inode,
+				     struct file *file)
+{
+	return single_open(file, i915_dsc_fec_support_show,
+			   inode->i_private);
+}
+
+static const struct file_operations i915_dsc_fec_support_fops = {
+	.owner = THIS_MODULE,
+	.open = i915_dsc_fec_support_open,
+	.read = seq_read,
+	.llseek = seq_lseek,
+	.release = single_release,
+	.write = i915_dsc_fec_support_write
+};
+
 /**
  * i915_debugfs_connector_add - add i915 specific connector debugfs files
  * @connector: pointer to a registered drm_connector
@@ -5100,6 +5059,7 @@ DEFINE_SHOW_ATTRIBUTE(i915_hdcp_sink_capability);
 int i915_debugfs_connector_add(struct drm_connector *connector)
 {
 	struct dentry *root = connector->debugfs_entry;
+	struct drm_i915_private *dev_priv = to_i915(connector->dev);
 
 	/* The connector must have been registered beforehands. */
 	if (!root)
@@ -5123,6 +5083,12 @@ int i915_debugfs_connector_add(struct drm_connector *connector)
 		debugfs_create_file("i915_hdcp_sink_capability", S_IRUGO, root,
 				    connector, &i915_hdcp_sink_capability_fops);
 	}
+
+	if (INTEL_GEN(dev_priv) >= 10 &&
+	    (connector->connector_type == DRM_MODE_CONNECTOR_DisplayPort ||
+	     connector->connector_type == DRM_MODE_CONNECTOR_eDP))
+		debugfs_create_file("i915_dsc_fec_support", S_IRUGO, root,
+				    connector, &i915_dsc_fec_support_fops);
 
 	return 0;
 }

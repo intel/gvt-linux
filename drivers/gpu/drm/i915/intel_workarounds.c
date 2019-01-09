@@ -366,7 +366,7 @@ static void skl_tune_iz_hashing(struct intel_engine_cs *engine)
 		 * Only consider slices where one, and only one, subslice has 7
 		 * EUs
 		 */
-		if (!is_power_of_2(INTEL_INFO(i915)->sseu.subslice_7eu[i]))
+		if (!is_power_of_2(RUNTIME_INFO(i915)->sseu.subslice_7eu[i]))
 			continue;
 
 		/*
@@ -375,7 +375,7 @@ static void skl_tune_iz_hashing(struct intel_engine_cs *engine)
 		 *
 		 * ->    0 <= ss <= 3;
 		 */
-		ss = ffs(INTEL_INFO(i915)->sseu.subslice_7eu[i]) - 1;
+		ss = ffs(RUNTIME_INFO(i915)->sseu.subslice_7eu[i]) - 1;
 		vals[i] = 3 - ss;
 	}
 
@@ -743,7 +743,7 @@ static void cfl_gt_workarounds_init(struct drm_i915_private *i915)
 
 static void wa_init_mcr(struct drm_i915_private *dev_priv)
 {
-	const struct sseu_dev_info *sseu = &(INTEL_INFO(dev_priv)->sseu);
+	const struct sseu_dev_info *sseu = &RUNTIME_INFO(dev_priv)->sseu;
 	struct i915_wa_list *wal = &dev_priv->gt_wa_list;
 	u32 mcr_slice_subslice_mask;
 
@@ -955,8 +955,6 @@ wa_list_apply(struct drm_i915_private *dev_priv, const struct i915_wa_list *wal)
 
 	intel_uncore_forcewake_put__locked(dev_priv, fw);
 	spin_unlock_irqrestore(&dev_priv->uncore.lock, flags);
-
-	DRM_DEBUG_DRIVER("Applied %u %s workarounds\n", wal->count, wal->name);
 }
 
 void intel_gt_apply_workarounds(struct drm_i915_private *dev_priv)
@@ -1126,8 +1124,6 @@ void intel_engine_apply_whitelist(struct intel_engine_cs *engine)
 	for (; i < RING_MAX_NONPRIV_SLOTS; i++)
 		I915_WRITE(RING_FORCE_TO_NONPRIV(base, i),
 			   i915_mmio_reg_offset(RING_NOPID(base)));
-
-	DRM_DEBUG_DRIVER("Applied %u %s workarounds\n", wal->count, wal->name);
 }
 
 static void rcs_engine_wa_init(struct intel_engine_cs *engine)
@@ -1190,7 +1186,7 @@ static void rcs_engine_wa_init(struct intel_engine_cs *engine)
 				    GEN7_DISABLE_SAMPLER_PREFETCH);
 	}
 
-	if (IS_GEN9(i915) || IS_CANNONLAKE(i915)) {
+	if (IS_GEN(i915, 9) || IS_CANNONLAKE(i915)) {
 		/* WaEnablePreemptionGranularityControlByUMD:skl,bxt,kbl,cfl,cnl */
 		wa_masked_en(wal,
 			     GEN7_FF_SLICE_CS_CHICKEN1,
@@ -1211,7 +1207,7 @@ static void rcs_engine_wa_init(struct intel_engine_cs *engine)
 			     GEN9_POOLED_EU_LOAD_BALANCING_FIX_DISABLE);
 	}
 
-	if (IS_GEN9(i915)) {
+	if (IS_GEN(i915, 9)) {
 		/* WaContextSwitchWithConcurrentTLBInvalidate:skl,bxt,kbl,glk,cfl */
 		wa_masked_en(wal,
 			     GEN9_CSFE_CHICKEN1_RCS,

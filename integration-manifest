@@ -1,30 +1,12 @@
-drm drm-fixes bfeffd155283772bbe78c6a05dec7c0128ee500c
-	Linux 5.0-rc1
-drm-misc drm-misc-fixes c235316d935a19deedc2fc48076798c9a56e1a7c
-	drm/dp_mst: Add __must_check to drm_dp_mst_topology_mgr_resume()
-drm-intel drm-intel-fixes bfeffd155283772bbe78c6a05dec7c0128ee500c
-	Linux 5.0-rc1
-drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
-	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
-drm drm-next bfeffd155283772bbe78c6a05dec7c0128ee500c
-	Linux 5.0-rc1
-drm-misc drm-misc-next-fixes c75ff001f4fe21a8c9f15aad799a8949aea109f7
-	drm: Put damage blob when destroy plane state
-drm-intel drm-intel-next-fixes bfeffd155283772bbe78c6a05dec7c0128ee500c
-	Linux 5.0-rc1
-drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
-	Linux 4.14-rc1
-drm-misc drm-misc-next 00eb5b0da8d27b3c944bfc959c3344d665caae26
-	drm/fb-helper: fix leaks in error path of drm_fb_helper_fbdev_setup
-drm-intel drm-intel-next-queued f2bb09b63282bad07ade52560f73abde35462c50
-	drm/i915: Downgrade scare message for unknown HuC firmware
-drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
-	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
-sound-upstream for-linus f5c9571e2265b3cbfad2ed41ba60c3da474daa61
-	ALSA: usb-audio: fix CM6206 register definitions
-sound-upstream for-next beae77170c60aa786f3e4599c18ead2854d8694d
-	ALSA: sb: fix a missing check of snd_ctl_add
-drm-intel topic/core-for-CI e183b2d29add01135392ae354be869ebbda7fed3
-	Fix 80d20d35af1e ("nohz: Fix local_timer_softirq_pending()") may have revealed another problem
-drm-intel topic/drmp-cleanup dd7ece7f6e220e4d1a2a8ba4c42622d7d73e6376
-	drm: forward declare struct drm_file in drm_syncobj.h
+drm-tip/drm-tip f7836843c875734c42d61d755d822635390ab097
+	drm-tip: 2019y-01m-08d-22h-58m-54s UTC integration manifest
+vfio-upstream/for-linus 0e714d27786ce1fb3efa9aac58abc096e68b1c2a
+	vfio/pci: Fix potential Spectre v1
+vfio-upstream/next 8ba35b3a0046d6573c98f00461d9bd1b86250d35
+	vfio-mdev/samples: Use u8 instead of char for handle functions
+origin/gvt-fixes f0e9943725186ddbdc9718a559c26c5f507262f2
+	drm/i915/gvt: Fix workload request allocation before request add
+origin/gvt-next 9bdb073464d6008ed1839d358e320108ed12daae
+	drm/i915/gvt: Change KVMGT as self load module
+origin/gvt-next-fixes da2c8eb104da4335f5a872dcd25fd83eb0f34249
+	drm/i915/gvt: Fix workload request allocation before request add

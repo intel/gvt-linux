@@ -27,7 +27,6 @@
 #include <linux/dmi.h>
 #include <linux/i2c.h>
 #include <linux/slab.h>
-#include <drm/drmP.h>
 #include <drm/drm_atomic_helper.h>
 #include <drm/drm_crtc.h>
 #include <drm/drm_crtc_helper.h>
@@ -84,15 +83,17 @@ static bool intel_crt_get_hw_state(struct intel_encoder *encoder,
 {
 	struct drm_i915_private *dev_priv = to_i915(encoder->base.dev);
 	struct intel_crt *crt = intel_encoder_to_crt(encoder);
+	intel_wakeref_t wakeref;
 	bool ret;
 
-	if (!intel_display_power_get_if_enabled(dev_priv,
-						encoder->power_domain))
+	wakeref = intel_display_power_get_if_enabled(dev_priv,
+						     encoder->power_domain);
+	if (!wakeref)
 		return false;
 
 	ret = intel_crt_port_enabled(dev_priv, crt->adpa_reg, pipe);
 
-	intel_display_power_put(dev_priv, encoder->power_domain);
+	intel_display_power_put(dev_priv, encoder->power_domain, wakeref);
 
 	return ret;
 }
@@ -322,7 +323,7 @@ intel_crt_mode_valid(struct drm_connector *connector,
 		 * DAC limit supposedly 355 MHz.
 		 */
 		max_clock = 270000;
-	else if (IS_GEN3(dev_priv) || IS_GEN4(dev_priv))
+	else if (IS_GEN_RANGE(dev_priv, 3, 4))
 		max_clock = 400000;
 	else
 		max_clock = 350000;
@@ -666,7 +667,7 @@ intel_crt_load_detect(struct intel_crt *crt, uint32_t pipe)
 	/* Set the border color to purple. */
 	I915_WRITE(bclrpat_reg, 0x500050);
 
-	if (!IS_GEN2(dev_priv)) {
+	if (!IS_GEN(dev_priv, 2)) {
 		uint32_t pipeconf = I915_READ(pipeconf_reg);
 		I915_WRITE(pipeconf_reg, pipeconf | PIPECONF_FORCE_BORDER);
 		POSTING_READ(pipeconf_reg);
@@ -777,6 +778,7 @@ intel_crt_detect(struct drm_connector *connector,
 	struct drm_i915_private *dev_priv = to_i915(connector->dev);
 	struct intel_crt *crt = intel_attached_crt(connector);
 	struct intel_encoder *intel_encoder = &crt->base;
+	intel_wakeref_t wakeref;
 	int status, ret;
 	struct intel_load_detect_pipe tmp;
 
@@ -785,7 +787,8 @@ intel_crt_detect(struct drm_connector *connector,
 		      force);
 
 	if (i915_modparams.load_detect_test) {
-		intel_display_power_get(dev_priv, intel_encoder->power_domain);
+		wakeref = intel_display_power_get(dev_priv,
+						  intel_encoder->power_domain);
 		goto load_detect;
 	}
 
@@ -793,7 +796,8 @@ intel_crt_detect(struct drm_connector *connector,
 	if (dmi_check_system(intel_spurious_crt_detect))
 		return connector_status_disconnected;
 
-	intel_display_power_get(dev_priv, intel_encoder->power_domain);
+	wakeref = intel_display_power_get(dev_priv,
+					  intel_encoder->power_domain);
 
 	if (I915_HAS_HOTPLUG(dev_priv)) {
 		/* We can not rely on the HPD pin always being correctly wired
@@ -848,7 +852,7 @@ load_detect:
 	}
 
 out:
-	intel_display_power_put(dev_priv, intel_encoder->power_domain);
+	intel_display_power_put(dev_priv, intel_encoder->power_domain, wakeref);
 	return status;
 }
 
@@ -858,10 +862,12 @@ static int intel_crt_get_modes(struct drm_connector *connector)
 	struct drm_i915_private *dev_priv = to_i915(dev);
 	struct intel_crt *crt = intel_attached_crt(connector);
 	struct intel_encoder *intel_encoder = &crt->base;
-	int ret;
+	intel_wakeref_t wakeref;
 	struct i2c_adapter *i2c;
+	int ret;
 
-	intel_display_power_get(dev_priv, intel_encoder->power_domain);
+	wakeref = intel_display_power_get(dev_priv,
+					  intel_encoder->power_domain);
 
 	i2c = intel_gmbus_get_adapter(dev_priv, dev_priv->vbt.crt_ddc_pin);
 	ret = intel_crt_ddc_get_modes(connector, i2c);
@@ -873,7 +879,7 @@ static int intel_crt_get_modes(struct drm_connector *connector)
 	ret = intel_crt_ddc_get_modes(connector, i2c);
 
 out:
-	intel_display_power_put(dev_priv, intel_encoder->power_domain);
+	intel_display_power_put(dev_priv, intel_encoder->power_domain, wakeref);
 
 	return ret;
 }
@@ -981,7 +987,7 @@ void intel_crt_init(struct drm_i915_private *dev_priv)
 	else
 		crt->base.crtc_mask = (1 << 0) | (1 << 1) | (1 << 2);
 
-	if (IS_GEN2(dev_priv))
+	if (IS_GEN(dev_priv, 2))
 		connector->interlace_allowed = 0;
 	else
 		connector->interlace_allowed = 1;

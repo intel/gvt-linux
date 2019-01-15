@@ -29,6 +29,7 @@
 #include <linux/i2c.h>
 #include <linux/hdmi.h>
 #include <linux/sched/clock.h>
+#include <linux/stackdepot.h>
 #include <drm/i915_drm.h>
 #include "i915_drv.h"
 #include <drm/drm_crtc.h>
@@ -40,6 +41,8 @@
 #include <drm/drm_rect.h>
 #include <drm/drm_atomic.h>
 #include <media/cec-notifier.h>
+
+struct drm_printer;
 
 /**
  * __wait_for - magic wait macro
@@ -243,6 +246,9 @@ struct intel_encoder {
 	void (*post_pll_disable)(struct intel_encoder *,
 				 const struct intel_crtc_state *,
 				 const struct drm_connector_state *);
+	void (*update_pipe)(struct intel_encoder *,
+			    const struct intel_crtc_state *,
+			    const struct drm_connector_state *);
 	/* Read out the current hw state of this connector, returning true if
 	 * the encoder is active. If the encoder is enabled it also set the pipe
 	 * it is connected to in the pipe parameter. */
@@ -1208,6 +1214,9 @@ struct intel_dp {
 
 	/* Displayport compliance testing */
 	struct intel_dp_compliance compliance;
+
+	/* Display stream compression testing */
+	bool force_dsc_en;
 };
 
 enum lspcon_vendor {
@@ -1233,6 +1242,7 @@ struct intel_digital_port {
 	/* Used for DP and ICL+ TypeC/DP and TypeC/HDMI ports. */
 	enum aux_ch aux_ch;
 	enum intel_display_power_domain ddi_io_power_domain;
+	bool tc_legacy_port:1;
 	enum tc_port_type tc_type;
 
 	void (*write_infoframe)(struct intel_encoder *encoder,
@@ -1805,7 +1815,7 @@ void intel_dp_sink_set_decompression_state(struct intel_dp *intel_dp,
 					   bool enable);
 void intel_dp_encoder_reset(struct drm_encoder *encoder);
 void intel_dp_encoder_suspend(struct intel_encoder *intel_encoder);
-void intel_dp_encoder_destroy(struct drm_encoder *encoder);
+void intel_dp_encoder_flush_work(struct drm_encoder *encoder);
 bool intel_dp_compute_config(struct intel_encoder *encoder,
 			     struct intel_crtc_state *pipe_config,
 			     struct drm_connector_state *conn_state);
@@ -1873,6 +1883,8 @@ bool intel_dp_read_dpcd(struct intel_dp *intel_dp);
 int intel_dp_link_required(int pixel_clock, int bpp);
 int intel_dp_max_data_rate(int max_link_clock, int max_lanes);
 bool intel_digital_port_connected(struct intel_encoder *encoder);
+void icl_tc_phy_disconnect(struct drm_i915_private *dev_priv,
+			   struct intel_digital_port *dig_port);
 
 /* intel_dp_aux_backlight.c */
 int intel_dp_aux_init_backlight_funcs(struct intel_connector *intel_connector);
@@ -2074,6 +2086,7 @@ bool intel_psr_enabled(struct intel_dp *intel_dp);
 void intel_init_quirks(struct drm_i915_private *dev_priv);
 
 /* intel_runtime_pm.c */
+void intel_runtime_pm_init_early(struct drm_i915_private *dev_priv);
 int intel_power_domains_init(struct drm_i915_private *);
 void intel_power_domains_cleanup(struct drm_i915_private *dev_priv);
 void intel_power_domains_init_hw(struct drm_i915_private *dev_priv, bool resume);
@@ -2096,6 +2109,7 @@ void bxt_display_core_init(struct drm_i915_private *dev_priv, bool resume);
 void bxt_display_core_uninit(struct drm_i915_private *dev_priv);
 void intel_runtime_pm_enable(struct drm_i915_private *dev_priv);
 void intel_runtime_pm_disable(struct drm_i915_private *dev_priv);
+void intel_runtime_pm_cleanup(struct drm_i915_private *dev_priv);
 const char *
 intel_display_power_domain_str(enum intel_display_power_domain domain);
 
@@ -2103,33 +2117,42 @@ bool intel_display_power_is_enabled(struct drm_i915_private *dev_priv,
 				    enum intel_display_power_domain domain);
 bool __intel_display_power_is_enabled(struct drm_i915_private *dev_priv,
 				      enum intel_display_power_domain domain);
-void intel_display_power_get(struct drm_i915_private *dev_priv,
-			     enum intel_display_power_domain domain);
-bool intel_display_power_get_if_enabled(struct drm_i915_private *dev_priv,
+intel_wakeref_t intel_display_power_get(struct drm_i915_private *dev_priv,
 					enum intel_display_power_domain domain);
+intel_wakeref_t
+intel_display_power_get_if_enabled(struct drm_i915_private *dev_priv,
+				   enum intel_display_power_domain domain);
+void intel_display_power_put_unchecked(struct drm_i915_private *dev_priv,
+				       enum intel_display_power_domain domain);
+#if IS_ENABLED(CONFIG_DRM_I915_DEBUG_RUNTIME_PM)
 void intel_display_power_put(struct drm_i915_private *dev_priv,
-			     enum intel_display_power_domain domain);
+			     enum intel_display_power_domain domain,
+			     intel_wakeref_t wakeref);
+#else
+#define intel_display_power_put(i915, domain, wakeref) \
+	intel_display_power_put_unchecked(i915, domain)
+#endif
 void icl_dbuf_slices_update(struct drm_i915_private *dev_priv,
 			    u8 req_slices);
 
 static inline void
-assert_rpm_device_not_suspended(struct drm_i915_private *dev_priv)
+assert_rpm_device_not_suspended(struct drm_i915_private *i915)
 {
-	WARN_ONCE(dev_priv->runtime_pm.suspended,
+	WARN_ONCE(i915->runtime_pm.suspended,
 		  "Device suspended during HW access\n");
 }
 
 static inline void
-assert_rpm_wakelock_held(struct drm_i915_private *dev_priv)
+assert_rpm_wakelock_held(struct drm_i915_private *i915)
 {
-	assert_rpm_device_not_suspended(dev_priv);
-	WARN_ONCE(!atomic_read(&dev_priv->runtime_pm.wakeref_count),
+	assert_rpm_device_not_suspended(i915);
+	WARN_ONCE(!atomic_read(&i915->runtime_pm.wakeref_count),
 		  "RPM wakelock ref not held during HW access");
 }
 
 /**
  * disable_rpm_wakeref_asserts - disable the RPM assert checks
- * @dev_priv: i915 device instance
+ * @i915: i915 device instance
  *
  * This function disable asserts that check if we hold an RPM wakelock
  * reference, while keeping the device-not-suspended checks still enabled.
@@ -2146,14 +2169,14 @@ assert_rpm_wakelock_held(struct drm_i915_private *dev_priv)
  * enable_rpm_wakeref_asserts().
  */
 static inline void
-disable_rpm_wakeref_asserts(struct drm_i915_private *dev_priv)
+disable_rpm_wakeref_asserts(struct drm_i915_private *i915)
 {
-	atomic_inc(&dev_priv->runtime_pm.wakeref_count);
+	atomic_inc(&i915->runtime_pm.wakeref_count);
 }
 
 /**
  * enable_rpm_wakeref_asserts - re-enable the RPM assert checks
- * @dev_priv: i915 device instance
+ * @i915: i915 device instance
  *
  * This function re-enables the RPM assert checks after disabling them with
  * disable_rpm_wakeref_asserts. It's meant to be used only in special
@@ -2163,15 +2186,39 @@ disable_rpm_wakeref_asserts(struct drm_i915_private *dev_priv)
  * disable_rpm_wakeref_asserts().
  */
 static inline void
-enable_rpm_wakeref_asserts(struct drm_i915_private *dev_priv)
+enable_rpm_wakeref_asserts(struct drm_i915_private *i915)
 {
-	atomic_dec(&dev_priv->runtime_pm.wakeref_count);
+	atomic_dec(&i915->runtime_pm.wakeref_count);
 }
 
-void intel_runtime_pm_get(struct drm_i915_private *dev_priv);
-bool intel_runtime_pm_get_if_in_use(struct drm_i915_private *dev_priv);
-void intel_runtime_pm_get_noresume(struct drm_i915_private *dev_priv);
-void intel_runtime_pm_put(struct drm_i915_private *dev_priv);
+intel_wakeref_t intel_runtime_pm_get(struct drm_i915_private *i915);
+intel_wakeref_t intel_runtime_pm_get_if_in_use(struct drm_i915_private *i915);
+intel_wakeref_t intel_runtime_pm_get_noresume(struct drm_i915_private *i915);
+
+#define with_intel_runtime_pm(i915, wf) \
+	for ((wf) = intel_runtime_pm_get(i915); (wf); \
+	     intel_runtime_pm_put((i915), (wf)), (wf) = 0)
+
+#define with_intel_runtime_pm_if_in_use(i915, wf) \
+	for ((wf) = intel_runtime_pm_get_if_in_use(i915); (wf); \
+	     intel_runtime_pm_put((i915), (wf)), (wf) = 0)
+
+void intel_runtime_pm_put_unchecked(struct drm_i915_private *i915);
+#if IS_ENABLED(CONFIG_DRM_I915_DEBUG_RUNTIME_PM)
+void intel_runtime_pm_put(struct drm_i915_private *i915, intel_wakeref_t wref);
+#else
+#define intel_runtime_pm_put(i915, wref) intel_runtime_pm_put_unchecked(i915)
+#endif
+
+#if IS_ENABLED(CONFIG_DRM_I915_DEBUG_RUNTIME_PM)
+void print_intel_runtime_pm_wakeref(struct drm_i915_private *i915,
+				    struct drm_printer *p);
+#else
+static inline void print_intel_runtime_pm_wakeref(struct drm_i915_private *i915,
+						  struct drm_printer *p)
+{
+}
+#endif
 
 void chv_phy_powergate_lanes(struct intel_encoder *encoder,
 			     bool override, unsigned int mask);
@@ -2199,16 +2246,16 @@ void gen6_rps_busy(struct drm_i915_private *dev_priv);
 void gen6_rps_reset_ei(struct drm_i915_private *dev_priv);
 void gen6_rps_idle(struct drm_i915_private *dev_priv);
 void gen6_rps_boost(struct i915_request *rq, struct intel_rps_client *rps);
-void g4x_wm_get_hw_state(struct drm_device *dev);
-void vlv_wm_get_hw_state(struct drm_device *dev);
-void ilk_wm_get_hw_state(struct drm_device *dev);
-void skl_wm_get_hw_state(struct drm_device *dev);
+void g4x_wm_get_hw_state(struct drm_i915_private *dev_priv);
+void vlv_wm_get_hw_state(struct drm_i915_private *dev_priv);
+void ilk_wm_get_hw_state(struct drm_i915_private *dev_priv);
+void skl_wm_get_hw_state(struct drm_i915_private *dev_priv);
 void skl_pipe_ddb_get_hw_state(struct intel_crtc *crtc,
 			       struct skl_ddb_entry *ddb_y,
 			       struct skl_ddb_entry *ddb_uv);
 void skl_ddb_get_hw_state(struct drm_i915_private *dev_priv,
 			  struct skl_ddb_allocation *ddb /* out */);
-void skl_pipe_wm_get_hw_state(struct drm_crtc *crtc,
+void skl_pipe_wm_get_hw_state(struct intel_crtc *crtc,
 			      struct skl_pipe_wm *out);
 void g4x_wm_sanitize(struct drm_i915_private *dev_priv);
 void vlv_wm_sanitize(struct drm_i915_private *dev_priv);
@@ -2326,10 +2373,10 @@ int intel_plane_atomic_check_with_state(const struct intel_crtc_state *old_crtc_
 					struct intel_plane_state *intel_state);
 
 /* intel_color.c */
-void intel_color_init(struct drm_crtc *crtc);
-int intel_color_check(struct drm_crtc *crtc, struct drm_crtc_state *state);
-void intel_color_set_csc(struct drm_crtc_state *crtc_state);
-void intel_color_load_luts(struct drm_crtc_state *crtc_state);
+void intel_color_init(struct intel_crtc *crtc);
+int intel_color_check(struct intel_crtc_state *crtc_state);
+void intel_color_set_csc(struct intel_crtc_state *crtc_state);
+void intel_color_load_luts(struct intel_crtc_state *crtc_state);
 
 /* intel_lspcon.c */
 bool lspcon_init(struct intel_digital_port *intel_dig_port);

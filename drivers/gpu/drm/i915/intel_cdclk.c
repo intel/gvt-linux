@@ -520,6 +520,7 @@ static void vlv_set_cdclk(struct drm_i915_private *dev_priv,
 {
 	int cdclk = cdclk_state->cdclk;
 	u32 val, cmd = cdclk_state->voltage_level;
+	intel_wakeref_t wakeref;
 
 	switch (cdclk) {
 	case 400000:
@@ -539,7 +540,7 @@ static void vlv_set_cdclk(struct drm_i915_private *dev_priv,
 	 * a system suspend.  So grab the PIPE-A domain, which covers
 	 * the HW blocks needed for the following programming.
 	 */
-	intel_display_power_get(dev_priv, POWER_DOMAIN_PIPE_A);
+	wakeref = intel_display_power_get(dev_priv, POWER_DOMAIN_PIPE_A);
 
 	mutex_lock(&dev_priv->pcu_lock);
 	val = vlv_punit_read(dev_priv, PUNIT_REG_DSPFREQ);
@@ -593,7 +594,7 @@ static void vlv_set_cdclk(struct drm_i915_private *dev_priv,
 
 	vlv_program_pfi_credits(dev_priv);
 
-	intel_display_power_put(dev_priv, POWER_DOMAIN_PIPE_A);
+	intel_display_power_put(dev_priv, POWER_DOMAIN_PIPE_A, wakeref);
 }
 
 static void chv_set_cdclk(struct drm_i915_private *dev_priv,
@@ -601,6 +602,7 @@ static void chv_set_cdclk(struct drm_i915_private *dev_priv,
 {
 	int cdclk = cdclk_state->cdclk;
 	u32 val, cmd = cdclk_state->voltage_level;
+	intel_wakeref_t wakeref;
 
 	switch (cdclk) {
 	case 333333:
@@ -619,7 +621,7 @@ static void chv_set_cdclk(struct drm_i915_private *dev_priv,
 	 * a system suspend.  So grab the PIPE-A domain, which covers
 	 * the HW blocks needed for the following programming.
 	 */
-	intel_display_power_get(dev_priv, POWER_DOMAIN_PIPE_A);
+	wakeref = intel_display_power_get(dev_priv, POWER_DOMAIN_PIPE_A);
 
 	mutex_lock(&dev_priv->pcu_lock);
 	val = vlv_punit_read(dev_priv, PUNIT_REG_DSPFREQ);
@@ -637,7 +639,7 @@ static void chv_set_cdclk(struct drm_i915_private *dev_priv,
 
 	vlv_program_pfi_credits(dev_priv);
 
-	intel_display_power_put(dev_priv, POWER_DOMAIN_PIPE_A);
+	intel_display_power_put(dev_priv, POWER_DOMAIN_PIPE_A, wakeref);
 }
 
 static int bdw_calc_cdclk(int min_cdclk)
@@ -2140,7 +2142,7 @@ static int intel_pixel_rate_to_cdclk(struct drm_i915_private *dev_priv,
 {
 	if (INTEL_GEN(dev_priv) >= 10 || IS_GEMINILAKE(dev_priv))
 		return DIV_ROUND_UP(pixel_rate, 2);
-	else if (IS_GEN9(dev_priv) ||
+	else if (IS_GEN(dev_priv, 9) ||
 		 IS_BROADWELL(dev_priv) || IS_HASWELL(dev_priv))
 		return pixel_rate;
 	else if (IS_CHERRYVIEW(dev_priv))
@@ -2176,7 +2178,7 @@ int intel_crtc_compute_min_cdclk(const struct intel_crtc_state *crtc_state)
 		if (IS_CANNONLAKE(dev_priv) || IS_GEMINILAKE(dev_priv)) {
 			/* Display WA #1145: glk,cnl */
 			min_cdclk = max(316800, min_cdclk);
-		} else if (IS_GEN9(dev_priv) || IS_BROADWELL(dev_priv)) {
+		} else if (IS_GEN(dev_priv, 9) || IS_BROADWELL(dev_priv)) {
 			/* Display WA #1144: skl,bxt */
 			min_cdclk = max(432000, min_cdclk);
 		}
@@ -2537,7 +2539,7 @@ static int intel_compute_max_dotclk(struct drm_i915_private *dev_priv)
 
 	if (INTEL_GEN(dev_priv) >= 10 || IS_GEMINILAKE(dev_priv))
 		return 2 * max_cdclk_freq;
-	else if (IS_GEN9(dev_priv) ||
+	else if (IS_GEN(dev_priv, 9) ||
 		 IS_BROADWELL(dev_priv) || IS_HASWELL(dev_priv))
 		return max_cdclk_freq;
 	else if (IS_CHERRYVIEW(dev_priv))
@@ -2785,9 +2787,9 @@ void intel_init_cdclk_hooks(struct drm_i915_private *dev_priv)
 		dev_priv->display.get_cdclk = hsw_get_cdclk;
 	else if (IS_VALLEYVIEW(dev_priv) || IS_CHERRYVIEW(dev_priv))
 		dev_priv->display.get_cdclk = vlv_get_cdclk;
-	else if (IS_GEN6(dev_priv) || IS_IVYBRIDGE(dev_priv))
+	else if (IS_GEN(dev_priv, 6) || IS_IVYBRIDGE(dev_priv))
 		dev_priv->display.get_cdclk = fixed_400mhz_get_cdclk;
-	else if (IS_GEN5(dev_priv))
+	else if (IS_GEN(dev_priv, 5))
 		dev_priv->display.get_cdclk = fixed_450mhz_get_cdclk;
 	else if (IS_GM45(dev_priv))
 		dev_priv->display.get_cdclk = gm45_get_cdclk;

@@ -427,13 +427,13 @@ static int get_new_crc_ctl_reg(struct drm_i915_private *dev_priv,
 			       enum intel_pipe_crc_source *source, u32 *val,
 			       bool set_wa)
 {
-	if (IS_GEN2(dev_priv))
+	if (IS_GEN(dev_priv, 2))
 		return i8xx_pipe_crc_ctl_reg(source, val);
 	else if (INTEL_GEN(dev_priv) < 5)
 		return i9xx_pipe_crc_ctl_reg(dev_priv, pipe, source, val);
 	else if (IS_VALLEYVIEW(dev_priv) || IS_CHERRYVIEW(dev_priv))
 		return vlv_pipe_crc_ctl_reg(dev_priv, pipe, source, val);
-	else if (IS_GEN5(dev_priv) || IS_GEN6(dev_priv))
+	else if (IS_GEN_RANGE(dev_priv, 5, 6))
 		return ilk_pipe_crc_ctl_reg(source, val);
 	else
 		return ivb_pipe_crc_ctl_reg(dev_priv, pipe, source, val, set_wa);
@@ -544,13 +544,13 @@ static int
 intel_is_valid_crc_source(struct drm_i915_private *dev_priv,
 			  const enum intel_pipe_crc_source source)
 {
-	if (IS_GEN2(dev_priv))
+	if (IS_GEN(dev_priv, 2))
 		return i8xx_crc_source_valid(dev_priv, source);
 	else if (INTEL_GEN(dev_priv) < 5)
 		return i9xx_crc_source_valid(dev_priv, source);
 	else if (IS_VALLEYVIEW(dev_priv) || IS_CHERRYVIEW(dev_priv))
 		return vlv_crc_source_valid(dev_priv, source);
-	else if (IS_GEN5(dev_priv) || IS_GEN6(dev_priv))
+	else if (IS_GEN_RANGE(dev_priv, 5, 6))
 		return ilk_crc_source_valid(dev_priv, source);
 	else
 		return ivb_crc_source_valid(dev_priv, source);
@@ -589,6 +589,7 @@ int intel_crtc_set_crc_source(struct drm_crtc *crtc, const char *source_name)
 	struct intel_pipe_crc *pipe_crc = &dev_priv->pipe_crc[crtc->index];
 	enum intel_display_power_domain power_domain;
 	enum intel_pipe_crc_source source;
+	intel_wakeref_t wakeref;
 	u32 val = 0; /* shut up gcc */
 	int ret = 0;
 
@@ -598,7 +599,8 @@ int intel_crtc_set_crc_source(struct drm_crtc *crtc, const char *source_name)
 	}
 
 	power_domain = POWER_DOMAIN_PIPE(crtc->index);
-	if (!intel_display_power_get_if_enabled(dev_priv, power_domain)) {
+	wakeref = intel_display_power_get_if_enabled(dev_priv, power_domain);
+	if (!wakeref) {
 		DRM_DEBUG_KMS("Trying to capture CRC while pipe is off\n");
 		return -EIO;
 	}
@@ -624,7 +626,7 @@ int intel_crtc_set_crc_source(struct drm_crtc *crtc, const char *source_name)
 	pipe_crc->skipped = 0;
 
 out:
-	intel_display_power_put(dev_priv, power_domain);
+	intel_display_power_put(dev_priv, power_domain, wakeref);
 
 	return ret;
 }

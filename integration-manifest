@@ -1,0 +1,30 @@
+drm drm-fixes e2d3c414ec0f9d1557c8c5ff2c32166e68bbc4ad
+	Merge tag 'drm-intel-fixes-2019-01-11' of git://anongit.freedesktop.org/drm/drm-intel into drm-fixes
+drm-misc drm-misc-fixes f672b93e4a0a4947d2e1103ed8780e01e13eadb6
+	drm/meson: add missing of_node_put
+drm-intel drm-intel-fixes 1c7fc5cbc33980acd13d668f1c8f0313d6ae9fd8
+	Linux 5.0-rc2
+drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
+	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
+drm drm-next e3d093070eb0b5e3df668d3eb04100ea79343c65
+	Merge tag 'tilcdc-4.22' of https://github.com/jsarha/linux into drm-next
+drm-misc drm-misc-next-fixes c75ff001f4fe21a8c9f15aad799a8949aea109f7
+	drm: Put damage blob when destroy plane state
+drm-intel drm-intel-next-fixes bfeffd155283772bbe78c6a05dec7c0128ee500c
+	Linux 5.0-rc1
+drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
+	Linux 4.14-rc1
+drm-misc drm-misc-next 2db8ebca1f6c158d0d439ebec4d4b9924c4c3d3c
+	drm/fourcc: Add modifier defininitions for AFBC 1.3
+drm-intel drm-intel-next-queued fed85691b4083308792a862c50f9492c8f19433e
+	drm/i915: Fix the static code analysis warning in debugfs
+drm-intel drm-intel-next 74256b7ecf7790de78ea14facfc9dac02afcc76a
+	drm/i915: Update DRIVER_DATE to 20190110
+drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
+	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
+sound-upstream for-linus 687ae9e287b3a1a71e5e1c2a9c96b23d70768821
+	ASoC: intel: skl: Fix display power regression
+sound-upstream for-next 053b055948e97268771de11f2ab9b2aa1640b68d
+	ALSA: hda: program stripe control for codec
+drm-intel topic/core-for-CI 3a73af8b1a2c76803911ea12970cd734b7f481ec
+	net: phy: fix too strict check in phy_start_aneg

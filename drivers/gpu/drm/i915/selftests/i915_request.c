@@ -255,13 +255,16 @@ int i915_request_mock_selftests(void)
 		SUBTEST(igt_request_rewind),
 	};
 	struct drm_i915_private *i915;
-	int err;
+	intel_wakeref_t wakeref;
+	int err = 0;
 
 	i915 = mock_gem_device();
 	if (!i915)
 		return -ENOMEM;
 
-	err = i915_subtests(tests, i915);
+	with_intel_runtime_pm(i915, wakeref)
+		err = i915_subtests(tests, i915);
+
 	drm_dev_put(&i915->drm);
 
 	return err;
@@ -332,6 +335,7 @@ static int live_nop_request(void *arg)
 {
 	struct drm_i915_private *i915 = arg;
 	struct intel_engine_cs *engine;
+	intel_wakeref_t wakeref;
 	struct live_test t;
 	unsigned int id;
 	int err = -ENODEV;
@@ -342,7 +346,7 @@ static int live_nop_request(void *arg)
 	 */
 
 	mutex_lock(&i915->drm.struct_mutex);
-	intel_runtime_pm_get(i915);
+	wakeref = intel_runtime_pm_get(i915);
 
 	for_each_engine(engine, i915, id) {
 		struct i915_request *request = NULL;
@@ -403,7 +407,7 @@ static int live_nop_request(void *arg)
 	}
 
 out_unlock:
-	intel_runtime_pm_put(i915);
+	intel_runtime_pm_put(i915, wakeref);
 	mutex_unlock(&i915->drm.struct_mutex);
 	return err;
 }
@@ -478,8 +482,9 @@ static int live_empty_request(void *arg)
 {
 	struct drm_i915_private *i915 = arg;
 	struct intel_engine_cs *engine;
-	struct live_test t;
+	intel_wakeref_t wakeref;
 	struct i915_vma *batch;
+	struct live_test t;
 	unsigned int id;
 	int err = 0;
 
@@ -489,7 +494,7 @@ static int live_empty_request(void *arg)
 	 */
 
 	mutex_lock(&i915->drm.struct_mutex);
-	intel_runtime_pm_get(i915);
+	wakeref = intel_runtime_pm_get(i915);
 
 	batch = empty_batch(i915);
 	if (IS_ERR(batch)) {
@@ -553,7 +558,7 @@ out_batch:
 	i915_vma_unpin(batch);
 	i915_vma_put(batch);
 out_unlock:
-	intel_runtime_pm_put(i915);
+	intel_runtime_pm_put(i915, wakeref);
 	mutex_unlock(&i915->drm.struct_mutex);
 	return err;
 }
@@ -637,6 +642,7 @@ static int live_all_engines(void *arg)
 	struct drm_i915_private *i915 = arg;
 	struct intel_engine_cs *engine;
 	struct i915_request *request[I915_NUM_ENGINES];
+	intel_wakeref_t wakeref;
 	struct i915_vma *batch;
 	struct live_test t;
 	unsigned int id;
@@ -648,7 +654,7 @@ static int live_all_engines(void *arg)
 	 */
 
 	mutex_lock(&i915->drm.struct_mutex);
-	intel_runtime_pm_get(i915);
+	wakeref = intel_runtime_pm_get(i915);
 
 	err = begin_live_test(&t, i915, __func__, "");
 	if (err)
@@ -731,7 +737,7 @@ out_request:
 	i915_vma_unpin(batch);
 	i915_vma_put(batch);
 out_unlock:
-	intel_runtime_pm_put(i915);
+	intel_runtime_pm_put(i915, wakeref);
 	mutex_unlock(&i915->drm.struct_mutex);
 	return err;
 }
@@ -742,6 +748,7 @@ static int live_sequential_engines(void *arg)
 	struct i915_request *request[I915_NUM_ENGINES] = {};
 	struct i915_request *prev = NULL;
 	struct intel_engine_cs *engine;
+	intel_wakeref_t wakeref;
 	struct live_test t;
 	unsigned int id;
 	int err;
@@ -753,7 +760,7 @@ static int live_sequential_engines(void *arg)
 	 */
 
 	mutex_lock(&i915->drm.struct_mutex);
-	intel_runtime_pm_get(i915);
+	wakeref = intel_runtime_pm_get(i915);
 
 	err = begin_live_test(&t, i915, __func__, "");
 	if (err)
@@ -860,7 +867,7 @@ out_request:
 		i915_request_put(request[id]);
 	}
 out_unlock:
-	intel_runtime_pm_put(i915);
+	intel_runtime_pm_put(i915, wakeref);
 	mutex_unlock(&i915->drm.struct_mutex);
 	return err;
 }

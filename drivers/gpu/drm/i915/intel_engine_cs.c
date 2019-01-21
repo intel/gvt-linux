@@ -25,6 +25,7 @@
 #include <drm/drm_print.h>
 
 #include "i915_drv.h"
+#include "i915_reset.h"
 #include "intel_ringbuffer.h"
 #include "intel_lrc.h"
 
@@ -261,6 +262,31 @@ static void __sprint_engine_name(char *name, const struct engine_info *info)
 			 info->instance) >= INTEL_ENGINE_CS_MAX_NAME);
 }
 
+void intel_engine_set_hwsp_writemask(struct intel_engine_cs *engine, u32 mask)
+{
+	struct drm_i915_private *dev_priv = engine->i915;
+	i915_reg_t hwstam;
+
+	/*
+	 * Though they added more rings on g4x/ilk, they did not add
+	 * per-engine HWSTAM until gen6.
+	 */
+	if (INTEL_GEN(dev_priv) < 6 && engine->class != RENDER_CLASS)
+		return;
+
+	hwstam = RING_HWSTAM(engine->mmio_base);
+	if (INTEL_GEN(dev_priv) >= 3)
+		I915_WRITE(hwstam, mask);
+	else
+		I915_WRITE16(hwstam, mask);
+}
+
+static void intel_engine_sanitize_mmio(struct intel_engine_cs *engine)
+{
+	/* Mask off all writes into the unknown HWSP */
+	intel_engine_set_hwsp_writemask(engine, ~0u);
+}
+
 static int
 intel_engine_setup(struct drm_i915_private *dev_priv,
 		   enum intel_engine_id id)
@@ -311,6 +337,9 @@ intel_engine_setup(struct drm_i915_private *dev_priv,
 	seqlock_init(&engine->stats.lock);
 
 	ATOMIC_INIT_NOTIFIER_HEAD(&engine->context_status_notifier);
+
+	/* Scrub mmio state on takeover */
+	intel_engine_sanitize_mmio(engine);
 
 	dev_priv->engine_class[info->class][info->instance] = engine;
 	dev_priv->engine[id] = engine;
@@ -365,7 +394,7 @@ int intel_engines_init_mmio(struct drm_i915_private *dev_priv)
 		goto cleanup;
 	}
 
-	device_info->num_rings = hweight32(mask);
+	RUNTIME_INFO(dev_priv)->num_rings = hweight32(mask);
 
 	i915_check_and_clear_faults(dev_priv);
 
@@ -426,27 +455,9 @@ cleanup:
 	return err;
 }
 
-void intel_engine_init_global_seqno(struct intel_engine_cs *engine, u32 seqno)
+void intel_engine_write_global_seqno(struct intel_engine_cs *engine, u32 seqno)
 {
-	struct drm_i915_private *dev_priv = engine->i915;
-
-	/* Our semaphore implementation is strictly monotonic (i.e. we proceed
-	 * so long as the semaphore value in the register/page is greater
-	 * than the sync value), so whenever we reset the seqno,
-	 * so long as we reset the tracking semaphore value to 0, it will
-	 * always be before the next request's seqno. If we don't reset
-	 * the semaphore value, then when the seqno moves backwards all
-	 * future waits will complete instantly (causing rendering corruption).
-	 */
-	if (IS_GEN6(dev_priv) || IS_GEN7(dev_priv)) {
-		I915_WRITE(RING_SYNC_0(engine->mmio_base), 0);
-		I915_WRITE(RING_SYNC_1(engine->mmio_base), 0);
-		if (HAS_VEBOX(dev_priv))
-			I915_WRITE(RING_SYNC_2(engine->mmio_base), 0);
-	}
-
 	intel_write_status_page(engine, I915_GEM_HWS_INDEX, seqno);
-	clear_bit(ENGINE_IRQ_BREADCRUMB, &engine->irq_posted);
 
 	/* After manually advancing the seqno, fake the interrupt in case
 	 * there are any waiters for that seqno.
@@ -495,6 +506,9 @@ void intel_engine_setup_common(struct intel_engine_cs *engine)
 
 static void cleanup_status_page(struct intel_engine_cs *engine)
 {
+	/* Prevent writes into HWSP after returning the page to the system */
+	intel_engine_set_hwsp_writemask(engine, ~0u);
+
 	if (HWS_NEEDS_PHYSICAL(engine->i915)) {
 		void *addr = fetch_and_zero(&engine->status_page.page_addr);
 
@@ -769,12 +783,12 @@ const char *i915_cache_level_str(struct drm_i915_private *i915, int type)
 
 u32 intel_calculate_mcr_s_ss_select(struct drm_i915_private *dev_priv)
 {
-	const struct sseu_dev_info *sseu = &(INTEL_INFO(dev_priv)->sseu);
+	const struct sseu_dev_info *sseu = &RUNTIME_INFO(dev_priv)->sseu;
 	u32 mcr_s_ss_select;
 	u32 slice = fls(sseu->slice_mask);
 	u32 subslice = fls(sseu->subslice_mask[slice]);
 
-	if (IS_GEN10(dev_priv))
+	if (IS_GEN(dev_priv, 10))
 		mcr_s_ss_select = GEN8_MCR_SLICE(slice) |
 				  GEN8_MCR_SUBSLICE(subslice);
 	else if (INTEL_GEN(dev_priv) >= 11)
@@ -786,15 +800,15 @@ u32 intel_calculate_mcr_s_ss_select(struct drm_i915_private *dev_priv)
 	return mcr_s_ss_select;
 }
 
-static inline uint32_t
+static inline u32
 read_subslice_reg(struct drm_i915_private *dev_priv, int slice,
 		  int subslice, i915_reg_t reg)
 {
-	uint32_t mcr_slice_subslice_mask;
-	uint32_t mcr_slice_subslice_select;
-	uint32_t default_mcr_s_ss_select;
-	uint32_t mcr;
-	uint32_t ret;
+	u32 mcr_slice_subslice_mask;
+	u32 mcr_slice_subslice_select;
+	u32 default_mcr_s_ss_select;
+	u32 mcr;
+	u32 ret;
 	enum forcewake_domains fw_domains;
 
 	if (INTEL_GEN(dev_priv) >= 11) {
@@ -900,10 +914,15 @@ void intel_engine_get_instdone(struct intel_engine_cs *engine,
 static bool ring_is_idle(struct intel_engine_cs *engine)
 {
 	struct drm_i915_private *dev_priv = engine->i915;
+	intel_wakeref_t wakeref;
 	bool idle = true;
 
+	if (I915_SELFTEST_ONLY(!engine->mmio_base))
+		return true;
+
 	/* If the whole device is asleep, the engine must be idle */
-	if (!intel_runtime_pm_get_if_in_use(dev_priv))
+	wakeref = intel_runtime_pm_get_if_in_use(dev_priv);
+	if (!wakeref)
 		return true;
 
 	/* First check that no commands are left in the ring */
@@ -915,7 +934,7 @@ static bool ring_is_idle(struct intel_engine_cs *engine)
 	if (INTEL_GEN(dev_priv) > 2 && !(I915_READ_MODE(engine) & MODE_IDLE))
 		idle = false;
 
-	intel_runtime_pm_put(dev_priv);
+	intel_runtime_pm_put(dev_priv, wakeref);
 
 	return idle;
 }
@@ -938,9 +957,6 @@ bool intel_engine_is_idle(struct intel_engine_cs *engine)
 	/* Any inflight/incomplete requests? */
 	if (!intel_engine_signaled(engine, intel_engine_last_submit(engine)))
 		return false;
-
-	if (I915_SELFTEST_ONLY(engine->breadcrumbs.mock))
-		return true;
 
 	/* Waiting to drain ELSP? */
 	if (READ_ONCE(engine->execlists.active)) {
@@ -967,10 +983,7 @@ bool intel_engine_is_idle(struct intel_engine_cs *engine)
 		return false;
 
 	/* Ring stopped? */
-	if (!ring_is_idle(engine))
-		return false;
-
-	return true;
+	return ring_is_idle(engine);
 }
 
 bool intel_engines_are_idle(struct drm_i915_private *dev_priv)
@@ -1030,21 +1043,33 @@ void intel_engines_reset_default_submission(struct drm_i915_private *i915)
 		engine->set_default_submission(engine);
 }
 
+static bool reset_engines(struct drm_i915_private *i915)
+{
+	if (INTEL_INFO(i915)->gpu_reset_clobbers_display)
+		return false;
+
+	return intel_gpu_reset(i915, ALL_ENGINES) == 0;
+}
+
 /**
  * intel_engines_sanitize: called after the GPU has lost power
  * @i915: the i915 device
+ * @force: ignore a failed reset and sanitize engine state anyway
  *
  * Anytime we reset the GPU, either with an explicit GPU reset or through a
  * PCI power cycle, the GPU loses state and we must reset our state tracking
  * to match. Note that calling intel_engines_sanitize() if the GPU has not
  * been reset results in much confusion!
  */
-void intel_engines_sanitize(struct drm_i915_private *i915)
+void intel_engines_sanitize(struct drm_i915_private *i915, bool force)
 {
 	struct intel_engine_cs *engine;
 	enum intel_engine_id id;
 
 	GEM_TRACE("\n");
+
+	if (!reset_engines(i915) && !force)
+		return;
 
 	for_each_engine(engine, i915, id) {
 		if (engine->reset.reset)
@@ -1248,7 +1273,7 @@ static void intel_engine_print_registers(const struct intel_engine_cs *engine,
 		&engine->execlists;
 	u64 addr;
 
-	if (engine->id == RCS && IS_GEN(dev_priv, 4, 7))
+	if (engine->id == RCS && IS_GEN_RANGE(dev_priv, 4, 7))
 		drm_printf(m, "\tCCID: 0x%08x\n", I915_READ(CCID));
 	drm_printf(m, "\tRING_START: 0x%08x\n",
 		   I915_READ(RING_START(engine->mmio_base)));
@@ -1267,16 +1292,6 @@ static void intel_engine_print_registers(const struct intel_engine_cs *engine,
 
 	if (INTEL_GEN(dev_priv) >= 6) {
 		drm_printf(m, "\tRING_IMR: %08x\n", I915_READ_IMR(engine));
-	}
-
-	if (HAS_LEGACY_SEMAPHORES(dev_priv)) {
-		drm_printf(m, "\tSYNC_0: 0x%08x\n",
-			   I915_READ(RING_SYNC_0(engine->mmio_base)));
-		drm_printf(m, "\tSYNC_1: 0x%08x\n",
-			   I915_READ(RING_SYNC_1(engine->mmio_base)));
-		if (HAS_VEBOX(dev_priv))
-			drm_printf(m, "\tSYNC_2: 0x%08x\n",
-				   I915_READ(RING_SYNC_2(engine->mmio_base)));
 	}
 
 	addr = intel_engine_get_active_head(engine);
@@ -1405,14 +1420,12 @@ void intel_engine_dump(struct intel_engine_cs *engine,
 		       struct drm_printer *m,
 		       const char *header, ...)
 {
-	const int MAX_REQUESTS_TO_SHOW = 8;
 	struct intel_breadcrumbs * const b = &engine->breadcrumbs;
-	const struct intel_engine_execlists * const execlists = &engine->execlists;
 	struct i915_gpu_error * const error = &engine->i915->gpu_error;
-	struct i915_request *rq, *last;
+	struct i915_request *rq;
+	intel_wakeref_t wakeref;
 	unsigned long flags;
 	struct rb_node *rb;
-	int count;
 
 	if (header) {
 		va_list ap;
@@ -1468,59 +1481,17 @@ void intel_engine_dump(struct intel_engine_cs *engine,
 
 	rcu_read_unlock();
 
-	if (intel_runtime_pm_get_if_in_use(engine->i915)) {
+	wakeref = intel_runtime_pm_get_if_in_use(engine->i915);
+	if (wakeref) {
 		intel_engine_print_registers(engine, m);
-		intel_runtime_pm_put(engine->i915);
+		intel_runtime_pm_put(engine->i915, wakeref);
 	} else {
 		drm_printf(m, "\tDevice is asleep; skipping register dump\n");
 	}
 
-	local_irq_save(flags);
-	spin_lock(&engine->timeline.lock);
+	intel_execlists_show_requests(engine, m, print_request, 8);
 
-	last = NULL;
-	count = 0;
-	list_for_each_entry(rq, &engine->timeline.requests, link) {
-		if (count++ < MAX_REQUESTS_TO_SHOW - 1)
-			print_request(m, rq, "\t\tE ");
-		else
-			last = rq;
-	}
-	if (last) {
-		if (count > MAX_REQUESTS_TO_SHOW) {
-			drm_printf(m,
-				   "\t\t...skipping %d executing requests...\n",
-				   count - MAX_REQUESTS_TO_SHOW);
-		}
-		print_request(m, last, "\t\tE ");
-	}
-
-	last = NULL;
-	count = 0;
-	drm_printf(m, "\t\tQueue priority: %d\n", execlists->queue_priority);
-	for (rb = rb_first_cached(&execlists->queue); rb; rb = rb_next(rb)) {
-		struct i915_priolist *p = rb_entry(rb, typeof(*p), node);
-		int i;
-
-		priolist_for_each_request(rq, p, i) {
-			if (count++ < MAX_REQUESTS_TO_SHOW - 1)
-				print_request(m, rq, "\t\tQ ");
-			else
-				last = rq;
-		}
-	}
-	if (last) {
-		if (count > MAX_REQUESTS_TO_SHOW) {
-			drm_printf(m,
-				   "\t\t...skipping %d queued requests...\n",
-				   count - MAX_REQUESTS_TO_SHOW);
-		}
-		print_request(m, last, "\t\tQ ");
-	}
-
-	spin_unlock(&engine->timeline.lock);
-
-	spin_lock(&b->rb_lock);
+	spin_lock_irqsave(&b->rb_lock, flags);
 	for (rb = rb_first(&b->waiters); rb; rb = rb_next(rb)) {
 		struct intel_wait *w = rb_entry(rb, typeof(*w), node);
 
@@ -1529,13 +1500,7 @@ void intel_engine_dump(struct intel_engine_cs *engine,
 			   task_state_to_char(w->tsk),
 			   w->seqno);
 	}
-	spin_unlock(&b->rb_lock);
-	local_irq_restore(flags);
-
-	drm_printf(m, "IRQ? 0x%lx (breadcrumbs? %s)\n",
-		   engine->irq_posted,
-		   yesno(test_bit(ENGINE_IRQ_BREADCRUMB,
-				  &engine->irq_posted)));
+	spin_unlock_irqrestore(&b->rb_lock, flags);
 
 	drm_printf(m, "HWSP:\n");
 	hexdump(m, engine->status_page.page_addr, PAGE_SIZE);

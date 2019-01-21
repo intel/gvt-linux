@@ -563,7 +563,7 @@ static void i9xx_set_backlight(const struct drm_connector_state *conn_state, u32
 		pci_write_config_byte(dev_priv->drm.pdev, LBPC, lbpc);
 	}
 
-	if (IS_GEN4(dev_priv)) {
+	if (IS_GEN(dev_priv, 4)) {
 		mask = BACKLIGHT_DUTY_CYCLE_MASK;
 	} else {
 		level <<= 1;
@@ -929,7 +929,7 @@ static void i9xx_enable_backlight(const struct intel_crtc_state *crtc_state,
 	 * 855gm only, but checking for gen2 is safe, as 855gm is the only gen2
 	 * that has backlight.
 	 */
-	if (IS_GEN2(dev_priv))
+	if (IS_GEN(dev_priv, 2))
 		I915_WRITE(BLC_HIST_CTL, BLM_HISTOGRAM_ENABLE);
 }
 
@@ -1203,17 +1203,20 @@ static int intel_backlight_device_get_brightness(struct backlight_device *bd)
 	struct intel_connector *connector = bl_get_data(bd);
 	struct drm_device *dev = connector->base.dev;
 	struct drm_i915_private *dev_priv = to_i915(dev);
-	u32 hw_level;
-	int ret;
+	intel_wakeref_t wakeref;
+	int ret = 0;
 
-	intel_runtime_pm_get(dev_priv);
-	drm_modeset_lock(&dev->mode_config.connection_mutex, NULL);
+	with_intel_runtime_pm(dev_priv, wakeref) {
+		u32 hw_level;
 
-	hw_level = intel_panel_get_backlight(connector);
-	ret = scale_hw_to_user(connector, hw_level, bd->props.max_brightness);
+		drm_modeset_lock(&dev->mode_config.connection_mutex, NULL);
 
-	drm_modeset_unlock(&dev->mode_config.connection_mutex);
-	intel_runtime_pm_put(dev_priv);
+		hw_level = intel_panel_get_backlight(connector);
+		ret = scale_hw_to_user(connector,
+				       hw_level, bd->props.max_brightness);
+
+		drm_modeset_unlock(&dev->mode_config.connection_mutex);
+	}
 
 	return ret;
 }
@@ -1557,7 +1560,7 @@ static int i9xx_setup_backlight(struct intel_connector *connector, enum pipe unu
 
 	ctl = I915_READ(BLC_PWM_CTL);
 
-	if (IS_GEN2(dev_priv) || IS_I915GM(dev_priv) || IS_I945GM(dev_priv))
+	if (IS_GEN(dev_priv, 2) || IS_I915GM(dev_priv) || IS_I945GM(dev_priv))
 		panel->backlight.combination_mode = ctl & BLM_LEGACY_MODE;
 
 	if (IS_PINEVIEW(dev_priv))
@@ -1886,7 +1889,7 @@ intel_panel_init_backlight_funcs(struct intel_panel *panel)
 			panel->backlight.get = vlv_get_backlight;
 			panel->backlight.hz_to_pwm = vlv_hz_to_pwm;
 		}
-	} else if (IS_GEN4(dev_priv)) {
+	} else if (IS_GEN(dev_priv, 4)) {
 		panel->backlight.setup = i965_setup_backlight;
 		panel->backlight.enable = i965_enable_backlight;
 		panel->backlight.disable = i965_disable_backlight;

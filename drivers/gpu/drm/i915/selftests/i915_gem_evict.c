@@ -31,30 +31,63 @@
 
 static int populate_ggtt(struct drm_i915_private *i915)
 {
-	struct drm_i915_gem_object *obj;
+	struct drm_i915_gem_object *obj, *on;
+	unsigned long expected_unbound, expected_bound;
+	unsigned long unbound, bound, count;
 	u64 size;
+	int err;
 
+	expected_unbound = 0;
+	list_for_each_entry(obj, &i915->mm.unbound_list, mm.link) {
+		i915_gem_object_get(obj);
+		expected_unbound++;
+	}
+
+	expected_bound = 0;
+	list_for_each_entry(obj, &i915->mm.bound_list, mm.link) {
+		i915_gem_object_get(obj);
+		expected_bound++;
+	}
+
+	count = 0;
 	for (size = 0;
 	     size + I915_GTT_PAGE_SIZE <= i915->ggtt.vm.total;
 	     size += I915_GTT_PAGE_SIZE) {
 		struct i915_vma *vma;
 
 		obj = i915_gem_object_create_internal(i915, I915_GTT_PAGE_SIZE);
-		if (IS_ERR(obj))
-			return PTR_ERR(obj);
+		if (IS_ERR(obj)) {
+			err = PTR_ERR(obj);
+			goto cleanup;
+		}
 
 		vma = i915_gem_object_ggtt_pin(obj, NULL, 0, 0, 0);
-		if (IS_ERR(vma))
-			return PTR_ERR(vma);
+		if (IS_ERR(vma)) {
+			err = PTR_ERR(vma);
+			goto cleanup;
+		}
+
+		count++;
 	}
 
-	if (!list_empty(&i915->mm.unbound_list)) {
-		size = 0;
-		list_for_each_entry(obj, &i915->mm.unbound_list, mm.link)
-			size++;
+	unbound = 0;
+	list_for_each_entry(obj, &i915->mm.unbound_list, mm.link)
+		unbound++;
+	if (unbound != expected_unbound) {
+		pr_err("%s: Found %lu objects unbound, expected %lu!\n",
+		       __func__, unbound, expected_unbound);
+		err = -EINVAL;
+		goto cleanup;
+	}
 
-		pr_err("Found %lld objects unbound!\n", size);
-		return -EINVAL;
+	bound = 0;
+	list_for_each_entry(obj, &i915->mm.bound_list, mm.link)
+		bound++;
+	if (bound != expected_bound + count) {
+		pr_err("%s: Found %lu objects bound, expected %lu!\n",
+		       __func__, bound, expected_bound + count);
+		err = -EINVAL;
+		goto cleanup;
 	}
 
 	if (list_empty(&i915->ggtt.vm.inactive_list)) {
@@ -63,6 +96,15 @@ static int populate_ggtt(struct drm_i915_private *i915)
 	}
 
 	return 0;
+
+cleanup:
+	list_for_each_entry_safe(obj, on, &i915->mm.unbound_list, mm.link)
+		i915_gem_object_put(obj);
+
+	list_for_each_entry_safe(obj, on, &i915->mm.bound_list, mm.link)
+		i915_gem_object_put(obj);
+
+	return err;
 }
 
 static void unpin_ggtt(struct drm_i915_private *i915)
@@ -336,6 +378,7 @@ static int igt_evict_contexts(void *arg)
 		struct drm_mm_node node;
 		struct reserved *next;
 	} *reserved = NULL;
+	intel_wakeref_t wakeref;
 	struct drm_mm_node hole;
 	unsigned long count;
 	int err;
@@ -355,7 +398,7 @@ static int igt_evict_contexts(void *arg)
 		return 0;
 
 	mutex_lock(&i915->drm.struct_mutex);
-	intel_runtime_pm_get(i915);
+	wakeref = intel_runtime_pm_get(i915);
 
 	/* Reserve a block so that we know we have enough to fit a few rq */
 	memset(&hole, 0, sizeof(hole));
@@ -400,8 +443,10 @@ static int igt_evict_contexts(void *arg)
 		struct drm_file *file;
 
 		file = mock_file(i915);
-		if (IS_ERR(file))
-			return PTR_ERR(file);
+		if (IS_ERR(file)) {
+			err = PTR_ERR(file);
+			break;
+		}
 
 		count = 0;
 		mutex_lock(&i915->drm.struct_mutex);
@@ -464,7 +509,7 @@ out_locked:
 	}
 	if (drm_mm_node_allocated(&hole))
 		drm_mm_remove_node(&hole);
-	intel_runtime_pm_put(i915);
+	intel_runtime_pm_put(i915, wakeref);
 	mutex_unlock(&i915->drm.struct_mutex);
 
 	return err;
@@ -480,14 +525,17 @@ int i915_gem_evict_mock_selftests(void)
 		SUBTEST(igt_overcommit),
 	};
 	struct drm_i915_private *i915;
-	int err;
+	intel_wakeref_t wakeref;
+	int err = 0;
 
 	i915 = mock_gem_device();
 	if (!i915)
 		return -ENOMEM;
 
 	mutex_lock(&i915->drm.struct_mutex);
-	err = i915_subtests(tests, i915);
+	with_intel_runtime_pm(i915, wakeref)
+		err = i915_subtests(tests, i915);
+
 	mutex_unlock(&i915->drm.struct_mutex);
 
 	drm_dev_put(&i915->drm);

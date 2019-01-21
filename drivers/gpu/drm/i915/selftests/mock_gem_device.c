@@ -147,21 +147,23 @@ struct drm_i915_private *mock_gem_device(void)
 	pdev->class = PCI_BASE_CLASS_DISPLAY << 16;
 	pdev->dev.release = release_dev;
 	dev_set_name(&pdev->dev, "mock");
-	dma_coerce_mask_and_coherent(&pdev->dev, DMA_BIT_MASK(32));
+	dma_coerce_mask_and_coherent(&pdev->dev, DMA_BIT_MASK(64));
 
 #if IS_ENABLED(CONFIG_IOMMU_API) && defined(CONFIG_INTEL_IOMMU)
 	/* hack to disable iommu for the fake device; force identity mapping */
 	pdev->dev.archdata.iommu = (void *)-1;
 #endif
 
+	i915 = (struct drm_i915_private *)(pdev + 1);
+	pci_set_drvdata(pdev, i915);
+
+	intel_runtime_pm_init_early(i915);
+
 	dev_pm_domain_set(&pdev->dev, &pm_domain);
 	pm_runtime_enable(&pdev->dev);
 	pm_runtime_dont_use_autosuspend(&pdev->dev);
 	if (pm_runtime_enabled(&pdev->dev))
 		WARN_ON(pm_runtime_get_sync(&pdev->dev));
-
-	i915 = (struct drm_i915_private *)(pdev + 1);
-	pci_set_drvdata(pdev, i915);
 
 	err = drm_dev_init(&i915->drm, &mock_driver, &pdev->dev);
 	if (err) {
@@ -186,6 +188,7 @@ struct drm_i915_private *mock_gem_device(void)
 
 	init_waitqueue_head(&i915->gpu_error.wait_queue);
 	init_waitqueue_head(&i915->gpu_error.reset_queue);
+	mutex_init(&i915->gpu_error.wedge_mutex);
 
 	i915->wq = alloc_ordered_workqueue("mock", 0);
 	if (!i915->wq)

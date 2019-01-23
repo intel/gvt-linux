@@ -1,0 +1,30 @@
+drm drm-fixes 9420151d88ca35cd7f857774d90bfdca505a2cc1
+	Merge branch 'linux-4.21' of git://github.com/skeggsb/linux into drm-fixes
+drm-misc drm-misc-fixes 5e1bc251cebc84b41b8eb5d2434e54d939a85430
+	drm/sun4i: hdmi: Fix usage of TMDS clock
+drm-intel drm-intel-fixes 49a57857aeea06ca831043acbb0fa5e0f50602fd
+	Linux 5.0-rc3
+drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
+	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
+drm drm-next f164a94c2c87752caeb1a3cbe068c440e7f7921f
+	Merge tag 'drm-misc-next-2019-01-16' of git://anongit.freedesktop.org/drm/drm-misc into drm-next
+drm-misc drm-misc-next-fixes c75ff001f4fe21a8c9f15aad799a8949aea109f7
+	drm: Put damage blob when destroy plane state
+drm-intel drm-intel-next-fixes bfeffd155283772bbe78c6a05dec7c0128ee500c
+	Linux 5.0-rc1
+drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
+	Linux 4.14-rc1
+drm-misc drm-misc-next 46f3ceaffa81e846677bca8668e0ad40e643cffd
+	drm/panel: panel-innolux: set display off in innolux_panel_unprepare
+drm-intel drm-intel-next-queued a9dc3395fc8bc460761f853b71971bdc1671560f
+	drm/i915/sdvo: switch to kernel types
+drm-intel drm-intel-next 74256b7ecf7790de78ea14facfc9dac02afcc76a
+	drm/i915: Update DRIVER_DATE to 20190110
+drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
+	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
+sound-upstream for-linus 699390381a7bae2fab01a22f742a17235c44ed8a
+	ALSA: hda - Add mute LED support for HP ProBook 470 G5
+sound-upstream for-next f0f9f497d44e2f696b4e16c41f3eaa13a009f22d
+	ALSA: fireface: support rx MIDI functionality for Fireface UCX
+drm-intel topic/core-for-CI 3a73af8b1a2c76803911ea12970cd734b7f481ec
+	net: phy: fix too strict check in phy_start_aneg

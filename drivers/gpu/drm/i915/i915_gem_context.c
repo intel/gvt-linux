@@ -86,7 +86,6 @@
  */
 
 #include <linux/log2.h>
-#include <drm/drmP.h>
 #include <drm/i915_drm.h>
 #include "i915_drv.h"
 #include "i915_trace.h"
@@ -311,7 +310,7 @@ static u32 default_desc_template(const struct drm_i915_private *i915,
 		address_mode = INTEL_LEGACY_64B_CONTEXT;
 	desc |= address_mode << GEN8_CTX_ADDRESSING_MODE_SHIFT;
 
-	if (IS_GEN8(i915))
+	if (IS_GEN(i915, 8))
 		desc |= GEN8_CTX_L3LLC_COHERENT;
 
 	/* TODO: WaDisableLiteRestore when we start using semaphore
@@ -339,11 +338,8 @@ __create_hw_context(struct drm_i915_private *dev_priv,
 	ctx->i915 = dev_priv;
 	ctx->sched.priority = I915_USER_PRIORITY(I915_PRIORITY_NORMAL);
 
-	for (n = 0; n < ARRAY_SIZE(ctx->__engine); n++) {
-		struct intel_context *ce = &ctx->__engine[n];
-
-		ce->gem_context = ctx;
-	}
+	for (n = 0; n < ARRAY_SIZE(ctx->__engine); n++)
+		intel_context_init(&ctx->__engine[n], ctx, dev_priv->engine[n]);
 
 	INIT_RADIX_TREE(&ctx->handles_vma, GFP_KERNEL);
 	INIT_LIST_HEAD(&ctx->handles_list);

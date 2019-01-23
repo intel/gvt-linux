@@ -31,7 +31,6 @@
 #include <linux/sync_file.h>
 #include <linux/uaccess.h>
 
-#include <drm/drmP.h>
 #include <drm/drm_syncobj.h>
 #include <drm/i915_drm.h>
 
@@ -1380,7 +1379,7 @@ eb_relocate_entry(struct i915_execbuffer *eb,
 		 * batchbuffers.
 		 */
 		if (reloc->write_domain == I915_GEM_DOMAIN_INSTRUCTION &&
-		    IS_GEN6(eb->i915)) {
+		    IS_GEN(eb->i915, 6)) {
 			err = i915_vma_bind(target, target->obj->cache_level,
 					    PIN_GLOBAL);
 			if (WARN_ONCE(err,
@@ -1896,7 +1895,7 @@ static int i915_reset_gen7_sol_offsets(struct i915_request *rq)
 	u32 *cs;
 	int i;
 
-	if (!IS_GEN7(rq->i915) || rq->engine->id != RCS) {
+	if (!IS_GEN(rq->i915, 7) || rq->engine->id != RCS) {
 		DRM_DEBUG("sol reset is gen7/rcs only\n");
 		return -EINVAL;
 	}
@@ -2203,6 +2202,7 @@ i915_gem_do_execbuffer(struct drm_device *dev,
 	struct i915_execbuffer eb;
 	struct dma_fence *in_fence = NULL;
 	struct sync_file *out_fence = NULL;
+	intel_wakeref_t wakeref;
 	int out_fence_fd = -1;
 	int err;
 
@@ -2273,7 +2273,7 @@ i915_gem_do_execbuffer(struct drm_device *dev,
 	 * wakeref that we hold until the GPU has been idle for at least
 	 * 100ms.
 	 */
-	intel_runtime_pm_get(eb.i915);
+	wakeref = intel_runtime_pm_get(eb.i915);
 
 	err = i915_mutex_lock_interruptible(dev);
 	if (err)
@@ -2425,7 +2425,7 @@ err_vma:
 		eb_release_vmas(&eb);
 	mutex_unlock(&dev->struct_mutex);
 err_rpm:
-	intel_runtime_pm_put(eb.i915);
+	intel_runtime_pm_put(eb.i915, wakeref);
 	i915_gem_context_put(eb.ctx);
 err_destroy:
 	eb_destroy(&eb);

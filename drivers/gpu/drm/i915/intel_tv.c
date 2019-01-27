@@ -30,7 +30,6 @@
  * Integrated TV-out support for the 915GM and 945GM.
  */
 
-#include <drm/drmP.h>
 #include <drm/drm_atomic_helper.h>
 #include <drm/drm_crtc.h>
 #include <drm/drm_edid.h>
@@ -870,7 +869,7 @@ intel_tv_get_config(struct intel_encoder *encoder,
 	pipe_config->base.adjusted_mode.crtc_clock = pipe_config->port_clock;
 }
 
-static bool
+static int
 intel_tv_compute_config(struct intel_encoder *encoder,
 			struct intel_crtc_state *pipe_config,
 			struct drm_connector_state *conn_state)
@@ -880,10 +879,10 @@ intel_tv_compute_config(struct intel_encoder *encoder,
 		&pipe_config->base.adjusted_mode;
 
 	if (!tv_mode)
-		return false;
+		return -EINVAL;
 
 	if (adjusted_mode->flags & DRM_MODE_FLAG_DBLSCAN)
-		return false;
+		return -EINVAL;
 
 	pipe_config->output_format = INTEL_OUTPUT_FORMAT_RGB;
 	adjusted_mode->crtc_clock = tv_mode->clock;
@@ -898,7 +897,7 @@ intel_tv_compute_config(struct intel_encoder *encoder,
 	 * or whether userspace is doing something stupid.
 	 */
 
-	return true;
+	return 0;
 }
 
 static void

@@ -33,6 +33,7 @@
 
 #include "i915_drv.h"
 #include "i915_gem_render_state.h"
+#include "i915_reset.h"
 #include "i915_trace.h"
 #include "intel_drv.h"
 #include "intel_workarounds.h"
@@ -299,7 +300,7 @@ gen6_render_ring_flush(struct i915_request *rq, u32 mode)
 	return 0;
 }
 
-static void gen6_rcs_emit_breadcrumb(struct i915_request *rq, u32 *cs)
+static u32 *gen6_rcs_emit_breadcrumb(struct i915_request *rq, u32 *cs)
 {
 	/* First we do the gen6_emit_post_sync_nonzero_flush w/a */
 	*cs++ = GFX_OP_PIPE_CONTROL(4);
@@ -327,8 +328,9 @@ static void gen6_rcs_emit_breadcrumb(struct i915_request *rq, u32 *cs)
 
 	rq->tail = intel_ring_offset(rq, cs);
 	assert_ring_tail_valid(rq->ring, rq->tail);
+
+	return cs;
 }
-static const int gen6_rcs_emit_breadcrumb_sz = 14;
 
 static int
 gen7_render_ring_cs_stall_wa(struct i915_request *rq)
@@ -409,7 +411,7 @@ gen7_render_ring_flush(struct i915_request *rq, u32 mode)
 	return 0;
 }
 
-static void gen7_rcs_emit_breadcrumb(struct i915_request *rq, u32 *cs)
+static u32 *gen7_rcs_emit_breadcrumb(struct i915_request *rq, u32 *cs)
 {
 	*cs++ = GFX_OP_PIPE_CONTROL(4);
 	*cs++ = (PIPE_CONTROL_RENDER_TARGET_CACHE_FLUSH |
@@ -427,10 +429,11 @@ static void gen7_rcs_emit_breadcrumb(struct i915_request *rq, u32 *cs)
 
 	rq->tail = intel_ring_offset(rq, cs);
 	assert_ring_tail_valid(rq->ring, rq->tail);
-}
-static const int gen7_rcs_emit_breadcrumb_sz = 6;
 
-static void gen6_xcs_emit_breadcrumb(struct i915_request *rq, u32 *cs)
+	return cs;
+}
+
+static u32 *gen6_xcs_emit_breadcrumb(struct i915_request *rq, u32 *cs)
 {
 	*cs++ = MI_FLUSH_DW | MI_FLUSH_DW_OP_STOREDW;
 	*cs++ = intel_hws_seqno_address(rq->engine) | MI_FLUSH_DW_USE_GTT;
@@ -439,11 +442,12 @@ static void gen6_xcs_emit_breadcrumb(struct i915_request *rq, u32 *cs)
 
 	rq->tail = intel_ring_offset(rq, cs);
 	assert_ring_tail_valid(rq->ring, rq->tail);
+
+	return cs;
 }
-static const int gen6_xcs_emit_breadcrumb_sz = 4;
 
 #define GEN7_XCS_WA 32
-static void gen7_xcs_emit_breadcrumb(struct i915_request *rq, u32 *cs)
+static u32 *gen7_xcs_emit_breadcrumb(struct i915_request *rq, u32 *cs)
 {
 	int i;
 
@@ -466,8 +470,9 @@ static void gen7_xcs_emit_breadcrumb(struct i915_request *rq, u32 *cs)
 
 	rq->tail = intel_ring_offset(rq, cs);
 	assert_ring_tail_valid(rq->ring, rq->tail);
+
+	return cs;
 }
-static const int gen7_xcs_emit_breadcrumb_sz = 8 + GEN7_XCS_WA * 3;
 #undef GEN7_XCS_WA
 
 static void set_hwstam(struct intel_engine_cs *engine, u32 mask)
@@ -707,52 +712,80 @@ out:
 	return ret;
 }
 
-static struct i915_request *reset_prepare(struct intel_engine_cs *engine)
+static void reset_prepare(struct intel_engine_cs *engine)
 {
 	intel_engine_stop_cs(engine);
-	return i915_gem_find_active_request(engine);
 }
 
-static void skip_request(struct i915_request *rq)
+static void reset_ring(struct intel_engine_cs *engine, bool stalled)
 {
-	void *vaddr = rq->ring->vaddr;
+	struct i915_timeline *tl = &engine->timeline;
+	struct i915_request *pos, *rq;
+	unsigned long flags;
 	u32 head;
 
-	head = rq->infix;
-	if (rq->postfix < head) {
-		memset32(vaddr + head, MI_NOOP,
-			 (rq->ring->size - head) / sizeof(u32));
-		head = 0;
+	rq = NULL;
+	spin_lock_irqsave(&tl->lock, flags);
+	list_for_each_entry(pos, &tl->requests, link) {
+		if (!__i915_request_completed(pos, pos->global_seqno)) {
+			rq = pos;
+			break;
+		}
 	}
-	memset32(vaddr + head, MI_NOOP, (rq->postfix - head) / sizeof(u32));
-}
 
-static void reset_ring(struct intel_engine_cs *engine, struct i915_request *rq)
-{
-	GEM_TRACE("%s request global=%d, current=%d\n",
-		  engine->name, rq ? rq->global_seqno : 0,
-		  intel_engine_get_seqno(engine));
-
+	GEM_TRACE("%s seqno=%d, current=%d, stalled? %s\n",
+		  engine->name,
+		  rq ? rq->global_seqno : 0,
+		  intel_engine_get_seqno(engine),
+		  yesno(stalled));
 	/*
-	 * Try to restore the logical GPU state to match the continuation
-	 * of the request queue. If we skip the context/PD restore, then
-	 * the next request may try to execute assuming that its context
-	 * is valid and loaded on the GPU and so may try to access invalid
-	 * memory, prompting repeated GPU hangs.
+	 * The guilty request will get skipped on a hung engine.
 	 *
-	 * If the request was guilty, we still restore the logical state
-	 * in case the next request requires it (e.g. the aliasing ppgtt),
-	 * but skip over the hung batch.
+	 * Users of client default contexts do not rely on logical
+	 * state preserved between batches so it is safe to execute
+	 * queued requests following the hang. Non default contexts
+	 * rely on preserved state, so skipping a batch loses the
+	 * evolution of the state and it needs to be considered corrupted.
+	 * Executing more queued batches on top of corrupted state is
+	 * risky. But we take the risk by trying to advance through
+	 * the queued requests in order to make the client behaviour
+	 * more predictable around resets, by not throwing away random
+	 * amount of batches it has prepared for execution. Sophisticated
+	 * clients can use gem_reset_stats_ioctl and dma fence status
+	 * (exported via sync_file info ioctl on explicit fences) to observe
+	 * when it loses the context state and should rebuild accordingly.
 	 *
-	 * If the request was innocent, we try to replay the request with
-	 * the restored context.
+	 * The context ban, and ultimately the client ban, mechanism are safety
+	 * valves if client submission ends up resulting in nothing more than
+	 * subsequent hangs.
 	 */
+
 	if (rq) {
-		/* If the rq hung, jump to its breadcrumb and skip the batch */
-		rq->ring->head = intel_ring_wrap(rq->ring, rq->head);
-		if (rq->fence.error == -EIO)
-			skip_request(rq);
+		/*
+		 * Try to restore the logical GPU state to match the
+		 * continuation of the request queue. If we skip the
+		 * context/PD restore, then the next request may try to execute
+		 * assuming that its context is valid and loaded on the GPU and
+		 * so may try to access invalid memory, prompting repeated GPU
+		 * hangs.
+		 *
+		 * If the request was guilty, we still restore the logical
+		 * state in case the next request requires it (e.g. the
+		 * aliasing ppgtt), but skip over the hung batch.
+		 *
+		 * If the request was innocent, we try to replay the request
+		 * with the restored context.
+		 */
+		i915_reset_request(rq, stalled);
+
+		GEM_BUG_ON(rq->ring != engine->buffer);
+		head = rq->head;
+	} else {
+		head = engine->buffer->tail;
 	}
+	engine->buffer->head = intel_ring_wrap(engine->buffer, head);
+
+	spin_unlock_irqrestore(&tl->lock, flags);
 }
 
 static void reset_finish(struct intel_engine_cs *engine)
@@ -836,8 +869,7 @@ static void cancel_requests(struct intel_engine_cs *engine)
 	list_for_each_entry(request, &engine->timeline.requests, link) {
 		GEM_BUG_ON(!request->global_seqno);
 
-		if (test_bit(DMA_FENCE_FLAG_SIGNALED_BIT,
-			     &request->fence.flags))
+		if (i915_request_signaled(request))
 			continue;
 
 		dma_fence_set_error(&request->fence, -EIO);
@@ -862,7 +894,7 @@ static void i9xx_submit_request(struct i915_request *request)
 			intel_ring_set_tail(request->ring, request->tail));
 }
 
-static void i9xx_emit_breadcrumb(struct i915_request *rq, u32 *cs)
+static u32 *i9xx_emit_breadcrumb(struct i915_request *rq, u32 *cs)
 {
 	*cs++ = MI_FLUSH;
 
@@ -875,11 +907,12 @@ static void i9xx_emit_breadcrumb(struct i915_request *rq, u32 *cs)
 
 	rq->tail = intel_ring_offset(rq, cs);
 	assert_ring_tail_valid(rq->ring, rq->tail);
+
+	return cs;
 }
-static const int i9xx_emit_breadcrumb_sz = 6;
 
 #define GEN5_WA_STORES 8 /* must be at least 1! */
-static void gen5_emit_breadcrumb(struct i915_request *rq, u32 *cs)
+static u32 *gen5_emit_breadcrumb(struct i915_request *rq, u32 *cs)
 {
 	int i;
 
@@ -896,8 +929,9 @@ static void gen5_emit_breadcrumb(struct i915_request *rq, u32 *cs)
 
 	rq->tail = intel_ring_offset(rq, cs);
 	assert_ring_tail_valid(rq->ring, rq->tail);
+
+	return cs;
 }
-static const int gen5_emit_breadcrumb_sz = GEN5_WA_STORES * 3 + 2;
 #undef GEN5_WA_STORES
 
 static void
@@ -2195,11 +2229,8 @@ static void intel_ring_default_vfuncs(struct drm_i915_private *dev_priv,
 	engine->request_alloc = ring_request_alloc;
 
 	engine->emit_breadcrumb = i9xx_emit_breadcrumb;
-	engine->emit_breadcrumb_sz = i9xx_emit_breadcrumb_sz;
-	if (IS_GEN(dev_priv, 5)) {
+	if (IS_GEN(dev_priv, 5))
 		engine->emit_breadcrumb = gen5_emit_breadcrumb;
-		engine->emit_breadcrumb_sz = gen5_emit_breadcrumb_sz;
-	}
 
 	engine->set_default_submission = i9xx_set_default_submission;
 
@@ -2229,12 +2260,10 @@ int intel_init_render_ring_buffer(struct intel_engine_cs *engine)
 		engine->init_context = intel_rcs_ctx_init;
 		engine->emit_flush = gen7_render_ring_flush;
 		engine->emit_breadcrumb = gen7_rcs_emit_breadcrumb;
-		engine->emit_breadcrumb_sz = gen7_rcs_emit_breadcrumb_sz;
 	} else if (IS_GEN(dev_priv, 6)) {
 		engine->init_context = intel_rcs_ctx_init;
 		engine->emit_flush = gen6_render_ring_flush;
 		engine->emit_breadcrumb = gen6_rcs_emit_breadcrumb;
-		engine->emit_breadcrumb_sz = gen6_rcs_emit_breadcrumb_sz;
 	} else if (IS_GEN(dev_priv, 5)) {
 		engine->emit_flush = gen4_render_ring_flush;
 	} else {
@@ -2270,13 +2299,10 @@ int intel_init_bsd_ring_buffer(struct intel_engine_cs *engine)
 		engine->emit_flush = gen6_bsd_ring_flush;
 		engine->irq_enable_mask = GT_BSD_USER_INTERRUPT;
 
-		if (IS_GEN(dev_priv, 6)) {
+		if (IS_GEN(dev_priv, 6))
 			engine->emit_breadcrumb = gen6_xcs_emit_breadcrumb;
-			engine->emit_breadcrumb_sz = gen6_xcs_emit_breadcrumb_sz;
-		} else {
+		else
 			engine->emit_breadcrumb = gen7_xcs_emit_breadcrumb;
-			engine->emit_breadcrumb_sz = gen7_xcs_emit_breadcrumb_sz;
-		}
 	} else {
 		engine->emit_flush = bsd_ring_flush;
 		if (IS_GEN(dev_priv, 5))
@@ -2299,13 +2325,10 @@ int intel_init_blt_ring_buffer(struct intel_engine_cs *engine)
 	engine->emit_flush = gen6_ring_flush;
 	engine->irq_enable_mask = GT_BLT_USER_INTERRUPT;
 
-	if (IS_GEN(dev_priv, 6)) {
+	if (IS_GEN(dev_priv, 6))
 		engine->emit_breadcrumb = gen6_xcs_emit_breadcrumb;
-		engine->emit_breadcrumb_sz = gen6_xcs_emit_breadcrumb_sz;
-	} else {
+	else
 		engine->emit_breadcrumb = gen7_xcs_emit_breadcrumb;
-		engine->emit_breadcrumb_sz = gen7_xcs_emit_breadcrumb_sz;
-	}
 
 	return intel_init_ring_buffer(engine);
 }
@@ -2324,7 +2347,6 @@ int intel_init_vebox_ring_buffer(struct intel_engine_cs *engine)
 	engine->irq_disable = hsw_vebox_irq_disable;
 
 	engine->emit_breadcrumb = gen7_xcs_emit_breadcrumb;
-	engine->emit_breadcrumb_sz = gen7_xcs_emit_breadcrumb_sz;
 
 	return intel_init_ring_buffer(engine);
 }

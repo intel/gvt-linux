@@ -29,6 +29,7 @@
 #include <linux/sched/signal.h>
 
 #include "i915_drv.h"
+#include "i915_reset.h"
 
 static const char *i915_fence_get_driver_name(struct dma_fence *fence)
 {
@@ -197,7 +198,7 @@ static void __retire_engine_request(struct intel_engine_cs *engine,
 	spin_unlock(&engine->timeline.lock);
 
 	spin_lock(&rq->lock);
-	if (!test_bit(DMA_FENCE_FLAG_SIGNALED_BIT, &rq->fence.flags))
+	if (!i915_request_signaled(rq))
 		dma_fence_signal_locked(&rq->fence);
 	if (test_bit(DMA_FENCE_FLAG_ENABLE_SIGNAL_BIT, &rq->fence.flags))
 		intel_engine_cancel_signaling(rq);
@@ -342,6 +343,13 @@ static void move_to_timeline(struct i915_request *request,
 	spin_unlock(&request->timeline->lock);
 }
 
+static u32 next_global_seqno(struct i915_timeline *tl)
+{
+	if (!++tl->seqno)
+		++tl->seqno;
+	return tl->seqno;
+}
+
 void __i915_request_submit(struct i915_request *request)
 {
 	struct intel_engine_cs *engine = request->engine;
@@ -358,7 +366,7 @@ void __i915_request_submit(struct i915_request *request)
 
 	GEM_BUG_ON(request->global_seqno);
 
-	seqno = timeline_get_seqno(&engine->timeline);
+	seqno = next_global_seqno(&engine->timeline);
 	GEM_BUG_ON(!seqno);
 	GEM_BUG_ON(intel_engine_signaled(engine, seqno));
 
@@ -642,7 +650,7 @@ i915_request_alloc(struct intel_engine_cs *engine, struct i915_gem_context *ctx)
 	 * around inside i915_request_add() there is sufficient space at
 	 * the beginning of the ring as well.
 	 */
-	rq->reserved_space = 2 * engine->emit_breadcrumb_sz * sizeof(u32);
+	rq->reserved_space = 2 * engine->emit_breadcrumb_dw * sizeof(u32);
 
 	/*
 	 * Record the position of the start of the request so that
@@ -893,7 +901,7 @@ void i915_request_add(struct i915_request *request)
 	 * GPU processing the request, we never over-estimate the
 	 * position of the ring's HEAD.
 	 */
-	cs = intel_ring_begin(request, engine->emit_breadcrumb_sz);
+	cs = intel_ring_begin(request, engine->emit_breadcrumb_dw);
 	GEM_BUG_ON(IS_ERR(cs));
 	request->postfix = intel_ring_offset(request, cs);
 
@@ -1075,18 +1083,6 @@ static bool __i915_spin_request(const struct i915_request *rq,
 	return false;
 }
 
-static bool __i915_wait_request_check_and_reset(struct i915_request *request)
-{
-	struct i915_gpu_error *error = &request->i915->gpu_error;
-
-	if (likely(!i915_reset_handoff(error)))
-		return false;
-
-	__set_current_state(TASK_RUNNING);
-	i915_reset(request->i915, error->stalled_mask, error->reason);
-	return true;
-}
-
 /**
  * i915_request_wait - wait until execution of request has finished
  * @rq: the request to wait upon
@@ -1112,17 +1108,10 @@ long i915_request_wait(struct i915_request *rq,
 {
 	const int state = flags & I915_WAIT_INTERRUPTIBLE ?
 		TASK_INTERRUPTIBLE : TASK_UNINTERRUPTIBLE;
-	wait_queue_head_t *errq = &rq->i915->gpu_error.wait_queue;
-	DEFINE_WAIT_FUNC(reset, default_wake_function);
 	DEFINE_WAIT_FUNC(exec, default_wake_function);
 	struct intel_wait wait;
 
 	might_sleep();
-#if IS_ENABLED(CONFIG_LOCKDEP)
-	GEM_BUG_ON(debug_locks &&
-		   !!lockdep_is_held(&rq->i915->drm.struct_mutex) !=
-		   !!(flags & I915_WAIT_LOCKED));
-#endif
 	GEM_BUG_ON(timeout < 0);
 
 	if (i915_request_completed(rq))
@@ -1132,11 +1121,7 @@ long i915_request_wait(struct i915_request *rq,
 		return -ETIME;
 
 	trace_i915_request_wait_begin(rq, flags);
-
 	add_wait_queue(&rq->execute, &exec);
-	if (flags & I915_WAIT_LOCKED)
-		add_wait_queue(errq, &reset);
-
 	intel_wait_init(&wait);
 	if (flags & I915_WAIT_PRIORITY)
 		i915_schedule_bump_priority(rq, I915_PRIORITY_WAIT);
@@ -1146,10 +1131,6 @@ restart:
 		set_current_state(state);
 		if (intel_wait_update_request(&wait, rq))
 			break;
-
-		if (flags & I915_WAIT_LOCKED &&
-		    __i915_wait_request_check_and_reset(rq))
-			continue;
 
 		if (signal_pending_state(state, current)) {
 			timeout = -ERESTARTSYS;
@@ -1180,9 +1161,6 @@ restart:
 		 */
 		goto wakeup;
 
-	if (flags & I915_WAIT_LOCKED)
-		__i915_wait_request_check_and_reset(rq);
-
 	for (;;) {
 		if (signal_pending_state(state, current)) {
 			timeout = -ERESTARTSYS;
@@ -1206,21 +1184,6 @@ wakeup:
 		if (i915_request_completed(rq))
 			break;
 
-		/*
-		 * If the GPU is hung, and we hold the lock, reset the GPU
-		 * and then check for completion. On a full reset, the engine's
-		 * HW seqno will be advanced passed us and we are complete.
-		 * If we do a partial reset, we have to wait for the GPU to
-		 * resume and update the breadcrumb.
-		 *
-		 * If we don't hold the mutex, we can just wait for the worker
-		 * to come along and update the breadcrumb (either directly
-		 * itself, or indirectly by recovering the GPU).
-		 */
-		if (flags & I915_WAIT_LOCKED &&
-		    __i915_wait_request_check_and_reset(rq))
-			continue;
-
 		/* Only spin if we know the GPU is processing this request */
 		if (__i915_spin_request(rq, wait.seqno, state, 2))
 			break;
@@ -1234,8 +1197,6 @@ wakeup:
 	intel_engine_remove_wait(rq->engine, &wait);
 complete:
 	__set_current_state(TASK_RUNNING);
-	if (flags & I915_WAIT_LOCKED)
-		remove_wait_queue(errq, &reset);
 	remove_wait_queue(&rq->execute, &exec);
 	trace_i915_request_wait_end(rq);
 

@@ -25,6 +25,7 @@
 #include <drm/drm_print.h>
 
 #include "i915_drv.h"
+#include "i915_reset.h"
 #include "intel_ringbuffer.h"
 #include "intel_lrc.h"
 
@@ -603,6 +604,46 @@ static void __intel_context_unpin(struct i915_gem_context *ctx,
 	intel_context_unpin(to_intel_context(ctx, engine));
 }
 
+struct measure_breadcrumb {
+	struct i915_request rq;
+	struct i915_timeline timeline;
+	struct intel_ring ring;
+	u32 cs[1024];
+};
+
+static int measure_breadcrumb_dw(struct intel_engine_cs *engine)
+{
+	struct measure_breadcrumb *frame;
+	unsigned int dw;
+
+	GEM_BUG_ON(!engine->i915->gt.scratch);
+
+	frame = kzalloc(sizeof(*frame), GFP_KERNEL);
+	if (!frame)
+		return -ENOMEM;
+
+	i915_timeline_init(engine->i915, &frame->timeline, "measure");
+
+	INIT_LIST_HEAD(&frame->ring.request_list);
+	frame->ring.timeline = &frame->timeline;
+	frame->ring.vaddr = frame->cs;
+	frame->ring.size = sizeof(frame->cs);
+	frame->ring.effective_size = frame->ring.size;
+	intel_ring_update_space(&frame->ring);
+
+	frame->rq.i915 = engine->i915;
+	frame->rq.engine = engine;
+	frame->rq.ring = &frame->ring;
+	frame->rq.timeline = &frame->timeline;
+
+	dw = engine->emit_breadcrumb(&frame->rq, frame->cs) - frame->cs;
+
+	i915_timeline_fini(&frame->timeline);
+	kfree(frame);
+
+	return dw;
+}
+
 /**
  * intel_engines_init_common - initialize cengine state which might require hw access
  * @engine: Engine to initialize.
@@ -656,8 +697,16 @@ int intel_engine_init_common(struct intel_engine_cs *engine)
 	if (ret)
 		goto err_breadcrumbs;
 
+	ret = measure_breadcrumb_dw(engine);
+	if (ret < 0)
+		goto err_status_page;
+
+	engine->emit_breadcrumb_dw = ret;
+
 	return 0;
 
+err_status_page:
+	cleanup_status_page(engine);
 err_breadcrumbs:
 	intel_engine_fini_breadcrumbs(engine);
 err_unpin_preempt:
@@ -799,15 +848,15 @@ u32 intel_calculate_mcr_s_ss_select(struct drm_i915_private *dev_priv)
 	return mcr_s_ss_select;
 }
 
-static inline uint32_t
+static inline u32
 read_subslice_reg(struct drm_i915_private *dev_priv, int slice,
 		  int subslice, i915_reg_t reg)
 {
-	uint32_t mcr_slice_subslice_mask;
-	uint32_t mcr_slice_subslice_select;
-	uint32_t default_mcr_s_ss_select;
-	uint32_t mcr;
-	uint32_t ret;
+	u32 mcr_slice_subslice_mask;
+	u32 mcr_slice_subslice_select;
+	u32 default_mcr_s_ss_select;
+	u32 mcr;
+	u32 ret;
 	enum forcewake_domains fw_domains;
 
 	if (INTEL_GEN(dev_priv) >= 11) {
@@ -913,10 +962,15 @@ void intel_engine_get_instdone(struct intel_engine_cs *engine,
 static bool ring_is_idle(struct intel_engine_cs *engine)
 {
 	struct drm_i915_private *dev_priv = engine->i915;
+	intel_wakeref_t wakeref;
 	bool idle = true;
 
+	if (I915_SELFTEST_ONLY(!engine->mmio_base))
+		return true;
+
 	/* If the whole device is asleep, the engine must be idle */
-	if (!intel_runtime_pm_get_if_in_use(dev_priv))
+	wakeref = intel_runtime_pm_get_if_in_use(dev_priv);
+	if (!wakeref)
 		return true;
 
 	/* First check that no commands are left in the ring */
@@ -928,7 +982,7 @@ static bool ring_is_idle(struct intel_engine_cs *engine)
 	if (INTEL_GEN(dev_priv) > 2 && !(I915_READ_MODE(engine) & MODE_IDLE))
 		idle = false;
 
-	intel_runtime_pm_put(dev_priv);
+	intel_runtime_pm_put(dev_priv, wakeref);
 
 	return idle;
 }
@@ -951,9 +1005,6 @@ bool intel_engine_is_idle(struct intel_engine_cs *engine)
 	/* Any inflight/incomplete requests? */
 	if (!intel_engine_signaled(engine, intel_engine_last_submit(engine)))
 		return false;
-
-	if (I915_SELFTEST_ONLY(engine->breadcrumbs.mock))
-		return true;
 
 	/* Waiting to drain ELSP? */
 	if (READ_ONCE(engine->execlists.active)) {
@@ -980,10 +1031,7 @@ bool intel_engine_is_idle(struct intel_engine_cs *engine)
 		return false;
 
 	/* Ring stopped? */
-	if (!ring_is_idle(engine))
-		return false;
-
-	return true;
+	return ring_is_idle(engine);
 }
 
 bool intel_engines_are_idle(struct drm_i915_private *dev_priv)
@@ -1071,10 +1119,8 @@ void intel_engines_sanitize(struct drm_i915_private *i915, bool force)
 	if (!reset_engines(i915) && !force)
 		return;
 
-	for_each_engine(engine, i915, id) {
-		if (engine->reset.reset)
-			engine->reset.reset(engine, NULL);
-	}
+	for_each_engine(engine, i915, id)
+		intel_engine_reset(engine, false);
 }
 
 /**
@@ -1420,14 +1466,12 @@ void intel_engine_dump(struct intel_engine_cs *engine,
 		       struct drm_printer *m,
 		       const char *header, ...)
 {
-	const int MAX_REQUESTS_TO_SHOW = 8;
 	struct intel_breadcrumbs * const b = &engine->breadcrumbs;
-	const struct intel_engine_execlists * const execlists = &engine->execlists;
 	struct i915_gpu_error * const error = &engine->i915->gpu_error;
-	struct i915_request *rq, *last;
+	struct i915_request *rq;
+	intel_wakeref_t wakeref;
 	unsigned long flags;
 	struct rb_node *rb;
-	int count;
 
 	if (header) {
 		va_list ap;
@@ -1483,59 +1527,17 @@ void intel_engine_dump(struct intel_engine_cs *engine,
 
 	rcu_read_unlock();
 
-	if (intel_runtime_pm_get_if_in_use(engine->i915)) {
+	wakeref = intel_runtime_pm_get_if_in_use(engine->i915);
+	if (wakeref) {
 		intel_engine_print_registers(engine, m);
-		intel_runtime_pm_put(engine->i915);
+		intel_runtime_pm_put(engine->i915, wakeref);
 	} else {
 		drm_printf(m, "\tDevice is asleep; skipping register dump\n");
 	}
 
-	local_irq_save(flags);
-	spin_lock(&engine->timeline.lock);
+	intel_execlists_show_requests(engine, m, print_request, 8);
 
-	last = NULL;
-	count = 0;
-	list_for_each_entry(rq, &engine->timeline.requests, link) {
-		if (count++ < MAX_REQUESTS_TO_SHOW - 1)
-			print_request(m, rq, "\t\tE ");
-		else
-			last = rq;
-	}
-	if (last) {
-		if (count > MAX_REQUESTS_TO_SHOW) {
-			drm_printf(m,
-				   "\t\t...skipping %d executing requests...\n",
-				   count - MAX_REQUESTS_TO_SHOW);
-		}
-		print_request(m, last, "\t\tE ");
-	}
-
-	last = NULL;
-	count = 0;
-	drm_printf(m, "\t\tQueue priority: %d\n", execlists->queue_priority);
-	for (rb = rb_first_cached(&execlists->queue); rb; rb = rb_next(rb)) {
-		struct i915_priolist *p = rb_entry(rb, typeof(*p), node);
-		int i;
-
-		priolist_for_each_request(rq, p, i) {
-			if (count++ < MAX_REQUESTS_TO_SHOW - 1)
-				print_request(m, rq, "\t\tQ ");
-			else
-				last = rq;
-		}
-	}
-	if (last) {
-		if (count > MAX_REQUESTS_TO_SHOW) {
-			drm_printf(m,
-				   "\t\t...skipping %d queued requests...\n",
-				   count - MAX_REQUESTS_TO_SHOW);
-		}
-		print_request(m, last, "\t\tQ ");
-	}
-
-	spin_unlock(&engine->timeline.lock);
-
-	spin_lock(&b->rb_lock);
+	spin_lock_irqsave(&b->rb_lock, flags);
 	for (rb = rb_first(&b->waiters); rb; rb = rb_next(rb)) {
 		struct intel_wait *w = rb_entry(rb, typeof(*w), node);
 
@@ -1544,8 +1546,7 @@ void intel_engine_dump(struct intel_engine_cs *engine,
 			   task_state_to_char(w->tsk),
 			   w->seqno);
 	}
-	spin_unlock(&b->rb_lock);
-	local_irq_restore(flags);
+	spin_unlock_irqrestore(&b->rb_lock, flags);
 
 	drm_printf(m, "HWSP:\n");
 	hexdump(m, engine->status_page.page_addr, PAGE_SIZE);

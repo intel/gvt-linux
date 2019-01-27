@@ -39,6 +39,7 @@
 #include <linux/pagevec.h>
 
 #include "i915_request.h"
+#include "i915_reset.h"
 #include "i915_selftest.h"
 #include "i915_timeline.h"
 
@@ -288,6 +289,8 @@ struct i915_address_space {
 	bool closed;
 
 	struct mutex mutex; /* protects vma and our lists */
+#define VM_CLASS_GGTT 0
+#define VM_CLASS_PPGTT 1
 
 	u64 scratch_pte;
 	struct i915_page_dma scratch_page;

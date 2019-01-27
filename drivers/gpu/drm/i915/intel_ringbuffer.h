@@ -28,7 +28,7 @@ struct i915_sched_attr;
  * workarounds!
  */
 #define CACHELINE_BYTES 64
-#define CACHELINE_DWORDS (CACHELINE_BYTES / sizeof(uint32_t))
+#define CACHELINE_DWORDS (CACHELINE_BYTES / sizeof(u32))
 
 struct intel_hw_status_page {
 	struct i915_vma *vma;
@@ -120,13 +120,8 @@ struct intel_instdone {
 struct intel_engine_hangcheck {
 	u64 acthd;
 	u32 seqno;
-	enum intel_engine_hangcheck_action action;
 	unsigned long action_timestamp;
-	int deadlock;
 	struct intel_instdone instdone;
-	struct i915_request *active_request;
-	bool stalled:1;
-	bool wedged:1;
 };
 
 struct intel_ring {
@@ -398,7 +393,6 @@ struct intel_engine_cs {
 		unsigned int irq_count;
 
 		bool irq_armed : 1;
-		I915_SELFTEST_DECLARE(bool mock : 1);
 	} breadcrumbs;
 
 	struct {
@@ -445,9 +439,8 @@ struct intel_engine_cs {
 	int		(*init_hw)(struct intel_engine_cs *engine);
 
 	struct {
-		struct i915_request *(*prepare)(struct intel_engine_cs *engine);
-		void (*reset)(struct intel_engine_cs *engine,
-			      struct i915_request *rq);
+		void (*prepare)(struct intel_engine_cs *engine);
+		void (*reset)(struct intel_engine_cs *engine, bool stalled);
 		void (*finish)(struct intel_engine_cs *engine);
 	} reset;
 
@@ -471,8 +464,8 @@ struct intel_engine_cs {
 					 unsigned int dispatch_flags);
 #define I915_DISPATCH_SECURE BIT(0)
 #define I915_DISPATCH_PINNED BIT(1)
-	void		(*emit_breadcrumb)(struct i915_request *rq, u32 *cs);
-	int		emit_breadcrumb_sz;
+	u32		*(*emit_breadcrumb)(struct i915_request *rq, u32 *cs);
+	int		emit_breadcrumb_dw;
 
 	/* Pass the request to the hardware queue (e.g. directly into
 	 * the legacy ringbuffer or to the end of an execlist).
@@ -717,11 +710,11 @@ intel_write_status_page(struct intel_engine_cs *engine, int reg, u32 value)
  * The area from dword 0x30 to 0x3ff is available for driver usage.
  */
 #define I915_GEM_HWS_INDEX		0x30
-#define I915_GEM_HWS_INDEX_ADDR (I915_GEM_HWS_INDEX << MI_STORE_DWORD_INDEX_SHIFT)
-#define I915_GEM_HWS_PREEMPT_INDEX	0x32
-#define I915_GEM_HWS_PREEMPT_ADDR (I915_GEM_HWS_PREEMPT_INDEX << MI_STORE_DWORD_INDEX_SHIFT)
-#define I915_GEM_HWS_SCRATCH_INDEX	0x40
-#define I915_GEM_HWS_SCRATCH_ADDR (I915_GEM_HWS_SCRATCH_INDEX << MI_STORE_DWORD_INDEX_SHIFT)
+#define I915_GEM_HWS_INDEX_ADDR		(I915_GEM_HWS_INDEX * sizeof(u32))
+#define I915_GEM_HWS_PREEMPT		0x32
+#define I915_GEM_HWS_PREEMPT_ADDR	(I915_GEM_HWS_PREEMPT * sizeof(u32))
+#define I915_GEM_HWS_SCRATCH		0x40
+#define I915_GEM_HWS_SCRATCH_ADDR	(I915_GEM_HWS_SCRATCH * sizeof(u32))
 
 #define I915_HWS_CSB_BUF0_INDEX		0x10
 #define I915_HWS_CSB_WRITE_INDEX	0x1f
@@ -1017,6 +1010,13 @@ gen8_emit_ggtt_write(u32 *cs, u32 value, u32 gtt_offset)
 	*cs++ = value;
 
 	return cs;
+}
+
+static inline void intel_engine_reset(struct intel_engine_cs *engine,
+				      bool stalled)
+{
+	if (engine->reset.reset)
+		engine->reset.reset(engine, stalled);
 }
 
 void intel_engines_sanitize(struct drm_i915_private *i915, bool force);

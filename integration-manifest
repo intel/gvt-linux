@@ -1,30 +1,12 @@
-drm drm-fixes f0e7ce1eef5854584dfb59b3824a67edee37580f
-	Merge tag 'drm-msm-fixes-2019-01-24' of git://people.freedesktop.org/~robclark/linux into drm-fixes
-drm-misc drm-misc-fixes 053ff09f1a8f2151339f9fda457c5250929d1c49
-	drm/rockchip: rgb: update SPDX license identifier
-drm-intel drm-intel-fixes a49a17226febf314212a25100d2484af67f31428
-	drm/i915: Try to sanitize bogus DPLL state left over by broken SNB BIOSen
-drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
-	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
-drm drm-next f91168f48556486743392b8838e20afbd84b7b7a
-	Merge tag 'drm-misc-next-2019-01-23' of git://anongit.freedesktop.org/drm/drm-misc into drm-next
-drm-misc drm-misc-next-fixes c75ff001f4fe21a8c9f15aad799a8949aea109f7
-	drm: Put damage blob when destroy plane state
-drm-intel drm-intel-next-fixes bfeffd155283772bbe78c6a05dec7c0128ee500c
-	Linux 5.0-rc1
-drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
-	Linux 4.14-rc1
-drm-misc drm-misc-next 1ff494813bafa127ecba1160262ba39b2fdde7ba
-	drm/irq: Ditch DRIVER_IRQ_SHARED
-drm-intel drm-intel-next-queued 5b0bd14dcc6bf0d28ad908aa1b8835667f860c84
-	drm/i915/icl: keep track of unused pll while looping
-drm-intel drm-intel-next 85baa5dbf79163026dcb78f742294c522e176432
-	drm/i915: Update DRIVER_DATE to 20190124
-drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
-	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
-sound-upstream for-linus 693abe11aa6b27aed6eb8222162f8fb986325cef
-	ALSA: hda/realtek - Fixed hp_pin no value
-sound-upstream for-next 45571bb871b217f1031045a27d935ea7c6ea5d12
-	ALSA: hda - Use standard device registration for beep
-drm-intel topic/core-for-CI e3a9af5b306dbedfb2a8d84676269ad39473d644
-	net/phy: Debugging for https://bugzilla.kernel.org/show_bug.cgi?id=202321
+drm-tip/drm-tip 864d26b6a3e3b28515324f330b2240391f86f458
+	drm-tip: 2019y-01m-29d-22h-54m-59s UTC integration manifest
+vfio-upstream/for-linus 9a71ac7e15a723e90fc40388b4b92eefaabf747c
+	vfio-pci/nvlink2: Fix ancient gcc warnings
+vfio-upstream/next 8ba35b3a0046d6573c98f00461d9bd1b86250d35
+	vfio-mdev/samples: Use u8 instead of char for handle functions
+origin/gvt-fixes 0f75551216091223efe1f18295f655aff6415385
+	drm/i915/gvt: release shadow batch buffer and wa_ctx before destroy one workload
+origin/gvt-next 2e679d48f38c378650db403b4ba2248adf0691b2
+	drm/i915/gvt: switch to kernel types
+origin/gvt-next-fixes da2c8eb104da4335f5a872dcd25fd83eb0f34249
+	drm/i915/gvt: Fix workload request allocation before request add

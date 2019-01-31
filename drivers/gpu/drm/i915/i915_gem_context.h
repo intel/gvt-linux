@@ -164,6 +164,8 @@ struct i915_gem_context {
 	struct intel_context {
 		struct i915_gem_context *gem_context;
 		struct intel_engine_cs *active;
+		struct list_head signal_link;
+		struct list_head signals;
 		struct i915_vma *state;
 		struct intel_ring *ring;
 		u32 *lrc_reg_state;
@@ -363,5 +365,9 @@ static inline void i915_gem_context_put(struct i915_gem_context *ctx)
 {
 	kref_put(&ctx->ref, i915_gem_context_release);
 }
+
+void intel_context_init(struct intel_context *ce,
+			struct i915_gem_context *ctx,
+			struct intel_engine_cs *engine);
 
 #endif /* !__I915_GEM_CONTEXT_H__ */

@@ -1976,6 +1976,18 @@ static int eb_submit(struct i915_execbuffer *eb)
 			return err;
 	}
 
+	/*
+	 * After we completed waiting for other engines (using HW semaphores)
+	 * then we can signal that this request/batch is ready to run. This
+	 * allows us to determine if the batch is still waiting on the GPU
+	 * or actually running by checking the breadcrumb.
+	 */
+	if (eb->engine->emit_init_breadcrumb) {
+		err = eb->engine->emit_init_breadcrumb(eb->request);
+		if (err)
+			return err;
+	}
+
 	err = eb->engine->emit_bb_start(eb->request,
 					eb->batch->node.start +
 					eb->batch_start_offset,
@@ -2202,6 +2214,7 @@ i915_gem_do_execbuffer(struct drm_device *dev,
 	struct i915_execbuffer eb;
 	struct dma_fence *in_fence = NULL;
 	struct sync_file *out_fence = NULL;
+	intel_wakeref_t wakeref;
 	int out_fence_fd = -1;
 	int err;
 
@@ -2272,7 +2285,7 @@ i915_gem_do_execbuffer(struct drm_device *dev,
 	 * wakeref that we hold until the GPU has been idle for at least
 	 * 100ms.
 	 */
-	intel_runtime_pm_get(eb.i915);
+	wakeref = intel_runtime_pm_get(eb.i915);
 
 	err = i915_mutex_lock_interruptible(dev);
 	if (err)
@@ -2424,7 +2437,7 @@ err_vma:
 		eb_release_vmas(&eb);
 	mutex_unlock(&dev->struct_mutex);
 err_rpm:
-	intel_runtime_pm_put(eb.i915);
+	intel_runtime_pm_put(eb.i915, wakeref);
 	i915_gem_context_put(eb.ctx);
 err_destroy:
 	eb_destroy(&eb);

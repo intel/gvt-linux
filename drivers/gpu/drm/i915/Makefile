@@ -22,6 +22,7 @@ subdir-ccflags-y += $(call cc-disable-warning, unused-but-set-variable)
 subdir-ccflags-y += $(call cc-disable-warning, sign-compare)
 subdir-ccflags-y += $(call cc-disable-warning, sometimes-uninitialized)
 subdir-ccflags-y += $(call cc-disable-warning, initializer-overrides)
+subdir-ccflags-y += $(call cc-disable-warning, uninitialized)
 subdir-ccflags-$(CONFIG_DRM_I915_WERROR) += -Werror
 
 # Fine grained warnings disable
@@ -40,9 +41,10 @@ i915-y := i915_drv.o \
 	  i915_mm.o \
 	  i915_params.o \
 	  i915_pci.o \
+	  i915_reset.o \
 	  i915_suspend.o \
-	  i915_syncmap.o \
 	  i915_sw_fence.o \
+	  i915_syncmap.o \
 	  i915_sysfs.o \
 	  intel_csr.o \
 	  intel_device_info.o \
@@ -166,6 +168,7 @@ i915-$(CONFIG_DRM_I915_SELFTEST) += \
 	selftests/i915_random.o \
 	selftests/i915_selftest.o \
 	selftests/igt_flush_test.o \
+	selftests/igt_live_test.o \
 	selftests/igt_reset.o \
 	selftests/igt_spinner.o
 
@@ -198,3 +201,4 @@ endif
 i915-y += intel_lpe_audio.o
 
 obj-$(CONFIG_DRM_I915) += i915.o
+obj-$(CONFIG_DRM_I915_GVT_KVMGT) += gvt/kvmgt.o

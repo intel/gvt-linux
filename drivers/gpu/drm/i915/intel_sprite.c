@@ -741,7 +741,12 @@ vlv_update_clrc(const struct intel_plane_state *plane_state)
 
 static u32 vlv_sprite_ctl_crtc(const struct intel_crtc_state *crtc_state)
 {
-	return SP_GAMMA_ENABLE;
+	u32 sprctl = 0;
+
+	if (crtc_state->gamma_enable)
+		sprctl |= SP_GAMMA_ENABLE;
+
+	return sprctl;
 }
 
 static u32 vlv_sprite_ctl(const struct intel_crtc_state *crtc_state,
@@ -916,12 +921,12 @@ vlv_plane_get_hw_state(struct intel_plane *plane,
 
 static u32 ivb_sprite_ctl_crtc(const struct intel_crtc_state *crtc_state)
 {
-	struct drm_i915_private *dev_priv = to_i915(crtc_state->base.crtc->dev);
 	u32 sprctl = 0;
 
-	sprctl |= SPRITE_GAMMA_ENABLE;
+	if (crtc_state->gamma_enable)
+		sprctl |= SPRITE_GAMMA_ENABLE;
 
-	if (IS_HASWELL(dev_priv) || IS_BROADWELL(dev_priv))
+	if (crtc_state->csc_enable)
 		sprctl |= SPRITE_PIPE_CSC_ENABLE;
 
 	return sprctl;
@@ -1107,7 +1112,15 @@ g4x_sprite_max_stride(struct intel_plane *plane,
 
 static u32 g4x_sprite_ctl_crtc(const struct intel_crtc_state *crtc_state)
 {
-	return DVS_GAMMA_ENABLE;
+	u32 dvscntr = 0;
+
+	if (crtc_state->gamma_enable)
+		dvscntr |= DVS_GAMMA_ENABLE;
+
+	if (crtc_state->csc_enable)
+		dvscntr |= DVS_PIPE_CSC_ENABLE;
+
+	return dvscntr;
 }
 
 static u32 g4x_sprite_ctl(const struct intel_crtc_state *crtc_state,

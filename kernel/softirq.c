@@ -56,6 +56,7 @@ EXPORT_PER_CPU_SYMBOL(irq_stat);
 static struct softirq_action softirq_vec[NR_SOFTIRQS] __cacheline_aligned_in_smp;
 
 DEFINE_PER_CPU(struct task_struct *, ksoftirqd);
+DEFINE_PER_CPU(int, ksoftirqd_parked);
 
 const char * const softirq_to_name[NR_SOFTIRQS] = {
 	"HI", "TIMER", "NET_TX", "NET_RX", "BLOCK", "IRQ_POLL",
@@ -363,7 +364,7 @@ static inline void invoke_softirq(void)
 	if (ksoftirqd_running(local_softirq_pending()))
 		return;
 
-	if (!force_irqthreads) {
+	if (!force_irqthreads || __this_cpu_read(ksoftirqd_parked)) {
 #ifdef CONFIG_HAVE_IRQ_EXIT_ON_IRQ_STACK
 		/*
 		 * We can safely execute softirq on the current stack if
@@ -659,6 +660,22 @@ static void run_ksoftirqd(unsigned int cpu)
 	local_irq_enable();
 }
 
+static void ksoftirqd_park(unsigned int cpu)
+{
+	local_irq_disable();
+	__this_cpu_write(ksoftirqd_parked, 1);
+
+	if (local_softirq_pending())
+		run_ksoftirqd(cpu);
+
+	local_irq_enable();
+}
+
+static void ksoftirqd_unpark(unsigned int cpu)
+{
+	__this_cpu_write(ksoftirqd_parked, 0);
+}
+
 #ifdef CONFIG_HOTPLUG_CPU
 /*
  * tasklet_kill_immediate is called to remove a tasklet which can already be
@@ -724,6 +741,8 @@ static int takeover_tasklets(unsigned int cpu)
 static struct smp_hotplug_thread softirq_threads = {
 	.store			= &ksoftirqd,
 	.thread_should_run	= ksoftirqd_should_run,
+	.park			= ksoftirqd_park,
+	.unpark			= ksoftirqd_unpark,
 	.thread_fn		= run_ksoftirqd,
 	.thread_comm		= "ksoftirqd/%u",
 };

@@ -30,6 +30,7 @@
 #include <drm/drm_atomic_helper.h>
 #include <drm/drm_crtc_helper.h>
 #include <drm/drm_fb_helper.h>
+#include <drm/drm_probe_helper.h>
 
 #include <nvif/class.h>
 
@@ -453,7 +454,7 @@ nouveau_display_fini(struct drm_device *dev, bool suspend, bool runtime)
 		if (drm_drv_uses_atomic_modeset(dev))
 			drm_atomic_helper_shutdown(dev);
 		else
-			drm_crtc_force_disable_all(dev);
+			drm_helper_force_disable_all(dev);
 	}
 
 	/* disable flip completion events */

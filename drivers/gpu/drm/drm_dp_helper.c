@@ -154,6 +154,7 @@ u8 drm_dp_link_rate_to_bw_code(int link_rate)
 	default:
 		WARN(1, "unknown DP link rate %d, using %x\n", link_rate,
 		     DP_LINK_BW_1_62);
+		/* fall through */
 	case 162000:
 		return DP_LINK_BW_1_62;
 	case 270000:
@@ -171,6 +172,7 @@ int drm_dp_bw_code_to_link_rate(u8 link_bw)
 	switch (link_bw) {
 	default:
 		WARN(1, "unknown DP link BW code %x, using 162000\n", link_bw);
+		/* fall through */
 	case DP_LINK_BW_1_62:
 		return 162000;
 	case DP_LINK_BW_2_7:
@@ -192,11 +194,11 @@ drm_dp_dump_access(const struct drm_dp_aux *aux,
 	const char *arrow = request == DP_AUX_NATIVE_READ ? "->" : "<-";
 
 	if (ret > 0)
-		drm_dbg(DRM_UT_DP, "%s: 0x%05x AUX %s (ret=%3d) %*ph\n",
-			aux->name, offset, arrow, ret, min(ret, 20), buffer);
+		DRM_DEBUG_DP("%s: 0x%05x AUX %s (ret=%3d) %*ph\n",
+			     aux->name, offset, arrow, ret, min(ret, 20), buffer);
 	else
-		drm_dbg(DRM_UT_DP, "%s: 0x%05x AUX %s (ret=%3d)\n",
-			aux->name, offset, arrow, ret);
+		DRM_DEBUG_DP("%s: 0x%05x AUX %s (ret=%3d)\n",
+			     aux->name, offset, arrow, ret);
 }
 
 /**
@@ -552,6 +554,7 @@ int drm_dp_downstream_max_bpc(const u8 dpcd[DP_RECEIVER_CAP_SIZE],
 		case DP_DS_16BPC:
 			return 16;
 		}
+		/* fall through */
 	default:
 		return 0;
 	}
@@ -884,7 +887,8 @@ static void drm_dp_i2c_msg_set_request(struct drm_dp_aux_msg *msg,
 {
 	msg->request = (i2c_msg->flags & I2C_M_RD) ?
 		DP_AUX_I2C_READ : DP_AUX_I2C_WRITE;
-	msg->request |= DP_AUX_I2C_MOT;
+	if (!(i2c_msg->flags & I2C_M_STOP))
+		msg->request |= DP_AUX_I2C_MOT;
 }
 
 /*

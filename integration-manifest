@@ -1,0 +1,32 @@
+drm drm-fixes d13937116f1e82bf508a6325111b322c30c85eb9
+	Linux 5.0-rc6
+drm-misc drm-misc-fixes 7fd56e0260a22c0cfaf9adb94a2427b76e239dd0
+	drm/vkms: Fix license inconsistent
+drm-intel drm-intel-fixes d13937116f1e82bf508a6325111b322c30c85eb9
+	Linux 5.0-rc6
+drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
+	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
+drm drm-next 16065fcdd19ddb9e093192914ac863884f308766
+	drm/virtio: do NOT reuse resource ids
+drm-misc drm-misc-next-fixes c75ff001f4fe21a8c9f15aad799a8949aea109f7
+	drm: Put damage blob when destroy plane state
+drm-intel drm-intel-next-fixes bfeffd155283772bbe78c6a05dec7c0128ee500c
+	Linux 5.0-rc1
+drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
+	Linux 4.14-rc1
+drm-misc drm-misc-next 6649a95d35d850e417f125821a803ca7889c713c
+	drm/komeda: fix build with drm_modeset_helper.h update
+drm-intel drm-intel-next-queued ed06fddc2203aefb4edbcd179a4e3237e19e6197
+	drm/i915: Include the current timeline seqno for debugging execlists
+drm-intel drm-intel-next c09d39166d8a3f3788680b32dbb0a40a70de32e2
+	drm/i915: Update DRIVER_DATE to 20190207
+drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
+	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
+sound-upstream for-linus 00a399cad1a063e7665f06b6497a807db20441fd
+	ALSA: pcm: Revert capture stream behavior change in blocking mode
+sound-upstream for-next d9c0b2afe820fa3b3f8258a659daee2cc71ca3ef
+	ALSA: PCM: check if ops are defined before suspending PCM
+drm-intel topic/core-for-CI 22356cc0fd46bb51892e64918335b5d0b96c75df
+	HACK: drm/i915/opregion: ICL should have opregion 2.1+ and relative rvda
+drm-intel topic/component-typed 8857c7d065e900a0b3829c97634c99501b606541
+	i915/snd_hdac: I915 subcomponent for the snd_hdac

@@ -13280,10 +13280,11 @@ intel_prepare_plane_fb(struct drm_plane *plane,
 	struct drm_i915_private *dev_priv = to_i915(plane->dev);
 	struct drm_framebuffer *fb = new_state->fb;
 	struct drm_i915_gem_object *obj = intel_fb_obj(fb);
+	struct intel_framebuffer *intel_fb = to_intel_framebuffer(fb);
 	struct drm_i915_gem_object *old_obj = intel_fb_obj(plane->state->fb);
 	int ret;
 
-	if (new_state->state->async_update)
+	if (!intel_fb || intel_fb->meta_fb.type_id == INTEL_META_FB_VGPU)
 		return 0;
 
 	if (old_obj) {

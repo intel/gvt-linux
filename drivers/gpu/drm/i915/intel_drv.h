@@ -945,6 +945,7 @@ struct intel_crtc_state {
 	/* bitmask of visible planes (enum plane_id) */
 	u8 active_planes;
 	u8 nv12_planes;
+	u8 c8_planes;
 
 	/* bitmask of planes that will be updated during the commit */
 	u8 update_planes;
@@ -960,6 +961,12 @@ struct intel_crtc_state {
 
 	/* Output down scaling is done in LSPCON device */
 	bool lspcon_downsampling;
+
+	/* enable pipe gamma? */
+	bool gamma_enable;
+
+	/* enable pipe csc? */
+	bool csc_enable;
 
 	/* Display Stream compression state */
 	struct {
@@ -988,9 +995,6 @@ struct intel_crtc {
 	struct intel_overlay *overlay;
 
 	struct intel_crtc_state *config;
-
-	/* global reset count when the last flip was submitted */
-	unsigned int reset_count;
 
 	/* Access to these should be protected by dev_priv->irq_lock. */
 	bool cpu_fifo_underrun_disabled;
@@ -2078,9 +2082,9 @@ void intel_psr_enable(struct intel_dp *intel_dp,
 		      const struct intel_crtc_state *crtc_state);
 void intel_psr_disable(struct intel_dp *intel_dp,
 		      const struct intel_crtc_state *old_crtc_state);
-int intel_psr_set_debugfs_mode(struct drm_i915_private *dev_priv,
-			       struct drm_modeset_acquire_ctx *ctx,
-			       u64 value);
+void intel_psr_update(struct intel_dp *intel_dp,
+		      const struct intel_crtc_state *crtc_state);
+int intel_psr_debug_set(struct drm_i915_private *dev_priv, u64 value);
 void intel_psr_invalidate(struct drm_i915_private *dev_priv,
 			  unsigned frontbuffer_bits,
 			  enum fb_op_origin origin);

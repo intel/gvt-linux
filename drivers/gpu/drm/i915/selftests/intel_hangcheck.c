@@ -242,6 +242,12 @@ hang_create_request(struct hang *h, struct intel_engine_cs *engine)
 	*batch++ = MI_BATCH_BUFFER_END; /* not reached */
 	i915_gem_chipset_flush(h->i915);
 
+	if (rq->engine->emit_init_breadcrumb) {
+		err = rq->engine->emit_init_breadcrumb(rq);
+		if (err)
+			goto cancel_rq;
+	}
+
 	flags = 0;
 	if (INTEL_GEN(vm->i915) <= 5)
 		flags |= I915_DISPATCH_SECURE;
@@ -1039,8 +1045,6 @@ static int __igt_reset_evict_vma(struct drm_i915_private *i915,
 
 	/* Check that we can recover an unbind stuck on a hanging request */
 
-	igt_global_reset_lock(i915);
-
 	mutex_lock(&i915->drm.struct_mutex);
 	err = hang_init(&h, i915);
 	if (err)
@@ -1138,7 +1142,9 @@ static int __igt_reset_evict_vma(struct drm_i915_private *i915,
 	}
 
 out_reset:
+	igt_global_reset_lock(i915);
 	fake_hangcheck(rq->i915, intel_engine_flag(rq->engine));
+	igt_global_reset_unlock(i915);
 
 	if (tsk) {
 		struct igt_wedge_me w;
@@ -1159,7 +1165,6 @@ fini:
 	hang_fini(&h);
 unlock:
 	mutex_unlock(&i915->drm.struct_mutex);
-	igt_global_reset_unlock(i915);
 
 	if (i915_terminally_wedged(&i915->gpu_error))
 		return -EIO;

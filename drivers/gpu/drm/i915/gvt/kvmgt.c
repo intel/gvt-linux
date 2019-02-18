@@ -65,6 +65,8 @@ struct intel_vgpu_regops {
 			size_t count, loff_t *ppos, bool iswrite);
 	void (*release)(struct intel_vgpu *vgpu,
 			struct vfio_region *region);
+	int (*mmap)(struct intel_vgpu *vgpu,
+			struct vm_area_struct *vma);
 };
 
 struct vfio_region {
@@ -414,7 +416,7 @@ static size_t intel_vgpu_reg_rw_opregion(struct intel_vgpu *vgpu, char *buf,
 	count = min(count, (size_t)(vgpu->vdev.region[i].size - pos));
 	memcpy(buf, base + pos, count);
 
-	return count;
+	return 0;
 }
 
 static void intel_vgpu_reg_release_opregion(struct intel_vgpu *vgpu,
@@ -425,6 +427,272 @@ static void intel_vgpu_reg_release_opregion(struct intel_vgpu *vgpu,
 static const struct intel_vgpu_regops intel_vgpu_regops_opregion = {
 	.rw = intel_vgpu_reg_rw_opregion,
 	.release = intel_vgpu_reg_release_opregion,
+};
+
+static size_t set_device_state(struct intel_vgpu *vgpu, u32 state)
+{
+	int rc = 0;
+
+	switch (state) {
+	case VFIO_DEVICE_STATE_STOP:
+		intel_gvt_ops->vgpu_deactivate(vgpu);
+		break;
+	case VFIO_DEVICE_STATE_RUNNING:
+		intel_gvt_ops->vgpu_activate(vgpu);
+		break;
+	case VFIO_DEVICE_STATE_LOGGING | VFIO_DEVICE_STATE_RUNNING:
+	case VFIO_DEVICE_STATE_LOGGING | VFIO_DEVICE_STATE_STOP:
+		break;
+	default:
+		rc = -EFAULT;
+	}
+
+	return rc;
+}
+
+static void intel_vgpu_get_dirty_bitmap(struct intel_vgpu *vgpu,
+		u64 start_addr, u64 npage, void *bitmap)
+{
+	u64 gfn = start_addr >> PAGE_SHIFT;
+	int i;
+
+	memset(bitmap, 0, MIGRATION_DIRTY_BITMAP_SIZE);
+
+	for (i = 0; i < npage; i++) {
+		mutex_lock(&vgpu->vdev.cache_lock);
+		if (__gvt_cache_find_gfn(vgpu, gfn))
+			set_bit(i, bitmap);
+
+		mutex_unlock(&vgpu->vdev.cache_lock);
+		gfn++;
+	}
+}
+
+static size_t intel_vgpu_reg_rw_state_ctl(struct intel_vgpu *vgpu,
+		char *buf, size_t count, loff_t *ppos, bool iswrite)
+{
+	struct vfio_device_state_ctl *state_ctl;
+	loff_t pos = *ppos & VFIO_PCI_OFFSET_MASK;
+	unsigned int i;
+	int rc = 0;
+	__u64 len;
+
+	state_ctl = vgpu->vdev.state_ctl;
+	if (!state_ctl) {
+		gvt_vgpu_err("invalid rw of state ctl region\n");
+		rc = -EFAULT;
+		goto exit;
+	}
+
+	i = VFIO_PCI_OFFSET_TO_INDEX(*ppos) - VFIO_PCI_NUM_REGIONS;
+	if (pos >= vgpu->vdev.region[i].size) {
+		gvt_vgpu_err("invalid offset for Intel vgpu state ctl region\n");
+		rc = -EINVAL;
+		goto exit;
+	}
+
+#define CTL_OFFSET(x) offsetof(struct vfio_device_state_ctl, x)
+	switch (pos) {
+	case CTL_OFFSET(version):
+		if (!iswrite)
+			rc = copy_to_user(buf,
+				&state_ctl->version,
+				sizeof(state_ctl->version));
+		break;
+	case CTL_OFFSET(device_state):
+		if (!iswrite)
+			rc = copy_to_user(buf,
+				&state_ctl->device_state,
+				sizeof(state_ctl->device_state));
+		else {
+			u32 state;
+
+			if (copy_from_user(&state, buf, sizeof(state))) {
+				rc = -EFAULT;
+				goto exit;
+			}
+			set_device_state(vgpu, state);
+		}
+		break;
+	case CTL_OFFSET(caps):
+		if (!iswrite)
+			rc = copy_to_user(buf,
+				&state_ctl->caps,
+				sizeof(state_ctl->caps));
+		break;
+	case CTL_OFFSET(device_config.action):
+		if (iswrite) {
+			u32 action;
+			bool isset;
+
+			if (copy_from_user(&action, buf, sizeof(action))) {
+				rc = -EFAULT;
+				goto exit;
+			}
+			isset = (action ==
+				VFIO_DEVICE_DATA_ACTION_SET_BUFFER);
+			rc = intel_gvt_ops->vgpu_save_restore(vgpu,
+					NULL,
+					MIGRATION_IMG_MAX_SIZE,
+					vgpu->vdev.state_config,
+					0,
+					isset);
+		} else {
+			/* action read is not valid */
+			rc = -EINVAL;
+		}
+		break;
+	case CTL_OFFSET(device_config.size):
+		len = MIGRATION_IMG_MAX_SIZE;
+		if (!iswrite)
+			rc = copy_to_user(buf, &len, sizeof(len));
+		break;
+	case CTL_OFFSET(system_memory):
+		{
+			struct {
+				__u64 start_addr;
+				__u64 page_nr;
+			} system_memory;
+
+			void *bitmap = vgpu->vdev.state_bitmap;
+
+			if (count != sizeof(system_memory)) {
+				/* must write as a whole */
+				rc = -EINVAL;
+				goto exit;
+			}
+			if (!iswrite) {
+				/* action read is not valid */
+				rc = -EINVAL;
+				goto exit;
+			}
+			if (copy_from_user(&system_memory, buf,
+						sizeof(system_memory))) {
+				rc = -EFAULT;
+				goto exit;
+			}
+			intel_vgpu_get_dirty_bitmap(vgpu,
+				system_memory.start_addr,
+				system_memory.page_nr, bitmap);
+		}
+		break;
+	default:
+		break;
+	}
+exit:
+	return rc;
+}
+
+static void intel_vgpu_reg_release_state_ctl(struct intel_vgpu *vgpu,
+		struct vfio_region *region)
+{
+	vfree(region->data);
+}
+
+static size_t intel_vgpu_reg_rw_state_data_config(struct intel_vgpu *vgpu,
+		char *buf, size_t count, loff_t *ppos, bool iswrite)
+{
+	loff_t pos = *ppos & VFIO_PCI_OFFSET_MASK;
+	unsigned int i = VFIO_PCI_OFFSET_TO_INDEX(*ppos) - VFIO_PCI_NUM_REGIONS;
+	void *base = vgpu->vdev.region[i].data;
+	int rc = 0;
+
+	if (pos >= vgpu->vdev.region[i].size) {
+		gvt_vgpu_err("invalid offset to rw Intel vgpu state data region\n");
+		rc = -EINVAL;
+		goto exit;
+	}
+
+	if (iswrite) {
+		if (copy_from_user(base + pos, buf, count))
+			rc = -EFAULT;
+	} else {
+		if (copy_to_user(buf, base + pos, count))
+			rc = -EFAULT;
+	}
+
+exit:
+	return rc;
+}
+
+static
+void intel_vgpu_reg_release_state_data_config(struct intel_vgpu *vgpu,
+		struct vfio_region *region)
+{
+	vfree(region->data);
+}
+
+static
+int intel_vgpu_reg_mmap_state_data_config(struct intel_vgpu *vgpu,
+			struct vm_area_struct *vma)
+{
+	unsigned long pgoff = 0;
+	void *base = vgpu->vdev.state_config;
+
+	pgoff = vma->vm_pgoff &
+		((1U << (VFIO_PCI_OFFSET_SHIFT - PAGE_SHIFT)) - 1);
+
+	if (pgoff != 0)
+		return -EINVAL;
+
+	return remap_vmalloc_range(vma, base, 0);
+}
+
+static size_t intel_vgpu_reg_rw_state_bitmap(struct intel_vgpu *vgpu,
+		char *buf, size_t count, loff_t *ppos, bool iswrite)
+{
+	loff_t pos = *ppos & VFIO_PCI_OFFSET_MASK;
+	unsigned int i = VFIO_PCI_OFFSET_TO_INDEX(*ppos) -
+			VFIO_PCI_NUM_REGIONS;
+	void *base = vgpu->vdev.region[i].data;
+	int rc = 0;
+
+	if (iswrite || pos != 0)
+		return -EINVAL;
+
+	if (copy_to_user(buf, base, count))
+		rc = -EFAULT;
+
+	return 0;
+}
+
+static
+void intel_vgpu_reg_release_state_bitmap(struct intel_vgpu *vgpu,
+		struct vfio_region *region)
+{
+	vfree(region->data);
+}
+
+static int intel_vgpu_reg_mmap_state_bitmap(struct intel_vgpu *vgpu,
+			struct vm_area_struct *vma)
+{
+	unsigned long pgoff = 0;
+	void *base = vgpu->vdev.state_bitmap;
+
+	pgoff = vma->vm_pgoff &
+		((1U << (VFIO_PCI_OFFSET_SHIFT - PAGE_SHIFT)) - 1);
+
+	if (pgoff != 0)
+		return -EINVAL;
+
+	return remap_vmalloc_range(vma, base, 0);
+}
+
+static const struct intel_vgpu_regops intel_vgpu_regops_state_ctl = {
+	.rw	 = intel_vgpu_reg_rw_state_ctl,
+	.release = intel_vgpu_reg_release_state_ctl,
+};
+
+static const struct intel_vgpu_regops intel_vgpu_regops_state_data_config = {
+	.rw	 = intel_vgpu_reg_rw_state_data_config,
+	.release = intel_vgpu_reg_release_state_data_config,
+	.mmap    = intel_vgpu_reg_mmap_state_data_config,
+};
+
+static const struct intel_vgpu_regops intel_vgpu_regops_state_bitmap = {
+	.rw	 = intel_vgpu_reg_rw_state_bitmap,
+	.release = intel_vgpu_reg_release_state_bitmap,
+	.mmap    = intel_vgpu_reg_mmap_state_bitmap,
 };
 
 static int intel_vgpu_register_reg(struct intel_vgpu *vgpu,
@@ -490,6 +758,82 @@ static int kvmgt_set_opregion(void *p_vgpu)
 			&intel_vgpu_regops_opregion, OPREGION_SIZE,
 			VFIO_REGION_INFO_FLAG_READ, base);
 
+	return ret;
+}
+
+static int kvmgt_init_device_state(struct intel_vgpu *vgpu)
+{
+	void *bitmap_base, *config_base;
+	int ret;
+	struct vfio_device_state_ctl *state_ctl;
+
+	state_ctl = vzalloc(sizeof(struct vfio_device_state_ctl));
+	if (!state_ctl) {
+		ret = -ENOMEM;
+		goto out;
+	}
+
+	state_ctl->version = VFIO_DEVICE_STATE_INTERFACE_VERSION;
+	state_ctl->caps = VFIO_DEVICE_DATA_CAP_SYSTEM_MEMORY;
+
+	ret = intel_vgpu_register_reg(vgpu,
+			VFIO_REGION_TYPE_DEVICE_STATE,
+			VFIO_REGION_SUBTYPE_DEVICE_STATE_CTL,
+			&intel_vgpu_regops_state_ctl,
+			sizeof(struct vfio_device_state_ctl),
+			VFIO_REGION_INFO_FLAG_READ |
+			VFIO_REGION_INFO_FLAG_WRITE,
+			state_ctl);
+	if (ret) {
+		vfree(state_ctl);
+		goto out;
+	}
+	vgpu->vdev.state_ctl = state_ctl;
+
+	config_base = vmalloc_user(MIGRATION_IMG_MAX_SIZE);
+	if (config_base == NULL) {
+		ret = -ENOMEM;
+		goto out;
+	}
+	ret = intel_vgpu_register_reg(vgpu,
+			VFIO_REGION_TYPE_DEVICE_STATE,
+			VFIO_REGION_SUBTYPE_DEVICE_STATE_DATA_CONFIG,
+			&intel_vgpu_regops_state_data_config,
+			MIGRATION_IMG_MAX_SIZE,
+			VFIO_REGION_INFO_FLAG_CAPS |
+			VFIO_REGION_INFO_FLAG_READ |
+			VFIO_REGION_INFO_FLAG_WRITE |
+			VFIO_REGION_INFO_FLAG_MMAP,
+			config_base);
+	if (ret) {
+		vfree(config_base);
+		goto out;
+	}
+	vgpu->vdev.state_config = config_base;
+
+
+	bitmap_base = vmalloc_user(MIGRATION_DIRTY_BITMAP_SIZE);
+	if (bitmap_base == NULL) {
+		ret = -ENOMEM;
+		goto out;
+	}
+	ret = intel_vgpu_register_reg(vgpu,
+			VFIO_REGION_TYPE_DEVICE_STATE,
+			VFIO_REGION_SUBTYPE_DEVICE_STATE_DATA_DIRTYBITMAP,
+			&intel_vgpu_regops_state_bitmap,
+			MIGRATION_DIRTY_BITMAP_SIZE,
+			VFIO_REGION_INFO_FLAG_CAPS |
+			VFIO_REGION_INFO_FLAG_READ |
+			VFIO_REGION_INFO_FLAG_WRITE |
+			VFIO_REGION_INFO_FLAG_MMAP,
+			bitmap_base);
+	if (ret) {
+		vfree(bitmap_base);
+		goto out;
+	}
+	vgpu->vdev.state_bitmap = bitmap_base;
+
+out:
 	return ret;
 }
 
@@ -631,6 +975,8 @@ static int intel_vgpu_open(struct mdev_device *mdev)
 	if (ret)
 		goto undo_group;
 
+	kvmgt_init_device_state(vgpu);
+
 	intel_gvt_ops->vgpu_activate(vgpu);
 
 	atomic_set(&vgpu->vdev.released, 0);
@@ -662,6 +1008,7 @@ static void __intel_vgpu_release(struct intel_vgpu *vgpu)
 {
 	struct kvmgt_guest_info *info;
 	int ret;
+	int i;
 
 	if (!handle_valid(vgpu->handle))
 		return;
@@ -670,6 +1017,13 @@ static void __intel_vgpu_release(struct intel_vgpu *vgpu)
 		return;
 
 	intel_gvt_ops->vgpu_release(vgpu);
+
+	for (i = 0; i < vgpu->vdev.num_regions; i++)
+		vgpu->vdev.region[i].ops->release(vgpu, &vgpu->vdev.region[i]);
+
+	vgpu->vdev.num_regions = 0;
+	kfree(vgpu->vdev.region);
+	vgpu->vdev.region = NULL;
 
 	ret = vfio_unregister_notifier(mdev_dev(vgpu->vdev.mdev), VFIO_IOMMU_NOTIFY,
 					&vgpu->vdev.iommu_notifier);
@@ -816,11 +1170,11 @@ static ssize_t intel_vgpu_rw(struct mdev_device *mdev, char *buf,
 	case VFIO_PCI_ROM_REGION_INDEX:
 		break;
 	default:
-		if (index >= VFIO_PCI_NUM_REGIONS + vgpu->vdev.num_regions)
+		if (index < VFIO_PCI_NUM_REGIONS)
 			return -EINVAL;
 
 		index -= VFIO_PCI_NUM_REGIONS;
-		return vgpu->vdev.region[index].ops->rw(vgpu, buf, count,
+		ret = vgpu->vdev.region[index].ops->rw(vgpu, buf, count,
 				ppos, is_write);
 	}
 
@@ -851,6 +1205,10 @@ static ssize_t intel_vgpu_read(struct mdev_device *mdev, char __user *buf,
 {
 	unsigned int done = 0;
 	int ret;
+	unsigned int index = VFIO_PCI_OFFSET_TO_INDEX(*ppos);
+
+	if (index >= VFIO_PCI_NUM_REGIONS)
+		return intel_vgpu_rw(mdev, (char *)buf, count, ppos, false);
 
 	while (count) {
 		size_t filled;
@@ -925,6 +1283,10 @@ static ssize_t intel_vgpu_write(struct mdev_device *mdev,
 {
 	unsigned int done = 0;
 	int ret;
+	unsigned int index = VFIO_PCI_OFFSET_TO_INDEX(*ppos);
+
+	if (index >= VFIO_PCI_NUM_REGIONS)
+		return intel_vgpu_rw(mdev, (char *)buf, count, ppos, true);
 
 	while (count) {
 		size_t filled;
@@ -999,24 +1361,42 @@ static int intel_vgpu_mmap(struct mdev_device *mdev, struct vm_area_struct *vma)
 	unsigned long req_size, pgoff = 0;
 	pgprot_t pg_prot;
 	struct intel_vgpu *vgpu = mdev_get_drvdata(mdev);
+	int ret = 0;
 
 	index = vma->vm_pgoff >> (VFIO_PCI_OFFSET_SHIFT - PAGE_SHIFT);
-	if (index >= VFIO_PCI_ROM_REGION_INDEX)
-		return -EINVAL;
 
-	if (vma->vm_end < vma->vm_start)
-		return -EINVAL;
-	if ((vma->vm_flags & VM_SHARED) == 0)
-		return -EINVAL;
-	if (index != VFIO_PCI_BAR2_REGION_INDEX)
-		return -EINVAL;
+	if (vma->vm_end < vma->vm_start) {
+		ret = -EINVAL;
+		goto exit;
+	}
 
-	pg_prot = vma->vm_page_prot;
-	virtaddr = vma->vm_start;
-	req_size = vma->vm_end - vma->vm_start;
-	pgoff = vgpu_aperture_pa_base(vgpu) >> PAGE_SHIFT;
+	if ((vma->vm_flags & VM_SHARED) == 0) {
+		ret = -EINVAL;
+		goto exit;
+	}
 
-	return remap_pfn_range(vma, virtaddr, pgoff, req_size, pg_prot);
+	if (index == VFIO_PCI_BAR2_REGION_INDEX) {
+		pg_prot = vma->vm_page_prot;
+		virtaddr = vma->vm_start;
+		req_size = vma->vm_end - vma->vm_start;
+		pgoff = vgpu_aperture_pa_base(vgpu) >> PAGE_SHIFT;
+		ret = remap_pfn_range(vma, virtaddr, pgoff,
+				req_size, pg_prot);
+	} else if ((index >= VFIO_PCI_NUM_REGIONS +
+			vgpu->vdev.num_regions) ||
+			index < VFIO_PCI_NUM_REGIONS) {
+		ret = -EINVAL;
+	} else {
+		index -= VFIO_PCI_NUM_REGIONS;
+		if (vgpu->vdev.region[index].ops->mmap)
+			ret = vgpu->vdev.region[index].ops->mmap(vgpu,
+					vma);
+		else
+			ret = -EINVAL;
+	}
+exit:
+	return ret;
+
 }
 
 static int intel_vgpu_get_irq_count(struct intel_vgpu *vgpu, int type)

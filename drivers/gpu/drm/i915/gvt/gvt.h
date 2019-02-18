@@ -227,6 +227,9 @@ struct intel_vgpu {
 		struct work_struct release_work;
 		atomic_t released;
 		struct vfio_device *vfio_device;
+		struct vfio_device_state_ctl *state_ctl;
+		void *state_config;
+		void *state_bitmap;
 	} vdev;
 #endif
 

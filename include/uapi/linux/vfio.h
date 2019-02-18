@@ -303,6 +303,14 @@ struct vfio_region_info_cap_type {
 #define VFIO_REGION_SUBTYPE_INTEL_IGD_HOST_CFG	(2)
 #define VFIO_REGION_SUBTYPE_INTEL_IGD_LPC_CFG	(3)
 
+
+/* Device State region type and sub-type */
+#define VFIO_REGION_TYPE_DEVICE_STATE           (1 << 1)
+#define VFIO_REGION_SUBTYPE_DEVICE_STATE_CTL       (1)
+#define VFIO_REGION_SUBTYPE_DEVICE_STATE_DATA_CONFIG      (2)
+#define VFIO_REGION_SUBTYPE_DEVICE_STATE_DATA_MEMORY      (3)
+#define VFIO_REGION_SUBTYPE_DEVICE_STATE_DATA_DIRTYBITMAP (4)
+
 #define VFIO_REGION_TYPE_GFX                    (1)
 #define VFIO_REGION_SUBTYPE_GFX_EDID            (1)
 
@@ -865,6 +873,36 @@ struct vfio_iommu_spapr_tce_remove {
 	__u64 start_addr;
 };
 #define VFIO_IOMMU_SPAPR_TCE_REMOVE	_IO(VFIO_TYPE, VFIO_BASE + 20)
+
+#define VFIO_DEVICE_STATE_INTERFACE_VERSION 1
+#define VFIO_DEVICE_DATA_CAP_DEVICE_MEMORY 1
+#define VFIO_DEVICE_DATA_CAP_SYSTEM_MEMORY 2
+
+#define VFIO_DEVICE_STATE_RUNNING 0
+#define VFIO_DEVICE_STATE_STOP 1
+#define VFIO_DEVICE_STATE_LOGGING 2
+
+#define VFIO_DEVICE_DATA_ACTION_GET_BUFFER 1
+#define VFIO_DEVICE_DATA_ACTION_SET_BUFFER 2
+
+struct vfio_device_state_ctl {
+	__u32 version;		  /* ro */
+	__u32 device_state;       /* VFIO device state, wo */
+	__u32 caps;		 /* ro */
+	struct {
+		__u32 action;  /* wo, GET_BUFFER or SET_BUFFER */
+		__u64 size;    /*rw, total size of device config*/
+	} device_config;
+	struct {
+		__u32 action;    /* wo, GET_BUFFER or SET_BUFFER */
+		__u64 size;     /* rw, total size of device memory*/
+		__u64 pos;/*chunk offset in total buffer of device memory*/
+	} device_memory;
+	struct {
+		__u64 start_addr; /* wo */
+		__u64 page_nr;   /* wo */
+	} system_memory;
+} __attribute__((packed));
 
 /* ***************************************************************** */
 

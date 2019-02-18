@@ -1044,7 +1044,32 @@ static inline bool i915_mmio_reg_valid(i915_reg_t reg)
 /* See configdb bunit SB addr map */
 #define BUNIT_REG_BISOC				0x11
 
-#define PUNIT_REG_DSPFREQ			0x36
+/* PUNIT_REG_*SSPM0 */
+#define   _SSPM0_SSC(val)			((val) << 0)
+#define   SSPM0_SSC_MASK			_SSPM0_SSC(0x3)
+#define   SSPM0_SSC_PWR_ON			_SSPM0_SSC(0x0)
+#define   SSPM0_SSC_CLK_GATE			_SSPM0_SSC(0x1)
+#define   SSPM0_SSC_RESET			_SSPM0_SSC(0x2)
+#define   SSPM0_SSC_PWR_GATE			_SSPM0_SSC(0x3)
+#define   _SSPM0_SSS(val)			((val) << 24)
+#define   SSPM0_SSS_MASK			_SSPM0_SSS(0x3)
+#define   SSPM0_SSS_PWR_ON			_SSPM0_SSS(0x0)
+#define   SSPM0_SSS_CLK_GATE			_SSPM0_SSS(0x1)
+#define   SSPM0_SSS_RESET			_SSPM0_SSS(0x2)
+#define   SSPM0_SSS_PWR_GATE			_SSPM0_SSS(0x3)
+
+/* PUNIT_REG_*SSPM1 */
+#define   SSPM1_FREQSTAT_SHIFT			24
+#define   SSPM1_FREQSTAT_MASK			(0x1f << SSPM1_FREQSTAT_SHIFT)
+#define   SSPM1_FREQGUAR_SHIFT			8
+#define   SSPM1_FREQGUAR_MASK			(0x1f << SSPM1_FREQGUAR_SHIFT)
+#define   SSPM1_FREQ_SHIFT			0
+#define   SSPM1_FREQ_MASK			(0x1f << SSPM1_FREQ_SHIFT)
+
+#define PUNIT_REG_VEDSSPM0			0x32
+#define PUNIT_REG_VEDSSPM1			0x33
+
+#define PUNIT_REG_DSPSSPM			0x36
 #define   DSPFREQSTAT_SHIFT_CHV			24
 #define   DSPFREQSTAT_MASK_CHV			(0x1f << DSPFREQSTAT_SHIFT_CHV)
 #define   DSPFREQGUAR_SHIFT_CHV			8
@@ -1068,6 +1093,9 @@ static inline bool i915_mmio_reg_valid(i915_reg_t reg)
 #define   DP_SSS_CLK_GATE(pipe)			_DP_SSS(0x1, (pipe))
 #define   DP_SSS_RESET(pipe)			_DP_SSS(0x2, (pipe))
 #define   DP_SSS_PWR_GATE(pipe)			_DP_SSS(0x3, (pipe))
+
+#define PUNIT_REG_ISPSSPM0			0x39
+#define PUNIT_REG_ISPSSPM1			0x3a
 
 /*
  * i915_power_well_id:
@@ -1860,13 +1888,13 @@ enum i915_power_well_id {
 #define _CNL_PORT_TX_DW4_LN1_AE		0x1624D0
 #define CNL_PORT_TX_DW4_GRP(port)	_MMIO(_CNL_PORT_TX_DW_GRP(4, (port)))
 #define CNL_PORT_TX_DW4_LN0(port)	_MMIO(_CNL_PORT_TX_DW_LN0(4, (port)))
-#define CNL_PORT_TX_DW4_LN(port, ln)   _MMIO(_CNL_PORT_TX_DW_LN0(4, (port)) + \
+#define CNL_PORT_TX_DW4_LN(ln, port)   _MMIO(_CNL_PORT_TX_DW_LN0(4, (port)) + \
 					   ((ln) * (_CNL_PORT_TX_DW4_LN1_AE - \
 						    _CNL_PORT_TX_DW4_LN0_AE)))
 #define ICL_PORT_TX_DW4_AUX(port)	_MMIO(_ICL_PORT_TX_DW_AUX(4, port))
 #define ICL_PORT_TX_DW4_GRP(port)	_MMIO(_ICL_PORT_TX_DW_GRP(4, port))
 #define ICL_PORT_TX_DW4_LN0(port)	_MMIO(_ICL_PORT_TX_DW_LN(4, 0, port))
-#define ICL_PORT_TX_DW4_LN(port, ln)	_MMIO(_ICL_PORT_TX_DW_LN(4, ln, port))
+#define ICL_PORT_TX_DW4_LN(ln, port)	_MMIO(_ICL_PORT_TX_DW_LN(4, ln, port))
 #define   LOADGEN_SELECT		(1 << 31)
 #define   POST_CURSOR_1(x)		((x) << 12)
 #define   POST_CURSOR_1_MASK		(0x3F << 12)
@@ -1893,11 +1921,11 @@ enum i915_power_well_id {
 #define ICL_PORT_TX_DW7_AUX(port)	_MMIO(_ICL_PORT_TX_DW_AUX(7, port))
 #define ICL_PORT_TX_DW7_GRP(port)	_MMIO(_ICL_PORT_TX_DW_GRP(7, port))
 #define ICL_PORT_TX_DW7_LN0(port)	_MMIO(_ICL_PORT_TX_DW_LN(7, 0, port))
-#define ICL_PORT_TX_DW7_LN(port, ln)	_MMIO(_ICL_PORT_TX_DW_LN(7, ln, port))
+#define ICL_PORT_TX_DW7_LN(ln, port)	_MMIO(_ICL_PORT_TX_DW_LN(7, ln, port))
 #define   N_SCALAR(x)			((x) << 24)
 #define   N_SCALAR_MASK			(0x7F << 24)
 
-#define MG_PHY_PORT_LN(port, ln, ln0p1, ln0p2, ln1p1) \
+#define MG_PHY_PORT_LN(ln, port, ln0p1, ln0p2, ln1p1) \
 	_MMIO(_PORT((port) - PORT_C, ln0p1, ln0p2) + (ln) * ((ln1p1) - (ln0p1)))
 
 #define MG_TX_LINK_PARAMS_TX1LN0_PORT1		0x16812C
@@ -1908,8 +1936,8 @@ enum i915_power_well_id {
 #define MG_TX_LINK_PARAMS_TX1LN1_PORT3		0x16A52C
 #define MG_TX_LINK_PARAMS_TX1LN0_PORT4		0x16B12C
 #define MG_TX_LINK_PARAMS_TX1LN1_PORT4		0x16B52C
-#define MG_TX1_LINK_PARAMS(port, ln) \
-	MG_PHY_PORT_LN(port, ln, MG_TX_LINK_PARAMS_TX1LN0_PORT1, \
+#define MG_TX1_LINK_PARAMS(ln, port) \
+	MG_PHY_PORT_LN(ln, port, MG_TX_LINK_PARAMS_TX1LN0_PORT1, \
 				 MG_TX_LINK_PARAMS_TX1LN0_PORT2, \
 				 MG_TX_LINK_PARAMS_TX1LN1_PORT1)
 
@@ -1921,8 +1949,8 @@ enum i915_power_well_id {
 #define MG_TX_LINK_PARAMS_TX2LN1_PORT3		0x16A4AC
 #define MG_TX_LINK_PARAMS_TX2LN0_PORT4		0x16B0AC
 #define MG_TX_LINK_PARAMS_TX2LN1_PORT4		0x16B4AC
-#define MG_TX2_LINK_PARAMS(port, ln) \
-	MG_PHY_PORT_LN(port, ln, MG_TX_LINK_PARAMS_TX2LN0_PORT1, \
+#define MG_TX2_LINK_PARAMS(ln, port) \
+	MG_PHY_PORT_LN(ln, port, MG_TX_LINK_PARAMS_TX2LN0_PORT1, \
 				 MG_TX_LINK_PARAMS_TX2LN0_PORT2, \
 				 MG_TX_LINK_PARAMS_TX2LN1_PORT1)
 #define   CRI_USE_FS32			(1 << 5)
@@ -1935,8 +1963,8 @@ enum i915_power_well_id {
 #define MG_TX_PISO_READLOAD_TX1LN1_PORT3		0x16A54C
 #define MG_TX_PISO_READLOAD_TX1LN0_PORT4		0x16B14C
 #define MG_TX_PISO_READLOAD_TX1LN1_PORT4		0x16B54C
-#define MG_TX1_PISO_READLOAD(port, ln) \
-	MG_PHY_PORT_LN(port, ln, MG_TX_PISO_READLOAD_TX1LN0_PORT1, \
+#define MG_TX1_PISO_READLOAD(ln, port) \
+	MG_PHY_PORT_LN(ln, port, MG_TX_PISO_READLOAD_TX1LN0_PORT1, \
 				 MG_TX_PISO_READLOAD_TX1LN0_PORT2, \
 				 MG_TX_PISO_READLOAD_TX1LN1_PORT1)
 
@@ -1948,8 +1976,8 @@ enum i915_power_well_id {
 #define MG_TX_PISO_READLOAD_TX2LN1_PORT3		0x16A4CC
 #define MG_TX_PISO_READLOAD_TX2LN0_PORT4		0x16B0CC
 #define MG_TX_PISO_READLOAD_TX2LN1_PORT4		0x16B4CC
-#define MG_TX2_PISO_READLOAD(port, ln) \
-	MG_PHY_PORT_LN(port, ln, MG_TX_PISO_READLOAD_TX2LN0_PORT1, \
+#define MG_TX2_PISO_READLOAD(ln, port) \
+	MG_PHY_PORT_LN(ln, port, MG_TX_PISO_READLOAD_TX2LN0_PORT1, \
 				 MG_TX_PISO_READLOAD_TX2LN0_PORT2, \
 				 MG_TX_PISO_READLOAD_TX2LN1_PORT1)
 #define   CRI_CALCINIT					(1 << 1)
@@ -1962,8 +1990,8 @@ enum i915_power_well_id {
 #define MG_TX_SWINGCTRL_TX1LN1_PORT3		0x16A548
 #define MG_TX_SWINGCTRL_TX1LN0_PORT4		0x16B148
 #define MG_TX_SWINGCTRL_TX1LN1_PORT4		0x16B548
-#define MG_TX1_SWINGCTRL(port, ln) \
-	MG_PHY_PORT_LN(port, ln, MG_TX_SWINGCTRL_TX1LN0_PORT1, \
+#define MG_TX1_SWINGCTRL(ln, port) \
+	MG_PHY_PORT_LN(ln, port, MG_TX_SWINGCTRL_TX1LN0_PORT1, \
 				 MG_TX_SWINGCTRL_TX1LN0_PORT2, \
 				 MG_TX_SWINGCTRL_TX1LN1_PORT1)
 
@@ -1975,8 +2003,8 @@ enum i915_power_well_id {
 #define MG_TX_SWINGCTRL_TX2LN1_PORT3		0x16A4C8
 #define MG_TX_SWINGCTRL_TX2LN0_PORT4		0x16B0C8
 #define MG_TX_SWINGCTRL_TX2LN1_PORT4		0x16B4C8
-#define MG_TX2_SWINGCTRL(port, ln) \
-	MG_PHY_PORT_LN(port, ln, MG_TX_SWINGCTRL_TX2LN0_PORT1, \
+#define MG_TX2_SWINGCTRL(ln, port) \
+	MG_PHY_PORT_LN(ln, port, MG_TX_SWINGCTRL_TX2LN0_PORT1, \
 				 MG_TX_SWINGCTRL_TX2LN0_PORT2, \
 				 MG_TX_SWINGCTRL_TX2LN1_PORT1)
 #define   CRI_TXDEEMPH_OVERRIDE_17_12(x)		((x) << 0)
@@ -1990,8 +2018,8 @@ enum i915_power_well_id {
 #define MG_TX_DRVCTRL_TX1LN1_TXPORT3			0x16A544
 #define MG_TX_DRVCTRL_TX1LN0_TXPORT4			0x16B144
 #define MG_TX_DRVCTRL_TX1LN1_TXPORT4			0x16B544
-#define MG_TX1_DRVCTRL(port, ln) \
-	MG_PHY_PORT_LN(port, ln, MG_TX_DRVCTRL_TX1LN0_TXPORT1, \
+#define MG_TX1_DRVCTRL(ln, port) \
+	MG_PHY_PORT_LN(ln, port, MG_TX_DRVCTRL_TX1LN0_TXPORT1, \
 				 MG_TX_DRVCTRL_TX1LN0_TXPORT2, \
 				 MG_TX_DRVCTRL_TX1LN1_TXPORT1)
 
@@ -2003,8 +2031,8 @@ enum i915_power_well_id {
 #define MG_TX_DRVCTRL_TX2LN1_PORT3			0x16A4C4
 #define MG_TX_DRVCTRL_TX2LN0_PORT4			0x16B0C4
 #define MG_TX_DRVCTRL_TX2LN1_PORT4			0x16B4C4
-#define MG_TX2_DRVCTRL(port, ln) \
-	MG_PHY_PORT_LN(port, ln, MG_TX_DRVCTRL_TX2LN0_PORT1, \
+#define MG_TX2_DRVCTRL(ln, port) \
+	MG_PHY_PORT_LN(ln, port, MG_TX_DRVCTRL_TX2LN0_PORT1, \
 				 MG_TX_DRVCTRL_TX2LN0_PORT2, \
 				 MG_TX_DRVCTRL_TX2LN1_PORT1)
 #define   CRI_TXDEEMPH_OVERRIDE_11_6(x)			((x) << 24)
@@ -2023,8 +2051,8 @@ enum i915_power_well_id {
 #define MG_CLKHUB_LN1_PORT3			0x16A79C
 #define MG_CLKHUB_LN0_PORT4			0x16B39C
 #define MG_CLKHUB_LN1_PORT4			0x16B79C
-#define MG_CLKHUB(port, ln) \
-	MG_PHY_PORT_LN(port, ln, MG_CLKHUB_LN0_PORT1, \
+#define MG_CLKHUB(ln, port) \
+	MG_PHY_PORT_LN(ln, port, MG_CLKHUB_LN0_PORT1, \
 				 MG_CLKHUB_LN0_PORT2, \
 				 MG_CLKHUB_LN1_PORT1)
 #define   CFG_LOW_RATE_LKREN_EN				(1 << 11)
@@ -2037,8 +2065,8 @@ enum i915_power_well_id {
 #define MG_TX_DCC_TX1LN1_PORT3			0x16A510
 #define MG_TX_DCC_TX1LN0_PORT4			0x16B110
 #define MG_TX_DCC_TX1LN1_PORT4			0x16B510
-#define MG_TX1_DCC(port, ln) \
-	MG_PHY_PORT_LN(port, ln, MG_TX_DCC_TX1LN0_PORT1, \
+#define MG_TX1_DCC(ln, port) \
+	MG_PHY_PORT_LN(ln, port, MG_TX_DCC_TX1LN0_PORT1, \
 				 MG_TX_DCC_TX1LN0_PORT2, \
 				 MG_TX_DCC_TX1LN1_PORT1)
 #define MG_TX_DCC_TX2LN0_PORT1			0x168090
@@ -2049,8 +2077,8 @@ enum i915_power_well_id {
 #define MG_TX_DCC_TX2LN1_PORT3			0x16A490
 #define MG_TX_DCC_TX2LN0_PORT4			0x16B090
 #define MG_TX_DCC_TX2LN1_PORT4			0x16B490
-#define MG_TX2_DCC(port, ln) \
-	MG_PHY_PORT_LN(port, ln, MG_TX_DCC_TX2LN0_PORT1, \
+#define MG_TX2_DCC(ln, port) \
+	MG_PHY_PORT_LN(ln, port, MG_TX_DCC_TX2LN0_PORT1, \
 				 MG_TX_DCC_TX2LN0_PORT2, \
 				 MG_TX_DCC_TX2LN1_PORT1)
 #define   CFG_AMI_CK_DIV_OVERRIDE_VAL(x)	((x) << 25)
@@ -2065,8 +2093,8 @@ enum i915_power_well_id {
 #define MG_DP_MODE_LN1_ACU_PORT3			0x16A7A0
 #define MG_DP_MODE_LN0_ACU_PORT4			0x16B3A0
 #define MG_DP_MODE_LN1_ACU_PORT4			0x16B7A0
-#define MG_DP_MODE(port, ln)	\
-	MG_PHY_PORT_LN(port, ln, MG_DP_MODE_LN0_ACU_PORT1, \
+#define MG_DP_MODE(ln, port)	\
+	MG_PHY_PORT_LN(ln, port, MG_DP_MODE_LN0_ACU_PORT1, \
 				 MG_DP_MODE_LN0_ACU_PORT2, \
 				 MG_DP_MODE_LN1_ACU_PORT1)
 #define   MG_DP_MODE_CFG_DP_X2_MODE			(1 << 7)
@@ -6004,6 +6032,7 @@ enum {
 #define _CUR_WM_TRANS_A_0	0x70168
 #define _CUR_WM_TRANS_B_0	0x71168
 #define   PLANE_WM_EN		(1 << 31)
+#define   PLANE_WM_IGNORE_LINES	(1 << 30)
 #define   PLANE_WM_LINES_SHIFT	14
 #define   PLANE_WM_LINES_MASK	0x1f
 #define   PLANE_WM_BLOCKS_MASK	0x7ff /* skl+: 10 bits, icl+ 11 bits */
@@ -7111,11 +7140,13 @@ enum {
 #define _GAMMA_MODE_A		0x4a480
 #define _GAMMA_MODE_B		0x4ac80
 #define GAMMA_MODE(pipe) _MMIO_PIPE(pipe, _GAMMA_MODE_A, _GAMMA_MODE_B)
-#define GAMMA_MODE_MODE_MASK	(3 << 0)
-#define GAMMA_MODE_MODE_8BIT	(0 << 0)
-#define GAMMA_MODE_MODE_10BIT	(1 << 0)
-#define GAMMA_MODE_MODE_12BIT	(2 << 0)
-#define GAMMA_MODE_MODE_SPLIT	(3 << 0)
+#define  PRE_CSC_GAMMA_ENABLE	(1 << 31)
+#define  POST_CSC_GAMMA_ENABLE	(1 << 30)
+#define  GAMMA_MODE_MODE_MASK	(3 << 0)
+#define  GAMMA_MODE_MODE_8BIT	(0 << 0)
+#define  GAMMA_MODE_MODE_10BIT	(1 << 0)
+#define  GAMMA_MODE_MODE_12BIT	(2 << 0)
+#define  GAMMA_MODE_MODE_SPLIT	(3 << 0)
 
 /* DMC/CSR */
 #define CSR_PROGRAM(i)		_MMIO(0x80000 + (i) * 4)
@@ -7623,7 +7654,6 @@ enum {
 #define _PIPEB_CHICKEN			0x71038
 #define _PIPEC_CHICKEN			0x72038
 #define  PER_PIXEL_ALPHA_BYPASS_EN	(1 << 7)
-#define  PM_FILL_MAINTAIN_DBUF_FULLNESS	(1 << 0)
 #define PIPE_CHICKEN(pipe)		_MMIO_PIPE(pipe, _PIPEA_CHICKEN,\
 						   _PIPEB_CHICKEN)
 
@@ -9883,10 +9913,14 @@ enum skl_power_gate {
 #define _PIPE_A_CSC_COEFF_BU	0x4901c
 #define _PIPE_A_CSC_COEFF_RV_GV	0x49020
 #define _PIPE_A_CSC_COEFF_BV	0x49024
+
 #define _PIPE_A_CSC_MODE	0x49028
-#define   CSC_BLACK_SCREEN_OFFSET	(1 << 2)
-#define   CSC_POSITION_BEFORE_GAMMA	(1 << 1)
-#define   CSC_MODE_YUV_TO_RGB		(1 << 0)
+#define  ICL_CSC_ENABLE			(1 << 31)
+#define  ICL_OUTPUT_CSC_ENABLE		(1 << 30)
+#define  CSC_BLACK_SCREEN_OFFSET	(1 << 2)
+#define  CSC_POSITION_BEFORE_GAMMA	(1 << 1)
+#define  CSC_MODE_YUV_TO_RGB		(1 << 0)
+
 #define _PIPE_A_CSC_PREOFF_HI	0x49030
 #define _PIPE_A_CSC_PREOFF_ME	0x49034
 #define _PIPE_A_CSC_PREOFF_LO	0x49038
@@ -9921,6 +9955,70 @@ enum skl_power_gate {
 #define PIPE_CSC_POSTOFF_HI(pipe)	_MMIO_PIPE(pipe, _PIPE_A_CSC_POSTOFF_HI, _PIPE_B_CSC_POSTOFF_HI)
 #define PIPE_CSC_POSTOFF_ME(pipe)	_MMIO_PIPE(pipe, _PIPE_A_CSC_POSTOFF_ME, _PIPE_B_CSC_POSTOFF_ME)
 #define PIPE_CSC_POSTOFF_LO(pipe)	_MMIO_PIPE(pipe, _PIPE_A_CSC_POSTOFF_LO, _PIPE_B_CSC_POSTOFF_LO)
+
+/* Pipe Output CSC */
+#define _PIPE_A_OUTPUT_CSC_COEFF_RY_GY	0x49050
+#define _PIPE_A_OUTPUT_CSC_COEFF_BY	0x49054
+#define _PIPE_A_OUTPUT_CSC_COEFF_RU_GU	0x49058
+#define _PIPE_A_OUTPUT_CSC_COEFF_BU	0x4905c
+#define _PIPE_A_OUTPUT_CSC_COEFF_RV_GV	0x49060
+#define _PIPE_A_OUTPUT_CSC_COEFF_BV	0x49064
+#define _PIPE_A_OUTPUT_CSC_PREOFF_HI	0x49068
+#define _PIPE_A_OUTPUT_CSC_PREOFF_ME	0x4906c
+#define _PIPE_A_OUTPUT_CSC_PREOFF_LO	0x49070
+#define _PIPE_A_OUTPUT_CSC_POSTOFF_HI	0x49074
+#define _PIPE_A_OUTPUT_CSC_POSTOFF_ME	0x49078
+#define _PIPE_A_OUTPUT_CSC_POSTOFF_LO	0x4907c
+
+#define _PIPE_B_OUTPUT_CSC_COEFF_RY_GY	0x49150
+#define _PIPE_B_OUTPUT_CSC_COEFF_BY	0x49154
+#define _PIPE_B_OUTPUT_CSC_COEFF_RU_GU	0x49158
+#define _PIPE_B_OUTPUT_CSC_COEFF_BU	0x4915c
+#define _PIPE_B_OUTPUT_CSC_COEFF_RV_GV	0x49160
+#define _PIPE_B_OUTPUT_CSC_COEFF_BV	0x49164
+#define _PIPE_B_OUTPUT_CSC_PREOFF_HI	0x49168
+#define _PIPE_B_OUTPUT_CSC_PREOFF_ME	0x4916c
+#define _PIPE_B_OUTPUT_CSC_PREOFF_LO	0x49170
+#define _PIPE_B_OUTPUT_CSC_POSTOFF_HI	0x49174
+#define _PIPE_B_OUTPUT_CSC_POSTOFF_ME	0x49178
+#define _PIPE_B_OUTPUT_CSC_POSTOFF_LO	0x4917c
+
+#define PIPE_CSC_OUTPUT_COEFF_RY_GY(pipe)	_MMIO_PIPE(pipe,\
+							   _PIPE_A_OUTPUT_CSC_COEFF_RY_GY,\
+							   _PIPE_B_OUTPUT_CSC_COEFF_RY_GY)
+#define PIPE_CSC_OUTPUT_COEFF_BY(pipe)		_MMIO_PIPE(pipe, \
+							   _PIPE_A_OUTPUT_CSC_COEFF_BY, \
+							   _PIPE_B_OUTPUT_CSC_COEFF_BY)
+#define PIPE_CSC_OUTPUT_COEFF_RU_GU(pipe)	_MMIO_PIPE(pipe, \
+							   _PIPE_A_OUTPUT_CSC_COEFF_RU_GU, \
+							   _PIPE_B_OUTPUT_CSC_COEFF_RU_GU)
+#define PIPE_CSC_OUTPUT_COEFF_BU(pipe)		_MMIO_PIPE(pipe, \
+							   _PIPE_A_OUTPUT_CSC_COEFF_BU, \
+							   _PIPE_B_OUTPUT_CSC_COEFF_BU)
+#define PIPE_CSC_OUTPUT_COEFF_RV_GV(pipe)	_MMIO_PIPE(pipe, \
+							   _PIPE_A_OUTPUT_CSC_COEFF_RV_GV, \
+							   _PIPE_B_OUTPUT_CSC_COEFF_RV_GV)
+#define PIPE_CSC_OUTPUT_COEFF_BV(pipe)		_MMIO_PIPE(pipe, \
+							   _PIPE_A_OUTPUT_CSC_COEFF_BV, \
+							   _PIPE_B_OUTPUT_CSC_COEFF_BV)
+#define PIPE_CSC_OUTPUT_PREOFF_HI(pipe)		_MMIO_PIPE(pipe, \
+							   _PIPE_A_OUTPUT_CSC_PREOFF_HI, \
+							   _PIPE_B_OUTPUT_CSC_PREOFF_HI)
+#define PIPE_CSC_OUTPUT_PREOFF_ME(pipe)		_MMIO_PIPE(pipe, \
+							   _PIPE_A_OUTPUT_CSC_PREOFF_ME, \
+							   _PIPE_B_OUTPUT_CSC_PREOFF_ME)
+#define PIPE_CSC_OUTPUT_PREOFF_LO(pipe)		_MMIO_PIPE(pipe, \
+							   _PIPE_A_OUTPUT_CSC_PREOFF_LO, \
+							   _PIPE_B_OUTPUT_CSC_PREOFF_LO)
+#define PIPE_CSC_OUTPUT_POSTOFF_HI(pipe)	_MMIO_PIPE(pipe, \
+							   _PIPE_A_OUTPUT_CSC_POSTOFF_HI, \
+							   _PIPE_B_OUTPUT_CSC_POSTOFF_HI)
+#define PIPE_CSC_OUTPUT_POSTOFF_ME(pipe)	_MMIO_PIPE(pipe, \
+							   _PIPE_A_OUTPUT_CSC_POSTOFF_ME, \
+							   _PIPE_B_OUTPUT_CSC_POSTOFF_ME)
+#define PIPE_CSC_OUTPUT_POSTOFF_LO(pipe)	_MMIO_PIPE(pipe, \
+							   _PIPE_A_OUTPUT_CSC_POSTOFF_LO, \
+							   _PIPE_B_OUTPUT_CSC_POSTOFF_LO)
 
 /* pipe degamma/gamma LUTs on IVB+ */
 #define _PAL_PREC_INDEX_A	0x4A400

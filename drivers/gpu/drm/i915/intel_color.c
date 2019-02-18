@@ -118,23 +118,47 @@ static void ilk_load_ycbcr_conversion_matrix(struct intel_crtc *crtc)
 	struct drm_i915_private *dev_priv = to_i915(crtc->base.dev);
 	enum pipe pipe = crtc->pipe;
 
-	I915_WRITE(PIPE_CSC_PREOFF_HI(pipe), 0);
-	I915_WRITE(PIPE_CSC_PREOFF_ME(pipe), 0);
-	I915_WRITE(PIPE_CSC_PREOFF_LO(pipe), 0);
+	if (INTEL_GEN(dev_priv) < 11) {
+		I915_WRITE(PIPE_CSC_PREOFF_HI(pipe), 0);
+		I915_WRITE(PIPE_CSC_PREOFF_ME(pipe), 0);
+		I915_WRITE(PIPE_CSC_PREOFF_LO(pipe), 0);
 
-	I915_WRITE(PIPE_CSC_COEFF_RU_GU(pipe), CSC_RGB_TO_YUV_RU_GU);
-	I915_WRITE(PIPE_CSC_COEFF_BU(pipe), CSC_RGB_TO_YUV_BU);
+		I915_WRITE(PIPE_CSC_COEFF_RU_GU(pipe), CSC_RGB_TO_YUV_RU_GU);
+		I915_WRITE(PIPE_CSC_COEFF_BU(pipe), CSC_RGB_TO_YUV_BU);
 
-	I915_WRITE(PIPE_CSC_COEFF_RY_GY(pipe), CSC_RGB_TO_YUV_RY_GY);
-	I915_WRITE(PIPE_CSC_COEFF_BY(pipe), CSC_RGB_TO_YUV_BY);
+		I915_WRITE(PIPE_CSC_COEFF_RY_GY(pipe), CSC_RGB_TO_YUV_RY_GY);
+		I915_WRITE(PIPE_CSC_COEFF_BY(pipe), CSC_RGB_TO_YUV_BY);
 
-	I915_WRITE(PIPE_CSC_COEFF_RV_GV(pipe), CSC_RGB_TO_YUV_RV_GV);
-	I915_WRITE(PIPE_CSC_COEFF_BV(pipe), CSC_RGB_TO_YUV_BV);
+		I915_WRITE(PIPE_CSC_COEFF_RV_GV(pipe), CSC_RGB_TO_YUV_RV_GV);
+		I915_WRITE(PIPE_CSC_COEFF_BV(pipe), CSC_RGB_TO_YUV_BV);
 
-	I915_WRITE(PIPE_CSC_POSTOFF_HI(pipe), POSTOFF_RGB_TO_YUV_HI);
-	I915_WRITE(PIPE_CSC_POSTOFF_ME(pipe), POSTOFF_RGB_TO_YUV_ME);
-	I915_WRITE(PIPE_CSC_POSTOFF_LO(pipe), POSTOFF_RGB_TO_YUV_LO);
-	I915_WRITE(PIPE_CSC_MODE(pipe), 0);
+		I915_WRITE(PIPE_CSC_POSTOFF_HI(pipe), POSTOFF_RGB_TO_YUV_HI);
+		I915_WRITE(PIPE_CSC_POSTOFF_ME(pipe), POSTOFF_RGB_TO_YUV_ME);
+		I915_WRITE(PIPE_CSC_POSTOFF_LO(pipe), POSTOFF_RGB_TO_YUV_LO);
+	} else {
+		I915_WRITE(PIPE_CSC_OUTPUT_PREOFF_HI(pipe), 0);
+		I915_WRITE(PIPE_CSC_OUTPUT_PREOFF_ME(pipe), 0);
+		I915_WRITE(PIPE_CSC_OUTPUT_PREOFF_LO(pipe), 0);
+
+		I915_WRITE(PIPE_CSC_OUTPUT_COEFF_RU_GU(pipe),
+			   CSC_RGB_TO_YUV_RU_GU);
+		I915_WRITE(PIPE_CSC_OUTPUT_COEFF_BU(pipe), CSC_RGB_TO_YUV_BU);
+
+		I915_WRITE(PIPE_CSC_OUTPUT_COEFF_RY_GY(pipe),
+			   CSC_RGB_TO_YUV_RY_GY);
+		I915_WRITE(PIPE_CSC_OUTPUT_COEFF_BY(pipe), CSC_RGB_TO_YUV_BY);
+
+		I915_WRITE(PIPE_CSC_OUTPUT_COEFF_RV_GV(pipe),
+			   CSC_RGB_TO_YUV_RV_GV);
+		I915_WRITE(PIPE_CSC_OUTPUT_COEFF_BV(pipe), CSC_RGB_TO_YUV_BV);
+
+		I915_WRITE(PIPE_CSC_OUTPUT_POSTOFF_HI(pipe),
+			   POSTOFF_RGB_TO_YUV_HI);
+		I915_WRITE(PIPE_CSC_OUTPUT_POSTOFF_ME(pipe),
+			   POSTOFF_RGB_TO_YUV_ME);
+		I915_WRITE(PIPE_CSC_OUTPUT_POSTOFF_LO(pipe),
+			   POSTOFF_RGB_TO_YUV_LO);
+	}
 }
 
 static void ilk_load_csc_matrix(const struct intel_crtc_state *crtc_state)
@@ -156,8 +180,16 @@ static void ilk_load_csc_matrix(const struct intel_crtc_state *crtc_state)
 	if (crtc_state->output_format == INTEL_OUTPUT_FORMAT_YCBCR420 ||
 	    crtc_state->output_format == INTEL_OUTPUT_FORMAT_YCBCR444) {
 		ilk_load_ycbcr_conversion_matrix(crtc);
-		return;
-	} else if (crtc_state->base.ctm) {
+		I915_WRITE(PIPE_CSC_MODE(pipe), crtc_state->csc_mode);
+		/*
+		 * On pre GEN11 output CSC is not there, so with 1 pipe CSC
+		 * RGB to YUV conversion can be done. No need to go further
+		 */
+		if (INTEL_GEN(dev_priv) < 11)
+			return;
+	}
+
+	if (crtc_state->base.ctm) {
 		struct drm_color_ctm *ctm = crtc_state->base.ctm->data;
 		const u64 *input;
 		u64 temp[9];
@@ -243,7 +275,7 @@ static void ilk_load_csc_matrix(const struct intel_crtc_state *crtc_state)
 		I915_WRITE(PIPE_CSC_POSTOFF_ME(pipe), postoff);
 		I915_WRITE(PIPE_CSC_POSTOFF_LO(pipe), postoff);
 
-		I915_WRITE(PIPE_CSC_MODE(pipe), 0);
+		I915_WRITE(PIPE_CSC_MODE(pipe), crtc_state->csc_mode);
 	} else {
 		u32 mode = CSC_MODE_YUV_TO_RGB;
 
@@ -489,6 +521,12 @@ static void bdw_load_gamma_lut(const struct intel_crtc_state *crtc_state, u32 of
 		I915_WRITE(PREC_PAL_GC_MAX(pipe, 1), (1 << 16) - 1);
 		I915_WRITE(PREC_PAL_GC_MAX(pipe, 2), (1 << 16) - 1);
 	}
+
+	/*
+	 * Reset the index, otherwise it prevents the legacy palette to be
+	 * written properly.
+	 */
+	I915_WRITE(PREC_PAL_INDEX(pipe), 0);
 }
 
 /* Loads the palette/gamma unit for the CRTC on Broadwell+. */
@@ -496,7 +534,6 @@ static void broadwell_load_luts(const struct intel_crtc_state *crtc_state)
 {
 	struct intel_crtc *crtc = to_intel_crtc(crtc_state->base.crtc);
 	struct drm_i915_private *dev_priv = to_i915(crtc->base.dev);
-	enum pipe pipe = crtc->pipe;
 
 	if (crtc_state_is_legacy_gamma(crtc_state)) {
 		i9xx_load_luts(crtc_state);
@@ -504,12 +541,6 @@ static void broadwell_load_luts(const struct intel_crtc_state *crtc_state)
 		bdw_load_degamma_lut(crtc_state);
 		bdw_load_gamma_lut(crtc_state,
 				   INTEL_INFO(dev_priv)->color.degamma_lut_size);
-
-		/*
-		 * Reset the index, otherwise it prevents the legacy palette to be
-		 * written properly.
-		 */
-		I915_WRITE(PREC_PAL_INDEX(pipe), 0);
 	}
 }
 
@@ -518,7 +549,7 @@ static void glk_load_degamma_lut(const struct intel_crtc_state *crtc_state)
 	struct intel_crtc *crtc = to_intel_crtc(crtc_state->base.crtc);
 	struct drm_i915_private *dev_priv = to_i915(crtc->base.dev);
 	enum pipe pipe = crtc->pipe;
-	const u32 lut_size = 33;
+	const u32 lut_size = INTEL_INFO(dev_priv)->color.degamma_lut_size;
 	u32 i;
 
 	/*
@@ -529,14 +560,32 @@ static void glk_load_degamma_lut(const struct intel_crtc_state *crtc_state)
 	I915_WRITE(PRE_CSC_GAMC_INDEX(pipe), 0);
 	I915_WRITE(PRE_CSC_GAMC_INDEX(pipe), PRE_CSC_GAMC_AUTO_INCREMENT);
 
-	/*
-	 *  FIXME: The pipe degamma table in geminilake doesn't support
-	 *  different values per channel, so this just loads a linear table.
-	 */
-	for (i = 0; i < lut_size; i++) {
-		u32 v = (i * (1 << 16)) / (lut_size - 1);
+	if (crtc_state->base.degamma_lut) {
+		struct drm_color_lut *lut = crtc_state->base.degamma_lut->data;
 
-		I915_WRITE(PRE_CSC_GAMC_DATA(pipe), v);
+		for (i = 0; i < lut_size; i++) {
+			/*
+			 * First 33 entries represent range from 0 to 1.0
+			 * 34th and 35th entry will represent extended range
+			 * inputs 3.0 and 7.0 respectively, currently clamped
+			 * at 1.0. Since the precision is 16bit, the user
+			 * value can be directly filled to register.
+			 * The pipe degamma table in GLK+ onwards doesn't
+			 * support different values per channel, so this just
+			 * programs green value which will be equal to Red and
+			 * Blue into the lut registers.
+			 * ToDo: Extend to max 7.0. Enable 32 bit input value
+			 * as compared to just 16 to achieve this.
+			 */
+			I915_WRITE(PRE_CSC_GAMC_DATA(pipe), lut[i].green);
+		}
+	} else {
+		/* load a linear table. */
+		for (i = 0; i < lut_size; i++) {
+			u32 v = (i * (1 << 16)) / (lut_size - 1);
+
+			I915_WRITE(PRE_CSC_GAMC_DATA(pipe), v);
+		}
 	}
 
 	/* Clamp values > 1.0. */
@@ -546,23 +595,23 @@ static void glk_load_degamma_lut(const struct intel_crtc_state *crtc_state)
 
 static void glk_load_luts(const struct intel_crtc_state *crtc_state)
 {
-	struct intel_crtc *crtc = to_intel_crtc(crtc_state->base.crtc);
-	struct drm_i915_private *dev_priv = to_i915(crtc->base.dev);
-	enum pipe pipe = crtc->pipe;
-
 	glk_load_degamma_lut(crtc_state);
 
-	if (crtc_state_is_legacy_gamma(crtc_state)) {
+	if (crtc_state_is_legacy_gamma(crtc_state))
 		i9xx_load_luts(crtc_state);
-	} else {
+	else
 		bdw_load_gamma_lut(crtc_state, 0);
+}
 
-		/*
-		 * Reset the index, otherwise it prevents the legacy palette to be
-		 * written properly.
-		 */
-		I915_WRITE(PREC_PAL_INDEX(pipe), 0);
-	}
+static void icl_load_luts(const struct intel_crtc_state *crtc_state)
+{
+	glk_load_degamma_lut(crtc_state);
+
+	if (crtc_state_is_legacy_gamma(crtc_state))
+		i9xx_load_luts(crtc_state);
+	else
+		/* ToDo: Add support for multi segment gamma LUT */
+		bdw_load_gamma_lut(crtc_state, 0);
 }
 
 static void cherryview_load_luts(const struct intel_crtc_state *crtc_state)
@@ -754,12 +803,26 @@ int intel_color_check(struct intel_crtc_state *crtc_state)
 	    drm_color_lut_check(gamma_lut, gamma_tests))
 		return -EINVAL;
 
-	if (INTEL_GEN(dev_priv) >= 10 || IS_GEMINILAKE(dev_priv))
+	if (INTEL_GEN(dev_priv) >= 11)
+		crtc_state->gamma_mode = GAMMA_MODE_MODE_10BIT |
+					 PRE_CSC_GAMMA_ENABLE |
+					 POST_CSC_GAMMA_ENABLE;
+	else if (INTEL_GEN(dev_priv) >= 10 || IS_GEMINILAKE(dev_priv))
 		crtc_state->gamma_mode = GAMMA_MODE_MODE_10BIT;
 	else if (INTEL_GEN(dev_priv) >= 9 || IS_BROADWELL(dev_priv))
 		crtc_state->gamma_mode = GAMMA_MODE_MODE_SPLIT;
 	else
 		crtc_state->gamma_mode = GAMMA_MODE_MODE_8BIT;
+
+	crtc_state->csc_mode = 0;
+
+	if (INTEL_GEN(dev_priv) >= 11) {
+		if (crtc_state->output_format == INTEL_OUTPUT_FORMAT_YCBCR420 ||
+		    crtc_state->output_format == INTEL_OUTPUT_FORMAT_YCBCR444)
+			crtc_state->csc_mode |= ICL_OUTPUT_CSC_ENABLE;
+
+		crtc_state->csc_mode |= ICL_CSC_ENABLE;
+	}
 
 	return 0;
 }
@@ -778,7 +841,9 @@ void intel_color_init(struct intel_crtc *crtc)
 
 		dev_priv->display.color_commit = i9xx_color_commit;
 	} else {
-		if (IS_CANNONLAKE(dev_priv) || IS_GEMINILAKE(dev_priv))
+		if (IS_ICELAKE(dev_priv))
+			dev_priv->display.load_luts = icl_load_luts;
+		else if (IS_CANNONLAKE(dev_priv) || IS_GEMINILAKE(dev_priv))
 			dev_priv->display.load_luts = glk_load_luts;
 		else if (INTEL_GEN(dev_priv) >= 9 || IS_BROADWELL(dev_priv))
 			dev_priv->display.load_luts = broadwell_load_luts;

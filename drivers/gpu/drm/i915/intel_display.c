@@ -1830,6 +1830,8 @@ static void intel_enable_pipe(const struct intel_crtc_state *new_crtc_state)
 		/* FIXME: assert CPU port conditions for SNB+ */
 	}
 
+	trace_intel_pipe_enable(dev_priv, pipe);
+
 	reg = PIPECONF(cpu_transcoder);
 	val = I915_READ(reg);
 	if (val & PIPECONF_ENABLE) {
@@ -1868,6 +1870,8 @@ static void intel_disable_pipe(const struct intel_crtc_state *old_crtc_state)
 	 * or we might hang the display.
 	 */
 	assert_planes_disabled(crtc);
+
+	trace_intel_pipe_disable(dev_priv, pipe);
 
 	reg = PIPECONF(cpu_transcoder);
 	val = I915_READ(reg);
@@ -2825,8 +2829,7 @@ static void intel_plane_disable_noatomic(struct intel_crtc *crtc,
 	if (plane->id == PLANE_PRIMARY)
 		intel_pre_disable_primary_noatomic(&crtc->base);
 
-	trace_intel_disable_plane(&plane->base, crtc);
-	plane->disable_plane(plane, crtc_state);
+	intel_disable_plane(plane, crtc_state);
 }
 
 static void
@@ -3970,12 +3973,6 @@ static void icl_set_pipe_chicken(struct intel_crtc *crtc)
 	 * and rounding for per-pixel values 00 and 0xff
 	 */
 	tmp |= PER_PIXEL_ALPHA_BYPASS_EN;
-
-	/*
-	 * W/A for underruns with linear/X-tiled with
-	 * WM1+ disabled.
-	 */
-	tmp |= PM_FILL_MAINTAIN_DBUF_FULLNESS;
 
 	I915_WRITE(PIPE_CHICKEN(pipe), tmp);
 }
@@ -5600,7 +5597,7 @@ static void intel_crtc_disable_planes(struct intel_atomic_state *state,
 		    !(update_mask & BIT(plane->id)))
 			continue;
 
-		plane->disable_plane(plane, new_crtc_state);
+		intel_disable_plane(plane, new_crtc_state);
 
 		if (old_plane_state->base.visible)
 			fb_bits |= plane->frontbuffer_bit;
@@ -13568,7 +13565,7 @@ static int do_rps_boost(struct wait_queue_entry *_wait,
 	 * vblank without our intervention, so leave RPS alone.
 	 */
 	if (!i915_request_started(rq))
-		gen6_rps_boost(rq, NULL);
+		gen6_rps_boost(rq);
 	i915_request_put(rq);
 
 	drm_crtc_vblank_put(wait->crtc);
@@ -14101,14 +14098,11 @@ intel_legacy_cursor_update(struct drm_plane *plane,
 	 */
 	crtc_state->active_planes = new_crtc_state->active_planes;
 
-	if (plane->state->visible) {
-		trace_intel_update_plane(plane, to_intel_crtc(crtc));
-		intel_plane->update_plane(intel_plane, crtc_state,
-					  to_intel_plane_state(plane->state));
-	} else {
-		trace_intel_disable_plane(plane, to_intel_crtc(crtc));
-		intel_plane->disable_plane(intel_plane, crtc_state);
-	}
+	if (plane->state->visible)
+		intel_update_plane(intel_plane, crtc_state,
+				   to_intel_plane_state(plane->state));
+	else
+		intel_disable_plane(intel_plane, crtc_state);
 
 	intel_plane_unpin_fb(to_intel_plane_state(old_plane_state));
 

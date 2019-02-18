@@ -1,0 +1,32 @@
+drm drm-fixes a3b22b9f11d9fbc48b0291ea92259a5a810e9438
+	Linux 5.0-rc7
+drm-misc drm-misc-fixes 25dc194b34dd5919dd07b8873ee338182e15df9d
+	drm: Block fb changes for async plane updates
+drm-intel drm-intel-fixes a3b22b9f11d9fbc48b0291ea92259a5a810e9438
+	Linux 5.0-rc7
+drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
+	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
+drm drm-next c06de56121e3ac0f0f1f4a081c041654ffcacd62
+	Merge v5.0-rc7 into drm-next
+drm-misc drm-misc-next-fixes 37406a60fac7de336dec331a8707a94462ac5a5e
+	drm: Merge __drm_atomic_helper_disable_all() into drm_atomic_helper_disable_all()
+drm-intel drm-intel-next-fixes 8d451a4b6e9f4b52ae3d4cafe17486d8d0c6afb0
+	Merge tag 'drm-misc-next-2019-02-11' of git://anongit.freedesktop.org/drm/drm-misc into drm-next
+drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
+	Linux 4.14-rc1
+drm-misc drm-misc-next 3e597efe467a0f7550a0338b6b25769d7ae428e3
+	drm: Remove set but not used variable 'gem'
+drm-intel drm-intel-next-queued 83e3a21530d60e1c16afe6de5b8bc56e4f672b75
+	drm/i915/selftests: Move local mock_ggtt allocations to the heap
+drm-intel drm-intel-next c09d39166d8a3f3788680b32dbb0a40a70de32e2
+	drm/i915: Update DRIVER_DATE to 20190207
+drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
+	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
+sound-upstream for-linus c8c6ee611926685a7d753409e0a6e48b9e1b8748
+	ALSA: hda/realtek: Disable PC beep in passthrough on alc285
+sound-upstream for-next c7a13264918b9796f80c634f20fea56e1612572d
+	ALSA: usb-audio: Expose sample resolution through proc interface
+drm-intel topic/core-for-CI 22356cc0fd46bb51892e64918335b5d0b96c75df
+	HACK: drm/i915/opregion: ICL should have opregion 2.1+ and relative rvda
+drm-intel topic/mei-hdcp 1fb701f546f6e5424c4fd757404a8c7f97b83ca0
+	drm/audio: declaration of struct device

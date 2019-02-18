@@ -3230,9 +3230,10 @@ static u32 i9xx_plane_ctl_crtc(const struct intel_crtc_state *crtc_state)
 	struct drm_i915_private *dev_priv = to_i915(crtc->base.dev);
 	u32 dspcntr = 0;
 
-	dspcntr |= DISPPLANE_GAMMA_ENABLE;
+	if (crtc_state->gamma_enable)
+		dspcntr |= DISPPLANE_GAMMA_ENABLE;
 
-	if (IS_HASWELL(dev_priv) || IS_BROADWELL(dev_priv))
+	if (crtc_state->csc_enable)
 		dspcntr |= DISPPLANE_PIPE_CSC_ENABLE;
 
 	if (INTEL_GEN(dev_priv) < 5)
@@ -3459,7 +3460,7 @@ static void i9xx_disable_plane(struct intel_plane *plane,
 	 *
 	 * On pre-g4x there is no way to gamma correct the
 	 * pipe bottom color but we'll keep on doing this
-	 * anyway.
+	 * anyway so that the crtc state readout works correctly.
 	 */
 	dspcntr = i9xx_plane_ctl_crtc(crtc_state);
 
@@ -3710,8 +3711,11 @@ u32 skl_plane_ctl_crtc(const struct intel_crtc_state *crtc_state)
 	if (INTEL_GEN(dev_priv) >= 10 || IS_GEMINILAKE(dev_priv))
 		return plane_ctl;
 
-	plane_ctl |= PLANE_CTL_PIPE_GAMMA_ENABLE;
-	plane_ctl |= PLANE_CTL_PIPE_CSC_ENABLE;
+	if (crtc_state->gamma_enable)
+		plane_ctl |= PLANE_CTL_PIPE_GAMMA_ENABLE;
+
+	if (crtc_state->csc_enable)
+		plane_ctl |= PLANE_CTL_PIPE_CSC_ENABLE;
 
 	return plane_ctl;
 }
@@ -3763,8 +3767,11 @@ u32 glk_plane_color_ctl_crtc(const struct intel_crtc_state *crtc_state)
 	if (INTEL_GEN(dev_priv) >= 11)
 		return plane_color_ctl;
 
-	plane_color_ctl |= PLANE_COLOR_PIPE_GAMMA_ENABLE;
-	plane_color_ctl |= PLANE_COLOR_PIPE_CSC_ENABLE;
+	if (crtc_state->gamma_enable)
+		plane_color_ctl |= PLANE_COLOR_PIPE_GAMMA_ENABLE;
+
+	if (crtc_state->csc_enable)
+		plane_color_ctl |= PLANE_COLOR_PIPE_CSC_ENABLE;
 
 	return plane_color_ctl;
 }
@@ -4007,16 +4014,6 @@ static void intel_update_pipe_config(const struct intel_crtc_state *old_crtc_sta
 		else if (old_crtc_state->pch_pfit.enabled)
 			ironlake_pfit_disable(old_crtc_state);
 	}
-
-	/*
-	 * We don't (yet) allow userspace to control the pipe background color,
-	 * so force it to black, but apply pipe gamma and CSC so that its
-	 * handling will match how we program our planes.
-	 */
-	if (INTEL_GEN(dev_priv) >= 9)
-		I915_WRITE(SKL_BOTTOM_COLOR(crtc->pipe),
-			   SKL_BOTTOM_COLOR_GAMMA_ENABLE |
-			   SKL_BOTTOM_COLOR_CSC_ENABLE);
 
 	if (INTEL_GEN(dev_priv) >= 11)
 		icl_set_pipe_chicken(crtc);
@@ -5754,6 +5751,14 @@ static void intel_encoders_update_pipe(struct drm_crtc *crtc,
 	}
 }
 
+static void intel_disable_primary_plane(const struct intel_crtc_state *crtc_state)
+{
+	struct intel_crtc *crtc = to_intel_crtc(crtc_state->base.crtc);
+	struct intel_plane *plane = to_intel_plane(crtc->base.primary);
+
+	plane->disable_plane(plane, crtc_state);
+}
+
 static void ironlake_crtc_enable(struct intel_crtc_state *pipe_config,
 				 struct drm_atomic_state *old_state)
 {
@@ -5819,6 +5824,8 @@ static void ironlake_crtc_enable(struct intel_crtc_state *pipe_config,
 	 */
 	intel_color_load_luts(pipe_config);
 	intel_color_commit(pipe_config);
+	/* update DSPCNTR to configure gamma for pipe bottom color */
+	intel_disable_primary_plane(pipe_config);
 
 	if (dev_priv->display.initial_watermarks != NULL)
 		dev_priv->display.initial_watermarks(old_intel_state, pipe_config);
@@ -5947,6 +5954,9 @@ static void haswell_crtc_enable(struct intel_crtc_state *pipe_config,
 	 */
 	intel_color_load_luts(pipe_config);
 	intel_color_commit(pipe_config);
+	/* update DSPCNTR to configure gamma/csc for pipe bottom color */
+	if (INTEL_GEN(dev_priv) < 9)
+		intel_disable_primary_plane(pipe_config);
 
 	if (INTEL_GEN(dev_priv) >= 11)
 		icl_set_pipe_chicken(intel_crtc);
@@ -6304,6 +6314,8 @@ static void valleyview_crtc_enable(struct intel_crtc_state *pipe_config,
 
 	intel_color_load_luts(pipe_config);
 	intel_color_commit(pipe_config);
+	/* update DSPCNTR to configure gamma for pipe bottom color */
+	intel_disable_primary_plane(pipe_config);
 
 	dev_priv->display.initial_watermarks(old_intel_state,
 					     pipe_config);
@@ -6361,6 +6373,8 @@ static void i9xx_crtc_enable(struct intel_crtc_state *pipe_config,
 
 	intel_color_load_luts(pipe_config);
 	intel_color_commit(pipe_config);
+	/* update DSPCNTR to configure gamma for pipe bottom color */
+	intel_disable_primary_plane(pipe_config);
 
 	if (dev_priv->display.initial_watermarks != NULL)
 		dev_priv->display.initial_watermarks(old_intel_state,
@@ -7701,6 +7715,8 @@ static void i9xx_set_pipeconf(const struct intel_crtc_state *crtc_state)
 	     crtc_state->limited_color_range)
 		pipeconf |= PIPECONF_COLOR_RANGE_SELECT;
 
+	pipeconf |= PIPECONF_GAMMA_MODE(crtc_state->gamma_mode);
+
 	I915_WRITE(PIPECONF(crtc->pipe), pipeconf);
 	POSTING_READ(PIPECONF(crtc->pipe));
 }
@@ -8108,6 +8124,24 @@ static void intel_get_crtc_ycbcr_config(struct intel_crtc *crtc,
 	pipe_config->output_format = output;
 }
 
+static void i9xx_get_pipe_color_config(struct intel_crtc_state *crtc_state)
+{
+	struct intel_crtc *crtc = to_intel_crtc(crtc_state->base.crtc);
+	struct intel_plane *plane = to_intel_plane(crtc->base.primary);
+	struct drm_i915_private *dev_priv = to_i915(crtc->base.dev);
+	enum i9xx_plane_id i9xx_plane = plane->i9xx_plane;
+	u32 tmp;
+
+	tmp = I915_READ(DSPCNTR(i9xx_plane));
+
+	if (tmp & DISPPLANE_GAMMA_ENABLE)
+		crtc_state->gamma_enable = true;
+
+	if (!HAS_GMCH(dev_priv) &&
+	    tmp & DISPPLANE_PIPE_CSC_ENABLE)
+		crtc_state->csc_enable = true;
+}
+
 static bool i9xx_get_pipe_config(struct intel_crtc *crtc,
 				 struct intel_crtc_state *pipe_config)
 {
@@ -8152,6 +8186,11 @@ static bool i9xx_get_pipe_config(struct intel_crtc *crtc,
 	if ((IS_VALLEYVIEW(dev_priv) || IS_CHERRYVIEW(dev_priv)) &&
 	    (tmp & PIPECONF_COLOR_RANGE_SELECT))
 		pipe_config->limited_color_range = true;
+
+	pipe_config->gamma_mode = (tmp & PIPECONF_GAMMA_MODE_MASK_I9XX) >>
+		PIPECONF_GAMMA_MODE_SHIFT;
+
+	i9xx_get_pipe_color_config(pipe_config);
 
 	if (INTEL_GEN(dev_priv) < 4)
 		pipe_config->double_wide = tmp & PIPECONF_DOUBLE_WIDE;
@@ -8692,6 +8731,8 @@ static void ironlake_set_pipeconf(const struct intel_crtc_state *crtc_state)
 	if (crtc_state->limited_color_range)
 		val |= PIPECONF_COLOR_RANGE_SELECT;
 
+	val |= PIPECONF_GAMMA_MODE(crtc_state->gamma_mode);
+
 	I915_WRITE(PIPECONF(pipe), val);
 	POSTING_READ(PIPECONF(pipe));
 }
@@ -9225,6 +9266,11 @@ static bool ironlake_get_pipe_config(struct intel_crtc *crtc,
 
 	if (tmp & PIPECONF_COLOR_RANGE_SELECT)
 		pipe_config->limited_color_range = true;
+
+	pipe_config->gamma_mode = (tmp & PIPECONF_GAMMA_MODE_MASK_ILK) >>
+		PIPECONF_GAMMA_MODE_SHIFT;
+
+	i9xx_get_pipe_color_config(pipe_config);
 
 	if (I915_READ(PCH_TRANSCONF(crtc->pipe)) & TRANS_ENABLE) {
 		struct intel_shared_dpll *pll;
@@ -9860,6 +9906,18 @@ static bool haswell_get_pipe_config(struct intel_crtc *crtc,
 	pipe_config->gamma_mode =
 		I915_READ(GAMMA_MODE(crtc->pipe)) & GAMMA_MODE_MODE_MASK;
 
+	if (INTEL_GEN(dev_priv) >= 9) {
+		u32 tmp = I915_READ(SKL_BOTTOM_COLOR(crtc->pipe));
+
+		if (tmp & SKL_BOTTOM_COLOR_GAMMA_ENABLE)
+			pipe_config->gamma_enable = true;
+
+		if (tmp & SKL_BOTTOM_COLOR_CSC_ENABLE)
+			pipe_config->csc_enable = true;
+	} else {
+		i9xx_get_pipe_color_config(pipe_config);
+	}
+
 	power_domain = POWER_DOMAIN_PIPE_PANEL_FITTER(crtc->pipe);
 	if (intel_display_power_get_if_enabled(dev_priv, power_domain)) {
 		WARN_ON(power_domain_mask & BIT_ULL(power_domain));
@@ -10030,7 +10088,12 @@ i845_cursor_max_stride(struct intel_plane *plane,
 
 static u32 i845_cursor_ctl_crtc(const struct intel_crtc_state *crtc_state)
 {
-	return CURSOR_GAMMA_ENABLE;
+	u32 cntl = 0;
+
+	if (crtc_state->gamma_enable)
+		cntl |= CURSOR_GAMMA_ENABLE;
+
+	return cntl;
 }
 
 static u32 i845_cursor_ctl(const struct intel_crtc_state *crtc_state,
@@ -10184,9 +10247,10 @@ static u32 i9xx_cursor_ctl_crtc(const struct intel_crtc_state *crtc_state)
 	if (INTEL_GEN(dev_priv) >= 11)
 		return cntl;
 
-	cntl |= MCURSOR_GAMMA_ENABLE;
+	if (crtc_state->gamma_enable)
+		cntl = MCURSOR_GAMMA_ENABLE;
 
-	if (HAS_DDI(dev_priv))
+	if (crtc_state->csc_enable)
 		cntl |= MCURSOR_PIPE_CSC_ENABLE;
 
 	if (INTEL_GEN(dev_priv) < 5 && !IS_G4X(dev_priv))
@@ -11179,12 +11243,6 @@ static int intel_crtc_atomic_check(struct drm_crtc *crtc,
 		ret = intel_color_check(pipe_config);
 		if (ret)
 			return ret;
-
-		/*
-		 * Changing color management on Intel hardware is
-		 * handled as part of planes update.
-		 */
-		crtc_state->planes_changed = true;
 	}
 
 	ret = 0;
@@ -12089,6 +12147,10 @@ intel_pipe_config_compare(struct drm_i915_private *dev_priv,
 
 		PIPE_CONF_CHECK_I(scaler_state.scaler_id);
 		PIPE_CONF_CHECK_CLOCK_FUZZY(pixel_rate);
+
+		PIPE_CONF_CHECK_X(gamma_mode);
+		PIPE_CONF_CHECK_BOOL(gamma_enable);
+		PIPE_CONF_CHECK_BOOL(csc_enable);
 	}
 
 	PIPE_CONF_CHECK_BOOL(double_wide);

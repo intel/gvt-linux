@@ -134,6 +134,7 @@ struct i915_gem_context {
 #define UCONTEXT_NO_ZEROMAP		0
 #define UCONTEXT_NO_ERROR_CAPTURE	1
 #define UCONTEXT_BANNABLE		2
+#define UCONTEXT_RECOVERABLE		3
 
 	/**
 	 * @flags: small set of booleans
@@ -208,10 +209,11 @@ struct i915_gem_context {
 	 */
 	atomic_t active_count;
 
-#define CONTEXT_SCORE_GUILTY		10
-#define CONTEXT_SCORE_BAN_THRESHOLD	40
-	/** ban_score: Accumulated score of all hangs caused by this context. */
-	atomic_t ban_score;
+	/**
+	 * @hang_timestamp: The last time(s) this context caused a GPU hang
+	 */
+	unsigned long hang_timestamp[2];
+#define CONTEXT_FAST_HANG_JIFFIES (120 * HZ) /* 3 hangs within 120s? Banned! */
 
 	/** remap_slice: Bitmask of cache lines that need remapping */
 	u8 remap_slice;
@@ -268,6 +270,21 @@ static inline void i915_gem_context_set_bannable(struct i915_gem_context *ctx)
 static inline void i915_gem_context_clear_bannable(struct i915_gem_context *ctx)
 {
 	clear_bit(UCONTEXT_BANNABLE, &ctx->user_flags);
+}
+
+static inline bool i915_gem_context_is_recoverable(const struct i915_gem_context *ctx)
+{
+	return test_bit(UCONTEXT_RECOVERABLE, &ctx->user_flags);
+}
+
+static inline void i915_gem_context_set_recoverable(struct i915_gem_context *ctx)
+{
+	set_bit(UCONTEXT_RECOVERABLE, &ctx->user_flags);
+}
+
+static inline void i915_gem_context_clear_recoverable(struct i915_gem_context *ctx)
+{
+	clear_bit(UCONTEXT_RECOVERABLE, &ctx->user_flags);
 }
 
 static inline bool i915_gem_context_is_banned(const struct i915_gem_context *ctx)

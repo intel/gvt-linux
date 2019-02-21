@@ -1,32 +1,12 @@
-drm drm-fixes a3b22b9f11d9fbc48b0291ea92259a5a810e9438
-	Linux 5.0-rc7
-drm-misc drm-misc-fixes 25dc194b34dd5919dd07b8873ee338182e15df9d
-	drm: Block fb changes for async plane updates
-drm-intel drm-intel-fixes d179b88deb3bf6fed4991a31fd6f0f2cad21fab5
-	drm/i915/fbdev: Actually configure untiled displays
-drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
-	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
-drm drm-next a5f2fafece141ef3509e686cea576366d55cabb6
-	Merge https://gitlab.freedesktop.org/drm/msm into drm-next
-drm-misc drm-misc-next-fixes 37406a60fac7de336dec331a8707a94462ac5a5e
-	drm: Merge __drm_atomic_helper_disable_all() into drm_atomic_helper_disable_all()
-drm-intel drm-intel-next-fixes 24d2727ccc14c852a3e03deb85fe259d3ee2a725
-	drm/i915/selftests: Always free spinner on __sseu_prepare error
-drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
-	Linux 4.14-rc1
-drm-misc drm-misc-next 1fdafbd023793e754aa6ca73c877a375e83b8239
-	drm/amdgpu: fix dma mask check in gmc_v6_0.c
-drm-intel drm-intel-next-queued 1813ae17fdf03c69313a9742b9be41dd7aa6ebb3
-	drm/i915/guc: Calling guc_disable_communication in all suspend paths
-drm-intel drm-intel-next 47ed55a9bb9e284d46d6f2489e32a53b59152809
-	drm/i915: Update DRIVER_DATE to 20190220
-drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
-	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
-sound-upstream for-linus 268836649c07e0d38866006b5e94294b5bbc9806
-	Merge tag 'asoc-fix-v5.0-rc6' of git://git.kernel.org/pub/scm/linux/kernel/git/broonie/sound into for-linus
-sound-upstream for-next c0ca5eced22215c1e03e3ad479f8fab0bbb30772
-	ALSA: hda/realtek - Reduce click noise on Dell Precision 5820 headphone
-drm-intel topic/core-for-CI 22356cc0fd46bb51892e64918335b5d0b96c75df
-	HACK: drm/i915/opregion: ICL should have opregion 2.1+ and relative rvda
-drm-intel topic/mei-hdcp 4509209f8bfe158403a29d713bd3b2cb8fc2b534
-	Pull in char-misc-next from Greg
+drm-tip/drm-tip c67ed483692270fa9c8402d172d54b6c1335b7f7
+	drm-tip: 2019y-02m-21d-00h-48m-33s UTC integration manifest
+vfio-upstream/for-linus 9a71ac7e15a723e90fc40388b4b92eefaabf747c
+	vfio-pci/nvlink2: Fix ancient gcc warnings
+vfio-upstream/next 0cfd027be1d6def4a462cdc180c055143af24069
+	vfio_pci: Enable memory accesses before calling pci_map_rom
+origin/gvt-fixes 13bcb80b7ee79431fce361e060611134cb19e209
+	drm/i915/gvt: Fix MI_FLUSH_DW parsing with correct index check
+origin/gvt-next ed47c5cb8ee638b1c60fbb65c82c8784bf68539d
+	drm/i915/gvt: Refine the combined intel_vgpu_oos_page struct to save memory
+origin/gvt-next-fixes b0e8240f245e036b790f37f113032c83a8e85109
+	drm/i915/gvt: Fix kerneldoc typo for intel_vgpu_emulate_hotplug

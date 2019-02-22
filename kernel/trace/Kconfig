@@ -114,6 +114,13 @@ config TRACING
 	select EVENT_TRACING
 	select TRACE_CLOCK
 
+config GLOBAL_TRACE_BUF_SIZE
+	int
+	prompt "Global ftrace buffer size (for trace_printk)" if EXPERT
+	range 0 4194034
+	default 1441792 # 16384 * 88 (sizeof(struct print_entry))
+	depends on TRACING
+
 config GENERIC_TRACER
 	bool
 	select TRACING

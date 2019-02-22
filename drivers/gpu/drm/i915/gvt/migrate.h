@@ -19,6 +19,10 @@
  * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
+ *
+ * Authors:
+ *    Yulei Zhang <yulei.zhang@intel.com>
+ *    Xiao Zheng <xiao.zheng@intel.com>
  */
 
 #ifndef __GVT_MIGRATE_H__
@@ -42,7 +46,7 @@ enum gvt_migration_type_t {
 
 struct gvt_ppgtt_entry_t {
 	int page_table_level;
-	u32 pdp[8];
+	u64 pdp[4];
 };
 
 struct gvt_pending_workload_t {

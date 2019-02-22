@@ -1,32 +1,12 @@
-drm drm-fixes 019276ed65f364de27b929da4e083bb86ce7d1ef
-	Merge branch 'drm-fixes-5.0' of git://people.freedesktop.org/~agd5f/linux into drm-fixes
-drm-misc drm-misc-fixes 04b9c48851582aa0971b7d4e9d42c872b8acd0e2
-	drm/bochs: Fix the ID mismatch error
-drm-intel drm-intel-fixes d179b88deb3bf6fed4991a31fd6f0f2cad21fab5
-	drm/i915/fbdev: Actually configure untiled displays
-drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
-	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
-drm drm-next fbac3c48fa6b4cfa43eaae39d5a53269bff7ec5f
-	Merge branch 'drm-next-5.1' of git://people.freedesktop.org/~agd5f/linux into drm-next
-drm-misc drm-misc-next-fixes 37406a60fac7de336dec331a8707a94462ac5a5e
-	drm: Merge __drm_atomic_helper_disable_all() into drm_atomic_helper_disable_all()
-drm-intel drm-intel-next-fixes 24d2727ccc14c852a3e03deb85fe259d3ee2a725
-	drm/i915/selftests: Always free spinner on __sseu_prepare error
-drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
-	Linux 4.14-rc1
-drm-misc drm-misc-next fb8cd60c8418aebe91f773cfa32409119b96cdde
-	drm/qxl: remove set but not used variable 'bo_old'
-drm-intel drm-intel-next-queued 772b5408e3aac93835320dc198ded8e68a00df5d
-	drm/i915: remove redundant likely/unlikely annotation
-drm-intel drm-intel-next 47ed55a9bb9e284d46d6f2489e32a53b59152809
-	drm/i915: Update DRIVER_DATE to 20190220
-drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
-	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
-sound-upstream for-linus 268836649c07e0d38866006b5e94294b5bbc9806
-	Merge tag 'asoc-fix-v5.0-rc6' of git://git.kernel.org/pub/scm/linux/kernel/git/broonie/sound into for-linus
-sound-upstream for-next 8bb37a2a4d7c02affef554f5dc05f6d2e39c31f9
-	ALSA: hda/realtek: Enable audio jacks of ASUS UX362FA with ALC294
-drm-intel topic/core-for-CI 22356cc0fd46bb51892e64918335b5d0b96c75df
-	HACK: drm/i915/opregion: ICL should have opregion 2.1+ and relative rvda
-drm-intel topic/mei-hdcp 4509209f8bfe158403a29d713bd3b2cb8fc2b534
-	Pull in char-misc-next from Greg
+drm-tip/drm-tip 880ed0aca0061c5ce9a73209211c95e7d866d5a0
+	drm-tip: 2019y-02m-22d-06h-11m-37s UTC integration manifest
+vfio-upstream/for-linus 9a71ac7e15a723e90fc40388b4b92eefaabf747c
+	vfio-pci/nvlink2: Fix ancient gcc warnings
+vfio-upstream/next 0cfd027be1d6def4a462cdc180c055143af24069
+	vfio_pci: Enable memory accesses before calling pci_map_rom
+origin/gvt-fixes 1e8b15a1988ed3c7429402017d589422628cdf47
+	drm/i915/gvt: Add in context mmio 0x20D8 to gen9 mmio list
+origin/gvt-next ed47c5cb8ee638b1c60fbb65c82c8784bf68539d
+	drm/i915/gvt: Refine the combined intel_vgpu_oos_page struct to save memory
+origin/gvt-next-fixes b0e8240f245e036b790f37f113032c83a8e85109
+	drm/i915/gvt: Fix kerneldoc typo for intel_vgpu_emulate_hotplug

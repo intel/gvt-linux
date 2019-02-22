@@ -1668,7 +1668,7 @@ static int xengt_attach_vgpu(void *vgpu, unsigned long *handle)
 	return 0;
 }
 
-static void xengt_detach_vgpu(unsigned long handle)
+static void xengt_detach_vgpu(void *vgpu)
 {
 	/* nothing to do here */
 }

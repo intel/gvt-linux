@@ -14,6 +14,7 @@
 #include <linux/spi/spi.h>
 #include <video/mipi_display.h>
 
+#include <drm/drm_atomic_helper.h>
 #include <drm/drm_drv.h>
 #include <drm/drm_gem_cma_helper.h>
 #include <drm/drm_gem_framebuffer_helper.h>
@@ -41,8 +42,7 @@ static void jd_t18003_t01_pipe_enable(struct drm_simple_display_pipe *pipe,
 				      struct drm_crtc_state *crtc_state,
 				      struct drm_plane_state *plane_state)
 {
-	struct tinydrm_device *tdev = pipe_to_tinydrm(pipe);
-	struct mipi_dbi *mipi = mipi_dbi_from_tinydrm(tdev);
+	struct mipi_dbi *mipi = drm_to_mipi_dbi(pipe->crtc.dev);
 	int ret;
 	u8 addr_mode;
 
@@ -111,7 +111,7 @@ static const struct drm_simple_display_pipe_funcs jd_t18003_t01_pipe_funcs = {
 };
 
 static const struct drm_display_mode jd_t18003_t01_mode = {
-	TINYDRM_MODE(128, 160, 28, 35),
+	DRM_SIMPLE_MODE(128, 160, 28, 35),
 };
 
 DEFINE_DRM_GEM_CMA_FOPS(st7735r_fops);
@@ -183,16 +183,14 @@ static int st7735r_probe(struct spi_device *spi)
 	if (ret)
 		return ret;
 
-	spi_set_drvdata(spi, mipi);
+	spi_set_drvdata(spi, mipi->tinydrm.drm);
 
 	return devm_tinydrm_register(&mipi->tinydrm);
 }
 
 static void st7735r_shutdown(struct spi_device *spi)
 {
-	struct mipi_dbi *mipi = spi_get_drvdata(spi);
-
-	tinydrm_shutdown(&mipi->tinydrm);
+	drm_atomic_helper_shutdown(spi_get_drvdata(spi));
 }
 
 static struct spi_driver st7735r_spi_driver = {

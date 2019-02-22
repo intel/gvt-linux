@@ -15,6 +15,7 @@
 #include <linux/property.h>
 #include <linux/spi/spi.h>
 
+#include <drm/drm_atomic_helper.h>
 #include <drm/drm_drv.h>
 #include <drm/drm_gem_cma_helper.h>
 #include <drm/drm_gem_framebuffer_helper.h>
@@ -52,8 +53,7 @@ static void yx240qv29_enable(struct drm_simple_display_pipe *pipe,
 			     struct drm_crtc_state *crtc_state,
 			     struct drm_plane_state *plane_state)
 {
-	struct tinydrm_device *tdev = pipe_to_tinydrm(pipe);
-	struct mipi_dbi *mipi = mipi_dbi_from_tinydrm(tdev);
+	struct mipi_dbi *mipi = drm_to_mipi_dbi(pipe->crtc.dev);
 	u8 addr_mode;
 	int ret;
 
@@ -137,7 +137,7 @@ static const struct drm_simple_display_pipe_funcs ili9341_pipe_funcs = {
 };
 
 static const struct drm_display_mode yx240qv29_mode = {
-	TINYDRM_MODE(240, 320, 37, 49),
+	DRM_SIMPLE_MODE(240, 320, 37, 49),
 };
 
 DEFINE_DRM_GEM_CMA_FOPS(ili9341_fops);
@@ -205,16 +205,14 @@ static int ili9341_probe(struct spi_device *spi)
 	if (ret)
 		return ret;
 
-	spi_set_drvdata(spi, mipi);
+	spi_set_drvdata(spi, mipi->tinydrm.drm);
 
 	return devm_tinydrm_register(&mipi->tinydrm);
 }
 
 static void ili9341_shutdown(struct spi_device *spi)
 {
-	struct mipi_dbi *mipi = spi_get_drvdata(spi);
-
-	tinydrm_shutdown(&mipi->tinydrm);
+	drm_atomic_helper_shutdown(spi_get_drvdata(spi));
 }
 
 static struct spi_driver ili9341_spi_driver = {

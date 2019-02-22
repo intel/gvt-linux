@@ -55,6 +55,7 @@
 #include <drm/drm_util.h>
 #include <drm/drm_dsc.h>
 #include <drm/drm_connector.h>
+#include <drm/i915_mei_hdcp_interface.h>
 
 #include "i915_fixed.h"
 #include "i915_params.h"
@@ -91,8 +92,8 @@
 
 #define DRIVER_NAME		"i915"
 #define DRIVER_DESC		"Intel Graphics"
-#define DRIVER_DATE		"20190207"
-#define DRIVER_TIMESTAMP	1549572331
+#define DRIVER_DATE		"20190220"
+#define DRIVER_TIMESTAMP	1550657146
 
 /* Use I915_STATE_WARN(x) and I915_STATE_WARN_ON() (rather than WARN() and
  * WARN_ON()) for hw state sanity checks to check for unexpected conditions
@@ -216,10 +217,6 @@ struct drm_i915_file_private {
 #define DRM_I915_THROTTLE_JIFFIES msecs_to_jiffies(20)
 	} mm;
 	struct idr context_idr;
-
-	struct intel_rps_client {
-		atomic_t boosts;
-	} rps_client;
 
 	unsigned int bsd_engine;
 
@@ -508,7 +505,7 @@ struct i915_psr {
 
 	u32 debug;
 	bool sink_support;
-	bool prepared, enabled;
+	bool enabled;
 	struct intel_dp *dp;
 	enum pipe pipe;
 	bool active;
@@ -1130,6 +1127,7 @@ struct skl_wm_level {
 	u16 plane_res_b;
 	u8 plane_res_l;
 	bool plane_en;
+	bool ignore_lines;
 };
 
 /* Stores plane specific WM parameters */
@@ -1200,7 +1198,11 @@ enum intel_pipe_crc_source {
 	INTEL_PIPE_CRC_SOURCE_NONE,
 	INTEL_PIPE_CRC_SOURCE_PLANE1,
 	INTEL_PIPE_CRC_SOURCE_PLANE2,
-	INTEL_PIPE_CRC_SOURCE_PF,
+	INTEL_PIPE_CRC_SOURCE_PLANE3,
+	INTEL_PIPE_CRC_SOURCE_PLANE4,
+	INTEL_PIPE_CRC_SOURCE_PLANE5,
+	INTEL_PIPE_CRC_SOURCE_PLANE6,
+	INTEL_PIPE_CRC_SOURCE_PLANE7,
 	INTEL_PIPE_CRC_SOURCE_PIPE,
 	/* TV/DP on pre-gen5/vlv can't use the pipe source. */
 	INTEL_PIPE_CRC_SOURCE_TV,
@@ -2054,6 +2056,12 @@ struct drm_i915_private {
 	} lpe_audio;
 
 	struct i915_pmu pmu;
+
+	struct i915_hdcp_comp_master *hdcp_master;
+	bool hdcp_comp_added;
+
+	/* Mutex to protect the above hdcp component related values. */
+	struct mutex hdcp_comp_mutex;
 
 	/*
 	 * NOTE: This is the dri1/ums dungeon, don't add stuff here. Your patch
@@ -3001,7 +3009,12 @@ i915_gem_obj_finish_shmem_access(struct drm_i915_gem_object *obj)
 	i915_gem_object_unpin_pages(obj);
 }
 
-int __must_check i915_mutex_lock_interruptible(struct drm_device *dev);
+static inline int __must_check
+i915_mutex_lock_interruptible(struct drm_device *dev)
+{
+	return mutex_lock_interruptible(&dev->struct_mutex);
+}
+
 int i915_gem_dumb_create(struct drm_file *file_priv,
 			 struct drm_device *dev,
 			 struct drm_mode_create_dumb *args);
@@ -3018,19 +3031,14 @@ int __must_check i915_gem_set_global_seqno(struct drm_device *dev, u32 seqno);
 struct i915_request *
 i915_gem_find_active_request(struct intel_engine_cs *engine);
 
-static inline bool i915_reset_backoff(struct i915_gpu_error *error)
-{
-	return unlikely(test_bit(I915_RESET_BACKOFF, &error->flags));
-}
-
-static inline bool i915_terminally_wedged(struct i915_gpu_error *error)
+static inline bool __i915_wedged(struct i915_gpu_error *error)
 {
 	return unlikely(test_bit(I915_WEDGED, &error->flags));
 }
 
-static inline bool i915_reset_backoff_or_wedged(struct i915_gpu_error *error)
+static inline bool i915_reset_failed(struct drm_i915_private *i915)
 {
-	return i915_reset_backoff(error) | i915_terminally_wedged(error);
+	return __i915_wedged(&i915->gpu_error);
 }
 
 static inline u32 i915_reset_count(struct i915_gpu_error *error)
@@ -3061,8 +3069,7 @@ void i915_gem_resume(struct drm_i915_private *dev_priv);
 vm_fault_t i915_gem_fault(struct vm_fault *vmf);
 int i915_gem_object_wait(struct drm_i915_gem_object *obj,
 			 unsigned int flags,
-			 long timeout,
-			 struct intel_rps_client *rps);
+			 long timeout);
 int i915_gem_object_wait_priority(struct drm_i915_gem_object *obj,
 				  unsigned int flags,
 				  const struct i915_sched_attr *attr);
@@ -3105,7 +3112,6 @@ struct drm_i915_fence_reg *
 i915_reserve_fence(struct drm_i915_private *dev_priv);
 void i915_unreserve_fence(struct drm_i915_fence_reg *fence);
 
-void i915_gem_revoke_fences(struct drm_i915_private *dev_priv);
 void i915_gem_restore_fences(struct drm_i915_private *dev_priv);
 
 void i915_gem_detect_bit_6_swizzle(struct drm_i915_private *dev_priv);

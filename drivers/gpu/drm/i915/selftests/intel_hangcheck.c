@@ -56,6 +56,8 @@ static int hang_init(struct hang *h, struct drm_i915_private *i915)
 	if (IS_ERR(h->ctx))
 		return PTR_ERR(h->ctx);
 
+	GEM_BUG_ON(i915_gem_context_is_bannable(h->ctx));
+
 	h->hws = i915_gem_object_create_internal(i915, PAGE_SIZE);
 	if (IS_ERR(h->hws)) {
 		err = PTR_ERR(h->hws);
@@ -242,6 +244,12 @@ hang_create_request(struct hang *h, struct intel_engine_cs *engine)
 	*batch++ = MI_BATCH_BUFFER_END; /* not reached */
 	i915_gem_chipset_flush(h->i915);
 
+	if (rq->engine->emit_init_breadcrumb) {
+		err = rq->engine->emit_init_breadcrumb(rq);
+		if (err)
+			goto cancel_rq;
+	}
+
 	flags = 0;
 	if (INTEL_GEN(vm->i915) <= 5)
 		flags |= I915_DISPATCH_SECURE;
@@ -334,7 +342,7 @@ static int igt_hang_sanitycheck(void *arg)
 			timeout = i915_request_wait(rq,
 						    I915_WAIT_LOCKED,
 						    MAX_SCHEDULE_TIMEOUT);
-		if (i915_terminally_wedged(&i915->gpu_error))
+		if (i915_reset_failed(i915))
 			timeout = -EIO;
 
 		i915_request_put(rq);
@@ -375,7 +383,7 @@ static int igt_global_reset(void *arg)
 
 	igt_global_reset_unlock(i915);
 
-	if (i915_terminally_wedged(&i915->gpu_error))
+	if (i915_reset_failed(i915))
 		err = -EIO;
 
 	return err;
@@ -393,15 +401,13 @@ static int igt_wedged_reset(void *arg)
 
 	i915_gem_set_wedged(i915);
 
-	mutex_lock(&i915->drm.struct_mutex);
-	GEM_BUG_ON(!i915_terminally_wedged(&i915->gpu_error));
+	GEM_BUG_ON(!i915_reset_failed(i915));
 	i915_reset(i915, ALL_ENGINES, NULL);
-	mutex_unlock(&i915->drm.struct_mutex);
 
 	intel_runtime_pm_put(i915, wakeref);
 	igt_global_reset_unlock(i915);
 
-	return i915_terminally_wedged(&i915->gpu_error) ? -EIO : 0;
+	return i915_reset_failed(i915) ? -EIO : 0;
 }
 
 static bool wait_for_idle(struct intel_engine_cs *engine)
@@ -523,7 +529,7 @@ static int __igt_reset_engine(struct drm_i915_private *i915, bool active)
 			break;
 	}
 
-	if (i915_terminally_wedged(&i915->gpu_error))
+	if (i915_reset_failed(i915))
 		err = -EIO;
 
 	if (active) {
@@ -837,7 +843,7 @@ unwind:
 			break;
 	}
 
-	if (i915_terminally_wedged(&i915->gpu_error))
+	if (i915_reset_failed(i915))
 		err = -EIO;
 
 	if (flags & TEST_ACTIVE) {
@@ -963,7 +969,7 @@ unlock:
 	mutex_unlock(&i915->drm.struct_mutex);
 	igt_global_reset_unlock(i915);
 
-	if (i915_terminally_wedged(&i915->gpu_error))
+	if (i915_reset_failed(i915))
 		return -EIO;
 
 	return err;
@@ -1038,8 +1044,6 @@ static int __igt_reset_evict_vma(struct drm_i915_private *i915,
 		return 0;
 
 	/* Check that we can recover an unbind stuck on a hanging request */
-
-	igt_global_reset_lock(i915);
 
 	mutex_lock(&i915->drm.struct_mutex);
 	err = hang_init(&h, i915);
@@ -1138,7 +1142,9 @@ static int __igt_reset_evict_vma(struct drm_i915_private *i915,
 	}
 
 out_reset:
+	igt_global_reset_lock(i915);
 	fake_hangcheck(rq->i915, intel_engine_flag(rq->engine));
+	igt_global_reset_unlock(i915);
 
 	if (tsk) {
 		struct igt_wedge_me w;
@@ -1159,9 +1165,8 @@ fini:
 	hang_fini(&h);
 unlock:
 	mutex_unlock(&i915->drm.struct_mutex);
-	igt_global_reset_unlock(i915);
 
-	if (i915_terminally_wedged(&i915->gpu_error))
+	if (i915_reset_failed(i915))
 		return -EIO;
 
 	return err;
@@ -1367,7 +1372,7 @@ unlock:
 	mutex_unlock(&i915->drm.struct_mutex);
 	igt_global_reset_unlock(i915);
 
-	if (i915_terminally_wedged(&i915->gpu_error))
+	if (i915_reset_failed(i915))
 		return -EIO;
 
 	return err;
@@ -1547,7 +1552,7 @@ static int igt_atomic_reset_engine(struct intel_engine_cs *engine,
 			i915_request_wait(rq,
 					  I915_WAIT_LOCKED,
 					  MAX_SCHEDULE_TIMEOUT);
-		if (i915_terminally_wedged(&i915->gpu_error))
+		if (i915_reset_failed(i915))
 			err = -EIO;
 	}
 
@@ -1586,7 +1591,7 @@ static int igt_atomic_reset(void *arg)
 
 	/* Flush any requests before we get started and check basics */
 	force_reset(i915);
-	if (i915_terminally_wedged(&i915->gpu_error))
+	if (i915_reset_failed(i915))
 		goto unlock;
 
 	if (intel_has_gpu_reset(i915)) {
@@ -1660,7 +1665,7 @@ int intel_hangcheck_live_selftests(struct drm_i915_private *i915)
 	if (!intel_has_gpu_reset(i915))
 		return 0;
 
-	if (i915_terminally_wedged(&i915->gpu_error))
+	if (i915_terminally_wedged(i915))
 		return -EIO; /* we're long past hope of a successful reset */
 
 	wakeref = intel_runtime_pm_get(i915);

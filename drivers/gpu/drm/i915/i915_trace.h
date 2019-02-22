@@ -18,6 +18,87 @@
 
 /* watermark/fifo updates */
 
+TRACE_EVENT(intel_pipe_enable,
+	    TP_PROTO(struct drm_i915_private *dev_priv, enum pipe pipe),
+	    TP_ARGS(dev_priv, pipe),
+
+	    TP_STRUCT__entry(
+			     __array(u32, frame, 3)
+			     __array(u32, scanline, 3)
+			     __field(enum pipe, pipe)
+			     ),
+
+	    TP_fast_assign(
+			   enum pipe _pipe;
+			   for_each_pipe(dev_priv, _pipe) {
+				   __entry->frame[_pipe] =
+					   dev_priv->drm.driver->get_vblank_counter(&dev_priv->drm, _pipe);
+				   __entry->scanline[_pipe] =
+					   intel_get_crtc_scanline(intel_get_crtc_for_pipe(dev_priv, _pipe));
+			   }
+			   __entry->pipe = pipe;
+			   ),
+
+	    TP_printk("pipe %c enable, pipe A: frame=%u, scanline=%u, pipe B: frame=%u, scanline=%u, pipe C: frame=%u, scanline=%u",
+		      pipe_name(__entry->pipe),
+		      __entry->frame[PIPE_A], __entry->scanline[PIPE_A],
+		      __entry->frame[PIPE_B], __entry->scanline[PIPE_B],
+		      __entry->frame[PIPE_C], __entry->scanline[PIPE_C])
+);
+
+TRACE_EVENT(intel_pipe_disable,
+	    TP_PROTO(struct drm_i915_private *dev_priv, enum pipe pipe),
+	    TP_ARGS(dev_priv, pipe),
+
+	    TP_STRUCT__entry(
+			     __array(u32, frame, 3)
+			     __array(u32, scanline, 3)
+			     __field(enum pipe, pipe)
+			     ),
+
+	    TP_fast_assign(
+			   enum pipe _pipe;
+			   for_each_pipe(dev_priv, _pipe) {
+				   __entry->frame[_pipe] =
+					   dev_priv->drm.driver->get_vblank_counter(&dev_priv->drm, _pipe);
+				   __entry->scanline[_pipe] =
+					   intel_get_crtc_scanline(intel_get_crtc_for_pipe(dev_priv, _pipe));
+			   }
+			   __entry->pipe = pipe;
+			   ),
+
+	    TP_printk("pipe %c disable, pipe A: frame=%u, scanline=%u, pipe B: frame=%u, scanline=%u, pipe C: frame=%u, scanline=%u",
+		      pipe_name(__entry->pipe),
+		      __entry->frame[PIPE_A], __entry->scanline[PIPE_A],
+		      __entry->frame[PIPE_B], __entry->scanline[PIPE_B],
+		      __entry->frame[PIPE_C], __entry->scanline[PIPE_C])
+);
+
+TRACE_EVENT(intel_pipe_crc,
+	    TP_PROTO(struct intel_crtc *crtc, const u32 *crcs),
+	    TP_ARGS(crtc, crcs),
+
+	    TP_STRUCT__entry(
+			     __field(enum pipe, pipe)
+			     __field(u32, frame)
+			     __field(u32, scanline)
+			     __array(u32, crcs, 5)
+			     ),
+
+	    TP_fast_assign(
+			   __entry->pipe = crtc->pipe;
+			   __entry->frame = crtc->base.dev->driver->get_vblank_counter(crtc->base.dev,
+										       crtc->pipe);
+			   __entry->scanline = intel_get_crtc_scanline(crtc);
+			   memcpy(__entry->crcs, crcs, sizeof(__entry->crcs));
+			   ),
+
+	    TP_printk("pipe %c, frame=%u, scanline=%u crc=%08x %08x %08x %08x %08x",
+		      pipe_name(__entry->pipe), __entry->frame, __entry->scanline,
+		      __entry->crcs[0], __entry->crcs[1], __entry->crcs[2],
+		      __entry->crcs[3], __entry->crcs[4])
+);
+
 TRACE_EVENT(intel_cpu_fifo_underrun,
 	    TP_PROTO(struct drm_i915_private *dev_priv, enum pipe pipe),
 	    TP_ARGS(dev_priv, pipe),

@@ -75,7 +75,7 @@
 		   .gamma_lut_tests = DRM_COLOR_LUT_NON_DECREASING, \
 	}
 #define GLK_COLORS \
-	.color = { .degamma_lut_size = 0, .gamma_lut_size = 1024, \
+	.color = { .degamma_lut_size = 33, .gamma_lut_size = 1024, \
 		   .degamma_lut_tests = DRM_COLOR_LUT_NON_DECREASING | \
 					DRM_COLOR_LUT_EQUAL_CHANNELS, \
 	}
@@ -648,7 +648,8 @@ static const struct intel_device_info intel_cannonlake_info = {
 	}, \
 	GEN(11), \
 	.ddb_size = 2048, \
-	.has_logical_ring_elsq = 1
+	.has_logical_ring_elsq = 1, \
+	.color = { .degamma_lut_size = 33, .gamma_lut_size = 1024 }
 
 static const struct intel_device_info intel_icelake_11_info = {
 	GEN11_FEATURES,

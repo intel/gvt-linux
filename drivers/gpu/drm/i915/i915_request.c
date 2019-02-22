@@ -68,7 +68,9 @@ static signed long i915_fence_wait(struct dma_fence *fence,
 				   bool interruptible,
 				   signed long timeout)
 {
-	return i915_request_wait(to_request(fence), interruptible, timeout);
+	return i915_request_wait(to_request(fence),
+				 interruptible | I915_WAIT_PRIORITY,
+				 timeout);
 }
 
 static void i915_fence_release(struct dma_fence *fence)
@@ -288,8 +290,6 @@ static void i915_request_retire(struct i915_request *request)
 
 	i915_request_remove_from_client(request);
 
-	/* Retirement decays the ban score as it is a sign of ctx progress */
-	atomic_dec_if_positive(&request->gem_context->ban_score);
 	intel_context_unpin(request->hw_context);
 
 	__retire_engine_upto(request->engine, request);
@@ -363,6 +363,9 @@ void __i915_request_submit(struct i915_request *request)
 
 	GEM_BUG_ON(!irqs_disabled());
 	lockdep_assert_held(&engine->timeline.lock);
+
+	if (i915_gem_context_is_banned(request->gem_context))
+		i915_request_skip(request, -EIO);
 
 	GEM_BUG_ON(request->global_seqno);
 
@@ -556,8 +559,9 @@ i915_request_alloc(struct intel_engine_cs *engine, struct i915_gem_context *ctx)
 	 * ABI: Before userspace accesses the GPU (e.g. execbuffer), report
 	 * EIO if the GPU is already wedged.
 	 */
-	if (i915_terminally_wedged(&i915->gpu_error))
-		return ERR_PTR(-EIO);
+	ret = i915_terminally_wedged(i915);
+	if (ret)
+		return ERR_PTR(ret);
 
 	/*
 	 * Pinning the contexts may generate requests in order to acquire
@@ -1136,8 +1140,23 @@ long i915_request_wait(struct i915_request *rq,
 	if (__i915_spin_request(rq, state, 5))
 		goto out;
 
-	if (flags & I915_WAIT_PRIORITY)
+	/*
+	 * This client is about to stall waiting for the GPU. In many cases
+	 * this is undesirable and limits the throughput of the system, as
+	 * many clients cannot continue processing user input/output whilst
+	 * blocked. RPS autotuning may take tens of milliseconds to respond
+	 * to the GPU load and thus incurs additional latency for the client.
+	 * We can circumvent that by promoting the GPU frequency to maximum
+	 * before we sleep. This makes the GPU throttle up much more quickly
+	 * (good for benchmarks and user experience, e.g. window animations),
+	 * but at a cost of spending more power processing the workload
+	 * (bad for battery).
+	 */
+	if (flags & I915_WAIT_PRIORITY) {
+		if (!i915_request_started(rq) && INTEL_GEN(rq->i915) >= 6)
+			gen6_rps_boost(rq);
 		i915_schedule_bump_priority(rq, I915_PRIORITY_WAIT);
+	}
 
 	wait.tsk = current;
 	if (dma_fence_add_callback(&rq->fence, &wait.cb, request_wait_wake))

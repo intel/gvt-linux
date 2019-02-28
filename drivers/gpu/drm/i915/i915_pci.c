@@ -28,8 +28,8 @@
 
 #include <drm/drm_drv.h>
 
-#include "i915_active.h"
 #include "i915_drv.h"
+#include "i915_globals.h"
 #include "i915_selftest.h"
 
 #define PLATFORM(x) .platform = (x), .platform_mask = BIT(x)
@@ -75,7 +75,7 @@
 		   .gamma_lut_tests = DRM_COLOR_LUT_NON_DECREASING, \
 	}
 #define GLK_COLORS \
-	.color = { .degamma_lut_size = 0, .gamma_lut_size = 1024, \
+	.color = { .degamma_lut_size = 33, .gamma_lut_size = 1024, \
 		   .degamma_lut_tests = DRM_COLOR_LUT_NON_DECREASING | \
 					DRM_COLOR_LUT_EQUAL_CHANNELS, \
 	}
@@ -648,7 +648,8 @@ static const struct intel_device_info intel_cannonlake_info = {
 	}, \
 	GEN(11), \
 	.ddb_size = 2048, \
-	.has_logical_ring_elsq = 1
+	.has_logical_ring_elsq = 1, \
+	.color = { .degamma_lut_size = 33, .gamma_lut_size = 1024 }
 
 static const struct intel_device_info intel_icelake_11_info = {
 	GEN11_FEATURES,
@@ -801,7 +802,9 @@ static int __init i915_init(void)
 	bool use_kms = true;
 	int err;
 
-	i915_global_active_init();
+	err = i915_globals_init();
+	if (err)
+		return err;
 
 	err = i915_mock_selftests();
 	if (err)
@@ -834,7 +837,7 @@ static void __exit i915_exit(void)
 		return;
 
 	pci_unregister_driver(&i915_pci_driver);
-	i915_global_active_exit();
+	i915_globals_exit();
 }
 
 module_init(i915_init);

@@ -1288,6 +1288,18 @@ static void gen6_pm_rps_work(struct work_struct *work)
 
 	rps->last_adj = adj;
 
+	/*
+	 * Limit deboosting and boosting to keep ourselves at the extremes
+	 * when in the respective power modes (i.e. slowly decrease frequencies
+	 * while in the HIGH_POWER zone and slowly increase frequencies while
+	 * in the LOW_POWER zone). On idle, we will hit the timeout and drop
+	 * to the next level quickly, and conversely if busy we expect to
+	 * hit a waitboost and rapidly switch into max power.
+	 */
+	if ((adj < 0 && rps->power.mode == HIGH_POWER) ||
+	    (adj > 0 && rps->power.mode == LOW_POWER))
+		rps->last_adj = 0;
+
 	/* sysfs frequency interfaces may have snuck in while servicing the
 	 * interrupt
 	 */
@@ -1693,7 +1705,9 @@ static void display_pipe_crc_irq_handler(struct drm_i915_private *dev_priv,
 {
 	struct intel_pipe_crc *pipe_crc = &dev_priv->pipe_crc[pipe];
 	struct intel_crtc *crtc = intel_get_crtc_for_pipe(dev_priv, pipe);
-	u32 crcs[5];
+	u32 crcs[5] = { crc0, crc1, crc2, crc3, crc4 };
+
+	trace_intel_pipe_crc(crtc, crcs);
 
 	spin_lock(&pipe_crc->lock);
 	/*
@@ -1712,11 +1726,6 @@ static void display_pipe_crc_irq_handler(struct drm_i915_private *dev_priv,
 	}
 	spin_unlock(&pipe_crc->lock);
 
-	crcs[0] = crc0;
-	crcs[1] = crc1;
-	crcs[2] = crc2;
-	crcs[3] = crc3;
-	crcs[4] = crc4;
 	drm_crtc_add_crc_entry(&crtc->base, true,
 				drm_crtc_accurate_vblank_count(&crtc->base),
 				crcs);

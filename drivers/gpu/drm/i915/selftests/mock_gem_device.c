@@ -79,12 +79,6 @@ static void mock_device_release(struct drm_device *dev)
 
 	destroy_workqueue(i915->wq);
 
-	kmem_cache_destroy(i915->priorities);
-	kmem_cache_destroy(i915->dependencies);
-	kmem_cache_destroy(i915->requests);
-	kmem_cache_destroy(i915->vmas);
-	kmem_cache_destroy(i915->objects);
-
 	i915_gemfs_fini(i915);
 
 	drm_mode_config_cleanup(&i915->drm);
@@ -189,6 +183,7 @@ struct drm_i915_private *mock_gem_device(void)
 
 	init_waitqueue_head(&i915->gpu_error.wait_queue);
 	init_waitqueue_head(&i915->gpu_error.reset_queue);
+	init_srcu_struct(&i915->gpu_error.reset_backoff_srcu);
 	mutex_init(&i915->gpu_error.wedge_mutex);
 
 	i915->wq = alloc_ordered_workqueue("mock", 0);
@@ -201,31 +196,6 @@ struct drm_i915_private *mock_gem_device(void)
 	INIT_DELAYED_WORK(&i915->gt.idle_work, mock_idle_work_handler);
 
 	i915->gt.awake = true;
-
-	i915->objects = KMEM_CACHE(mock_object, SLAB_HWCACHE_ALIGN);
-	if (!i915->objects)
-		goto err_wq;
-
-	i915->vmas = KMEM_CACHE(i915_vma, SLAB_HWCACHE_ALIGN);
-	if (!i915->vmas)
-		goto err_objects;
-
-	i915->requests = KMEM_CACHE(mock_request,
-				    SLAB_HWCACHE_ALIGN |
-				    SLAB_RECLAIM_ACCOUNT |
-				    SLAB_TYPESAFE_BY_RCU);
-	if (!i915->requests)
-		goto err_vmas;
-
-	i915->dependencies = KMEM_CACHE(i915_dependency,
-					SLAB_HWCACHE_ALIGN |
-					SLAB_RECLAIM_ACCOUNT);
-	if (!i915->dependencies)
-		goto err_requests;
-
-	i915->priorities = KMEM_CACHE(i915_priolist, SLAB_HWCACHE_ALIGN);
-	if (!i915->priorities)
-		goto err_dependencies;
 
 	i915_timelines_init(i915);
 
@@ -256,16 +226,6 @@ err_context:
 err_unlock:
 	mutex_unlock(&i915->drm.struct_mutex);
 	i915_timelines_fini(i915);
-	kmem_cache_destroy(i915->priorities);
-err_dependencies:
-	kmem_cache_destroy(i915->dependencies);
-err_requests:
-	kmem_cache_destroy(i915->requests);
-err_vmas:
-	kmem_cache_destroy(i915->vmas);
-err_objects:
-	kmem_cache_destroy(i915->objects);
-err_wq:
 	destroy_workqueue(i915->wq);
 err_drv:
 	drm_mode_config_cleanup(&i915->drm);

@@ -171,7 +171,7 @@ huge_pages_object(struct drm_i915_private *i915,
 	if (overflows_type(size, obj->base.size))
 		return ERR_PTR(-E2BIG);
 
-	obj = i915_gem_object_alloc(i915);
+	obj = i915_gem_object_alloc();
 	if (!obj)
 		return ERR_PTR(-ENOMEM);
 
@@ -320,7 +320,7 @@ fake_huge_pages_object(struct drm_i915_private *i915, u64 size, bool single)
 	if (overflows_type(size, obj->base.size))
 		return ERR_PTR(-E2BIG);
 
-	obj = i915_gem_object_alloc(i915);
+	obj = i915_gem_object_alloc();
 	if (!obj)
 		return ERR_PTR(-ENOMEM);
 
@@ -1764,7 +1764,7 @@ int i915_gem_huge_page_live_selftests(struct drm_i915_private *dev_priv)
 		return 0;
 	}
 
-	if (i915_terminally_wedged(&dev_priv->gpu_error))
+	if (i915_terminally_wedged(dev_priv))
 		return 0;
 
 	file = mock_file(dev_priv);

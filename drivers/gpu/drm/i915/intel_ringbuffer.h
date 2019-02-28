@@ -6,6 +6,7 @@
 
 #include <linux/hashtable.h>
 #include <linux/irq_work.h>
+#include <linux/random.h>
 #include <linux/seqlock.h>
 
 #include "i915_gem_batch_pool.h"
@@ -119,7 +120,8 @@ struct intel_instdone {
 
 struct intel_engine_hangcheck {
 	u64 acthd;
-	u32 seqno;
+	u32 last_seqno;
+	u32 next_seqno;
 	unsigned long action_timestamp;
 	struct intel_instdone instdone;
 };
@@ -184,23 +186,6 @@ enum intel_engine_id {
 	VECS2
 #define _VECS(n) (VECS + (n))
 };
-
-struct i915_priolist {
-	struct list_head requests[I915_PRIORITY_COUNT];
-	struct rb_node node;
-	unsigned long used;
-	int priority;
-};
-
-#define priolist_for_each_request(it, plist, idx) \
-	for (idx = 0; idx < ARRAY_SIZE((plist)->requests); idx++) \
-		list_for_each_entry(it, &(plist)->requests[idx], sched.link)
-
-#define priolist_for_each_request_consume(it, n, plist, idx) \
-	for (; (idx = ffs((plist)->used)); (plist)->used &= ~BIT(idx - 1)) \
-		list_for_each_entry_safe(it, n, \
-					 &(plist)->requests[idx - 1], \
-					 sched.link)
 
 struct st_preempt_hang {
 	struct completion completion;
@@ -392,7 +377,7 @@ struct intel_engine_cs {
 		bool irq_armed;
 	} breadcrumbs;
 
-	struct {
+	struct intel_engine_pmu {
 		/**
 		 * @enable: Bitmask of enable sample events on this engine.
 		 *
@@ -591,6 +576,8 @@ intel_engine_has_preemption(const struct intel_engine_cs *engine)
 	return engine->flags & I915_ENGINE_HAS_PREEMPTION;
 }
 
+void intel_engines_set_scheduler_caps(struct drm_i915_private *i915);
+
 static inline bool __execlists_need_preempt(int prio, int last)
 {
 	/*
@@ -722,10 +709,10 @@ intel_write_status_page(struct intel_engine_cs *engine, int reg, u32 value)
  *
  * The area from dword 0x30 to 0x3ff is available for driver usage.
  */
-#define I915_GEM_HWS_INDEX		0x30
-#define I915_GEM_HWS_INDEX_ADDR		(I915_GEM_HWS_INDEX * sizeof(u32))
 #define I915_GEM_HWS_PREEMPT		0x32
 #define I915_GEM_HWS_PREEMPT_ADDR	(I915_GEM_HWS_PREEMPT * sizeof(u32))
+#define I915_GEM_HWS_HANGCHECK		0x34
+#define I915_GEM_HWS_HANGCHECK_ADDR	(I915_GEM_HWS_HANGCHECK * sizeof(u32))
 #define I915_GEM_HWS_SEQNO		0x40
 #define I915_GEM_HWS_SEQNO_ADDR		(I915_GEM_HWS_SEQNO * sizeof(u32))
 #define I915_GEM_HWS_SCRATCH		0x80
@@ -844,8 +831,6 @@ __intel_ring_space(unsigned int head, unsigned int tail, unsigned int size)
 	return (head - tail - CACHELINE_BYTES) & (size - 1);
 }
 
-void intel_engine_write_global_seqno(struct intel_engine_cs *engine, u32 seqno);
-
 int intel_engine_setup_common(struct intel_engine_cs *engine);
 int intel_engine_init_common(struct intel_engine_cs *engine);
 void intel_engine_cleanup_common(struct intel_engine_cs *engine);
@@ -862,44 +847,6 @@ void intel_engine_set_hwsp_writemask(struct intel_engine_cs *engine, u32 mask);
 
 u64 intel_engine_get_active_head(const struct intel_engine_cs *engine);
 u64 intel_engine_get_last_batch_head(const struct intel_engine_cs *engine);
-
-static inline u32 intel_engine_last_submit(struct intel_engine_cs *engine)
-{
-	/*
-	 * We are only peeking at the tail of the submit queue (and not the
-	 * queue itself) in order to gain a hint as to the current active
-	 * state of the engine. Callers are not expected to be taking
-	 * engine->timeline->lock, nor are they expected to be concerned
-	 * wtih serialising this hint with anything, so document it as
-	 * a hint and nothing more.
-	 */
-	return READ_ONCE(engine->timeline.seqno);
-}
-
-static inline u32 intel_engine_get_seqno(struct intel_engine_cs *engine)
-{
-	return intel_read_status_page(engine, I915_GEM_HWS_INDEX);
-}
-
-static inline bool intel_engine_signaled(struct intel_engine_cs *engine,
-					 u32 seqno)
-{
-	return i915_seqno_passed(intel_engine_get_seqno(engine), seqno);
-}
-
-static inline bool intel_engine_has_completed(struct intel_engine_cs *engine,
-					      u32 seqno)
-{
-	GEM_BUG_ON(!seqno);
-	return intel_engine_signaled(engine, seqno);
-}
-
-static inline bool intel_engine_has_started(struct intel_engine_cs *engine,
-					    u32 seqno)
-{
-	GEM_BUG_ON(!seqno);
-	return intel_engine_signaled(engine, seqno - 1);
-}
 
 void intel_engine_get_instdone(struct intel_engine_cs *engine,
 			       struct intel_instdone *instdone);
@@ -1085,5 +1032,18 @@ static inline bool inject_preempt_hang(struct intel_engine_execlists *execlists)
 }
 
 #endif
+
+static inline u32
+intel_engine_next_hangcheck_seqno(struct intel_engine_cs *engine)
+{
+	return engine->hangcheck.next_seqno =
+		next_pseudo_random32(engine->hangcheck.next_seqno);
+}
+
+static inline u32
+intel_engine_get_hangcheck_seqno(struct intel_engine_cs *engine)
+{
+	return intel_read_status_page(engine, I915_GEM_HWS_HANGCHECK);
+}
 
 #endif /* _INTEL_RINGBUFFER_H_ */

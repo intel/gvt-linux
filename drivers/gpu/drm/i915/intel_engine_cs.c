@@ -455,12 +455,6 @@ cleanup:
 	return err;
 }
 
-void intel_engine_write_global_seqno(struct intel_engine_cs *engine, u32 seqno)
-{
-	intel_write_status_page(engine, I915_GEM_HWS_INDEX, seqno);
-	GEM_BUG_ON(intel_engine_get_seqno(engine) != seqno);
-}
-
 static void intel_engine_init_batch_pool(struct intel_engine_cs *engine)
 {
 	i915_gem_batch_pool_init(&engine->batch_pool, engine);
@@ -612,6 +606,45 @@ int intel_engine_setup_common(struct intel_engine_cs *engine)
 err_hwsp:
 	cleanup_status_page(engine);
 	return err;
+}
+
+void intel_engines_set_scheduler_caps(struct drm_i915_private *i915)
+{
+	static const struct {
+		u8 engine;
+		u8 sched;
+	} map[] = {
+#define MAP(x, y) { ilog2(I915_ENGINE_HAS_##x), ilog2(I915_SCHEDULER_CAP_##y) }
+		MAP(PREEMPTION, PREEMPTION),
+#undef MAP
+	};
+	struct intel_engine_cs *engine;
+	enum intel_engine_id id;
+	u32 enabled, disabled;
+
+	enabled = 0;
+	disabled = 0;
+	for_each_engine(engine, i915, id) { /* all engines must agree! */
+		int i;
+
+		if (engine->schedule)
+			enabled |= (I915_SCHEDULER_CAP_ENABLED |
+				    I915_SCHEDULER_CAP_PRIORITY);
+		else
+			disabled |= (I915_SCHEDULER_CAP_ENABLED |
+				     I915_SCHEDULER_CAP_PRIORITY);
+
+		for (i = 0; i < ARRAY_SIZE(map); i++) {
+			if (engine->flags & BIT(map[i].engine))
+				enabled |= BIT(map[i].sched);
+			else
+				disabled |= BIT(map[i].sched);
+		}
+	}
+
+	i915->caps.scheduler = enabled & ~disabled;
+	if (!(i915->caps.scheduler & I915_SCHEDULER_CAP_ENABLED))
+		i915->caps.scheduler = 0;
 }
 
 static void __intel_context_unpin(struct i915_gem_context *ctx,
@@ -1007,15 +1040,9 @@ static bool ring_is_idle(struct intel_engine_cs *engine)
  */
 bool intel_engine_is_idle(struct intel_engine_cs *engine)
 {
-	struct drm_i915_private *dev_priv = engine->i915;
-
 	/* More white lies, if wedged, hw state is inconsistent */
-	if (i915_terminally_wedged(&dev_priv->gpu_error))
+	if (i915_reset_failed(engine->i915))
 		return true;
-
-	/* Any inflight/incomplete requests? */
-	if (!intel_engine_signaled(engine, intel_engine_last_submit(engine)))
-		return false;
 
 	/* Waiting to drain ELSP? */
 	if (READ_ONCE(engine->execlists.active)) {
@@ -1045,7 +1072,7 @@ bool intel_engine_is_idle(struct intel_engine_cs *engine)
 	return ring_is_idle(engine);
 }
 
-bool intel_engines_are_idle(struct drm_i915_private *dev_priv)
+bool intel_engines_are_idle(struct drm_i915_private *i915)
 {
 	struct intel_engine_cs *engine;
 	enum intel_engine_id id;
@@ -1054,10 +1081,14 @@ bool intel_engines_are_idle(struct drm_i915_private *dev_priv)
 	 * If the driver is wedged, HW state may be very inconsistent and
 	 * report that it is still busy, even though we have stopped using it.
 	 */
-	if (i915_terminally_wedged(&dev_priv->gpu_error))
+	if (i915_reset_failed(i915))
 		return true;
 
-	for_each_engine(engine, dev_priv, id) {
+	/* Already parked (and passed an idleness test); must still be idle */
+	if (!READ_ONCE(i915->gt.awake))
+		return true;
+
+	for_each_engine(engine, i915, id) {
 		if (!intel_engine_is_idle(engine))
 			return false;
 	}
@@ -1283,15 +1314,14 @@ static void print_request(struct drm_printer *m,
 
 	x = print_sched_attr(rq->i915, &rq->sched.attr, buf, x, sizeof(buf));
 
-	drm_printf(m, "%s%x%s%s [%llx:%llx]%s @ %dms: %s\n",
+	drm_printf(m, "%s %llx:%llx%s%s %s @ %dms: %s\n",
 		   prefix,
-		   rq->global_seqno,
+		   rq->fence.context, rq->fence.seqno,
 		   i915_request_completed(rq) ? "!" :
 		   i915_request_started(rq) ? "*" :
 		   "",
 		   test_bit(DMA_FENCE_FLAG_ENABLE_SIGNAL_BIT,
 			    &rq->fence.flags) ?  "+" : "",
-		   rq->fence.context, rq->fence.seqno,
 		   buf,
 		   jiffies_to_msecs(jiffies - rq->emitted_jiffies),
 		   name);
@@ -1425,10 +1455,11 @@ static void intel_engine_print_registers(const struct intel_engine_cs *engine,
 				char hdr[80];
 
 				snprintf(hdr, sizeof(hdr),
-					 "\t\tELSP[%d] count=%d, ring:{start:%08x, hwsp:%08x}, rq: ",
+					 "\t\tELSP[%d] count=%d, ring:{start:%08x, hwsp:%08x, seqno:%08x}, rq: ",
 					 idx, count,
 					 i915_ggtt_offset(rq->ring->vma),
-					 rq->timeline->hwsp_offset);
+					 rq->timeline->hwsp_offset,
+					 hwsp_seqno(rq));
 				print_request(m, rq, hdr);
 			} else {
 				drm_printf(m, "\t\tELSP[%d] idle\n", idx);
@@ -1495,13 +1526,12 @@ void intel_engine_dump(struct intel_engine_cs *engine,
 		va_end(ap);
 	}
 
-	if (i915_terminally_wedged(&engine->i915->gpu_error))
+	if (i915_reset_failed(engine->i915))
 		drm_printf(m, "*** WEDGED ***\n");
 
-	drm_printf(m, "\tcurrent seqno %x, last %x, hangcheck %x [%d ms]\n",
-		   intel_engine_get_seqno(engine),
-		   intel_engine_last_submit(engine),
-		   engine->hangcheck.seqno,
+	drm_printf(m, "\tHangcheck %x:%x [%d ms]\n",
+		   engine->hangcheck.last_seqno,
+		   engine->hangcheck.next_seqno,
 		   jiffies_to_msecs(jiffies - engine->hangcheck.action_timestamp));
 	drm_printf(m, "\tReset count: %d (global %d)\n",
 		   i915_reset_engine_count(error, engine),

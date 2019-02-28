@@ -29,6 +29,7 @@
 
 #include "i915_gem.h"
 #include "i915_scheduler.h"
+#include "i915_selftest.h"
 #include "i915_sw_fence.h"
 
 #include <uapi/drm/i915_drm.h>
@@ -147,14 +148,6 @@ struct i915_request {
 	 */
 	const u32 *hwsp_seqno;
 
-	/**
-	 * GEM sequence number associated with this request on the
-	 * global execution timeline. It is zero when the request is not
-	 * on the HW queue (i.e. not on the engine timeline list).
-	 * Its value is guarded by the timeline spinlock.
-	 */
-	u32 global_seqno;
-
 	/** Position in the ring of the start of the request */
 	u32 head;
 
@@ -204,6 +197,11 @@ struct i915_request {
 	struct drm_i915_file_private *file_priv;
 	/** file_priv list entry for this request */
 	struct list_head client_link;
+
+	I915_SELFTEST_DECLARE(struct {
+		struct list_head link;
+		unsigned long delay;
+	} mock;)
 };
 
 #define I915_FENCE_GFP (GFP_KERNEL | __GFP_RETRY_MAYFAIL | __GFP_NOWARN)
@@ -245,30 +243,6 @@ static inline void
 i915_request_put(struct i915_request *rq)
 {
 	dma_fence_put(&rq->fence);
-}
-
-/**
- * i915_request_global_seqno - report the current global seqno
- * @request - the request
- *
- * A request is assigned a global seqno only when it is on the hardware
- * execution queue. The global seqno can be used to maintain a list of
- * requests on the same engine in retirement order, for example for
- * constructing a priority queue for waiting. Prior to its execution, or
- * if it is subsequently removed in the event of preemption, its global
- * seqno is zero. As both insertion and removal from the execution queue
- * may operate in IRQ context, it is not guarded by the usual struct_mutex
- * BKL. Instead those relying on the global seqno must be prepared for its
- * value to change between reads. Only when the request is complete can
- * the global seqno be stable (due to the memory barriers on submitting
- * the commands to the hardware to write the breadcrumb, if the HWS shows
- * that it has passed the global seqno and the global seqno is unchanged
- * after the read, it is indeed complete).
- */
-static inline u32
-i915_request_global_seqno(const struct i915_request *request)
-{
-	return READ_ONCE(request->global_seqno);
 }
 
 int i915_request_await_object(struct i915_request *to,
@@ -402,5 +376,9 @@ static inline void i915_request_mark_complete(struct i915_request *rq)
 }
 
 void i915_retire_requests(struct drm_i915_private *i915);
+
+int i915_global_request_init(void);
+void i915_global_request_shrink(void);
+void i915_global_request_exit(void);
 
 #endif /* I915_REQUEST_H */

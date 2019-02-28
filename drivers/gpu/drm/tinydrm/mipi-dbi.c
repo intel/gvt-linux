@@ -216,8 +216,7 @@ EXPORT_SYMBOL(mipi_dbi_buf_copy);
 static void mipi_dbi_fb_dirty(struct drm_framebuffer *fb, struct drm_rect *rect)
 {
 	struct drm_gem_cma_object *cma_obj = drm_fb_cma_get_gem_obj(fb, 0);
-	struct tinydrm_device *tdev = fb->dev->dev_private;
-	struct mipi_dbi *mipi = mipi_dbi_from_tinydrm(tdev);
+	struct mipi_dbi *mipi = drm_to_mipi_dbi(fb->dev);
 	unsigned int height = rect->y2 - rect->y1;
 	unsigned int width = rect->x2 - rect->x1;
 	bool swap = mipi->swap_bytes;
@@ -342,8 +341,7 @@ static void mipi_dbi_blank(struct mipi_dbi *mipi)
  */
 void mipi_dbi_pipe_disable(struct drm_simple_display_pipe *pipe)
 {
-	struct tinydrm_device *tdev = pipe_to_tinydrm(pipe);
-	struct mipi_dbi *mipi = mipi_dbi_from_tinydrm(tdev);
+	struct mipi_dbi *mipi = drm_to_mipi_dbi(pipe->crtc.dev);
 
 	DRM_DEBUG_KMS("\n");
 
@@ -407,7 +405,7 @@ int mipi_dbi_init(struct device *dev, struct mipi_dbi *mipi,
 		return ret;
 
 	/* TODO: Maybe add DRM_MODE_CONNECTOR_SPI */
-	ret = tinydrm_display_pipe_init(tdev, pipe_funcs,
+	ret = tinydrm_display_pipe_init(tdev->drm, &tdev->pipe, pipe_funcs,
 					DRM_MODE_CONNECTOR_VIRTUAL,
 					mipi_dbi_formats,
 					ARRAY_SIZE(mipi_dbi_formats), mode,
@@ -926,7 +924,7 @@ int mipi_dbi_spi_init(struct spi_device *spi, struct mipi_dbi *mipi,
 	 * Even though it's not the SPI device that does DMA (the master does),
 	 * the dma mask is necessary for the dma_alloc_wc() in
 	 * drm_gem_cma_create(). The dma_addr returned will be a physical
-	 * adddress which might be different from the bus address, but this is
+	 * address which might be different from the bus address, but this is
 	 * not a problem since the address will not be used.
 	 * The virtual address is used in the transfer and the SPI core
 	 * re-maps it on the SPI master device using the DMA streaming API
@@ -1088,8 +1086,7 @@ static const struct file_operations mipi_dbi_debugfs_command_fops = {
  */
 int mipi_dbi_debugfs_init(struct drm_minor *minor)
 {
-	struct tinydrm_device *tdev = minor->dev->dev_private;
-	struct mipi_dbi *mipi = mipi_dbi_from_tinydrm(tdev);
+	struct mipi_dbi *mipi = drm_to_mipi_dbi(minor->dev);
 	umode_t mode = S_IFREG | S_IWUSR;
 
 	if (mipi->read_commands)

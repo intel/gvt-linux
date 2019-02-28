@@ -17,6 +17,7 @@
 #include <linux/regulator/consumer.h>
 #include <linux/spi/spi.h>
 
+#include <drm/drm_atomic_helper.h>
 #include <drm/drm_drv.h>
 #include <drm/drm_gem_cma_helper.h>
 #include <drm/drm_gem_framebuffer_helper.h>
@@ -54,8 +55,7 @@ static void mi0283qt_enable(struct drm_simple_display_pipe *pipe,
 			    struct drm_crtc_state *crtc_state,
 			    struct drm_plane_state *plane_state)
 {
-	struct tinydrm_device *tdev = pipe_to_tinydrm(pipe);
-	struct mipi_dbi *mipi = mipi_dbi_from_tinydrm(tdev);
+	struct mipi_dbi *mipi = drm_to_mipi_dbi(pipe->crtc.dev);
 	u8 addr_mode;
 	int ret;
 
@@ -145,7 +145,7 @@ static const struct drm_simple_display_pipe_funcs mi0283qt_pipe_funcs = {
 };
 
 static const struct drm_display_mode mi0283qt_mode = {
-	TINYDRM_MODE(320, 240, 58, 43),
+	DRM_SIMPLE_MODE(320, 240, 58, 43),
 };
 
 DEFINE_DRM_GEM_CMA_FOPS(mi0283qt_fops);
@@ -218,30 +218,24 @@ static int mi0283qt_probe(struct spi_device *spi)
 	if (ret)
 		return ret;
 
-	spi_set_drvdata(spi, mipi);
+	spi_set_drvdata(spi, mipi->tinydrm.drm);
 
 	return devm_tinydrm_register(&mipi->tinydrm);
 }
 
 static void mi0283qt_shutdown(struct spi_device *spi)
 {
-	struct mipi_dbi *mipi = spi_get_drvdata(spi);
-
-	tinydrm_shutdown(&mipi->tinydrm);
+	drm_atomic_helper_shutdown(spi_get_drvdata(spi));
 }
 
 static int __maybe_unused mi0283qt_pm_suspend(struct device *dev)
 {
-	struct mipi_dbi *mipi = dev_get_drvdata(dev);
-
-	return drm_mode_config_helper_suspend(mipi->tinydrm.drm);
+	return drm_mode_config_helper_suspend(dev_get_drvdata(dev));
 }
 
 static int __maybe_unused mi0283qt_pm_resume(struct device *dev)
 {
-	struct mipi_dbi *mipi = dev_get_drvdata(dev);
-
-	drm_mode_config_helper_resume(mipi->tinydrm.drm);
+	drm_mode_config_helper_resume(dev_get_drvdata(dev));
 
 	return 0;
 }

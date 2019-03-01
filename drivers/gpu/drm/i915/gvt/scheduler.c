@@ -678,6 +678,7 @@ static int dispatch_workload(struct intel_vgpu_workload *workload)
 {
 	struct intel_vgpu *vgpu = workload->vgpu;
 	struct drm_i915_private *dev_priv = vgpu->gvt->dev_priv;
+	struct i915_request *rq;
 	int ring_id = workload->ring_id;
 	int ret;
 
@@ -703,6 +704,14 @@ static int dispatch_workload(struct intel_vgpu_workload *workload)
 
 	ret = prepare_workload(workload);
 out:
+	if (ret) {
+		/* We might still need to add request with
+		 * clean ctx to retire it properly..
+		 */
+		rq = fetch_and_zero(&workload->req);
+		i915_request_put(rq);
+	}
+
 	if (!IS_ERR_OR_NULL(workload->req)) {
 		gvt_dbg_sched("ring id %d submit workload to i915 %p\n",
 				ring_id, workload->req);
@@ -739,7 +748,8 @@ static struct intel_vgpu_workload *pick_next_workload(
 		goto out;
 	}
 
-	if (list_empty(workload_q_head(scheduler->current_vgpu, ring_id)))
+	if (!scheduler->current_vgpu->active ||
+	    list_empty(workload_q_head(scheduler->current_vgpu, ring_id)))
 		goto out;
 
 	/*

@@ -26,6 +26,7 @@
 #include <linux/spi/spi.h>
 #include <linux/thermal.h>
 
+#include <drm/drm_atomic_helper.h>
 #include <drm/drm_damage_helper.h>
 #include <drm/drm_drv.h>
 #include <drm/drm_fb_cma_helper.h>
@@ -860,28 +861,28 @@ static const uint32_t repaper_formats[] = {
 };
 
 static const struct drm_display_mode repaper_e1144cs021_mode = {
-	TINYDRM_MODE(128, 96, 29, 22),
+	DRM_SIMPLE_MODE(128, 96, 29, 22),
 };
 
 static const u8 repaper_e1144cs021_cs[] = { 0x00, 0x00, 0x00, 0x00,
 					    0x00, 0x0f, 0xff, 0x00 };
 
 static const struct drm_display_mode repaper_e1190cs021_mode = {
-	TINYDRM_MODE(144, 128, 36, 32),
+	DRM_SIMPLE_MODE(144, 128, 36, 32),
 };
 
 static const u8 repaper_e1190cs021_cs[] = { 0x00, 0x00, 0x00, 0x03,
 					    0xfc, 0x00, 0x00, 0xff };
 
 static const struct drm_display_mode repaper_e2200cs021_mode = {
-	TINYDRM_MODE(200, 96, 46, 22),
+	DRM_SIMPLE_MODE(200, 96, 46, 22),
 };
 
 static const u8 repaper_e2200cs021_cs[] = { 0x00, 0x00, 0x00, 0x00,
 					    0x01, 0xff, 0xe0, 0x00 };
 
 static const struct drm_display_mode repaper_e2271cs021_mode = {
-	TINYDRM_MODE(264, 176, 57, 38),
+	DRM_SIMPLE_MODE(264, 176, 57, 38),
 };
 
 static const u8 repaper_e2271cs021_cs[] = { 0x00, 0x00, 0x00, 0x7f,
@@ -1069,7 +1070,7 @@ static int repaper_probe(struct spi_device *spi)
 	if (ret)
 		return ret;
 
-	ret = tinydrm_display_pipe_init(tdev, &repaper_pipe_funcs,
+	ret = tinydrm_display_pipe_init(tdev->drm, &tdev->pipe, &repaper_pipe_funcs,
 					DRM_MODE_CONNECTOR_VIRTUAL,
 					repaper_formats,
 					ARRAY_SIZE(repaper_formats), mode, 0);
@@ -1077,7 +1078,8 @@ static int repaper_probe(struct spi_device *spi)
 		return ret;
 
 	drm_mode_config_reset(tdev->drm);
-	spi_set_drvdata(spi, tdev);
+
+	spi_set_drvdata(spi, tdev->drm);
 
 	DRM_DEBUG_DRIVER("SPI speed: %uMHz\n", spi->max_speed_hz / 1000000);
 
@@ -1086,9 +1088,7 @@ static int repaper_probe(struct spi_device *spi)
 
 static void repaper_shutdown(struct spi_device *spi)
 {
-	struct tinydrm_device *tdev = spi_get_drvdata(spi);
-
-	tinydrm_shutdown(tdev);
+	drm_atomic_helper_shutdown(spi_get_drvdata(spi));
 }
 
 static struct spi_driver repaper_spi_driver = {

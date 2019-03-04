@@ -849,12 +849,12 @@ static int eb_lookup_vmas(struct i915_execbuffer *eb)
 		}
 
 		vma = i915_vma_instance(obj, eb->vm, NULL);
-		if (unlikely(IS_ERR(vma))) {
+		if (IS_ERR(vma)) {
 			err = PTR_ERR(vma);
 			goto err_obj;
 		}
 
-		lut = kmem_cache_alloc(eb->i915->luts, GFP_KERNEL);
+		lut = i915_lut_handle_alloc();
 		if (unlikely(!lut)) {
 			err = -ENOMEM;
 			goto err_obj;
@@ -862,7 +862,7 @@ static int eb_lookup_vmas(struct i915_execbuffer *eb)
 
 		err = radix_tree_insert(handles_vma, handle, vma);
 		if (unlikely(err)) {
-			kmem_cache_free(eb->i915->luts, lut);
+			i915_lut_handle_free(lut);
 			goto err_obj;
 		}
 
@@ -2312,10 +2312,6 @@ i915_gem_do_execbuffer(struct drm_device *dev,
 	if (args->flags & I915_EXEC_IS_PINNED)
 		eb.batch_flags |= I915_DISPATCH_PINNED;
 
-	eb.engine = eb_select_engine(eb.i915, file, args);
-	if (!eb.engine)
-		return -EINVAL;
-
 	if (args->flags & I915_EXEC_FENCE_IN) {
 		in_fence = sync_file_get_fence(lower_32_bits(args->rsvd2));
 		if (!in_fence)
@@ -2339,6 +2335,12 @@ i915_gem_do_execbuffer(struct drm_device *dev,
 	err = eb_select_context(&eb);
 	if (unlikely(err))
 		goto err_destroy;
+
+	eb.engine = eb_select_engine(eb.i915, file, args);
+	if (!eb.engine) {
+		err = -EINVAL;
+		goto err_engine;
+	}
 
 	/*
 	 * Take a local wakeref for preparing to dispatch the execbuf as
@@ -2505,6 +2507,7 @@ err_unlock:
 	mutex_unlock(&dev->struct_mutex);
 err_rpm:
 	intel_runtime_pm_put(eb.i915, wakeref);
+err_engine:
 	i915_gem_context_put(eb.ctx);
 err_destroy:
 	eb_destroy(&eb);

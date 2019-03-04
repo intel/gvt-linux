@@ -133,21 +133,21 @@ static void hangcheck_load_sample(struct intel_engine_cs *engine,
 				  struct hangcheck *hc)
 {
 	hc->acthd = intel_engine_get_active_head(engine);
-	hc->seqno = intel_engine_get_seqno(engine);
+	hc->seqno = intel_engine_get_hangcheck_seqno(engine);
 }
 
 static void hangcheck_store_sample(struct intel_engine_cs *engine,
 				   const struct hangcheck *hc)
 {
 	engine->hangcheck.acthd = hc->acthd;
-	engine->hangcheck.seqno = hc->seqno;
+	engine->hangcheck.last_seqno = hc->seqno;
 }
 
 static enum intel_engine_hangcheck_action
 hangcheck_get_action(struct intel_engine_cs *engine,
 		     const struct hangcheck *hc)
 {
-	if (engine->hangcheck.seqno != hc->seqno)
+	if (engine->hangcheck.last_seqno != hc->seqno)
 		return ENGINE_ACTIVE_SEQNO;
 
 	if (intel_engine_is_idle(engine))
@@ -263,7 +263,7 @@ static void i915_hangcheck_elapsed(struct work_struct *work)
 	if (!READ_ONCE(dev_priv->gt.awake))
 		return;
 
-	if (i915_terminally_wedged(&dev_priv->gpu_error))
+	if (i915_terminally_wedged(dev_priv))
 		return;
 
 	/* As enabling the GPU requires fairly extensive mmio access,

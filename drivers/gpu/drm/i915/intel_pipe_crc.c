@@ -31,16 +31,20 @@
 #include "intel_drv.h"
 
 static const char * const pipe_crc_sources[] = {
-	"none",
-	"plane1",
-	"plane2",
-	"pf",
-	"pipe",
-	"TV",
-	"DP-B",
-	"DP-C",
-	"DP-D",
-	"auto",
+	[INTEL_PIPE_CRC_SOURCE_NONE] = "none",
+	[INTEL_PIPE_CRC_SOURCE_PLANE1] = "plane1",
+	[INTEL_PIPE_CRC_SOURCE_PLANE2] = "plane2",
+	[INTEL_PIPE_CRC_SOURCE_PLANE3] = "plane3",
+	[INTEL_PIPE_CRC_SOURCE_PLANE4] = "plane4",
+	[INTEL_PIPE_CRC_SOURCE_PLANE5] = "plane5",
+	[INTEL_PIPE_CRC_SOURCE_PLANE6] = "plane6",
+	[INTEL_PIPE_CRC_SOURCE_PLANE7] = "plane7",
+	[INTEL_PIPE_CRC_SOURCE_PIPE] = "pipe",
+	[INTEL_PIPE_CRC_SOURCE_TV] = "TV",
+	[INTEL_PIPE_CRC_SOURCE_DP_B] = "DP-B",
+	[INTEL_PIPE_CRC_SOURCE_DP_C] = "DP-C",
+	[INTEL_PIPE_CRC_SOURCE_DP_D] = "DP-D",
+	[INTEL_PIPE_CRC_SOURCE_AUTO] = "auto",
 };
 
 static int i8xx_pipe_crc_ctl_reg(enum intel_pipe_crc_source *source,
@@ -192,8 +196,6 @@ static int i9xx_pipe_crc_ctl_reg(struct drm_i915_private *dev_priv,
 				 enum intel_pipe_crc_source *source,
 				 u32 *val)
 {
-	bool need_stable_symbols = false;
-
 	if (*source == INTEL_PIPE_CRC_SOURCE_AUTO) {
 		int ret = i9xx_pipe_crc_auto_source(dev_priv, pipe, source);
 		if (ret)
@@ -209,54 +211,21 @@ static int i9xx_pipe_crc_ctl_reg(struct drm_i915_private *dev_priv,
 			return -EINVAL;
 		*val = PIPE_CRC_ENABLE | PIPE_CRC_SOURCE_TV_PRE;
 		break;
-	case INTEL_PIPE_CRC_SOURCE_DP_B:
-		if (!IS_G4X(dev_priv))
-			return -EINVAL;
-		*val = PIPE_CRC_ENABLE | PIPE_CRC_SOURCE_DP_B_G4X;
-		need_stable_symbols = true;
-		break;
-	case INTEL_PIPE_CRC_SOURCE_DP_C:
-		if (!IS_G4X(dev_priv))
-			return -EINVAL;
-		*val = PIPE_CRC_ENABLE | PIPE_CRC_SOURCE_DP_C_G4X;
-		need_stable_symbols = true;
-		break;
-	case INTEL_PIPE_CRC_SOURCE_DP_D:
-		if (!IS_G4X(dev_priv))
-			return -EINVAL;
-		*val = PIPE_CRC_ENABLE | PIPE_CRC_SOURCE_DP_D_G4X;
-		need_stable_symbols = true;
-		break;
 	case INTEL_PIPE_CRC_SOURCE_NONE:
 		*val = 0;
 		break;
 	default:
+		/*
+		 * The DP CRC source doesn't work on g4x.
+		 * It can be made to work to some degree by selecting
+		 * the correct CRC source before the port is enabled,
+		 * and not touching the CRC source bits again until
+		 * the port is disabled. But even then the bits
+		 * eventually get stuck and a reboot is needed to get
+		 * working CRCs on the pipe again. Let's simply
+		 * refuse to use DP CRCs on g4x.
+		 */
 		return -EINVAL;
-	}
-
-	/*
-	 * When the pipe CRC tap point is after the transcoders we need
-	 * to tweak symbol-level features to produce a deterministic series of
-	 * symbols for a given frame. We need to reset those features only once
-	 * a frame (instead of every nth symbol):
-	 *   - DC-balance: used to ensure a better clock recovery from the data
-	 *     link (SDVO)
-	 *   - DisplayPort scrambling: used for EMI reduction
-	 */
-	if (need_stable_symbols) {
-		u32 tmp = I915_READ(PORT_DFT2_G4X);
-
-		WARN_ON(!IS_G4X(dev_priv));
-
-		I915_WRITE(PORT_DFT_I9XX,
-			   I915_READ(PORT_DFT_I9XX) | DC_BALANCE_RESET);
-
-		if (pipe == PIPE_A)
-			tmp |= PIPE_A_SCRAMBLE_RESET;
-		else
-			tmp |= PIPE_B_SCRAMBLE_RESET;
-
-		I915_WRITE(PORT_DFT2_G4X, tmp);
 	}
 
 	return 0;
@@ -283,24 +252,6 @@ static void vlv_undo_pipe_scramble_reset(struct drm_i915_private *dev_priv,
 	if (!(tmp & PIPE_SCRAMBLE_RESET_MASK))
 		tmp &= ~DC_BALANCE_RESET_VLV;
 	I915_WRITE(PORT_DFT2_G4X, tmp);
-
-}
-
-static void g4x_undo_pipe_scramble_reset(struct drm_i915_private *dev_priv,
-					 enum pipe pipe)
-{
-	u32 tmp = I915_READ(PORT_DFT2_G4X);
-
-	if (pipe == PIPE_A)
-		tmp &= ~PIPE_A_SCRAMBLE_RESET;
-	else
-		tmp &= ~PIPE_B_SCRAMBLE_RESET;
-	I915_WRITE(PORT_DFT2_G4X, tmp);
-
-	if (!(tmp & PIPE_SCRAMBLE_RESET_MASK)) {
-		I915_WRITE(PORT_DFT_I9XX,
-			   I915_READ(PORT_DFT_I9XX) & ~DC_BALANCE_RESET);
-	}
 }
 
 static int ilk_pipe_crc_ctl_reg(enum intel_pipe_crc_source *source,
@@ -396,7 +347,7 @@ static int ivb_pipe_crc_ctl_reg(struct drm_i915_private *dev_priv,
 				bool set_wa)
 {
 	if (*source == INTEL_PIPE_CRC_SOURCE_AUTO)
-		*source = INTEL_PIPE_CRC_SOURCE_PF;
+		*source = INTEL_PIPE_CRC_SOURCE_PIPE;
 
 	switch (*source) {
 	case INTEL_PIPE_CRC_SOURCE_PLANE1:
@@ -405,12 +356,55 @@ static int ivb_pipe_crc_ctl_reg(struct drm_i915_private *dev_priv,
 	case INTEL_PIPE_CRC_SOURCE_PLANE2:
 		*val = PIPE_CRC_ENABLE | PIPE_CRC_SOURCE_SPRITE_IVB;
 		break;
-	case INTEL_PIPE_CRC_SOURCE_PF:
+	case INTEL_PIPE_CRC_SOURCE_PIPE:
 		if (set_wa && (IS_HASWELL(dev_priv) ||
 		     IS_BROADWELL(dev_priv)) && pipe == PIPE_A)
 			hsw_pipe_A_crc_wa(dev_priv, true);
 
 		*val = PIPE_CRC_ENABLE | PIPE_CRC_SOURCE_PF_IVB;
+		break;
+	case INTEL_PIPE_CRC_SOURCE_NONE:
+		*val = 0;
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+static int skl_pipe_crc_ctl_reg(struct drm_i915_private *dev_priv,
+				enum pipe pipe,
+				enum intel_pipe_crc_source *source,
+				uint32_t *val)
+{
+	if (*source == INTEL_PIPE_CRC_SOURCE_AUTO)
+		*source = INTEL_PIPE_CRC_SOURCE_PIPE;
+
+	switch (*source) {
+	case INTEL_PIPE_CRC_SOURCE_PLANE1:
+		*val = PIPE_CRC_ENABLE | PIPE_CRC_SOURCE_PLANE_1_SKL;
+		break;
+	case INTEL_PIPE_CRC_SOURCE_PLANE2:
+		*val = PIPE_CRC_ENABLE | PIPE_CRC_SOURCE_PLANE_2_SKL;
+		break;
+	case INTEL_PIPE_CRC_SOURCE_PLANE3:
+		*val = PIPE_CRC_ENABLE | PIPE_CRC_SOURCE_PLANE_3_SKL;
+		break;
+	case INTEL_PIPE_CRC_SOURCE_PLANE4:
+		*val = PIPE_CRC_ENABLE | PIPE_CRC_SOURCE_PLANE_4_SKL;
+		break;
+	case INTEL_PIPE_CRC_SOURCE_PLANE5:
+		*val = PIPE_CRC_ENABLE | PIPE_CRC_SOURCE_PLANE_5_SKL;
+		break;
+	case INTEL_PIPE_CRC_SOURCE_PLANE6:
+		*val = PIPE_CRC_ENABLE | PIPE_CRC_SOURCE_PLANE_6_SKL;
+		break;
+	case INTEL_PIPE_CRC_SOURCE_PLANE7:
+		*val = PIPE_CRC_ENABLE | PIPE_CRC_SOURCE_PLANE_7_SKL;
+		break;
+	case INTEL_PIPE_CRC_SOURCE_PIPE:
+		*val = PIPE_CRC_ENABLE | PIPE_CRC_SOURCE_DMUX_SKL;
 		break;
 	case INTEL_PIPE_CRC_SOURCE_NONE:
 		*val = 0;
@@ -435,8 +429,10 @@ static int get_new_crc_ctl_reg(struct drm_i915_private *dev_priv,
 		return vlv_pipe_crc_ctl_reg(dev_priv, pipe, source, val);
 	else if (IS_GEN_RANGE(dev_priv, 5, 6))
 		return ilk_pipe_crc_ctl_reg(source, val);
-	else
+	else if (INTEL_GEN(dev_priv) < 9)
 		return ivb_pipe_crc_ctl_reg(dev_priv, pipe, source, val, set_wa);
+	else
+		return skl_pipe_crc_ctl_reg(dev_priv, pipe, source, val);
 }
 
 static int
@@ -486,9 +482,6 @@ static int i9xx_crc_source_valid(struct drm_i915_private *dev_priv,
 	switch (source) {
 	case INTEL_PIPE_CRC_SOURCE_PIPE:
 	case INTEL_PIPE_CRC_SOURCE_TV:
-	case INTEL_PIPE_CRC_SOURCE_DP_B:
-	case INTEL_PIPE_CRC_SOURCE_DP_C:
-	case INTEL_PIPE_CRC_SOURCE_DP_D:
 	case INTEL_PIPE_CRC_SOURCE_NONE:
 		return 0;
 	default:
@@ -532,7 +525,25 @@ static int ivb_crc_source_valid(struct drm_i915_private *dev_priv,
 	case INTEL_PIPE_CRC_SOURCE_PIPE:
 	case INTEL_PIPE_CRC_SOURCE_PLANE1:
 	case INTEL_PIPE_CRC_SOURCE_PLANE2:
-	case INTEL_PIPE_CRC_SOURCE_PF:
+	case INTEL_PIPE_CRC_SOURCE_NONE:
+		return 0;
+	default:
+		return -EINVAL;
+	}
+}
+
+static int skl_crc_source_valid(struct drm_i915_private *dev_priv,
+				const enum intel_pipe_crc_source source)
+{
+	switch (source) {
+	case INTEL_PIPE_CRC_SOURCE_PIPE:
+	case INTEL_PIPE_CRC_SOURCE_PLANE1:
+	case INTEL_PIPE_CRC_SOURCE_PLANE2:
+	case INTEL_PIPE_CRC_SOURCE_PLANE3:
+	case INTEL_PIPE_CRC_SOURCE_PLANE4:
+	case INTEL_PIPE_CRC_SOURCE_PLANE5:
+	case INTEL_PIPE_CRC_SOURCE_PLANE6:
+	case INTEL_PIPE_CRC_SOURCE_PLANE7:
 	case INTEL_PIPE_CRC_SOURCE_NONE:
 		return 0;
 	default:
@@ -552,8 +563,10 @@ intel_is_valid_crc_source(struct drm_i915_private *dev_priv,
 		return vlv_crc_source_valid(dev_priv, source);
 	else if (IS_GEN_RANGE(dev_priv, 5, 6))
 		return ilk_crc_source_valid(dev_priv, source);
-	else
+	else if (INTEL_GEN(dev_priv) < 9)
 		return ivb_crc_source_valid(dev_priv, source);
+	else
+		return skl_crc_source_valid(dev_priv, source);
 }
 
 const char *const *intel_crtc_get_crc_sources(struct drm_crtc *crtc,
@@ -614,9 +627,7 @@ int intel_crtc_set_crc_source(struct drm_crtc *crtc, const char *source_name)
 	POSTING_READ(PIPE_CRC_CTL(crtc->index));
 
 	if (!source) {
-		if (IS_G4X(dev_priv))
-			g4x_undo_pipe_scramble_reset(dev_priv, crtc->index);
-		else if (IS_VALLEYVIEW(dev_priv) || IS_CHERRYVIEW(dev_priv))
+		if (IS_VALLEYVIEW(dev_priv) || IS_CHERRYVIEW(dev_priv))
 			vlv_undo_pipe_scramble_reset(dev_priv, crtc->index);
 		else if ((IS_HASWELL(dev_priv) ||
 			  IS_BROADWELL(dev_priv)) && crtc->index == PIPE_A)

@@ -141,14 +141,12 @@ static int igt_fence_wait(void *arg)
 		err = -ENOMEM;
 		goto out_locked;
 	}
-	mutex_unlock(&i915->drm.struct_mutex); /* safe as we are single user */
 
 	if (dma_fence_wait_timeout(&request->fence, false, T) != -ETIME) {
 		pr_err("fence wait success before submit (expected timeout)!\n");
-		goto out_device;
+		goto out_locked;
 	}
 
-	mutex_lock(&i915->drm.struct_mutex);
 	i915_request_add(request);
 	mutex_unlock(&i915->drm.struct_mutex);
 
@@ -226,8 +224,7 @@ static int igt_request_rewind(void *arg)
 	mutex_unlock(&i915->drm.struct_mutex);
 
 	if (i915_request_wait(vip, 0, HZ) == -ETIME) {
-		pr_err("timed out waiting for high priority request, vip.seqno=%d, current seqno=%d\n",
-		       vip->global_seqno, intel_engine_get_seqno(i915->engine[RCS]));
+		pr_err("timed out waiting for high priority request\n");
 		goto err;
 	}
 
@@ -1246,7 +1243,7 @@ int i915_request_live_selftests(struct drm_i915_private *i915)
 		SUBTEST(live_breadcrumbs_smoketest),
 	};
 
-	if (i915_terminally_wedged(&i915->gpu_error))
+	if (i915_terminally_wedged(i915))
 		return 0;
 
 	return i915_subtests(tests, i915);

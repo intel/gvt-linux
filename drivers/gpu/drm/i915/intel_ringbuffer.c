@@ -43,10 +43,10 @@
  */
 #define LEGACY_REQUEST_SIZE 200
 
-static inline u32 intel_hws_seqno_address(struct intel_engine_cs *engine)
+static inline u32 hws_hangcheck_address(struct intel_engine_cs *engine)
 {
 	return (i915_ggtt_offset(engine->status_page.vma) +
-		I915_GEM_HWS_INDEX_ADDR);
+		I915_GEM_HWS_HANGCHECK_ADDR);
 }
 
 unsigned int intel_ring_update_space(struct intel_ring *ring)
@@ -317,9 +317,9 @@ static u32 *gen6_rcs_emit_breadcrumb(struct i915_request *rq, u32 *cs)
 	*cs++ = rq->fence.seqno;
 
 	*cs++ = GFX_OP_PIPE_CONTROL(4);
-	*cs++ = PIPE_CONTROL_QW_WRITE | PIPE_CONTROL_CS_STALL;
-	*cs++ = intel_hws_seqno_address(rq->engine) | PIPE_CONTROL_GLOBAL_GTT;
-	*cs++ = rq->global_seqno;
+	*cs++ = PIPE_CONTROL_QW_WRITE;
+	*cs++ = hws_hangcheck_address(rq->engine) | PIPE_CONTROL_GLOBAL_GTT;
+	*cs++ = intel_engine_next_hangcheck_seqno(rq->engine);
 
 	*cs++ = MI_USER_INTERRUPT;
 	*cs++ = MI_NOOP;
@@ -423,11 +423,9 @@ static u32 *gen7_rcs_emit_breadcrumb(struct i915_request *rq, u32 *cs)
 	*cs++ = rq->fence.seqno;
 
 	*cs++ = GFX_OP_PIPE_CONTROL(4);
-	*cs++ = (PIPE_CONTROL_QW_WRITE |
-		 PIPE_CONTROL_GLOBAL_GTT_IVB |
-		 PIPE_CONTROL_CS_STALL);
-	*cs++ = intel_hws_seqno_address(rq->engine);
-	*cs++ = rq->global_seqno;
+	*cs++ = PIPE_CONTROL_QW_WRITE | PIPE_CONTROL_GLOBAL_GTT_IVB;
+	*cs++ = hws_hangcheck_address(rq->engine);
+	*cs++ = intel_engine_next_hangcheck_seqno(rq->engine);
 
 	*cs++ = MI_USER_INTERRUPT;
 	*cs++ = MI_NOOP;
@@ -448,8 +446,8 @@ static u32 *gen6_xcs_emit_breadcrumb(struct i915_request *rq, u32 *cs)
 	*cs++ = rq->fence.seqno;
 
 	*cs++ = MI_FLUSH_DW | MI_FLUSH_DW_OP_STOREDW | MI_FLUSH_DW_STORE_INDEX;
-	*cs++ = I915_GEM_HWS_INDEX_ADDR | MI_FLUSH_DW_USE_GTT;
-	*cs++ = rq->global_seqno;
+	*cs++ = I915_GEM_HWS_HANGCHECK_ADDR | MI_FLUSH_DW_USE_GTT;
+	*cs++ = intel_engine_next_hangcheck_seqno(rq->engine);
 
 	*cs++ = MI_USER_INTERRUPT;
 	*cs++ = MI_NOOP;
@@ -473,8 +471,8 @@ static u32 *gen7_xcs_emit_breadcrumb(struct i915_request *rq, u32 *cs)
 	*cs++ = rq->fence.seqno;
 
 	*cs++ = MI_FLUSH_DW | MI_FLUSH_DW_OP_STOREDW | MI_FLUSH_DW_STORE_INDEX;
-	*cs++ = I915_GEM_HWS_INDEX_ADDR | MI_FLUSH_DW_USE_GTT;
-	*cs++ = rq->global_seqno;
+	*cs++ = I915_GEM_HWS_HANGCHECK_ADDR | MI_FLUSH_DW_USE_GTT;
+	*cs++ = intel_engine_next_hangcheck_seqno(rq->engine);
 
 	for (i = 0; i < GEN7_XCS_WA; i++) {
 		*cs++ = MI_STORE_DWORD_INDEX;
@@ -554,16 +552,17 @@ static void set_hwsp(struct intel_engine_cs *engine, u32 offset)
 		 */
 		default:
 			GEM_BUG_ON(engine->id);
-		case RCS:
+			/* fallthrough */
+		case RCS0:
 			hwsp = RENDER_HWS_PGA_GEN7;
 			break;
-		case BCS:
+		case BCS0:
 			hwsp = BLT_HWS_PGA_GEN7;
 			break;
-		case VCS:
+		case VCS0:
 			hwsp = BSD_HWS_PGA_GEN7;
 			break;
-		case VECS:
+		case VECS0:
 			hwsp = VEBOX_HWS_PGA_GEN7;
 			break;
 		}
@@ -758,11 +757,8 @@ static void reset_ring(struct intel_engine_cs *engine, bool stalled)
 		}
 	}
 
-	GEM_TRACE("%s seqno=%d, current=%d, stalled? %s\n",
-		  engine->name,
-		  rq ? rq->global_seqno : 0,
-		  intel_engine_get_seqno(engine),
-		  yesno(stalled));
+	GEM_TRACE("%s stalled? %s\n", engine->name, yesno(stalled));
+
 	/*
 	 * The guilty request will get skipped on a hung engine.
 	 *
@@ -892,17 +888,11 @@ static void cancel_requests(struct intel_engine_cs *engine)
 
 	/* Mark all submitted requests as skipped. */
 	list_for_each_entry(request, &engine->timeline.requests, link) {
-		GEM_BUG_ON(!request->global_seqno);
-
 		if (!i915_request_signaled(request))
 			dma_fence_set_error(&request->fence, -EIO);
 
 		i915_request_mark_complete(request);
 	}
-
-	intel_write_status_page(engine,
-				I915_GEM_HWS_INDEX,
-				intel_engine_last_submit(engine));
 
 	/* Remaining _unready_ requests will be nop'ed when submitted */
 
@@ -931,8 +921,8 @@ static u32 *i9xx_emit_breadcrumb(struct i915_request *rq, u32 *cs)
 	*cs++ = rq->fence.seqno;
 
 	*cs++ = MI_STORE_DWORD_INDEX;
-	*cs++ = I915_GEM_HWS_INDEX_ADDR;
-	*cs++ = rq->global_seqno;
+	*cs++ = I915_GEM_HWS_HANGCHECK_ADDR;
+	*cs++ = intel_engine_next_hangcheck_seqno(rq->engine);
 
 	*cs++ = MI_USER_INTERRUPT;
 
@@ -953,14 +943,14 @@ static u32 *gen5_emit_breadcrumb(struct i915_request *rq, u32 *cs)
 	*cs++ = MI_FLUSH;
 
 	*cs++ = MI_STORE_DWORD_INDEX;
-	*cs++ = I915_GEM_HWS_SEQNO_ADDR;
-	*cs++ = rq->fence.seqno;
+	*cs++ = I915_GEM_HWS_HANGCHECK_ADDR;
+	*cs++ = intel_engine_next_hangcheck_seqno(rq->engine);
 
 	BUILD_BUG_ON(GEN5_WA_STORES < 1);
 	for (i = 0; i < GEN5_WA_STORES; i++) {
 		*cs++ = MI_STORE_DWORD_INDEX;
-		*cs++ = I915_GEM_HWS_INDEX_ADDR;
-		*cs++ = rq->global_seqno;
+		*cs++ = I915_GEM_HWS_SEQNO_ADDR;
+		*cs++ = rq->fence.seqno;
 	}
 
 	*cs++ = MI_USER_INTERRUPT;
@@ -1703,8 +1693,8 @@ static inline int mi_set_context(struct i915_request *rq, u32 flags)
 	struct drm_i915_private *i915 = rq->i915;
 	struct intel_engine_cs *engine = rq->engine;
 	enum intel_engine_id id;
-	const int num_rings =
-		IS_HSW_GT1(i915) ? RUNTIME_INFO(i915)->num_rings - 1 : 0;
+	const int num_engines =
+		IS_HSW_GT1(i915) ? RUNTIME_INFO(i915)->num_engines - 1 : 0;
 	bool force_restore = false;
 	int len;
 	u32 *cs;
@@ -1718,7 +1708,7 @@ static inline int mi_set_context(struct i915_request *rq, u32 flags)
 
 	len = 4;
 	if (IS_GEN(i915, 7))
-		len += 2 + (num_rings ? 4*num_rings + 6 : 0);
+		len += 2 + (num_engines ? 4 * num_engines + 6 : 0);
 	if (flags & MI_FORCE_RESTORE) {
 		GEM_BUG_ON(flags & MI_RESTORE_INHIBIT);
 		flags &= ~MI_FORCE_RESTORE;
@@ -1733,10 +1723,10 @@ static inline int mi_set_context(struct i915_request *rq, u32 flags)
 	/* WaProgramMiArbOnOffAroundMiSetContext:ivb,vlv,hsw,bdw,chv */
 	if (IS_GEN(i915, 7)) {
 		*cs++ = MI_ARB_ON_OFF | MI_ARB_DISABLE;
-		if (num_rings) {
+		if (num_engines) {
 			struct intel_engine_cs *signaller;
 
-			*cs++ = MI_LOAD_REGISTER_IMM(num_rings);
+			*cs++ = MI_LOAD_REGISTER_IMM(num_engines);
 			for_each_engine(signaller, i915, id) {
 				if (signaller == engine)
 					continue;
@@ -1779,11 +1769,11 @@ static inline int mi_set_context(struct i915_request *rq, u32 flags)
 	*cs++ = MI_NOOP;
 
 	if (IS_GEN(i915, 7)) {
-		if (num_rings) {
+		if (num_engines) {
 			struct intel_engine_cs *signaller;
 			i915_reg_t last_reg = {}; /* keep gcc quiet */
 
-			*cs++ = MI_LOAD_REGISTER_IMM(num_rings);
+			*cs++ = MI_LOAD_REGISTER_IMM(num_engines);
 			for_each_engine(signaller, i915, id) {
 				if (signaller == engine)
 					continue;
@@ -1861,7 +1851,7 @@ static int switch_context(struct i915_request *rq)
 		 * explanation.
 		 */
 		loops = 1;
-		if (engine->id == BCS && IS_VALLEYVIEW(engine->i915))
+		if (engine->id == BCS0 && IS_VALLEYVIEW(engine->i915))
 			loops = 32;
 
 		do {
@@ -1870,15 +1860,15 @@ static int switch_context(struct i915_request *rq)
 				goto err;
 		} while (--loops);
 
-		if (intel_engine_flag(engine) & ppgtt->pd_dirty_rings) {
-			unwind_mm = intel_engine_flag(engine);
-			ppgtt->pd_dirty_rings &= ~unwind_mm;
+		if (ppgtt->pd_dirty_engines & engine->mask) {
+			unwind_mm = engine->mask;
+			ppgtt->pd_dirty_engines &= ~unwind_mm;
 			hw_flags = MI_FORCE_RESTORE;
 		}
 	}
 
 	if (rq->hw_context->state) {
-		GEM_BUG_ON(engine->id != RCS);
+		GEM_BUG_ON(engine->id != RCS0);
 
 		/*
 		 * The kernel context(s) is treated as pure scratch and is not
@@ -1938,7 +1928,7 @@ static int switch_context(struct i915_request *rq)
 
 err_mm:
 	if (unwind_mm)
-		ppgtt->pd_dirty_rings |= unwind_mm;
+		ppgtt->pd_dirty_engines |= unwind_mm;
 err:
 	return ret;
 }

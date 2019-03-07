@@ -88,11 +88,27 @@
 #include <linux/log2.h>
 #include <drm/i915_drm.h>
 #include "i915_drv.h"
+#include "i915_globals.h"
 #include "i915_trace.h"
 #include "intel_lrc_reg.h"
 #include "intel_workarounds.h"
 
 #define ALL_L3_SLICES(dev) (1 << NUM_L3_SLICES(dev)) - 1
+
+static struct i915_global_context {
+	struct i915_global base;
+	struct kmem_cache *slab_luts;
+} global;
+
+struct i915_lut_handle *i915_lut_handle_alloc(void)
+{
+	return kmem_cache_alloc(global.slab_luts, GFP_KERNEL);
+}
+
+void i915_lut_handle_free(struct i915_lut_handle *lut)
+{
+	return kmem_cache_free(global.slab_luts, lut);
+}
 
 static void lut_close(struct i915_gem_context *ctx)
 {
@@ -102,7 +118,7 @@ static void lut_close(struct i915_gem_context *ctx)
 
 	list_for_each_entry_safe(lut, ln, &ctx->handles_list, ctx_link) {
 		list_del(&lut->obj_link);
-		kmem_cache_free(ctx->i915->luts, lut);
+		i915_lut_handle_free(lut);
 	}
 
 	rcu_read_lock();
@@ -355,6 +371,7 @@ __create_hw_context(struct drm_i915_private *dev_priv,
 	struct i915_gem_context *ctx;
 	unsigned int n;
 	int ret;
+	int i;
 
 	ctx = kzalloc(sizeof(*ctx), GFP_KERNEL);
 	if (ctx == NULL)
@@ -401,9 +418,14 @@ __create_hw_context(struct drm_i915_private *dev_priv,
 	ctx->remap_slice = ALL_L3_SLICES(dev_priv);
 
 	i915_gem_context_set_bannable(ctx);
+	i915_gem_context_set_recoverable(ctx);
+
 	ctx->ring_size = 4 * PAGE_SIZE;
 	ctx->desc_template =
 		default_desc_template(dev_priv, dev_priv->mm.aliasing_ppgtt);
+
+	for (i = 0; i < ARRAY_SIZE(ctx->hang_timestamp); i++)
+		ctx->hang_timestamp[i] = jiffies - CONTEXT_FAST_HANG_JIFFIES;
 
 	return ctx;
 
@@ -563,7 +585,7 @@ int i915_gem_contexts_init(struct drm_i915_private *dev_priv)
 	GEM_BUG_ON(dev_priv->kernel_context);
 	GEM_BUG_ON(dev_priv->preempt_context);
 
-	intel_engine_init_ctx_wa(dev_priv->engine[RCS]);
+	intel_engine_init_ctx_wa(dev_priv->engine[RCS0]);
 	init_contexts(dev_priv);
 
 	/* lowest priority; idle task */
@@ -796,17 +818,21 @@ static bool client_is_banned(struct drm_i915_file_private *file_priv)
 int i915_gem_context_create_ioctl(struct drm_device *dev, void *data,
 				  struct drm_file *file)
 {
-	struct drm_i915_private *dev_priv = to_i915(dev);
+	struct drm_i915_private *i915 = to_i915(dev);
 	struct drm_i915_gem_context_create *args = data;
 	struct drm_i915_file_private *file_priv = file->driver_priv;
 	struct i915_gem_context *ctx;
 	int ret;
 
-	if (!DRIVER_CAPS(dev_priv)->has_logical_contexts)
+	if (!DRIVER_CAPS(i915)->has_logical_contexts)
 		return -ENODEV;
 
 	if (args->pad != 0)
 		return -EINVAL;
+
+	ret = i915_terminally_wedged(i915);
+	if (ret)
+		return ret;
 
 	if (client_is_banned(file_priv)) {
 		DRM_DEBUG("client %s[%d] banned from creating ctx\n",
@@ -820,7 +846,7 @@ int i915_gem_context_create_ioctl(struct drm_device *dev, void *data,
 	if (ret)
 		return ret;
 
-	ctx = i915_gem_create_context(dev_priv, file_priv);
+	ctx = i915_gem_create_context(i915, file_priv);
 	mutex_unlock(&dev->struct_mutex);
 	if (IS_ERR(ctx))
 		return PTR_ERR(ctx);
@@ -951,6 +977,10 @@ int i915_gem_context_getparam_ioctl(struct drm_device *dev, void *data,
 		args->size = 0;
 		args->value = i915_gem_context_is_bannable(ctx);
 		break;
+	case I915_CONTEXT_PARAM_RECOVERABLE:
+		args->size = 0;
+		args->value = i915_gem_context_is_recoverable(ctx);
+		break;
 	case I915_CONTEXT_PARAM_PRIORITY:
 		args->size = 0;
 		args->value = ctx->sched.priority >> I915_USER_PRIORITY_SHIFT;
@@ -1061,7 +1091,7 @@ __i915_gem_context_reconfigure_sseu(struct i915_gem_context *ctx,
 	int ret = 0;
 
 	GEM_BUG_ON(INTEL_GEN(ctx->i915) < 8);
-	GEM_BUG_ON(engine->id != RCS);
+	GEM_BUG_ON(engine->id != RCS0);
 
 	/* Nothing to do if unmodified. */
 	if (!memcmp(&ce->sseu, &sseu, sizeof(sseu)))
@@ -1285,6 +1315,15 @@ int i915_gem_context_setparam_ioctl(struct drm_device *dev, void *data,
 			i915_gem_context_clear_bannable(ctx);
 		break;
 
+	case I915_CONTEXT_PARAM_RECOVERABLE:
+		if (args->size)
+			ret = -EINVAL;
+		else if (args->value)
+			i915_gem_context_set_recoverable(ctx);
+		else
+			i915_gem_context_clear_recoverable(ctx);
+		break;
+
 	case I915_CONTEXT_PARAM_PRIORITY:
 		{
 			s64 priority = args->value;
@@ -1385,3 +1424,28 @@ out_unlock:
 #include "selftests/mock_context.c"
 #include "selftests/i915_gem_context.c"
 #endif
+
+static void i915_global_context_shrink(void)
+{
+	kmem_cache_shrink(global.slab_luts);
+}
+
+static void i915_global_context_exit(void)
+{
+	kmem_cache_destroy(global.slab_luts);
+}
+
+static struct i915_global_context global = { {
+	.shrink = i915_global_context_shrink,
+	.exit = i915_global_context_exit,
+} };
+
+int __init i915_global_context_init(void)
+{
+	global.slab_luts = KMEM_CACHE(i915_lut_handle, 0);
+	if (!global.slab_luts)
+		return -ENOMEM;
+
+	i915_global_register(&global.base);
+	return 0;
+}

@@ -613,7 +613,7 @@ setup_scratch_page(struct i915_address_space *vm, gfp_t gfp)
 
 		vm->scratch_page.page = page;
 		vm->scratch_page.daddr = addr;
-		vm->scratch_page.order = order;
+		vm->scratch_order = order;
 		return 0;
 
 unmap_page:
@@ -632,10 +632,11 @@ skip:
 static void cleanup_scratch_page(struct i915_address_space *vm)
 {
 	struct i915_page_dma *p = &vm->scratch_page;
+	int order = vm->scratch_order;
 
-	dma_unmap_page(vm->dma, p->daddr, BIT(p->order) << PAGE_SHIFT,
+	dma_unmap_page(vm->dma, p->daddr, BIT(order) << PAGE_SHIFT,
 		       PCI_DMA_BIDIRECTIONAL);
-	__free_pages(p->page, p->order);
+	__free_pages(p->page, order);
 }
 
 static struct i915_page_table *alloc_pt(struct i915_address_space *vm)
@@ -791,14 +792,15 @@ static void gen8_initialize_pml4(struct i915_address_space *vm,
 	memset_p((void **)pml4->pdps, vm->scratch_pdp, GEN8_PML4ES_PER_PML4);
 }
 
-/* PDE TLBs are a pain to invalidate on GEN8+. When we modify
+/*
+ * PDE TLBs are a pain to invalidate on GEN8+. When we modify
  * the page table structures, we mark them dirty so that
  * context switching/execlist queuing code takes extra steps
  * to ensure that tlbs are flushed.
  */
 static void mark_tlbs_dirty(struct i915_hw_ppgtt *ppgtt)
 {
-	ppgtt->pd_dirty_rings = INTEL_INFO(ppgtt->vm.i915)->ring_mask;
+	ppgtt->pd_dirty_engines = ALL_ENGINES;
 }
 
 /* Removes entries from a single page table, releasing it if it's empty.
@@ -809,8 +811,6 @@ static bool gen8_ppgtt_clear_pt(const struct i915_address_space *vm,
 				u64 start, u64 length)
 {
 	unsigned int num_entries = gen8_pte_count(start, length);
-	unsigned int pte = gen8_pte_index(start);
-	unsigned int pte_end = pte + num_entries;
 	gen8_pte_t *vaddr;
 
 	GEM_BUG_ON(num_entries > pt->used_ptes);
@@ -820,8 +820,7 @@ static bool gen8_ppgtt_clear_pt(const struct i915_address_space *vm,
 		return true;
 
 	vaddr = kmap_atomic_px(pt);
-	while (pte < pte_end)
-		vaddr[pte++] = vm->scratch_pte;
+	memset64(vaddr + gen8_pte_index(start), vm->scratch_pte, num_entries);
 	kunmap_atomic(vaddr);
 
 	return false;
@@ -1219,7 +1218,7 @@ static int gen8_init_scratch(struct i915_address_space *vm)
 
 		GEM_BUG_ON(!clone->has_read_only);
 
-		vm->scratch_page.order = clone->scratch_page.order;
+		vm->scratch_order = clone->scratch_order;
 		vm->scratch_pte = clone->scratch_pte;
 		vm->scratch_pt  = clone->scratch_pt;
 		vm->scratch_pd  = clone->scratch_pd;
@@ -1672,8 +1671,7 @@ static void gen6_ppgtt_clear_range(struct i915_address_space *vm,
 
 	while (num_entries) {
 		struct i915_page_table *pt = ppgtt->base.pd.page_table[pde++];
-		const unsigned int end = min(pte + num_entries, GEN6_PTES);
-		const unsigned int count = end - pte;
+		const unsigned int count = min(num_entries, GEN6_PTES - pte);
 		gen6_pte_t *vaddr;
 
 		GEM_BUG_ON(pt == vm->scratch_pt);
@@ -1693,9 +1691,7 @@ static void gen6_ppgtt_clear_range(struct i915_address_space *vm,
 		 */
 
 		vaddr = kmap_atomic_px(pt);
-		do {
-			vaddr[pte++] = scratch_pte;
-		} while (pte < end);
+		memset32(vaddr + pte, scratch_pte, count);
 		kunmap_atomic(vaddr);
 
 		pte = 0;
@@ -1913,7 +1909,7 @@ static struct i915_vma *pd_vma_create(struct gen6_hw_ppgtt *ppgtt, int size)
 	GEM_BUG_ON(!IS_ALIGNED(size, I915_GTT_PAGE_SIZE));
 	GEM_BUG_ON(size > ggtt->vm.total);
 
-	vma = kmem_cache_zalloc(i915->vmas, GFP_KERNEL);
+	vma = i915_vma_alloc();
 	if (!vma)
 		return ERR_PTR(-ENOMEM);
 
@@ -3701,7 +3697,7 @@ i915_get_ggtt_vma_pages(struct i915_vma *vma)
 	}
 
 	ret = 0;
-	if (unlikely(IS_ERR(vma->pages))) {
+	if (IS_ERR(vma->pages)) {
 		ret = PTR_ERR(vma->pages);
 		vma->pages = NULL;
 		DRM_ERROR("Failed to get pages for VMA view type %u (%d)!\n",

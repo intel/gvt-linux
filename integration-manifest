@@ -1,0 +1,34 @@
+drm drm-fixes 9e98c678c2d6ae3a17cb2de55d17f69dddaa231b
+	Linux 5.1-rc1
+drm-misc drm-misc-fixes 3fc6bb043dac1e5e638cf3294a68c7466488aa0f
+	drm/vkms: fix use-after-free when drm_gem_handle_create() fails
+drm-intel drm-intel-fixes 1c163f4c7b3f621efff9b28a47abb36f7378d783
+	Linux 5.0
+drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
+	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
+drm drm-next 9e98c678c2d6ae3a17cb2de55d17f69dddaa231b
+	Linux 5.1-rc1
+drm-misc drm-misc-next-fixes c34674a23d1e8674ac532bf3397333f24a41e7b2
+	drm/qxl: remove conflicting framebuffers earlier
+drm-intel drm-intel-next-fixes ca22f32a6296cbfa29de56328c8505560a18cfa8
+	drm/i915: Relax mmap VMA check
+drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
+	Linux 4.14-rc1
+drm-misc drm-misc-next 29054230f3e11ea818eccfa7bb4e4b3e89544164
+	drm: add non-desktop quirks to Sensics and OSVR headsets.
+drm-intel drm-intel-next-queued 535d8d27c0e2f6c35f5f92fc0999f780f0e4b2e9
+	drm/i915: do not pass dev_priv to low-level forcewake functions
+drm-intel drm-intel-next f4ecb8ae70de86710e85138ce49af5c689951953
+	drm/i915: Update DRIVER_DATE to 20190311
+drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
+	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
+sound-upstream for-linus 2d012c65a9ca26a0ef87ea0a42f1653dd37155f5
+	ALSA: firewire-motu: use 'version' field of unit directory to identify model
+sound-upstream for-next 2d012c65a9ca26a0ef87ea0a42f1653dd37155f5
+	ALSA: firewire-motu: use 'version' field of unit directory to identify model
+drm-intel topic/core-for-CI 3660afea17ab832585b54af23c7625baeb5225c3
+	mm: Don't let userspace spam allocations warnings
+drm-intel topic/mei-hdcp fa301ad9fa8f6f738b9c22da3ede7824e3286693
+	misc/mei/hdcp: Component framework for I915 Interface
+drm-misc topic/hdr-formats a94bed60cb73962f344ead14b2ee7613280432c6
+	drm/i915/icl: Implement half float formats

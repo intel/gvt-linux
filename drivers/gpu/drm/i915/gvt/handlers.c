@@ -3265,7 +3265,7 @@ void intel_gvt_clean_mmio_info(struct intel_gvt *gvt)
 /* Special MMIO blocks. */
 static struct gvt_mmio_block mmio_blocks[] = {
 	{D_SKL_PLUS, _MMIO(CSR_MMIO_START_RANGE), 0x3000, NULL, NULL},
-	{D_ALL, _MMIO(MCHBAR_MIRROR_BASE_SNB), 0x40000, NULL, NULL},
+	{D_ALL, MCHBAR_MIRROR_REG_BASE, 0x4000, NULL, NULL},
 	{D_ALL, _MMIO(VGT_PVINFO_PAGE), VGT_PVINFO_SIZE,
 		pvinfo_mmio_read, pvinfo_mmio_write},
 	{D_ALL, LGC_PALETTE(PIPE_A, 0), 1024, NULL, NULL},
@@ -3489,12 +3489,11 @@ int intel_vgpu_mmio_reg_rw(struct intel_vgpu *vgpu, unsigned int offset,
 		return mmio_info->read(vgpu, offset, pdata, bytes);
 	else {
 		u64 ro_mask = mmio_info->ro_mask;
-		u32 old_vreg = 0, old_sreg = 0;
+		u32 old_vreg = 0;
 		u64 data = 0;
 
 		if (intel_gvt_mmio_has_mode_mask(gvt, mmio_info->offset)) {
 			old_vreg = vgpu_vreg(vgpu, offset);
-			old_sreg = vgpu_sreg(vgpu, offset);
 		}
 
 		if (likely(!ro_mask))
@@ -3516,8 +3515,6 @@ int intel_vgpu_mmio_reg_rw(struct intel_vgpu *vgpu, unsigned int offset,
 
 			vgpu_vreg(vgpu, offset) = (old_vreg & ~mask)
 					| (vgpu_vreg(vgpu, offset) & mask);
-			vgpu_sreg(vgpu, offset) = (old_sreg & ~mask)
-					| (vgpu_sreg(vgpu, offset) & mask);
 		}
 	}
 

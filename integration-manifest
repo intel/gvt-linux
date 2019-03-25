@@ -1,34 +1,12 @@
-drm drm-fixes b23b52b6720e4be1652a4c92819f34d91e735559
-	Merge tag 'drm/tegra/for-5.1-rc2' of git://anongit.freedesktop.org/tegra/linux into drm-fixes
-drm-misc drm-misc-fixes e9abc611a941d4051cde1d94b2ab7473fdb50102
-	drm/rockchip: vop: reset scale mode when win is disabled
-drm-intel drm-intel-fixes 69903dfae0310afe8a15f5cd4e376ebb7c6da1d2
-	drm/i915/icl: Fix the TRANS_DDI_FUNC_CTL2 bitfield macro
-drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
-	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
-drm drm-next 535f6f5d7b7f7b3127c1c8172ff0504260d14f45
-	Merge tag 'du-next-20190318' of git://linuxtv.org/pinchartl/media into drm-next
-drm-misc drm-misc-next-fixes c34674a23d1e8674ac532bf3397333f24a41e7b2
-	drm/qxl: remove conflicting framebuffers earlier
-drm-intel drm-intel-next-fixes ca22f32a6296cbfa29de56328c8505560a18cfa8
-	drm/i915: Relax mmap VMA check
-drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
-	Linux 4.14-rc1
-drm-misc drm-misc-next ff01e6971ecd9ba6a9c0538c46d713f38a751f11
-	drm/fourcc: Fix conflicting Y41x definitions
-drm-intel drm-intel-next-queued dd19f6bf9245dd17fa9e7f89ceda56c930a130d4
-	drm/i915: Remove defunct intel_suspend_gt_powersave()
-drm-intel drm-intel-next 1284ec985572232ace4817476baeb2d82b60be7a
-	drm/i915: Update DRIVER_DATE to 20190320
-drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
-	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
-sound-upstream for-linus 4fc90fb883fcb72d6bfbf84d554a3e820a05ef62
-	ALSA: hda/ca0132 - Simplify alt firmware loading code
-sound-upstream for-next cc4f8e91c4ed04a9a972c6e10c158d4b71be3f2f
-	ALSA: firewire-lib: use 8 byte header for IR context to get isochronous cycle
-drm-intel topic/core-for-CI b2222770c64b3ef80205c8b4ee9061222d54fd30
-	HACK: drm/i915/opregion: ICL should have opregion 2.1+ and relative rvda
-drm-intel topic/mei-hdcp fa301ad9fa8f6f738b9c22da3ede7824e3286693
-	misc/mei/hdcp: Component framework for I915 Interface
-drm-misc topic/hdr-formats a94bed60cb73962f344ead14b2ee7613280432c6
-	drm/i915/icl: Implement half float formats
+drm-tip/drm-tip c45f897bb33c20c85eb4e3955d5e77fa440a4f95
+	drm-tip: 2019y-03m-25d-01h-46m-02s UTC integration manifest
+vfio-upstream/for-linus 9a71ac7e15a723e90fc40388b4b92eefaabf747c
+	vfio-pci/nvlink2: Fix ancient gcc warnings
+vfio-upstream/next 0cfd027be1d6def4a462cdc180c055143af24069
+	vfio_pci: Enable memory accesses before calling pci_map_rom
+origin/gvt-fixes 72aabfb862e40ee83c136c4f87877c207e6859b7
+	drm/i915/gvt: Add mutual lock for ppgtt mm LRU list
+origin/gvt-next 9c1c8416fc3759d52e6e173d4059149d5d2c6c00
+	drm/i915/gvt: remove the unused sreg
+origin/gvt-next-fixes b0e8240f245e036b790f37f113032c83a8e85109
+	drm/i915/gvt: Fix kerneldoc typo for intel_vgpu_emulate_hotplug

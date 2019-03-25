@@ -206,13 +206,6 @@ void panic(const char *fmt, ...)
 		buf[len - 1] = '\0';
 
 	pr_emerg("Kernel panic - not syncing: %s\n", buf);
-#ifdef CONFIG_DEBUG_BUGVERBOSE
-	/*
-	 * Avoid nested stack-dumping if a panic occurs during oops processing
-	 */
-	if (!test_taint(TAINT_DIE) && oops_in_progress <= 1)
-		dump_stack();
-#endif
 
 	/*
 	 * If we have crashed and we have a crash kernel loaded let it handle
@@ -246,6 +239,14 @@ void panic(const char *fmt, ...)
 	 * add information to the kmsg dump output.
 	 */
 	atomic_notifier_call_chain(&panic_notifier_list, 0, buf);
+
+#ifdef CONFIG_DEBUG_BUGVERBOSE
+	/*
+	 * Avoid nested stack-dumping if a panic occurs during oops processing
+	 */
+	if (!test_taint(TAINT_DIE) && oops_in_progress <= 1)
+		dump_stack();
+#endif
 
 	/* Call flush even twice. It tries harder with a single online CPU */
 	printk_safe_flush_on_panic();
@@ -541,14 +542,9 @@ struct warn_args {
 	va_list args;
 };
 
-void __warn(const char *file, int line, void *caller, unsigned taint,
-	    struct pt_regs *regs, struct warn_args *args)
+static void show_location(const char *file, int line, void *caller,
+			  struct warn_args *args)
 {
-	disable_trace_on_warning();
-
-	if (args)
-		pr_warn(CUT_HERE);
-
 	if (file)
 		pr_warn("WARNING: CPU: %d PID: %d at %s:%d %pS\n",
 			raw_smp_processor_id(), current->pid, file, line,
@@ -559,6 +555,17 @@ void __warn(const char *file, int line, void *caller, unsigned taint,
 
 	if (args)
 		vprintk(args->fmt, args->args);
+}
+
+void __warn(const char *file, int line, void *caller, unsigned taint,
+	    struct pt_regs *regs, struct warn_args *args)
+{
+	disable_trace_on_warning();
+
+	if (args)
+		pr_warn(CUT_HERE);
+
+	show_location(file, line, caller, args);
 
 	if (panic_on_warn) {
 		/*
@@ -579,6 +586,8 @@ void __warn(const char *file, int line, void *caller, unsigned taint,
 		dump_stack();
 
 	print_irqtrace_events(current);
+
+	show_location(file, line, caller, args);
 
 	print_oops_end_marker();
 

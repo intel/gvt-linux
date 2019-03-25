@@ -32,6 +32,7 @@
 #include "i915_reg.h"
 
 struct drm_i915_private;
+struct intel_uncore;
 
 enum forcewake_domain_id {
 	FW_DOMAIN_ID_RENDER = 0,
@@ -62,9 +63,9 @@ enum forcewake_domains {
 };
 
 struct intel_uncore_funcs {
-	void (*force_wake_get)(struct drm_i915_private *dev_priv,
+	void (*force_wake_get)(struct intel_uncore *uncore,
 			       enum forcewake_domains domains);
-	void (*force_wake_put)(struct drm_i915_private *dev_priv,
+	void (*force_wake_put)(struct intel_uncore *uncore,
 			       enum forcewake_domains domains);
 
 	u8 (*mmio_readb)(struct drm_i915_private *dev_priv,
@@ -92,6 +93,8 @@ struct intel_forcewake_range {
 };
 
 struct intel_uncore {
+	void __iomem *regs;
+
 	spinlock_t lock; /** lock is also taken in irq contexts. */
 
 	const struct intel_forcewake_range *fw_domains_table;
@@ -106,18 +109,14 @@ struct intel_uncore {
 	enum forcewake_domains fw_domains_active;
 	enum forcewake_domains fw_domains_saved; /* user domains saved for S3 */
 
-	u32 fw_set;
-	u32 fw_clear;
-	u32 fw_reset;
-
 	struct intel_uncore_forcewake_domain {
 		enum forcewake_domain_id id;
 		enum forcewake_domains mask;
 		unsigned int wake_count;
 		bool active;
 		struct hrtimer timer;
-		i915_reg_t reg_set;
-		i915_reg_t reg_ack;
+		u32 __iomem *reg_set;
+		u32 __iomem *reg_ack;
 	} fw_domain[FW_DOMAIN_ID_COUNT];
 
 	struct {
@@ -131,27 +130,32 @@ struct intel_uncore {
 };
 
 /* Iterate over initialised fw domains */
-#define for_each_fw_domain_masked(domain__, mask__, dev_priv__, tmp__) \
+#define for_each_fw_domain_masked(domain__, mask__, uncore__, tmp__) \
 	for (tmp__ = (mask__); \
-	     tmp__ ? (domain__ = &(dev_priv__)->uncore.fw_domain[__mask_next_bit(tmp__)]), 1 : 0;)
+	     tmp__ ? (domain__ = &(uncore__)->fw_domain[__mask_next_bit(tmp__)]), 1 : 0;)
 
-#define for_each_fw_domain(domain__, dev_priv__, tmp__) \
-	for_each_fw_domain_masked(domain__, (dev_priv__)->uncore.fw_domains, dev_priv__, tmp__)
+#define for_each_fw_domain(domain__, uncore__, tmp__) \
+	for_each_fw_domain_masked(domain__, (uncore__)->fw_domains, uncore__, tmp__)
 
+static inline struct intel_uncore *
+forcewake_domain_to_uncore(const struct intel_uncore_forcewake_domain *d)
+{
+	return container_of(d, struct intel_uncore, fw_domain[d->id]);
+}
 
 void intel_uncore_sanitize(struct drm_i915_private *dev_priv);
-void intel_uncore_init(struct drm_i915_private *dev_priv);
-void intel_uncore_prune(struct drm_i915_private *dev_priv);
+int intel_uncore_init(struct intel_uncore *uncore);
+void intel_uncore_prune(struct intel_uncore *uncore);
 bool intel_uncore_unclaimed_mmio(struct drm_i915_private *dev_priv);
 bool intel_uncore_arm_unclaimed_mmio_detection(struct drm_i915_private *dev_priv);
-void intel_uncore_fini(struct drm_i915_private *dev_priv);
-void intel_uncore_suspend(struct drm_i915_private *dev_priv);
-void intel_uncore_resume_early(struct drm_i915_private *dev_priv);
-void intel_uncore_runtime_resume(struct drm_i915_private *dev_priv);
+void intel_uncore_fini(struct intel_uncore *uncore);
+void intel_uncore_suspend(struct intel_uncore *uncore);
+void intel_uncore_resume_early(struct intel_uncore *uncore);
+void intel_uncore_runtime_resume(struct intel_uncore *uncore);
 
 u64 intel_uncore_edram_size(struct drm_i915_private *dev_priv);
-void assert_forcewakes_inactive(struct drm_i915_private *dev_priv);
-void assert_forcewakes_active(struct drm_i915_private *dev_priv,
+void assert_forcewakes_inactive(struct intel_uncore *uncore);
+void assert_forcewakes_active(struct intel_uncore *uncore,
 			      enum forcewake_domains fw_domains);
 const char *intel_uncore_forcewake_domain_to_str(const enum forcewake_domain_id id);
 
@@ -161,20 +165,20 @@ intel_uncore_forcewake_for_reg(struct drm_i915_private *dev_priv,
 #define FW_REG_READ  (1)
 #define FW_REG_WRITE (2)
 
-void intel_uncore_forcewake_get(struct drm_i915_private *dev_priv,
+void intel_uncore_forcewake_get(struct intel_uncore *uncore,
 				enum forcewake_domains domains);
-void intel_uncore_forcewake_put(struct drm_i915_private *dev_priv,
+void intel_uncore_forcewake_put(struct intel_uncore *uncore,
 				enum forcewake_domains domains);
 /* Like above but the caller must manage the uncore.lock itself.
  * Must be used with I915_READ_FW and friends.
  */
-void intel_uncore_forcewake_get__locked(struct drm_i915_private *dev_priv,
+void intel_uncore_forcewake_get__locked(struct intel_uncore *uncore,
 					enum forcewake_domains domains);
-void intel_uncore_forcewake_put__locked(struct drm_i915_private *dev_priv,
+void intel_uncore_forcewake_put__locked(struct intel_uncore *uncore,
 					enum forcewake_domains domains);
 
-void intel_uncore_forcewake_user_get(struct drm_i915_private *dev_priv);
-void intel_uncore_forcewake_user_put(struct drm_i915_private *dev_priv);
+void intel_uncore_forcewake_user_get(struct intel_uncore *uncore);
+void intel_uncore_forcewake_user_put(struct intel_uncore *uncore);
 
 int __intel_wait_for_register(struct drm_i915_private *dev_priv,
 			      i915_reg_t reg,

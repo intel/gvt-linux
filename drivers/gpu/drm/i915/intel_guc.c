@@ -203,11 +203,19 @@ int intel_guc_init(struct intel_guc *guc)
 		goto err_log;
 	GEM_BUG_ON(!guc->ads_vma);
 
+	if (HAS_GUC_CT(dev_priv)) {
+		ret = intel_guc_ct_init(&guc->ct);
+		if (ret)
+			goto err_ads;
+	}
+
 	/* We need to notify the guc whenever we change the GGTT */
 	i915_ggtt_enable_guc(dev_priv);
 
 	return 0;
 
+err_ads:
+	intel_guc_ads_destroy(guc);
 err_log:
 	intel_guc_log_destroy(&guc->log);
 err_shared:
@@ -222,6 +230,10 @@ void intel_guc_fini(struct intel_guc *guc)
 	struct drm_i915_private *dev_priv = guc_to_i915(guc);
 
 	i915_ggtt_disable_guc(dev_priv);
+
+	if (HAS_GUC_CT(dev_priv))
+		intel_guc_ct_fini(&guc->ct);
+
 	intel_guc_ads_destroy(guc);
 	intel_guc_log_destroy(&guc->log);
 	guc_shared_data_destroy(guc);
@@ -357,14 +369,14 @@ void intel_guc_init_params(struct intel_guc *guc)
 	 * they are power context saved so it's ok to release forcewake
 	 * when we are done here and take it again at xfer time.
 	 */
-	intel_uncore_forcewake_get(dev_priv, FORCEWAKE_BLITTER);
+	intel_uncore_forcewake_get(&dev_priv->uncore, FORCEWAKE_BLITTER);
 
 	I915_WRITE(SOFT_SCRATCH(0), 0);
 
 	for (i = 0; i < GUC_CTL_MAX_DWORDS; i++)
 		I915_WRITE(SOFT_SCRATCH(1 + i), params[i]);
 
-	intel_uncore_forcewake_put(dev_priv, FORCEWAKE_BLITTER);
+	intel_uncore_forcewake_put(&dev_priv->uncore, FORCEWAKE_BLITTER);
 }
 
 int intel_guc_send_nop(struct intel_guc *guc, const u32 *action, u32 len,
@@ -402,7 +414,7 @@ int intel_guc_send_mmio(struct intel_guc *guc, const u32 *action, u32 len,
 		*action != INTEL_GUC_ACTION_DEREGISTER_COMMAND_TRANSPORT_BUFFER);
 
 	mutex_lock(&guc->send_mutex);
-	intel_uncore_forcewake_get(dev_priv, guc->send_regs.fw_domains);
+	intel_uncore_forcewake_get(&dev_priv->uncore, guc->send_regs.fw_domains);
 
 	for (i = 0; i < len; i++)
 		I915_WRITE(guc_send_reg(guc, i), action[i]);
@@ -442,7 +454,7 @@ int intel_guc_send_mmio(struct intel_guc *guc, const u32 *action, u32 len,
 	ret = INTEL_GUC_MSG_TO_DATA(status);
 
 out:
-	intel_uncore_forcewake_put(dev_priv, guc->send_regs.fw_domains);
+	intel_uncore_forcewake_put(&dev_priv->uncore, guc->send_regs.fw_domains);
 	mutex_unlock(&guc->send_mutex);
 
 	return ret;
@@ -472,17 +484,25 @@ void intel_guc_to_host_event_handler_mmio(struct intel_guc *guc)
 	spin_unlock(&guc->irq_lock);
 	enable_rpm_wakeref_asserts(dev_priv);
 
-	intel_guc_to_host_process_recv_msg(guc, msg);
+	intel_guc_to_host_process_recv_msg(guc, &msg, 1);
 }
 
-void intel_guc_to_host_process_recv_msg(struct intel_guc *guc, u32 msg)
+int intel_guc_to_host_process_recv_msg(struct intel_guc *guc,
+				       const u32 *payload, u32 len)
 {
+	u32 msg;
+
+	if (unlikely(!len))
+		return -EPROTO;
+
 	/* Make sure to handle only enabled messages */
-	msg &= guc->msg_enabled_mask;
+	msg = payload[0] & guc->msg_enabled_mask;
 
 	if (msg & (INTEL_GUC_RECV_MSG_FLUSH_LOG_BUFFER |
 		   INTEL_GUC_RECV_MSG_CRASH_DUMP_POSTED))
 		intel_guc_log_handle_flush_event(&guc->log);
+
+	return 0;
 }
 
 int intel_guc_sample_forcewake(struct intel_guc *guc)

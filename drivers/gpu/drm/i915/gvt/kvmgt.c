@@ -489,7 +489,9 @@ static size_t intel_vgpu_reg_rw_opregion(struct intel_vgpu *vgpu, char *buf,
 		return -EINVAL;
 	}
 	count = min(count, (size_t)(vgpu->vdev.region[i].size - pos));
-	memcpy(buf, base + pos, count);
+
+	if (copy_to_user(buf, base + pos, count))
+		return -EFAULT;
 
 	return 0;
 }

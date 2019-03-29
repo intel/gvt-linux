@@ -1,0 +1,30 @@
+drm drm-fixes 0271ab11790cd5ab8ec38e0e669e13c1009f271a
+	Merge tag 'drm-intel-fixes-2019-03-28' of git://anongit.freedesktop.org/drm/drm-intel into drm-fixes
+drm-misc drm-misc-fixes 36a1da15b5df493241b0011d2185fdd724ac1ed1
+	drm/omap: hdmi4_cec: Fix CEC clock handling for PM
+drm-intel drm-intel-fixes 26cdaac4793c49357d2c731f2190632cefb7efb1
+	drm/i915/icl: Fix VEBOX mismatch BUG_ON()
+drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
+	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
+drm drm-next 0bec6219e5a0cf2dd17716949a7592807e10f3d7
+	Merge tag 'drm-misc-next-2019-03-21' of git://anongit.freedesktop.org/drm/drm-misc into drm-next
+drm-misc drm-misc-next-fixes c34674a23d1e8674ac532bf3397333f24a41e7b2
+	drm/qxl: remove conflicting framebuffers earlier
+drm-intel drm-intel-next-fixes ca22f32a6296cbfa29de56328c8505560a18cfa8
+	drm/i915: Relax mmap VMA check
+drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
+	Linux 4.14-rc1
+drm-misc drm-misc-next 530b28426a94b822b3c03491cde5c9a961d80e7f
+	drm/virtio: rework resource creation workflow.
+drm-intel drm-intel-next-queued c4128ce7d59e811e3b229ac17bc67a6699cc525b
+	drm/i915: Skip the linear degamma LUT load on ICL+
+drm-intel drm-intel-next a01b2c6f47d86c7d1a9fa822b3b91ec233b61784
+	drm/i915: Update DRIVER_DATE to 20190328
+drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
+	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
+sound-upstream for-linus e2a829b3da01b9b32c4d0291d042b8a6e2a98ca3
+	ALSA: hda/realtek - Fix speakers on Acer Predator Helios 500 Ryzen laptops
+sound-upstream for-next 3a23fd0415cbd074b726fe730747d1bb41f8d0d7
+	Merge branch 'topic/timer-fixes' into for-next
+drm-intel topic/core-for-CI b2222770c64b3ef80205c8b4ee9061222d54fd30
+	HACK: drm/i915/opregion: ICL should have opregion 2.1+ and relative rvda

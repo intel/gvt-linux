@@ -677,6 +677,9 @@ static void __err_print_to_sgl(struct drm_i915_error_state_buf *m,
 	err_printf(m, "Reset count: %u\n", error->reset_count);
 	err_printf(m, "Suspend count: %u\n", error->suspend_count);
 	err_printf(m, "Platform: %s\n", intel_platform_name(error->device_info.platform));
+	err_printf(m, "Subplatform: 0x%x\n",
+		   intel_subplatform(&error->runtime_info,
+				     error->device_info.platform));
 	err_print_pciid(m, m->i915);
 
 	err_printf(m, "IOMMU enabled?: %d\n", error->iommu);
@@ -1093,7 +1096,7 @@ static u32 capture_error_bo(struct drm_i915_error_buffer *err,
  * It's only a small step better than a random number in its current form.
  */
 static u32 i915_error_generate_code(struct i915_gpu_state *error,
-				    unsigned long engine_mask)
+				    intel_engine_mask_t engine_mask)
 {
 	/*
 	 * IPEHR would be an ideal way to detect errors, as it's the gross
@@ -1638,7 +1641,8 @@ static void capture_reg_state(struct i915_gpu_state *error)
 }
 
 static const char *
-error_msg(struct i915_gpu_state *error, unsigned long engines, const char *msg)
+error_msg(struct i915_gpu_state *error,
+	  intel_engine_mask_t engines, const char *msg)
 {
 	int len;
 	int i;
@@ -1648,7 +1652,7 @@ error_msg(struct i915_gpu_state *error, unsigned long engines, const char *msg)
 			engines &= ~BIT(i);
 
 	len = scnprintf(error->error_msg, sizeof(error->error_msg),
-			"GPU HANG: ecode %d:%lx:0x%08x",
+			"GPU HANG: ecode %d:%x:0x%08x",
 			INTEL_GEN(error->i915), engines,
 			i915_error_generate_code(error, engines));
 	if (engines) {
@@ -1787,7 +1791,7 @@ i915_capture_gpu_state(struct drm_i915_private *i915)
  * to pick up.
  */
 void i915_capture_error_state(struct drm_i915_private *i915,
-			      unsigned long engine_mask,
+			      intel_engine_mask_t engine_mask,
 			      const char *msg)
 {
 	static bool warned;

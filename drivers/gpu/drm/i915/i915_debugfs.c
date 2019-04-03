@@ -2087,8 +2087,8 @@ static int i915_llc(struct seq_file *m, void *data)
 	const bool edram = INTEL_GEN(dev_priv) > 8;
 
 	seq_printf(m, "LLC: %s\n", yesno(HAS_LLC(dev_priv)));
-	seq_printf(m, "%s: %lluMB\n", edram ? "eDRAM" : "eLLC",
-		   intel_uncore_edram_size(dev_priv)/1024/1024);
+	seq_printf(m, "%s: %uMB\n", edram ? "eDRAM" : "eLLC",
+		   dev_priv->edram_size_mb);
 
 	return 0;
 }
@@ -2245,7 +2245,7 @@ static int i915_guc_stage_pool(struct seq_file *m, void *data)
 	const struct intel_guc *guc = &dev_priv->guc;
 	struct guc_stage_desc *desc = guc->stage_desc_pool_vaddr;
 	struct intel_guc_client *client = guc->execbuf_client;
-	unsigned int tmp;
+	intel_engine_mask_t tmp;
 	int index;
 
 	if (!USES_GUC_SUBMISSION(dev_priv))

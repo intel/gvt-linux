@@ -868,6 +868,8 @@ static int i915_driver_init_early(struct drm_i915_private *dev_priv)
 	if (i915_inject_load_failure())
 		return -ENODEV;
 
+	intel_device_info_subplatform_init(dev_priv);
+
 	spin_lock_init(&dev_priv->irq_lock);
 	spin_lock_init(&dev_priv->gpu_error.lock);
 	mutex_init(&dev_priv->backlight_lock);
@@ -1441,6 +1443,45 @@ intel_get_dram_info(struct drm_i915_private *dev_priv)
 		      dram_info->ranks, yesno(dram_info->is_16gb_dimm));
 }
 
+static u32 gen9_edram_size_mb(struct drm_i915_private *dev_priv, u32 cap)
+{
+	const unsigned int ways[8] = { 4, 8, 12, 16, 16, 16, 16, 16 };
+	const unsigned int sets[4] = { 1, 1, 2, 2 };
+
+	return EDRAM_NUM_BANKS(cap) *
+		ways[EDRAM_WAYS_IDX(cap)] *
+		sets[EDRAM_SETS_IDX(cap)];
+}
+
+static void edram_detect(struct drm_i915_private *dev_priv)
+{
+	u32 edram_cap = 0;
+
+	if (!(IS_HASWELL(dev_priv) ||
+	      IS_BROADWELL(dev_priv) ||
+	      INTEL_GEN(dev_priv) >= 9))
+		return;
+
+	edram_cap = __raw_uncore_read32(&dev_priv->uncore, HSW_EDRAM_CAP);
+
+	/* NB: We can't write IDICR yet because we don't have gt funcs set up */
+
+	if (!(edram_cap & EDRAM_ENABLED))
+		return;
+
+	/*
+	 * The needed capability bits for size calculation are not there with
+	 * pre gen9 so return 128MB always.
+	 */
+	if (INTEL_GEN(dev_priv) < 9)
+		dev_priv->edram_size_mb = 128;
+	else
+		dev_priv->edram_size_mb =
+			gen9_edram_size_mb(dev_priv, edram_cap);
+
+	DRM_INFO("Found %uMB of eDRAM\n", dev_priv->edram_size_mb);
+}
+
 /**
  * i915_driver_init_hw - setup state requiring device access
  * @dev_priv: device private
@@ -1482,6 +1523,9 @@ static int i915_driver_init_hw(struct drm_i915_private *dev_priv)
 	}
 
 	intel_sanitize_options(dev_priv);
+
+	/* needs to be done before ggtt probe */
+	edram_detect(dev_priv);
 
 	i915_perf_init(dev_priv);
 
@@ -1718,10 +1762,12 @@ static void i915_welcome_messages(struct drm_i915_private *dev_priv)
 	if (drm_debug & DRM_UT_DRIVER) {
 		struct drm_printer p = drm_debug_printer("i915 device info:");
 
-		drm_printf(&p, "pciid=0x%04x rev=0x%02x platform=%s gen=%i\n",
+		drm_printf(&p, "pciid=0x%04x rev=0x%02x platform=%s (subplatform=0x%x) gen=%i\n",
 			   INTEL_DEVID(dev_priv),
 			   INTEL_REVID(dev_priv),
 			   intel_platform_name(INTEL_INFO(dev_priv)->platform),
+			   intel_subplatform(RUNTIME_INFO(dev_priv),
+					     INTEL_INFO(dev_priv)->platform),
 			   INTEL_GEN(dev_priv));
 
 		intel_device_info_dump_flags(INTEL_INFO(dev_priv), &p);
@@ -1764,8 +1810,6 @@ i915_driver_create(struct pci_dev *pdev, const struct pci_device_id *ent)
 	memcpy(device_info, match_info, sizeof(*device_info));
 	RUNTIME_INFO(i915)->device_id = pdev->device;
 
-	BUILD_BUG_ON(INTEL_MAX_PLATFORMS >
-		     BITS_PER_TYPE(device_info->platform_mask));
 	BUG_ON(device_info->gen > BITS_PER_TYPE(device_info->gen_mask));
 
 	return i915;

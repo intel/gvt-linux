@@ -32,7 +32,7 @@
 #include "i915_globals.h"
 #include "i915_selftest.h"
 
-#define PLATFORM(x) .platform = (x), .platform_mask = BIT(x)
+#define PLATFORM(x) .platform = (x)
 #define GEN(x) .gen = (x), .gen_mask = BIT((x) - 1)
 
 #define I845_PIPE_OFFSETS \
@@ -257,7 +257,14 @@ static const struct intel_device_info intel_g33_info = {
 	.display.has_overlay = 1,
 };
 
-static const struct intel_device_info intel_pineview_info = {
+static const struct intel_device_info intel_pineview_g_info = {
+	GEN3_FEATURES,
+	PLATFORM(INTEL_PINEVIEW),
+	.display.has_hotplug = 1,
+	.display.has_overlay = 1,
+};
+
+static const struct intel_device_info intel_pineview_m_info = {
 	GEN3_FEATURES,
 	PLATFORM(INTEL_PINEVIEW),
 	.is_mobile = 1,
@@ -761,7 +768,8 @@ static const struct pci_device_id pciidlist[] = {
 	INTEL_I965GM_IDS(&intel_i965gm_info),
 	INTEL_GM45_IDS(&intel_gm45_info),
 	INTEL_G45_IDS(&intel_g45_info),
-	INTEL_PINEVIEW_IDS(&intel_pineview_info),
+	INTEL_PINEVIEW_G_IDS(&intel_pineview_g_info),
+	INTEL_PINEVIEW_M_IDS(&intel_pineview_m_info),
 	INTEL_IRONLAKE_D_IDS(&intel_ironlake_d_info),
 	INTEL_IRONLAKE_M_IDS(&intel_ironlake_m_info),
 	INTEL_SNB_D_GT1_IDS(&intel_sandybridge_d_gt1_info),

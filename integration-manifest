@@ -1,0 +1,30 @@
+drm drm-fixes 79a3aaa7b82e3106be97842dedfd8429248896e6
+	Linux 5.1-rc3
+drm-misc drm-misc-fixes fe61692886669bbcc260f980903eacb4ddebaf59
+	drm/atomic-helper: Make atomic_enable/disable crtc callbacks optional
+drm-intel drm-intel-fixes a145b5b0e48783d0cd3ee605ed00b133d5c8ffed
+	drm/i915: Always backoff after a drm_modeset_lock() deadlock
+drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
+	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
+drm drm-next 5ebffda257731a11cf1db6c6142c82d5b30aec35
+	Merge commit 'refs/for-upstream/mali-dp' of git://linux-arm.org/linux-ld into drm-next
+drm-misc drm-misc-next-fixes c34674a23d1e8674ac532bf3397333f24a41e7b2
+	drm/qxl: remove conflicting framebuffers earlier
+drm-intel drm-intel-next-fixes ca22f32a6296cbfa29de56328c8505560a18cfa8
+	drm/i915: Relax mmap VMA check
+drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
+	Linux 4.14-rc1
+drm-misc drm-misc-next a719004282c0b74974620d81c521c83a850a97cc
+	drm/cirrus: drop mode_info.mode_config_initialized
+drm-intel drm-intel-next-queued f722b8c1e2a2a85add58a8ffd9cb794d4d6287ff
+	drm/i915/ehl: All EHL ports are combo phys
+drm-intel drm-intel-next a01b2c6f47d86c7d1a9fa822b3b91ec233b61784
+	drm/i915: Update DRIVER_DATE to 20190328
+drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
+	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
+sound-upstream for-linus b5bdbb6ccd1117896bf4fba6bff75336ca423e8c
+	ALSA: uapi: #include <time.h> in asound.h
+sound-upstream for-next 3a23fd0415cbd074b726fe730747d1bb41f8d0d7
+	Merge branch 'topic/timer-fixes' into for-next
+drm-intel topic/core-for-CI b2222770c64b3ef80205c8b4ee9061222d54fd30
+	HACK: drm/i915/opregion: ICL should have opregion 2.1+ and relative rvda

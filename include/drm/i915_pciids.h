@@ -373,6 +373,30 @@
 #define INTEL_AML_CFL_GT2_IDS(info) \
 	INTEL_VGA_DEVICE(0x87CA, info)
 
+/* CML GT1 */
+#define INTEL_CML_GT1_IDS(info)	\
+	INTEL_VGA_DEVICE(0x9B21, info), \
+	INTEL_VGA_DEVICE(0x9BAA, info), \
+	INTEL_VGA_DEVICE(0x9BAB, info), \
+	INTEL_VGA_DEVICE(0x9BAC, info), \
+	INTEL_VGA_DEVICE(0x9BA0, info), \
+	INTEL_VGA_DEVICE(0x9BA5, info), \
+	INTEL_VGA_DEVICE(0x9BA8, info), \
+	INTEL_VGA_DEVICE(0x9BA4, info), \
+	INTEL_VGA_DEVICE(0x9BA2, info)
+
+/* CML GT2 */
+#define INTEL_CML_GT2_IDS(info)	\
+	INTEL_VGA_DEVICE(0x9B41, info), \
+	INTEL_VGA_DEVICE(0x9BCA, info), \
+	INTEL_VGA_DEVICE(0x9BCB, info), \
+	INTEL_VGA_DEVICE(0x9BCC, info), \
+	INTEL_VGA_DEVICE(0x9BC0, info), \
+	INTEL_VGA_DEVICE(0x9BC5, info), \
+	INTEL_VGA_DEVICE(0x9BC8, info), \
+	INTEL_VGA_DEVICE(0x9BC4, info), \
+	INTEL_VGA_DEVICE(0x9BC2, info)
+
 #define INTEL_KBL_IDS(info) \
 	INTEL_KBL_GT1_IDS(info), \
 	INTEL_KBL_GT2_IDS(info), \
@@ -394,6 +418,9 @@
 	INTEL_VGA_DEVICE(0x3E9A, info)  /* SRV GT2 */
 
 /* CFL H */
+#define INTEL_CFL_H_GT1_IDS(info) \
+	INTEL_VGA_DEVICE(0x3E9C, info)
+
 #define INTEL_CFL_H_GT2_IDS(info) \
 	INTEL_VGA_DEVICE(0x3E9B, info), /* Halo GT2 */ \
 	INTEL_VGA_DEVICE(0x3E94, info)  /* Halo GT2 */
@@ -426,13 +453,16 @@
 #define INTEL_CFL_IDS(info)	   \
 	INTEL_CFL_S_GT1_IDS(info), \
 	INTEL_CFL_S_GT2_IDS(info), \
+	INTEL_CFL_H_GT1_IDS(info), \
 	INTEL_CFL_H_GT2_IDS(info), \
 	INTEL_CFL_U_GT2_IDS(info), \
 	INTEL_CFL_U_GT3_IDS(info), \
 	INTEL_WHL_U_GT1_IDS(info), \
 	INTEL_WHL_U_GT2_IDS(info), \
 	INTEL_WHL_U_GT3_IDS(info), \
-	INTEL_AML_CFL_GT2_IDS(info)
+	INTEL_AML_CFL_GT2_IDS(info), \
+	INTEL_CML_GT1_IDS(info), \
+	INTEL_CML_GT2_IDS(info)
 
 /* CNL */
 #define INTEL_CNL_IDS(info) \
@@ -457,10 +487,22 @@
 	INTEL_VGA_DEVICE(0x8A51, info), \
 	INTEL_VGA_DEVICE(0x8A5C, info), \
 	INTEL_VGA_DEVICE(0x8A5D, info), \
+	INTEL_VGA_DEVICE(0x8A59, info),	\
+	INTEL_VGA_DEVICE(0x8A58, info),	\
 	INTEL_VGA_DEVICE(0x8A52, info), \
 	INTEL_VGA_DEVICE(0x8A5A, info), \
 	INTEL_VGA_DEVICE(0x8A5B, info), \
+	INTEL_VGA_DEVICE(0x8A57, info), \
+	INTEL_VGA_DEVICE(0x8A56, info), \
 	INTEL_VGA_DEVICE(0x8A71, info), \
-	INTEL_VGA_DEVICE(0x8A70, info)
+	INTEL_VGA_DEVICE(0x8A70, info), \
+	INTEL_VGA_DEVICE(0x8A53, info)
+
+/* EHL */
+#define INTEL_EHL_IDS(info) \
+	INTEL_VGA_DEVICE(0x4500, info),	\
+	INTEL_VGA_DEVICE(0x4571, info), \
+	INTEL_VGA_DEVICE(0x4551, info), \
+	INTEL_VGA_DEVICE(0x4541, info)
 
 #endif /* _I915_PCIIDS_H */

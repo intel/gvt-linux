@@ -73,14 +73,14 @@ enum intel_platform {
 	INTEL_CANNONLAKE,
 	/* gen11 */
 	INTEL_ICELAKE,
+	INTEL_ELKHARTLAKE,
 	INTEL_MAX_PLATFORMS
 };
 
-enum intel_ppgtt {
+enum intel_ppgtt_type {
 	INTEL_PPGTT_NONE = I915_GEM_PPGTT_NONE,
 	INTEL_PPGTT_ALIASING = I915_GEM_PPGTT_ALIASING,
 	INTEL_PPGTT_FULL = I915_GEM_PPGTT_FULL,
-	INTEL_PPGTT_FULL_4LVL,
 };
 
 #define DEV_INFO_FOR_EACH_FLAG(func) \
@@ -89,6 +89,7 @@ enum intel_ppgtt {
 	func(is_alpha_support); \
 	/* Keep has_* in alphabetical order */ \
 	func(has_64bit_reloc); \
+	func(gpu_reset_clobbers_display); \
 	func(has_reset_engine); \
 	func(has_fpga_dbg); \
 	func(has_guc); \
@@ -114,7 +115,7 @@ enum intel_ppgtt {
 	func(has_ddi); \
 	func(has_dp_mst); \
 	func(has_fbc); \
-	func(has_gmch_display); \
+	func(has_gmch); \
 	func(has_hotplug); \
 	func(has_ipc); \
 	func(has_overlay); \
@@ -149,28 +150,26 @@ struct sseu_dev_info {
 	u8 eu_mask[GEN_MAX_SLICES * GEN_MAX_SUBSLICES];
 };
 
-typedef u8 intel_ring_mask_t;
+typedef u8 intel_engine_mask_t;
 
 struct intel_device_info {
-	u16 device_id;
 	u16 gen_mask;
 
 	u8 gen;
 	u8 gt; /* GT number, 0 if undefined */
-	u8 num_rings;
-	intel_ring_mask_t ring_mask; /* Rings supported by the HW */
+	intel_engine_mask_t engine_mask; /* Engines supported by the HW */
 
 	enum intel_platform platform;
 	u32 platform_mask;
 
-	enum intel_ppgtt ppgtt;
+	enum intel_ppgtt_type ppgtt_type;
+	unsigned int ppgtt_size; /* log2, e.g. 31/32/48 bits */
+
 	unsigned int page_sizes; /* page sizes supported by the HW */
 
 	u32 display_mmio_offset;
 
 	u8 num_pipes;
-	u8 num_sprites[I915_MAX_PIPES];
-	u8 num_scalers[I915_MAX_PIPES];
 
 #define DEFINE_FLAG(name) u8 name:1
 	DEV_INFO_FOR_EACH_FLAG(DEFINE_FLAG);
@@ -189,19 +188,29 @@ struct intel_device_info {
 	int trans_offsets[I915_MAX_TRANSCODERS];
 	int cursor_offsets[I915_MAX_PIPES];
 
+	struct color_luts {
+		u16 degamma_lut_size;
+		u16 gamma_lut_size;
+		u32 degamma_lut_tests;
+		u32 gamma_lut_tests;
+	} color;
+};
+
+struct intel_runtime_info {
+	u16 device_id;
+
+	u8 num_sprites[I915_MAX_PIPES];
+	u8 num_scalers[I915_MAX_PIPES];
+
+	u8 num_engines;
+
 	/* Slice/subslice/EU info */
 	struct sseu_dev_info sseu;
 
 	u32 cs_timestamp_frequency_khz;
 
-	/* Enabled (not fused off) media engine bitmasks. */
-	u8 vdbox_enable;
-	u8 vebox_enable;
-
-	struct color_luts {
-		u16 degamma_lut_size;
-		u16 gamma_lut_size;
-	} color;
+	/* Media engine access to SFC per instance */
+	u8 vdbox_sfc_access;
 };
 
 struct intel_driver_caps {
@@ -258,12 +267,10 @@ static inline void sseu_set_eus(struct sseu_dev_info *sseu,
 
 const char *intel_platform_name(enum intel_platform platform);
 
-void intel_device_info_runtime_init(struct intel_device_info *info);
-void intel_device_info_dump(const struct intel_device_info *info,
-			    struct drm_printer *p);
+void intel_device_info_runtime_init(struct drm_i915_private *dev_priv);
 void intel_device_info_dump_flags(const struct intel_device_info *info,
 				  struct drm_printer *p);
-void intel_device_info_dump_runtime(const struct intel_device_info *info,
+void intel_device_info_dump_runtime(const struct intel_runtime_info *info,
 				    struct drm_printer *p);
 void intel_device_info_dump_topology(const struct sseu_dev_info *sseu,
 				     struct drm_printer *p);

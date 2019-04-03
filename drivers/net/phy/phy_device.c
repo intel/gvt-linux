@@ -1769,6 +1769,7 @@ int genphy_read_status(struct phy_device *phydev)
 				return adv;
 
 			if (lpagb & LPA_1000MSFAIL) {
+				pr_info("master/slave failure: lpagb = 0x%04x adv = 0x%04x\n", lpagb, adv);
 				if (adv & CTL1000_ENABLE_MASTER)
 					phydev_err(phydev, "Master/Slave resolution failed, maybe conflicting manual settings?\n");
 				else

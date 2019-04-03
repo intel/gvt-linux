@@ -296,6 +296,7 @@ struct vc4_v3d {
 	struct platform_device *pdev;
 	void __iomem *regs;
 	struct clk *clk;
+	struct debugfs_regset32 regset;
 };
 
 struct vc4_hvs {
@@ -312,6 +313,7 @@ struct vc4_hvs {
 	spinlock_t mm_lock;
 
 	struct drm_mm_node mitchell_netravali_filter;
+	struct debugfs_regset32 regset;
 };
 
 struct vc4_plane {
@@ -431,6 +433,7 @@ struct vc4_crtc_data {
 
 struct vc4_crtc {
 	struct drm_crtc base;
+	struct platform_device *pdev;
 	const struct vc4_crtc_data *data;
 	void __iomem *regs;
 
@@ -447,6 +450,8 @@ struct vc4_crtc {
 	u32 cob_size;
 
 	struct drm_pending_vblank_event *event;
+
+	struct debugfs_regset32 regset;
 };
 
 static inline struct vc4_crtc *
@@ -459,6 +464,8 @@ to_vc4_crtc(struct drm_crtc *crtc)
 #define V3D_WRITE(offset, val) writel(val, vc4->v3d->regs + offset)
 #define HVS_READ(offset) readl(vc4->hvs->regs + offset)
 #define HVS_WRITE(offset, val) writel(val, vc4->hvs->regs + offset)
+
+#define VC4_REG32(reg) { .name = #reg, .offset = reg }
 
 struct vc4_exec_info {
 	/* Sequence number for this bin/render job. */
@@ -808,6 +815,8 @@ extern struct platform_driver vc4_v3d_driver;
 int vc4_v3d_debugfs_ident(struct seq_file *m, void *unused);
 int vc4_v3d_debugfs_regs(struct seq_file *m, void *unused);
 int vc4_v3d_get_bin_slot(struct vc4_dev *vc4);
+int vc4_v3d_pm_get(struct vc4_dev *vc4);
+void vc4_v3d_pm_put(struct vc4_dev *vc4);
 
 /* vc4_validate.c */
 int

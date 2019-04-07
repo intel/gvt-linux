@@ -1,0 +1,30 @@
+drm drm-fixes 23b5f422e8f42d9d3b7063c05c839a8b0ff5adf5
+	Merge tag 'drm-intel-fixes-2019-04-04' of git://anongit.freedesktop.org/drm/drm-intel into drm-fixes
+drm-misc drm-misc-fixes cd9063757a227cf31ebf5391ccda2bf583b0806e
+	drm/sun4i: DW HDMI: Lower max. supported rate for H6
+drm-intel drm-intel-fixes 57cbec02f9b10992319ca578797c8059ac47d71e
+	Merge tag 'gvt-fixes-2019-04-04' of https://github.com/intel/gvt-linux into drm-intel-fixes
+drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
+	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
+drm drm-next 14d2bd53a47a7e1cb3e03d00a6b952734cf90f3f
+	Merge tag 'drm-misc-next-2019-04-04' of git://anongit.freedesktop.org/drm/drm-misc into drm-next
+drm-misc drm-misc-next-fixes c34674a23d1e8674ac532bf3397333f24a41e7b2
+	drm/qxl: remove conflicting framebuffers earlier
+drm-intel drm-intel-next-fixes ca22f32a6296cbfa29de56328c8505560a18cfa8
+	drm/i915: Relax mmap VMA check
+drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
+	Linux 4.14-rc1
+drm-misc drm-misc-next 91b350a605136c4c007df928779f81b58146a4f9
+	Documentation/gpu/meson: Remove link to meson_canvas.c
+drm-intel drm-intel-next-queued 513a4c5589b4a07d3cc1c42329ff3e93505613e5
+	drm/i915: Track the temporary wakerefs used for hsw_get_pipe_config
+drm-intel drm-intel-next 28d618e9ab86f26a31af0b235ced55beb3e343c8
+	drm/i915: Update DRIVER_DATE to 20190404
+drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
+	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
+sound-upstream for-linus 212ac181c158c09038c474ba68068be49caecebb
+	ALSA: seq: Fix OOB-reads from strlcpy
+sound-upstream for-next 4b81dad109ad7d7b288804fcdc6475b48f242210
+	ALSA: doc: my_chip has no element ioport
+drm-intel topic/core-for-CI b2222770c64b3ef80205c8b4ee9061222d54fd30
+	HACK: drm/i915/opregion: ICL should have opregion 2.1+ and relative rvda

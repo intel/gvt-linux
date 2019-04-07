@@ -439,8 +439,8 @@ static inline bool i915_mmio_reg_valid(i915_reg_t reg)
 #define RING_PP_DIR_DCLV(base)		_MMIO((base) + 0x220)
 #define   PP_DIR_DCLV_2G		0xffffffff
 
-#define GEN8_RING_PDP_UDW(engine, n)	_MMIO((engine)->mmio_base + 0x270 + (n) * 8 + 4)
-#define GEN8_RING_PDP_LDW(engine, n)	_MMIO((engine)->mmio_base + 0x270 + (n) * 8)
+#define GEN8_RING_PDP_UDW(base, n)	_MMIO((base) + 0x270 + (n) * 8 + 4)
+#define GEN8_RING_PDP_LDW(base, n)	_MMIO((base) + 0x270 + (n) * 8)
 
 #define GEN8_R_PWR_CLK_STATE		_MMIO(0x20C8)
 #define   GEN8_RPCS_ENABLE		(1 << 31)
@@ -5795,6 +5795,10 @@ enum {
 #define PIPEFRAMEPIXEL(pipe)	_MMIO_PIPE2(pipe, _PIPEAFRAMEPIXEL)
 #define PIPESTAT(pipe)		_MMIO_PIPE2(pipe, _PIPEASTAT)
 
+#define  _PIPEAGCMAX           0x70010
+#define  _PIPEBGCMAX           0x71010
+#define PIPEGCMAX(pipe, i)     _MMIO_PIPE2(pipe, _PIPEAGCMAX + (i) * 4)
+
 #define _PIPE_MISC_A			0x70030
 #define _PIPE_MISC_B			0x71030
 #define   PIPEMISC_YUV420_ENABLE	(1 << 27)
@@ -7209,11 +7213,21 @@ enum {
 #define _LGC_PALETTE_B           0x4a800
 #define LGC_PALETTE(pipe, i) _MMIO(_PIPE(pipe, _LGC_PALETTE_A, _LGC_PALETTE_B) + (i) * 4)
 
+/* ilk/snb precision palette */
+#define _PREC_PALETTE_A           0x4b000
+#define _PREC_PALETTE_B           0x4c000
+#define PREC_PALETTE(pipe, i) _MMIO(_PIPE(pipe, _PREC_PALETTE_A, _PREC_PALETTE_B) + (i) * 4)
+
+#define  _PREC_PIPEAGCMAX              0x4d000
+#define  _PREC_PIPEBGCMAX              0x4d010
+#define PREC_PIPEGCMAX(pipe, i)        _MMIO(_PIPE(pipe, _PIPEAGCMAX, _PIPEBGCMAX) + (i) * 4)
+
 #define _GAMMA_MODE_A		0x4a480
 #define _GAMMA_MODE_B		0x4ac80
 #define GAMMA_MODE(pipe) _MMIO_PIPE(pipe, _GAMMA_MODE_A, _GAMMA_MODE_B)
 #define  PRE_CSC_GAMMA_ENABLE	(1 << 31)
 #define  POST_CSC_GAMMA_ENABLE	(1 << 30)
+#define  GAMMA_MODE_MODE_MASK	(3 << 0)
 #define  GAMMA_MODE_MODE_8BIT	(0 << 0)
 #define  GAMMA_MODE_MODE_10BIT	(1 << 0)
 #define  GAMMA_MODE_MODE_12BIT	(2 << 0)
@@ -10127,6 +10141,7 @@ enum skl_power_gate {
 #define   PAL_PREC_SPLIT_MODE		(1 << 31)
 #define   PAL_PREC_AUTO_INCREMENT	(1 << 15)
 #define   PAL_PREC_INDEX_VALUE_MASK	(0x3ff << 0)
+#define   PAL_PREC_INDEX_VALUE(x)	((x) << 0)
 #define _PAL_PREC_DATA_A	0x4A404
 #define _PAL_PREC_DATA_B	0x4AC04
 #define _PAL_PREC_DATA_C	0x4B404
@@ -10144,6 +10159,7 @@ enum skl_power_gate {
 #define PREC_PAL_DATA(pipe)		_MMIO_PIPE(pipe, _PAL_PREC_DATA_A, _PAL_PREC_DATA_B)
 #define PREC_PAL_GC_MAX(pipe, i)	_MMIO(_PIPE(pipe, _PAL_PREC_GC_MAX_A, _PAL_PREC_GC_MAX_B) + (i) * 4)
 #define PREC_PAL_EXT_GC_MAX(pipe, i)	_MMIO(_PIPE(pipe, _PAL_PREC_EXT_GC_MAX_A, _PAL_PREC_EXT_GC_MAX_B) + (i) * 4)
+#define PREC_PAL_EXT2_GC_MAX(pipe, i)	_MMIO(_PIPE(pipe, _PAL_PREC_EXT2_GC_MAX_A, _PAL_PREC_EXT2_GC_MAX_B) + (i) * 4)
 
 #define _PRE_CSC_GAMC_INDEX_A	0x4A484
 #define _PRE_CSC_GAMC_INDEX_B	0x4AC84

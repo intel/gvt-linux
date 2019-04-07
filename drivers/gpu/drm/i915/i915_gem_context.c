@@ -562,7 +562,7 @@ static void init_contexts(struct drm_i915_private *i915)
 
 static bool needs_preempt_context(struct drm_i915_private *i915)
 {
-	return HAS_LOGICAL_RING_PREEMPTION(i915);
+	return HAS_EXECLISTS(i915);
 }
 
 int i915_gem_contexts_init(struct drm_i915_private *dev_priv)
@@ -858,9 +858,9 @@ static void cb_retire(struct i915_active *base)
 	kfree(cb);
 }
 
-I915_SELFTEST_DECLARE(static unsigned long context_barrier_inject_fault);
+I915_SELFTEST_DECLARE(static intel_engine_mask_t context_barrier_inject_fault);
 static int context_barrier_task(struct i915_gem_context *ctx,
-				unsigned long engines,
+				intel_engine_mask_t engines,
 				int (*emit)(struct i915_request *rq, void *data),
 				void (*task)(void *data),
 				void *data)
@@ -922,7 +922,7 @@ static int context_barrier_task(struct i915_gem_context *ctx,
 }
 
 int i915_gem_switch_to_kernel_context(struct drm_i915_private *i915,
-				      unsigned long mask)
+				      intel_engine_mask_t mask)
 {
 	struct intel_engine_cs *engine;
 
@@ -969,10 +969,10 @@ int i915_gem_switch_to_kernel_context(struct drm_i915_private *i915,
 	return 0;
 }
 
-static int get_ppgtt(struct i915_gem_context *ctx,
+static int get_ppgtt(struct drm_i915_file_private *file_priv,
+		     struct i915_gem_context *ctx,
 		     struct drm_i915_gem_context_param *args)
 {
-	struct drm_i915_file_private *file_priv = ctx->file_priv;
 	struct i915_hw_ppgtt *ppgtt;
 	int ret;
 
@@ -1028,6 +1028,7 @@ static int emit_ppgtt_update(struct i915_request *rq, void *data)
 {
 	struct i915_hw_ppgtt *ppgtt = rq->gem_context->ppgtt;
 	struct intel_engine_cs *engine = rq->engine;
+	u32 base = engine->mmio_base;
 	u32 *cs;
 	int i;
 
@@ -1040,9 +1041,9 @@ static int emit_ppgtt_update(struct i915_request *rq, void *data)
 
 		*cs++ = MI_LOAD_REGISTER_IMM(2);
 
-		*cs++ = i915_mmio_reg_offset(GEN8_RING_PDP_UDW(engine, 0));
+		*cs++ = i915_mmio_reg_offset(GEN8_RING_PDP_UDW(base, 0));
 		*cs++ = upper_32_bits(pd_daddr);
-		*cs++ = i915_mmio_reg_offset(GEN8_RING_PDP_LDW(engine, 0));
+		*cs++ = i915_mmio_reg_offset(GEN8_RING_PDP_LDW(base, 0));
 		*cs++ = lower_32_bits(pd_daddr);
 
 		*cs++ = MI_NOOP;
@@ -1056,9 +1057,9 @@ static int emit_ppgtt_update(struct i915_request *rq, void *data)
 		for (i = GEN8_3LVL_PDPES; i--; ) {
 			const dma_addr_t pd_daddr = i915_page_dir_dma_addr(ppgtt, i);
 
-			*cs++ = i915_mmio_reg_offset(GEN8_RING_PDP_UDW(engine, i));
+			*cs++ = i915_mmio_reg_offset(GEN8_RING_PDP_UDW(base, i));
 			*cs++ = upper_32_bits(pd_daddr);
-			*cs++ = i915_mmio_reg_offset(GEN8_RING_PDP_LDW(engine, i));
+			*cs++ = i915_mmio_reg_offset(GEN8_RING_PDP_LDW(base, i));
 			*cs++ = lower_32_bits(pd_daddr);
 		}
 		*cs++ = MI_NOOP;
@@ -1071,10 +1072,10 @@ static int emit_ppgtt_update(struct i915_request *rq, void *data)
 	return 0;
 }
 
-static int set_ppgtt(struct i915_gem_context *ctx,
+static int set_ppgtt(struct drm_i915_file_private *file_priv,
+		     struct i915_gem_context *ctx,
 		     struct drm_i915_gem_context_param *args)
 {
-	struct drm_i915_file_private *file_priv = ctx->file_priv;
 	struct i915_hw_ppgtt *ppgtt, *old;
 	int err;
 
@@ -1416,7 +1417,8 @@ static int set_sseu(struct i915_gem_context *ctx,
 	return 0;
 }
 
-static int ctx_setparam(struct i915_gem_context *ctx,
+static int ctx_setparam(struct drm_i915_file_private *fpriv,
+			struct i915_gem_context *ctx,
 			struct drm_i915_gem_context_param *args)
 {
 	int ret = 0;
@@ -1485,7 +1487,7 @@ static int ctx_setparam(struct i915_gem_context *ctx,
 		break;
 
 	case I915_CONTEXT_PARAM_VM:
-		ret = set_ppgtt(ctx, args);
+		ret = set_ppgtt(fpriv, ctx, args);
 		break;
 
 	case I915_CONTEXT_PARAM_BAN_PERIOD:
@@ -1513,7 +1515,7 @@ static int create_setparam(struct i915_user_extension __user *ext, void *data)
 	if (local.param.ctx_id)
 		return -EINVAL;
 
-	return ctx_setparam(arg->ctx, &local.param);
+	return ctx_setparam(arg->fpriv, arg->ctx, &local.param);
 }
 
 static const i915_user_extension_fn create_extensions[] = {
@@ -1712,7 +1714,7 @@ int i915_gem_context_getparam_ioctl(struct drm_device *dev, void *data,
 		break;
 
 	case I915_CONTEXT_PARAM_VM:
-		ret = get_ppgtt(ctx, args);
+		ret = get_ppgtt(file_priv, ctx, args);
 		break;
 
 	case I915_CONTEXT_PARAM_BAN_PERIOD:
@@ -1737,7 +1739,7 @@ int i915_gem_context_setparam_ioctl(struct drm_device *dev, void *data,
 	if (!ctx)
 		return -ENOENT;
 
-	ret = ctx_setparam(ctx, args);
+	ret = ctx_setparam(file_priv, ctx, args);
 
 	i915_gem_context_put(ctx);
 	return ret;

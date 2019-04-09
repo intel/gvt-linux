@@ -26,9 +26,19 @@
  */
 
 #include <drm/drm_scdc_helper.h>
+
 #include "i915_drv.h"
+#include "intel_audio.h"
+#include "intel_connector.h"
+#include "intel_ddi.h"
+#include "intel_dp.h"
 #include "intel_drv.h"
 #include "intel_dsi.h"
+#include "intel_hdcp.h"
+#include "intel_hdmi.h"
+#include "intel_lspcon.h"
+#include "intel_panel.h"
+#include "intel_psr.h"
 
 struct ddi_buf_trans {
 	u32 trans1;	/* balance leg enable, de-emph level */

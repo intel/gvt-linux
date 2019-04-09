@@ -567,7 +567,7 @@ static void inject_preempt_context(struct work_struct *work)
 					     preempt_work[engine->id]);
 	struct intel_guc_client *client = guc->preempt_client;
 	struct guc_stage_desc *stage_desc = __get_stage_desc(client);
-	struct intel_context *ce = intel_context_lookup(client->owner, engine);
+	struct intel_context *ce = engine->preempt_context;
 	u32 data[7];
 
 	if (!ce->ring->emit) { /* recreate upon load/resume */
@@ -650,9 +650,10 @@ static void wait_for_guc_preempt_report(struct intel_engine_cs *engine)
 	struct guc_ctx_report *report =
 		&data->preempt_ctx_report[engine->guc_id];
 
-	WARN_ON(wait_for_atomic(report->report_return_status ==
-				INTEL_GUC_REPORT_STATUS_COMPLETE,
-				GUC_PREEMPT_POSTPROCESS_DELAY_MS));
+	if (wait_for_atomic(report->report_return_status ==
+			    INTEL_GUC_REPORT_STATUS_COMPLETE,
+			    GUC_PREEMPT_POSTPROCESS_DELAY_MS))
+		DRM_ERROR("Timed out waiting for GuC preemption report\n");
 	/*
 	 * GuC is expecting that we're also going to clear the affected context
 	 * counter, let's also reset the return status to not depend on GuC
@@ -1262,10 +1263,12 @@ static void guc_interrupts_release(struct drm_i915_private *dev_priv)
 static void guc_submission_park(struct intel_engine_cs *engine)
 {
 	intel_engine_unpin_breadcrumbs_irq(engine);
+	engine->flags &= ~I915_ENGINE_NEEDS_BREADCRUMB_TASKLET;
 }
 
 static void guc_submission_unpark(struct intel_engine_cs *engine)
 {
+	engine->flags |= I915_ENGINE_NEEDS_BREADCRUMB_TASKLET;
 	intel_engine_pin_breadcrumbs_irq(engine);
 }
 

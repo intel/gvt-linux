@@ -25,22 +25,34 @@
  *
  */
 
-#include <linux/i2c.h>
-#include <linux/slab.h>
 #include <linux/export.h>
-#include <linux/types.h>
+#include <linux/i2c.h>
 #include <linux/notifier.h>
 #include <linux/reboot.h>
+#include <linux/slab.h>
+#include <linux/types.h>
 #include <asm/byteorder.h>
+
 #include <drm/drm_atomic_helper.h>
 #include <drm/drm_crtc.h>
 #include <drm/drm_dp_helper.h>
 #include <drm/drm_edid.h>
 #include <drm/drm_hdcp.h>
 #include <drm/drm_probe_helper.h>
-#include "intel_drv.h"
 #include <drm/i915_drm.h>
+
 #include "i915_drv.h"
+#include "intel_audio.h"
+#include "intel_connector.h"
+#include "intel_ddi.h"
+#include "intel_dp.h"
+#include "intel_drv.h"
+#include "intel_hdcp.h"
+#include "intel_hdmi.h"
+#include "intel_lspcon.h"
+#include "intel_lvds.h"
+#include "intel_panel.h"
+#include "intel_psr.h"
 
 #define DP_DPRX_ESI_LEN 14
 

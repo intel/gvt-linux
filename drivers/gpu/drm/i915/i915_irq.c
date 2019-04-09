@@ -28,16 +28,19 @@
 
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
 
-#include <linux/sysrq.h>
-#include <linux/slab.h>
-#include <linux/cpuidle.h>
 #include <linux/circ_buf.h>
-#include <drm/drm_irq.h>
+#include <linux/cpuidle.h>
+#include <linux/slab.h>
+#include <linux/sysrq.h>
+
 #include <drm/drm_drv.h>
+#include <drm/drm_irq.h>
 #include <drm/i915_drm.h>
+
 #include "i915_drv.h"
 #include "i915_trace.h"
 #include "intel_drv.h"
+#include "intel_psr.h"
 
 /**
  * DOC: interrupt handling
@@ -1470,7 +1473,7 @@ gen8_cs_irq_handler(struct intel_engine_cs *engine, u32 iir)
 
 	if (iir & GT_RENDER_USER_INTERRUPT) {
 		intel_engine_breadcrumbs_irq(engine);
-		tasklet |= USES_GUC_SUBMISSION(engine->i915);
+		tasklet |= intel_engine_needs_breadcrumb_tasklet(engine);
 	}
 
 	if (tasklet)

@@ -29,10 +29,11 @@
 #include <linux/sched/clock.h>
 #include <linux/sched/signal.h>
 
-#include "i915_drv.h"
 #include "i915_active.h"
+#include "i915_drv.h"
 #include "i915_globals.h"
 #include "i915_reset.h"
+#include "intel_pm.h"
 
 struct execute_cb {
 	struct list_head link;
@@ -583,11 +584,6 @@ out:
 	return kmem_cache_alloc(global.slab_requests, GFP_KERNEL);
 }
 
-static int add_timeline_barrier(struct i915_request *rq)
-{
-	return i915_request_await_active_request(rq, &rq->timeline->barrier);
-}
-
 /**
  * i915_request_alloc - allocate a request structure
  *
@@ -737,10 +733,6 @@ i915_request_alloc(struct intel_engine_cs *engine, struct i915_gem_context *ctx)
 	 */
 	rq->head = rq->ring->emit;
 
-	ret = add_timeline_barrier(rq);
-	if (ret)
-		goto err_unwind;
-
 	ret = engine->request_alloc(rq);
 	if (ret)
 		goto err_unwind;
@@ -751,7 +743,10 @@ i915_request_alloc(struct intel_engine_cs *engine, struct i915_gem_context *ctx)
 	rq->infix = rq->ring->emit; /* end of header; start of user payload */
 
 	/* Check that we didn't interrupt ourselves with a new request */
+	lockdep_assert_held(&rq->timeline->mutex);
 	GEM_BUG_ON(rq->timeline->seqno != rq->fence.seqno);
+	rq->cookie = lockdep_pin_lock(&rq->timeline->mutex);
+
 	return rq;
 
 err_unwind:
@@ -782,6 +777,12 @@ emit_semaphore_wait(struct i915_request *to,
 
 	GEM_BUG_ON(!from->timeline->has_initial_breadcrumb);
 	GEM_BUG_ON(INTEL_GEN(to->i915) < 8);
+
+	/* Just emit the first semaphore we see as request space is limited. */
+	if (to->sched.semaphores & from->engine->mask)
+		return i915_sw_fence_await_dma_fence(&to->submit,
+						     &from->fence, 0,
+						     I915_FENCE_GFP);
 
 	/* We need to pin the signaler's HWSP until we are finished reading. */
 	err = i915_timeline_read_hwsp(from, to, &hwsp_offset);
@@ -814,7 +815,8 @@ emit_semaphore_wait(struct i915_request *to,
 	*cs++ = 0;
 
 	intel_ring_advance(to, cs);
-	to->sched.flags |= I915_SCHED_HAS_SEMAPHORE;
+	to->sched.semaphores |= from->engine->mask;
+	to->sched.flags |= I915_SCHED_HAS_SEMAPHORE_CHAIN;
 	return 0;
 }
 
@@ -1063,6 +1065,8 @@ void i915_request_add(struct i915_request *request)
 		  engine->name, request->fence.context, request->fence.seqno);
 
 	lockdep_assert_held(&request->timeline->mutex);
+	lockdep_unpin_lock(&request->timeline->mutex, request->cookie);
+
 	trace_i915_request_add(request);
 
 	/*
@@ -1126,7 +1130,7 @@ void i915_request_add(struct i915_request *request)
 		 * far in the distance past over useful work, we keep a history
 		 * of any semaphore use along our dependency chain.
 		 */
-		if (!(request->sched.flags & I915_SCHED_HAS_SEMAPHORE))
+		if (!(request->sched.flags & I915_SCHED_HAS_SEMAPHORE_CHAIN))
 			attr.priority |= I915_PRIORITY_NOSEMAPHORE;
 
 		/*

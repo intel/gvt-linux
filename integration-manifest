@@ -1,0 +1,30 @@
+drm drm-fixes 9b39b013037fbfa8d4b999345d9e904d8a336fc2
+	drm/udl: add a release method and delay modeset teardown
+drm-misc drm-misc-fixes 1a07a94b47b1f528f39c3e6187b5eaf02efe44ea
+	drm/sun4i: tcon top: Fix NULL/invalid pointer dereference in sun8i_tcon_top_un/bind
+drm-intel drm-intel-fixes bef42cb2029c0ec8cd8c9e0545589d81913dec4e
+	drm/i915: Get power refs in encoder->get_power_domains()
+drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
+	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
+drm drm-next 14d2bd53a47a7e1cb3e03d00a6b952734cf90f3f
+	Merge tag 'drm-misc-next-2019-04-04' of git://anongit.freedesktop.org/drm/drm-misc into drm-next
+drm-misc drm-misc-next-fixes c34674a23d1e8674ac532bf3397333f24a41e7b2
+	drm/qxl: remove conflicting framebuffers earlier
+drm-intel drm-intel-next-fixes ca22f32a6296cbfa29de56328c8505560a18cfa8
+	drm/i915: Relax mmap VMA check
+drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
+	Linux 4.14-rc1
+drm-misc drm-misc-next 80bb8d983224337b713a93babfffedb376031034
+	drm/lima: include used header file explicitly
+drm-intel drm-intel-next-queued 174221e8491588aa9d44ebfa3242bea11eacc64f
+	drm/i915/guc: Replace preempt_client lookup with engine->preempt_context
+drm-intel drm-intel-next 28d618e9ab86f26a31af0b235ced55beb3e343c8
+	drm/i915: Update DRIVER_DATE to 20190404
+drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
+	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
+sound-upstream for-linus cae30527901d9590db0e12ace994c1d58bea87fd
+	ALSA: hda - Add two more machines to the power_save_blacklist
+sound-upstream for-next 4b81dad109ad7d7b288804fcdc6475b48f242210
+	ALSA: doc: my_chip has no element ioport
+drm-intel topic/core-for-CI b2222770c64b3ef80205c8b4ee9061222d54fd30
+	HACK: drm/i915/opregion: ICL should have opregion 2.1+ and relative rvda

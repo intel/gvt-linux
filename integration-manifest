@@ -1,0 +1,30 @@
+drm drm-fixes dc4060a5dc2557e6b5aa813bf5b73677299d62d2
+	Linux 5.1-rc5
+drm-misc drm-misc-fixes d15d9fd02575ecfada92d42f655940c4f10af842
+	drm: bridge: dw-hdmi: Fix overflow workaround for Rockchip SoCs
+drm-intel drm-intel-fixes 3f5f5d534bd40b666cf37bbeeb48bfe6c2efc1e0
+	Merge tag 'gvt-fixes-2019-04-11' of https://github.com/intel/gvt-linux into drm-intel-fixes
+drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
+	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
+drm drm-next f06ddb53096b4cddad2c530125a78a3c2a1d28a4
+	BackMerge v5.1-rc5 into drm-next
+drm-misc drm-misc-next-fixes c34674a23d1e8674ac532bf3397333f24a41e7b2
+	drm/qxl: remove conflicting framebuffers earlier
+drm-intel drm-intel-next-fixes ca22f32a6296cbfa29de56328c8505560a18cfa8
+	drm/i915: Relax mmap VMA check
+drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
+	Linux 4.14-rc1
+drm-misc drm-misc-next 4dff47c7607a7ceb9916fec179dc88e7b90f3b7c
+	drm/panfrost: Add support for 2MB page entries
+drm-intel drm-intel-next-queued c856dbc887aa5b6674a565dbe227164958103a51
+	drm/i915: Nuke drm_crtc_state and use intel_atomic_state instead
+drm-intel drm-intel-next 28d618e9ab86f26a31af0b235ced55beb3e343c8
+	drm/i915: Update DRIVER_DATE to 20190404
+drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
+	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
+sound-upstream for-linus 183ab39eb0ea9879bb68422a83e65f750f3192f0
+	ALSA: hda: Initialize power_state field properly
+sound-upstream for-next b5fd12d6c0fc64c2c2b5ae095e63824083d27151
+	ALSA: seq: Correct unlock sequence at snd_seq_client_ioctl_unlock()
+drm-intel topic/core-for-CI b573fba52f339dc4fadef7282af4a9413fd6173d
+	ICL HACK: Disable ACPI idle driver

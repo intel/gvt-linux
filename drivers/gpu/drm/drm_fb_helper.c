@@ -639,20 +639,19 @@ static struct sysrq_key_op sysrq_drm_fb_helper_restore_op = { };
 static void dpms_legacy(struct drm_fb_helper *fb_helper, int dpms_mode)
 {
 	struct drm_device *dev = fb_helper->dev;
-	struct drm_crtc *crtc;
 	struct drm_connector *connector;
+	struct drm_mode_set *modeset;
 	int i, j;
 
 	drm_modeset_lock_all(dev);
 	for (i = 0; i < fb_helper->crtc_count; i++) {
-		crtc = fb_helper->crtc_info[i].mode_set.crtc;
+		modeset = &fb_helper->crtc_info[i].mode_set;
 
-		if (!crtc->enabled)
+		if (!modeset->crtc->enabled)
 			continue;
 
-		/* Walk the connectors & encoders on this fb turning them on/off */
-		drm_fb_helper_for_each_connector(fb_helper, j) {
-			connector = fb_helper->connector_info[j]->connector;
+		for (j = 0; j < modeset->num_connectors; j++) {
+			connector = modeset->connectors[j];
 			connector->funcs->dpms(connector, dpms_mode);
 			drm_object_property_set_value(&connector->base,
 				dev->mode_config.dpms_property, dpms_mode);
@@ -934,6 +933,7 @@ struct fb_info *drm_fb_helper_alloc_fbi(struct drm_fb_helper *fb_helper)
 	}
 
 	fb_helper->fbdev = info;
+	info->skip_vt_switch = true;
 
 	return info;
 
@@ -1873,7 +1873,6 @@ static int drm_fb_helper_single_fb_probe(struct drm_fb_helper *fb_helper,
 	int crtc_count = 0;
 	int i;
 	struct drm_fb_helper_surface_size sizes;
-	int gamma_size = 0;
 	int best_depth = 0;
 
 	memset(&sizes, 0, sizeof(struct drm_fb_helper_surface_size));
@@ -1889,7 +1888,6 @@ static int drm_fb_helper_single_fb_probe(struct drm_fb_helper *fb_helper,
 	if (preferred_bpp != sizes.surface_bpp)
 		sizes.surface_depth = sizes.surface_bpp = preferred_bpp;
 
-	/* first up get a count of crtcs now in use and new min/maxes width/heights */
 	drm_fb_helper_for_each_connector(fb_helper, i) {
 		struct drm_fb_helper_connector *fb_helper_conn = fb_helper->connector_info[i];
 		struct drm_cmdline_mode *cmdline_mode;
@@ -1969,6 +1967,7 @@ static int drm_fb_helper_single_fb_probe(struct drm_fb_helper *fb_helper,
 		sizes.surface_depth = best_depth;
 	}
 
+	/* first up get a count of crtcs now in use and new min/maxes width/heights */
 	crtc_count = 0;
 	for (i = 0; i < fb_helper->crtc_count; i++) {
 		struct drm_display_mode *desired_mode;
@@ -1990,9 +1989,6 @@ static int drm_fb_helper_single_fb_probe(struct drm_fb_helper *fb_helper,
 
 		x = fb_helper->crtc_info[i].x;
 		y = fb_helper->crtc_info[i].y;
-
-		if (gamma_size == 0)
-			gamma_size = fb_helper->crtc_info[i].mode_set.crtc->gamma_size;
 
 		sizes.surface_width  = max_t(u32, desired_mode->hdisplay + x, sizes.surface_width);
 		sizes.surface_height = max_t(u32, desired_mode->vdisplay + y, sizes.surface_height);
@@ -2036,21 +2032,8 @@ static int drm_fb_helper_single_fb_probe(struct drm_fb_helper *fb_helper,
 	return 0;
 }
 
-/**
- * drm_fb_helper_fill_fix - initializes fixed fbdev information
- * @info: fbdev registered by the helper
- * @pitch: desired pitch
- * @depth: desired depth
- *
- * Helper to fill in the fixed fbdev information useful for a non-accelerated
- * fbdev emulations. Drivers which support acceleration methods which impose
- * additional constraints need to set up their own limits.
- *
- * Drivers should call this (or their equivalent setup code) from their
- * &drm_fb_helper_funcs.fb_probe callback.
- */
-void drm_fb_helper_fill_fix(struct fb_info *info, uint32_t pitch,
-			    uint32_t depth)
+static void drm_fb_helper_fill_fix(struct fb_info *info, uint32_t pitch,
+				   uint32_t depth)
 {
 	info->fix.type = FB_TYPE_PACKED_PIXELS;
 	info->fix.visual = depth == 8 ? FB_VISUAL_PSEUDOCOLOR :
@@ -2065,24 +2048,10 @@ void drm_fb_helper_fill_fix(struct fb_info *info, uint32_t pitch,
 
 	info->fix.line_length = pitch;
 }
-EXPORT_SYMBOL(drm_fb_helper_fill_fix);
 
-/**
- * drm_fb_helper_fill_var - initalizes variable fbdev information
- * @info: fbdev instance to set up
- * @fb_helper: fb helper instance to use as template
- * @fb_width: desired fb width
- * @fb_height: desired fb height
- *
- * Sets up the variable fbdev metainformation from the given fb helper instance
- * and the drm framebuffer allocated in &drm_fb_helper.fb.
- *
- * Drivers should call this (or their equivalent setup code) from their
- * &drm_fb_helper_funcs.fb_probe callback after having allocated the fbdev
- * backing storage framebuffer.
- */
-void drm_fb_helper_fill_var(struct fb_info *info, struct drm_fb_helper *fb_helper,
-			    uint32_t fb_width, uint32_t fb_height)
+static void drm_fb_helper_fill_var(struct fb_info *info,
+				   struct drm_fb_helper *fb_helper,
+				   uint32_t fb_width, uint32_t fb_height)
 {
 	struct drm_framebuffer *fb = fb_helper->fb;
 
@@ -2102,7 +2071,36 @@ void drm_fb_helper_fill_var(struct fb_info *info, struct drm_fb_helper *fb_helpe
 	info->var.xres = fb_width;
 	info->var.yres = fb_height;
 }
-EXPORT_SYMBOL(drm_fb_helper_fill_var);
+
+/**
+ * drm_fb_helper_fill_info - initializes fbdev information
+ * @info: fbdev instance to set up
+ * @fb_helper: fb helper instance to use as template
+ * @sizes: describes fbdev size and scanout surface size
+ *
+ * Sets up the variable and fixed fbdev metainformation from the given fb helper
+ * instance and the drm framebuffer allocated in &drm_fb_helper.fb.
+ *
+ * Drivers should call this (or their equivalent setup code) from their
+ * &drm_fb_helper_funcs.fb_probe callback after having allocated the fbdev
+ * backing storage framebuffer.
+ */
+void drm_fb_helper_fill_info(struct fb_info *info,
+			     struct drm_fb_helper *fb_helper,
+			     struct drm_fb_helper_surface_size *sizes)
+{
+	struct drm_framebuffer *fb = fb_helper->fb;
+
+	drm_fb_helper_fill_fix(info, fb->pitches[0], fb->format->depth);
+	drm_fb_helper_fill_var(info, fb_helper,
+			       sizes->fb_width, sizes->fb_height);
+
+	info->par = fb_helper;
+	snprintf(info->fix.id, sizeof(info->fix.id), "%sdrmfb",
+		 fb_helper->dev->driver->name);
+
+}
+EXPORT_SYMBOL(drm_fb_helper_fill_info);
 
 static int drm_fb_helper_probe_connector_modes(struct drm_fb_helper *fb_helper,
 						uint32_t maxX,
@@ -2780,9 +2778,8 @@ __drm_fb_helper_initial_config_and_unlock(struct drm_fb_helper *fb_helper,
  *
  * This function will call down into the &drm_fb_helper_funcs.fb_probe callback
  * to let the driver allocate and initialize the fbdev info structure and the
- * drm framebuffer used to back the fbdev. drm_fb_helper_fill_var() and
- * drm_fb_helper_fill_fix() are provided as helpers to setup simple default
- * values for the fbdev info structure.
+ * drm framebuffer used to back the fbdev. drm_fb_helper_fill_info() is provided
+ * as a helper to setup simple default values for the fbdev info structure.
  *
  * HANG DEBUGGING:
  *
@@ -3024,7 +3021,8 @@ static int drm_fbdev_fb_open(struct fb_info *info, int user)
 {
 	struct drm_fb_helper *fb_helper = info->par;
 
-	if (!try_module_get(fb_helper->dev->driver->fops->owner))
+	/* No need to take a ref for fbcon because it unbinds on unregister */
+	if (user && !try_module_get(fb_helper->dev->driver->fops->owner))
 		return -ENODEV;
 
 	return 0;
@@ -3034,7 +3032,8 @@ static int drm_fbdev_fb_release(struct fb_info *info, int user)
 {
 	struct drm_fb_helper *fb_helper = info->par;
 
-	module_put(fb_helper->dev->driver->fops->owner);
+	if (user)
+		module_put(fb_helper->dev->driver->fops->owner);
 
 	return 0;
 }
@@ -3149,7 +3148,6 @@ int drm_fb_helper_generic_probe(struct drm_fb_helper *fb_helper,
 	if (IS_ERR(fbi))
 		return PTR_ERR(fbi);
 
-	fbi->par = fb_helper;
 	fbi->fbops = &drm_fbdev_fb_ops;
 	fbi->screen_size = fb->height * fb->pitches[0];
 	fbi->fix.smem_len = fbi->screen_size;
@@ -3160,10 +3158,7 @@ int drm_fb_helper_generic_probe(struct drm_fb_helper *fb_helper,
 		fbi->fix.smem_start =
 			page_to_phys(virt_to_page(fbi->screen_buffer));
 #endif
-	strcpy(fbi->fix.id, "DRM emulated");
-
-	drm_fb_helper_fill_fix(fbi, fb->pitches[0], fb->format->depth);
-	drm_fb_helper_fill_var(fbi, fb_helper, sizes->fb_width, sizes->fb_height);
+	drm_fb_helper_fill_info(fbi, fb_helper, sizes);
 
 	if (fb->funcs->dirty) {
 		struct fb_ops *fbops;
@@ -3317,8 +3312,6 @@ int drm_fbdev_generic_setup(struct drm_device *dev, unsigned int preferred_bpp)
 		return ret;
 	}
 
-	drm_client_add(&fb_helper->client);
-
 	if (!preferred_bpp)
 		preferred_bpp = dev->mode_config.preferred_depth;
 	if (!preferred_bpp)
@@ -3328,6 +3321,8 @@ int drm_fbdev_generic_setup(struct drm_device *dev, unsigned int preferred_bpp)
 	ret = drm_fbdev_client_hotplug(&fb_helper->client);
 	if (ret)
 		DRM_DEV_DEBUG(dev->dev, "client hotplug ret=%d\n", ret);
+
+	drm_client_add(&fb_helper->client);
 
 	return 0;
 }

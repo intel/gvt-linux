@@ -28,16 +28,19 @@
 
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
 
-#include <linux/sysrq.h>
-#include <linux/slab.h>
-#include <linux/cpuidle.h>
 #include <linux/circ_buf.h>
-#include <drm/drm_irq.h>
+#include <linux/cpuidle.h>
+#include <linux/slab.h>
+#include <linux/sysrq.h>
+
 #include <drm/drm_drv.h>
+#include <drm/drm_irq.h>
 #include <drm/i915_drm.h>
+
 #include "i915_drv.h"
 #include "i915_trace.h"
 #include "intel_drv.h"
+#include "intel_psr.h"
 
 /**
  * DOC: interrupt handling
@@ -366,24 +369,41 @@ static i915_reg_t gen6_pm_iir(struct drm_i915_private *dev_priv)
 	return INTEL_GEN(dev_priv) >= 8 ? GEN8_GT_IIR(2) : GEN6_PMIIR;
 }
 
-static i915_reg_t gen6_pm_imr(struct drm_i915_private *dev_priv)
+static void write_pm_imr(struct drm_i915_private *dev_priv)
 {
-	if (INTEL_GEN(dev_priv) >= 11)
-		return GEN11_GPM_WGBOXPERF_INTR_MASK;
-	else if (INTEL_GEN(dev_priv) >= 8)
-		return GEN8_GT_IMR(2);
-	else
-		return GEN6_PMIMR;
+	i915_reg_t reg;
+	u32 mask = dev_priv->pm_imr;
+
+	if (INTEL_GEN(dev_priv) >= 11) {
+		reg = GEN11_GPM_WGBOXPERF_INTR_MASK;
+		/* pm is in upper half */
+		mask = mask << 16;
+	} else if (INTEL_GEN(dev_priv) >= 8) {
+		reg = GEN8_GT_IMR(2);
+	} else {
+		reg = GEN6_PMIMR;
+	}
+
+	I915_WRITE(reg, mask);
+	POSTING_READ(reg);
 }
 
-static i915_reg_t gen6_pm_ier(struct drm_i915_private *dev_priv)
+static void write_pm_ier(struct drm_i915_private *dev_priv)
 {
-	if (INTEL_GEN(dev_priv) >= 11)
-		return GEN11_GPM_WGBOXPERF_INTR_ENABLE;
-	else if (INTEL_GEN(dev_priv) >= 8)
-		return GEN8_GT_IER(2);
-	else
-		return GEN6_PMIER;
+	i915_reg_t reg;
+	u32 mask = dev_priv->pm_ier;
+
+	if (INTEL_GEN(dev_priv) >= 11) {
+		reg = GEN11_GPM_WGBOXPERF_INTR_ENABLE;
+		/* pm is in upper half */
+		mask = mask << 16;
+	} else if (INTEL_GEN(dev_priv) >= 8) {
+		reg = GEN8_GT_IER(2);
+	} else {
+		reg = GEN6_PMIER;
+	}
+
+	I915_WRITE(reg, mask);
 }
 
 /**
@@ -408,8 +428,7 @@ static void snb_update_pm_irq(struct drm_i915_private *dev_priv,
 
 	if (new_val != dev_priv->pm_imr) {
 		dev_priv->pm_imr = new_val;
-		I915_WRITE(gen6_pm_imr(dev_priv), dev_priv->pm_imr);
-		POSTING_READ(gen6_pm_imr(dev_priv));
+		write_pm_imr(dev_priv);
 	}
 }
 
@@ -450,7 +469,7 @@ static void gen6_enable_pm_irq(struct drm_i915_private *dev_priv, u32 enable_mas
 	lockdep_assert_held(&dev_priv->irq_lock);
 
 	dev_priv->pm_ier |= enable_mask;
-	I915_WRITE(gen6_pm_ier(dev_priv), dev_priv->pm_ier);
+	write_pm_ier(dev_priv);
 	gen6_unmask_pm_irq(dev_priv, enable_mask);
 	/* unmask_pm_irq provides an implicit barrier (POSTING_READ) */
 }
@@ -461,7 +480,7 @@ static void gen6_disable_pm_irq(struct drm_i915_private *dev_priv, u32 disable_m
 
 	dev_priv->pm_ier &= ~disable_mask;
 	__gen6_mask_pm_irq(dev_priv, disable_mask);
-	I915_WRITE(gen6_pm_ier(dev_priv), dev_priv->pm_ier);
+	write_pm_ier(dev_priv);
 	/* though a barrier is missing here, but don't really need a one */
 }
 
@@ -1470,7 +1489,7 @@ gen8_cs_irq_handler(struct intel_engine_cs *engine, u32 iir)
 
 	if (iir & GT_RENDER_USER_INTERRUPT) {
 		intel_engine_breadcrumbs_irq(engine);
-		tasklet |= USES_GUC_SUBMISSION(engine->i915);
+		tasklet |= intel_engine_needs_breadcrumb_tasklet(engine);
 	}
 
 	if (tasklet)
@@ -1793,6 +1812,25 @@ static void i9xx_pipe_crc_irq_handler(struct drm_i915_private *dev_priv,
 /* The RPS events need forcewake, so we add them to a work queue and mask their
  * IMR bits until the work is done. Other interrupts can be processed without
  * the work queue. */
+static void gen11_rps_irq_handler(struct drm_i915_private *i915, u32 pm_iir)
+{
+	struct intel_rps *rps = &i915->gt_pm.rps;
+	const u32 events = i915->pm_rps_events & pm_iir;
+
+	lockdep_assert_held(&i915->irq_lock);
+
+	if (unlikely(!events))
+		return;
+
+	gen6_mask_pm_irq(i915, events);
+
+	if (!rps->interrupts_enabled)
+		return;
+
+	rps->pm_iir |= events;
+	schedule_work(&rps->work);
+}
+
 static void gen6_rps_irq_handler(struct drm_i915_private *dev_priv, u32 pm_iir)
 {
 	struct intel_rps *rps = &dev_priv->gt_pm.rps;
@@ -2946,7 +2984,7 @@ gen11_other_irq_handler(struct drm_i915_private * const i915,
 			const u8 instance, const u16 iir)
 {
 	if (instance == OTHER_GTPM_INSTANCE)
-		return gen6_rps_irq_handler(i915, iir);
+		return gen11_rps_irq_handler(i915, iir);
 
 	WARN_ONCE(1, "unhandled other interrupt instance=0x%x, iir=0x%x\n",
 		  instance, iir);
@@ -3003,14 +3041,8 @@ gen11_gt_bank_handler(struct drm_i915_private * const i915,
 
 	intr_dw = raw_reg_read(regs, GEN11_GT_INTR_DW(bank));
 
-	if (unlikely(!intr_dw)) {
-		DRM_ERROR("GT_INTR_DW%u blank!\n", bank);
-		return;
-	}
-
 	for_each_set_bit(bit, &intr_dw, 32) {
-		const u32 ident = gen11_gt_engine_identity(i915,
-							   bank, bit);
+		const u32 ident = gen11_gt_engine_identity(i915, bank, bit);
 
 		gen11_gt_identity_handler(i915, ident);
 	}
@@ -4622,6 +4654,10 @@ void intel_irq_init(struct drm_i915_private *dev_priv)
 		dev_priv->pm_rps_events = (GEN6_PM_RP_UP_THRESHOLD |
 					   GEN6_PM_RP_DOWN_THRESHOLD |
 					   GEN6_PM_RP_DOWN_TIMEOUT);
+
+	/* We share the register with other engine */
+	if (INTEL_GEN(dev_priv) > 9)
+		GEM_WARN_ON(dev_priv->pm_rps_events & 0xffff0000);
 
 	rps->pm_intrmsk_mbz = 0;
 

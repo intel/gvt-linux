@@ -1,0 +1,30 @@
+drm drm-fixes 00fd14ff3017f64a9a03a08291e4be0d87bedc17
+	Merge branch 'drm-fixes-5.1' of git://people.freedesktop.org/~agd5f/linux into drm-fixes
+drm-misc drm-misc-fixes d15d9fd02575ecfada92d42f655940c4f10af842
+	drm: bridge: dw-hdmi: Fix overflow workaround for Rockchip SoCs
+drm-intel drm-intel-fixes f5c58ba18ab8ea2169670ed880e4d31ed772ad10
+	drm/i915: Restore correct bxt_ddi_phy_calc_lane_lat_optim_mask() calculation
+drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
+	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
+drm drm-next dbb92471674a48892f5e50779425e03388073ab9
+	Revert "drm: allow render capable master with DRM_AUTH ioctls"
+drm-misc drm-misc-next-fixes c34674a23d1e8674ac532bf3397333f24a41e7b2
+	drm/qxl: remove conflicting framebuffers earlier
+drm-intel drm-intel-next-fixes ca22f32a6296cbfa29de56328c8505560a18cfa8
+	drm/i915: Relax mmap VMA check
+drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
+	Linux 4.14-rc1
+drm-misc drm-misc-next debcd8f954be2b1f643e76b2400bc7c3d12b4594
+	drm/panel: simple: add lg,acx467akm-7 panel
+drm-intel drm-intel-next-queued 99534023490686ce4453c45e5cb813535b9bff95
+	drm/i915: Avoid use-after-free in reporting create.size
+drm-intel drm-intel-next ad2c467aa92e283e9e8009bb9eb29a5c6a2d1217
+	drm/i915: Update DRIVER_DATE to 20190417
+drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
+	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
+sound-upstream for-linus b26e36b7ef36a8a3a147b1609b2505f8a4ecf511
+	ALSA: hda/realtek - add two more pin configuration sets to quirk table
+sound-upstream for-next 442e321ed223d9c01a444c6f874e32fb283c17d2
+	ALSA: ps3: Remove set but not used variables 'start_vaddr' and 'pcm_index'
+drm-intel topic/core-for-CI b573fba52f339dc4fadef7282af4a9413fd6173d
+	ICL HACK: Disable ACPI idle driver

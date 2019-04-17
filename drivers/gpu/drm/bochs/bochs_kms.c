@@ -214,20 +214,9 @@ static enum drm_mode_status bochs_connector_mode_valid(struct drm_connector *con
 	return MODE_OK;
 }
 
-static struct drm_encoder *
-bochs_connector_best_encoder(struct drm_connector *connector)
-{
-	int enc_id = connector->encoder_ids[0];
-	/* pick the encoder ids */
-	if (enc_id)
-		return drm_encoder_find(connector->dev, NULL, enc_id);
-	return NULL;
-}
-
 static const struct drm_connector_helper_funcs bochs_connector_connector_helper_funcs = {
 	.get_modes = bochs_connector_get_modes,
 	.mode_valid = bochs_connector_mode_valid,
-	.best_encoder = bochs_connector_best_encoder,
 };
 
 static const struct drm_connector_funcs bochs_connector_connector_funcs = {
@@ -278,7 +267,6 @@ const struct drm_mode_config_funcs bochs_mode_funcs = {
 int bochs_kms_init(struct bochs_device *bochs)
 {
 	drm_mode_config_init(bochs->dev);
-	bochs->mode_config_initialized = true;
 
 	bochs->dev->mode_config.max_width = 8192;
 	bochs->dev->mode_config.max_height = 8192;
@@ -303,8 +291,6 @@ int bochs_kms_init(struct bochs_device *bochs)
 
 void bochs_kms_fini(struct bochs_device *bochs)
 {
-	if (bochs->mode_config_initialized) {
-		drm_mode_config_cleanup(bochs->dev);
-		bochs->mode_config_initialized = false;
-	}
+	drm_atomic_helper_shutdown(bochs->dev);
+	drm_mode_config_cleanup(bochs->dev);
 }

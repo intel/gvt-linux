@@ -88,6 +88,8 @@ void intel_connector_destroy(struct drm_connector *connector)
 
 	kfree(intel_connector->detect_edid);
 
+	intel_hdcp_cleanup(intel_connector);
+
 	if (!IS_ERR_OR_NULL(intel_connector->edid))
 		kfree(intel_connector->edid);
 
@@ -264,4 +266,12 @@ intel_attach_aspect_ratio_property(struct drm_connector *connector)
 		drm_object_attach_property(&connector->base,
 			connector->dev->mode_config.aspect_ratio_property,
 			DRM_MODE_PICTURE_ASPECT_NONE);
+}
+
+void
+intel_attach_colorspace_property(struct drm_connector *connector)
+{
+	if (!drm_mode_create_colorspace_property(connector))
+		drm_object_attach_property(&connector->base,
+					   connector->colorspace_property, 0);
 }

@@ -1,30 +1,12 @@
-drm drm-fixes 00fd14ff3017f64a9a03a08291e4be0d87bedc17
-	Merge branch 'drm-fixes-5.1' of git://people.freedesktop.org/~agd5f/linux into drm-fixes
-drm-misc drm-misc-fixes d15d9fd02575ecfada92d42f655940c4f10af842
-	drm: bridge: dw-hdmi: Fix overflow workaround for Rockchip SoCs
-drm-intel drm-intel-fixes f5c58ba18ab8ea2169670ed880e4d31ed772ad10
-	drm/i915: Restore correct bxt_ddi_phy_calc_lane_lat_optim_mask() calculation
-drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
-	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
-drm drm-next dbb92471674a48892f5e50779425e03388073ab9
-	Revert "drm: allow render capable master with DRM_AUTH ioctls"
-drm-misc drm-misc-next-fixes c34674a23d1e8674ac532bf3397333f24a41e7b2
-	drm/qxl: remove conflicting framebuffers earlier
-drm-intel drm-intel-next-fixes ca22f32a6296cbfa29de56328c8505560a18cfa8
-	drm/i915: Relax mmap VMA check
-drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
-	Linux 4.14-rc1
-drm-misc drm-misc-next debcd8f954be2b1f643e76b2400bc7c3d12b4594
-	drm/panel: simple: add lg,acx467akm-7 panel
-drm-intel drm-intel-next-queued 99534023490686ce4453c45e5cb813535b9bff95
-	drm/i915: Avoid use-after-free in reporting create.size
-drm-intel drm-intel-next ad2c467aa92e283e9e8009bb9eb29a5c6a2d1217
-	drm/i915: Update DRIVER_DATE to 20190417
-drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
-	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
-sound-upstream for-linus b26e36b7ef36a8a3a147b1609b2505f8a4ecf511
-	ALSA: hda/realtek - add two more pin configuration sets to quirk table
-sound-upstream for-next 442e321ed223d9c01a444c6f874e32fb283c17d2
-	ALSA: ps3: Remove set but not used variables 'start_vaddr' and 'pcm_index'
-drm-intel topic/core-for-CI b573fba52f339dc4fadef7282af4a9413fd6173d
-	ICL HACK: Disable ACPI idle driver
+drm-tip/drm-tip 08cf1213114f21fc0b1a17eac081a2db8c03311f
+	drm-tip: 2019y-04m-17d-21h-02m-56s UTC integration manifest
+vfio-upstream/for-linus 492855939bdb59c6f947b0b5b44af9ad82b7e38c
+	vfio/type1: Limit DMA mappings per container
+vfio-upstream/next 0cfd027be1d6def4a462cdc180c055143af24069
+	vfio_pci: Enable memory accesses before calling pci_map_rom
+origin/gvt-fixes cd7879f79f83aec4bb13f0f823f323911dc5397b
+	drm/i915/gvt: Roundup fb->height into tile's height at calucation fb->size
+origin/gvt-next 2bfc4975083ace0e5777116514c3a75e59b3dbcd
+	drm/i915/gvt: Fix incorrect mask of mmio 0x22028 in gen8/9 mmio list
+origin/gvt-next-fixes b0e8240f245e036b790f37f113032c83a8e85109
+	drm/i915/gvt: Fix kerneldoc typo for intel_vgpu_emulate_hotplug

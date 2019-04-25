@@ -14,6 +14,7 @@
 #include <linux/types.h>
 
 #include "i915_active_types.h"
+#include "intel_sseu.h"
 
 struct i915_gem_context;
 struct i915_vma;
@@ -24,18 +25,11 @@ struct intel_context_ops {
 	int (*pin)(struct intel_context *ce);
 	void (*unpin)(struct intel_context *ce);
 
+	void (*enter)(struct intel_context *ce);
+	void (*exit)(struct intel_context *ce);
+
 	void (*reset)(struct intel_context *ce);
 	void (*destroy)(struct kref *kref);
-};
-
-/*
- * Powergating configuration for a particular (context,engine).
- */
-struct intel_sseu {
-	u8 slice_mask;
-	u8 subslice_mask;
-	u8 min_eus_per_subslice;
-	u8 max_eus_per_subslice;
 };
 
 struct intel_context {
@@ -54,6 +48,8 @@ struct intel_context {
 
 	u32 *lrc_reg_state;
 	u64 lrc_desc;
+
+	unsigned int active_count; /* notionally protected by timeline->mutex */
 
 	atomic_t pin_count;
 	struct mutex pin_mutex; /* guards pinning and associated on-gpuing */

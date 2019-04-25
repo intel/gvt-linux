@@ -27,9 +27,10 @@
 
 #include "i915_gem_context_types.h"
 
+#include "gt/intel_context.h"
+
 #include "i915_gem.h"
 #include "i915_scheduler.h"
-#include "intel_context.h"
 #include "intel_device_info.h"
 
 struct drm_device;
@@ -139,10 +140,6 @@ void i915_gem_contexts_fini(struct drm_i915_private *dev_priv);
 int i915_gem_context_open(struct drm_i915_private *i915,
 			  struct drm_file *file);
 void i915_gem_context_close(struct drm_file *file);
-
-int i915_switch_context(struct i915_request *rq);
-int i915_gem_switch_to_kernel_context(struct drm_i915_private *i915,
-				      intel_engine_mask_t engine_mask);
 
 void i915_gem_context_release(struct kref *ctx_ref);
 struct i915_gem_context *

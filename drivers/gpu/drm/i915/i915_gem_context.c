@@ -86,13 +86,16 @@
  */
 
 #include <linux/log2.h>
+
 #include <drm/i915_drm.h>
+
+#include "gt/intel_lrc_reg.h"
+#include "gt/intel_workarounds.h"
+
 #include "i915_drv.h"
 #include "i915_globals.h"
 #include "i915_trace.h"
 #include "i915_user_extensions.h"
-#include "intel_lrc_reg.h"
-#include "intel_workarounds.h"
 
 #define I915_CONTEXT_CREATE_FLAGS_SINGLE_TIMELINE (1 << 1)
 #define I915_CONTEXT_PARAM_VM 0x9
@@ -821,26 +824,6 @@ int i915_gem_vm_destroy_ioctl(struct drm_device *dev, void *data,
 	return 0;
 }
 
-static struct i915_request *
-last_request_on_engine(struct i915_timeline *timeline,
-		       struct intel_engine_cs *engine)
-{
-	struct i915_request *rq;
-
-	GEM_BUG_ON(timeline == &engine->timeline);
-
-	rq = i915_active_request_raw(&timeline->last_request,
-				     &engine->i915->drm.struct_mutex);
-	if (rq && rq->engine->mask & engine->mask) {
-		GEM_TRACE("last request on engine %s: %llx:%llu\n",
-			  engine->name, rq->fence.context, rq->fence.seqno);
-		GEM_BUG_ON(rq->timeline != timeline);
-		return rq;
-	}
-
-	return NULL;
-}
-
 struct context_barrier_task {
 	struct i915_active base;
 	void (*task)(void *data);
@@ -868,7 +851,6 @@ static int context_barrier_task(struct i915_gem_context *ctx,
 	struct drm_i915_private *i915 = ctx->i915;
 	struct context_barrier_task *cb;
 	struct intel_context *ce, *next;
-	intel_wakeref_t wakeref;
 	int err = 0;
 
 	lockdep_assert_held(&i915->drm.struct_mutex);
@@ -881,7 +863,6 @@ static int context_barrier_task(struct i915_gem_context *ctx,
 	i915_active_init(i915, &cb->base, cb_retire);
 	i915_active_acquire(&cb->base);
 
-	wakeref = intel_runtime_pm_get(i915);
 	rbtree_postorder_for_each_entry_safe(ce, next, &ctx->hw_contexts, node) {
 		struct intel_engine_cs *engine = ce->engine;
 		struct i915_request *rq;
@@ -911,7 +892,6 @@ static int context_barrier_task(struct i915_gem_context *ctx,
 		if (err)
 			break;
 	}
-	intel_runtime_pm_put(i915, wakeref);
 
 	cb->task = err ? NULL : task; /* caller needs to unwind instead */
 	cb->data = data;
@@ -919,54 +899,6 @@ static int context_barrier_task(struct i915_gem_context *ctx,
 	i915_active_release(&cb->base);
 
 	return err;
-}
-
-int i915_gem_switch_to_kernel_context(struct drm_i915_private *i915,
-				      intel_engine_mask_t mask)
-{
-	struct intel_engine_cs *engine;
-
-	GEM_TRACE("awake?=%s\n", yesno(i915->gt.awake));
-
-	lockdep_assert_held(&i915->drm.struct_mutex);
-	GEM_BUG_ON(!i915->kernel_context);
-
-	/* Inoperable, so presume the GPU is safely pointing into the void! */
-	if (i915_terminally_wedged(i915))
-		return 0;
-
-	for_each_engine_masked(engine, i915, mask, mask) {
-		struct intel_ring *ring;
-		struct i915_request *rq;
-
-		rq = i915_request_alloc(engine, i915->kernel_context);
-		if (IS_ERR(rq))
-			return PTR_ERR(rq);
-
-		/* Queue this switch after all other activity */
-		list_for_each_entry(ring, &i915->gt.active_rings, active_link) {
-			struct i915_request *prev;
-
-			prev = last_request_on_engine(ring->timeline, engine);
-			if (!prev)
-				continue;
-
-			if (prev->gem_context == i915->kernel_context)
-				continue;
-
-			GEM_TRACE("add barrier on %s for %llx:%lld\n",
-				  engine->name,
-				  prev->fence.context,
-				  prev->fence.seqno);
-			i915_sw_fence_await_sw_fence_gfp(&rq->submit,
-							 &prev->submit,
-							 I915_FENCE_GFP);
-		}
-
-		i915_request_add(rq);
-	}
-
-	return 0;
 }
 
 static int get_ppgtt(struct drm_i915_file_private *file_priv,
@@ -1156,7 +1088,7 @@ static int gen8_emit_rpcs_config(struct i915_request *rq,
 	*cs++ = MI_STORE_DWORD_IMM_GEN4 | MI_USE_GGTT;
 	*cs++ = lower_32_bits(offset);
 	*cs++ = upper_32_bits(offset);
-	*cs++ = gen8_make_rpcs(rq->i915, &sseu);
+	*cs++ = intel_sseu_make_rpcs(rq->i915, &sseu);
 
 	intel_ring_advance(rq, cs);
 
@@ -1166,9 +1098,7 @@ static int gen8_emit_rpcs_config(struct i915_request *rq,
 static int
 gen8_modify_rpcs(struct intel_context *ce, struct intel_sseu sseu)
 {
-	struct drm_i915_private *i915 = ce->engine->i915;
 	struct i915_request *rq;
-	intel_wakeref_t wakeref;
 	int ret;
 
 	lockdep_assert_held(&ce->pin_mutex);
@@ -1182,14 +1112,9 @@ gen8_modify_rpcs(struct intel_context *ce, struct intel_sseu sseu)
 	if (!intel_context_is_pinned(ce))
 		return 0;
 
-	/* Submitting requests etc needs the hw awake. */
-	wakeref = intel_runtime_pm_get(i915);
-
-	rq = i915_request_alloc(ce->engine, i915->kernel_context);
-	if (IS_ERR(rq)) {
-		ret = PTR_ERR(rq);
-		goto out_put;
-	}
+	rq = i915_request_create(ce->engine->kernel_context);
+	if (IS_ERR(rq))
+		return PTR_ERR(rq);
 
 	/* Queue this switch after all other activity by this context. */
 	ret = i915_active_request_set(&ce->ring->timeline->last_request, rq);
@@ -1213,9 +1138,6 @@ gen8_modify_rpcs(struct intel_context *ce, struct intel_sseu sseu)
 
 out_add:
 	i915_request_add(rq);
-out_put:
-	intel_runtime_pm_put(i915, wakeref);
-
 	return ret;
 }
 

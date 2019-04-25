@@ -195,6 +195,8 @@
 #include <linux/sizes.h>
 #include <linux/uuid.h>
 
+#include "gt/intel_lrc_reg.h"
+
 #include "i915_drv.h"
 #include "i915_oa_hsw.h"
 #include "i915_oa_bdw.h"
@@ -210,7 +212,6 @@
 #include "i915_oa_cflgt3.h"
 #include "i915_oa_cnl.h"
 #include "i915_oa_icl.h"
-#include "intel_lrc_reg.h"
 
 /* HW requires this to be a power of two, between 128k and 16M, though driver
  * is currently generally designed assuming the largest 16M size is used such
@@ -1679,7 +1680,7 @@ gen8_update_reg_state_unlocked(struct intel_context *ce,
 
 	CTX_REG(reg_state,
 		CTX_R_PWR_CLK_STATE, GEN8_R_PWR_CLK_STATE,
-		gen8_make_rpcs(i915, &ce->sseu));
+		intel_sseu_make_rpcs(i915, &ce->sseu));
 }
 
 /*
@@ -1761,7 +1762,7 @@ static int gen8_configure_all_contexts(struct drm_i915_private *dev_priv,
 	 * Apply the configuration by doing one context restore of the edited
 	 * context image.
 	 */
-	rq = i915_request_alloc(engine, dev_priv->kernel_context);
+	rq = i915_request_create(engine->kernel_context);
 	if (IS_ERR(rq))
 		return PTR_ERR(rq);
 

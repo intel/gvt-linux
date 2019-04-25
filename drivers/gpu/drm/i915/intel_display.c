@@ -46,7 +46,6 @@
 
 #include "i915_drv.h"
 #include "i915_gem_clflush.h"
-#include "i915_reset.h"
 #include "i915_trace.h"
 #include "intel_atomic_plane.h"
 #include "intel_color.h"
@@ -476,6 +475,7 @@ static const struct intel_limit intel_limits_bxt = {
 	.p2 = { .p2_slow = 1, .p2_fast = 20 },
 };
 
+/* WA Display #0827: Gen9:all */
 static void
 skl_wa_827(struct drm_i915_private *dev_priv, int pipe, bool enable)
 {
@@ -487,6 +487,19 @@ skl_wa_827(struct drm_i915_private *dev_priv, int pipe, bool enable)
 		I915_WRITE(CLKGATE_DIS_PSL(pipe),
 			   I915_READ(CLKGATE_DIS_PSL(pipe)) &
 			   ~(DUPS1_GATING_DIS | DUPS2_GATING_DIS));
+}
+
+/* Wa_2006604312:icl */
+static void
+icl_wa_scalerclkgating(struct drm_i915_private *dev_priv, enum pipe pipe,
+		       bool enable)
+{
+	if (enable)
+		I915_WRITE(CLKGATE_DIS_PSL(pipe),
+			   I915_READ(CLKGATE_DIS_PSL(pipe)) | DPFR_GATING_DIS);
+	else
+		I915_WRITE(CLKGATE_DIS_PSL(pipe),
+			   I915_READ(CLKGATE_DIS_PSL(pipe)) & ~DPFR_GATING_DIS);
 }
 
 static bool
@@ -2964,41 +2977,55 @@ static int skl_max_plane_width(const struct drm_framebuffer *fb,
 	switch (fb->modifier) {
 	case DRM_FORMAT_MOD_LINEAR:
 	case I915_FORMAT_MOD_X_TILED:
-		switch (cpp) {
-		case 8:
-			return 4096;
-		case 4:
-		case 2:
-		case 1:
-			return 8192;
-		default:
-			MISSING_CASE(cpp);
-			break;
-		}
-		break;
+		return 4096;
 	case I915_FORMAT_MOD_Y_TILED_CCS:
 	case I915_FORMAT_MOD_Yf_TILED_CCS:
 		/* FIXME AUX plane? */
 	case I915_FORMAT_MOD_Y_TILED:
 	case I915_FORMAT_MOD_Yf_TILED:
-		switch (cpp) {
-		case 8:
+		if (cpp == 8)
 			return 2048;
-		case 4:
+		else
 			return 4096;
-		case 2:
-		case 1:
-			return 8192;
-		default:
-			MISSING_CASE(cpp);
-			break;
-		}
-		break;
 	default:
 		MISSING_CASE(fb->modifier);
+		return 2048;
 	}
+}
 
-	return 2048;
+static int glk_max_plane_width(const struct drm_framebuffer *fb,
+			       int color_plane,
+			       unsigned int rotation)
+{
+	int cpp = fb->format->cpp[color_plane];
+
+	switch (fb->modifier) {
+	case DRM_FORMAT_MOD_LINEAR:
+	case I915_FORMAT_MOD_X_TILED:
+		if (cpp == 8)
+			return 4096;
+		else
+			return 5120;
+	case I915_FORMAT_MOD_Y_TILED_CCS:
+	case I915_FORMAT_MOD_Yf_TILED_CCS:
+		/* FIXME AUX plane? */
+	case I915_FORMAT_MOD_Y_TILED:
+	case I915_FORMAT_MOD_Yf_TILED:
+		if (cpp == 8)
+			return 2048;
+		else
+			return 5120;
+	default:
+		MISSING_CASE(fb->modifier);
+		return 2048;
+	}
+}
+
+static int icl_max_plane_width(const struct drm_framebuffer *fb,
+			       int color_plane,
+			       unsigned int rotation)
+{
+	return 5120;
 }
 
 static bool skl_check_main_ccs_coordinates(struct intel_plane_state *plane_state,
@@ -3041,15 +3068,23 @@ static bool skl_check_main_ccs_coordinates(struct intel_plane_state *plane_state
 
 static int skl_check_main_surface(struct intel_plane_state *plane_state)
 {
+	struct drm_i915_private *dev_priv = to_i915(plane_state->base.plane->dev);
 	const struct drm_framebuffer *fb = plane_state->base.fb;
 	unsigned int rotation = plane_state->base.rotation;
 	int x = plane_state->base.src.x1 >> 16;
 	int y = plane_state->base.src.y1 >> 16;
 	int w = drm_rect_width(&plane_state->base.src) >> 16;
 	int h = drm_rect_height(&plane_state->base.src) >> 16;
-	int max_width = skl_max_plane_width(fb, 0, rotation);
+	int max_width;
 	int max_height = 4096;
 	u32 alignment, offset, aux_offset = plane_state->color_plane[1].offset;
+
+	if (INTEL_GEN(dev_priv) >= 11)
+		max_width = icl_max_plane_width(fb, 0, rotation);
+	else if (INTEL_GEN(dev_priv) >= 10 || IS_GEMINILAKE(dev_priv))
+		max_width = glk_max_plane_width(fb, 0, rotation);
+	else
+		max_width = skl_max_plane_width(fb, 0, rotation);
 
 	if (w > max_width || h > max_height) {
 		DRM_DEBUG_KMS("requested Y/RGB source size %dx%d too big (limit %dx%d)\n",
@@ -5505,6 +5540,16 @@ static bool needs_nv12_wa(struct drm_i915_private *dev_priv,
 	return false;
 }
 
+static bool needs_scalerclk_wa(struct drm_i915_private *dev_priv,
+			       const struct intel_crtc_state *crtc_state)
+{
+	/* Wa_2006604312:icl */
+	if (crtc_state->scaler_state.scaler_users > 0 && IS_ICELAKE(dev_priv))
+		return true;
+
+	return false;
+}
+
 static void intel_post_plane_update(struct intel_crtc_state *old_crtc_state)
 {
 	struct intel_crtc *crtc = to_intel_crtc(old_crtc_state->base.crtc);
@@ -5538,11 +5583,13 @@ static void intel_post_plane_update(struct intel_crtc_state *old_crtc_state)
 			intel_post_enable_primary(&crtc->base, pipe_config);
 	}
 
-	/* Display WA 827 */
 	if (needs_nv12_wa(dev_priv, old_crtc_state) &&
-	    !needs_nv12_wa(dev_priv, pipe_config)) {
+	    !needs_nv12_wa(dev_priv, pipe_config))
 		skl_wa_827(dev_priv, crtc->pipe, false);
-	}
+
+	if (needs_scalerclk_wa(dev_priv, old_crtc_state) &&
+	    !needs_scalerclk_wa(dev_priv, pipe_config))
+		icl_wa_scalerclkgating(dev_priv, crtc->pipe, false);
 }
 
 static void intel_pre_plane_update(struct intel_crtc_state *old_crtc_state,
@@ -5579,9 +5626,13 @@ static void intel_pre_plane_update(struct intel_crtc_state *old_crtc_state,
 
 	/* Display WA 827 */
 	if (!needs_nv12_wa(dev_priv, old_crtc_state) &&
-	    needs_nv12_wa(dev_priv, pipe_config)) {
+	    needs_nv12_wa(dev_priv, pipe_config))
 		skl_wa_827(dev_priv, crtc->pipe, true);
-	}
+
+	/* Wa_2006604312:icl */
+	if (!needs_scalerclk_wa(dev_priv, old_crtc_state) &&
+	    needs_scalerclk_wa(dev_priv, pipe_config))
+		icl_wa_scalerclkgating(dev_priv, crtc->pipe, true);
 
 	/*
 	 * Vblank time updates from the shadow to live plane control register

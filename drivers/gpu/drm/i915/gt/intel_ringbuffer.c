@@ -33,9 +33,8 @@
 
 #include "i915_drv.h"
 #include "i915_gem_render_state.h"
-#include "i915_reset.h"
 #include "i915_trace.h"
-#include "intel_drv.h"
+#include "intel_reset.h"
 #include "intel_workarounds.h"
 
 /* Rough estimate of the typical request size, performing a flush,
@@ -638,11 +637,14 @@ static bool stop_ring(struct intel_engine_cs *engine)
 	return (ENGINE_READ(engine, RING_HEAD) & HEAD_ADDR) == 0;
 }
 
-static int init_ring_common(struct intel_engine_cs *engine)
+static int xcs_resume(struct intel_engine_cs *engine)
 {
 	struct drm_i915_private *dev_priv = engine->i915;
 	struct intel_ring *ring = engine->buffer;
 	int ret = 0;
+
+	GEM_TRACE("%s: ring:{HEAD:%04x, TAIL:%04x}\n",
+		  engine->name, ring->head, ring->tail);
 
 	intel_uncore_forcewake_get(engine->uncore, FORCEWAKE_ALL);
 
@@ -828,12 +830,9 @@ static int intel_rcs_ctx_init(struct i915_request *rq)
 	return 0;
 }
 
-static int init_render_ring(struct intel_engine_cs *engine)
+static int rcs_resume(struct intel_engine_cs *engine)
 {
 	struct drm_i915_private *dev_priv = engine->i915;
-	int ret = init_ring_common(engine);
-	if (ret)
-		return ret;
 
 	/* WaTimedSingleVertexDispatch:cl,bw,ctg,elk,ilk,snb */
 	if (IS_GEN_RANGE(dev_priv, 4, 6))
@@ -873,10 +872,7 @@ static int init_render_ring(struct intel_engine_cs *engine)
 	if (IS_GEN_RANGE(dev_priv, 6, 7))
 		I915_WRITE(INSTPM, _MASKED_BIT_ENABLE(INSTPM_FORCE_ORDERING));
 
-	if (INTEL_GEN(dev_priv) >= 6)
-		ENGINE_WRITE(engine, RING_IMR, ~engine->irq_keep_mask);
-
-	return 0;
+	return xcs_resume(engine);
 }
 
 static void cancel_requests(struct intel_engine_cs *engine)
@@ -1517,6 +1513,9 @@ static const struct intel_context_ops ring_context_ops = {
 	.pin = ring_context_pin,
 	.unpin = ring_context_unpin,
 
+	.enter = intel_context_enter_engine,
+	.exit = intel_context_exit_engine,
+
 	.reset = ring_context_reset,
 	.destroy = ring_context_destroy,
 };
@@ -1776,7 +1775,6 @@ static int switch_context(struct i915_request *rq)
 	u32 hw_flags = 0;
 	int ret, i;
 
-	lockdep_assert_held(&rq->i915->drm.struct_mutex);
 	GEM_BUG_ON(HAS_EXECLISTS(rq->i915));
 
 	if (ppgtt) {
@@ -1905,8 +1903,6 @@ static noinline int wait_for_space(struct intel_ring *ring, unsigned int bytes)
 {
 	struct i915_request *target;
 	long timeout;
-
-	lockdep_assert_held(&ring->vma->vm->i915->drm.struct_mutex);
 
 	if (intel_ring_update_space(ring) >= bytes)
 		return 0;
@@ -2208,7 +2204,7 @@ static void intel_ring_default_vfuncs(struct drm_i915_private *dev_priv,
 
 	intel_ring_init_irq(dev_priv, engine);
 
-	engine->init_hw = init_ring_common;
+	engine->resume = xcs_resume;
 	engine->reset.prepare = reset_prepare;
 	engine->reset.reset = reset_ring;
 	engine->reset.finish = reset_finish;
@@ -2270,7 +2266,7 @@ int intel_init_render_ring_buffer(struct intel_engine_cs *engine)
 	if (IS_HASWELL(dev_priv))
 		engine->emit_bb_start = hsw_emit_bb_start;
 
-	engine->init_hw = init_render_ring;
+	engine->resume = rcs_resume;
 
 	ret = intel_init_ring_buffer(engine);
 	if (ret)

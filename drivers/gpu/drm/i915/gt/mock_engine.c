@@ -22,8 +22,12 @@
  *
  */
 
+#include "i915_drv.h"
+#include "intel_context.h"
+#include "intel_engine_pm.h"
+
 #include "mock_engine.h"
-#include "mock_request.h"
+#include "selftests/mock_request.h"
 
 struct mock_ring {
 	struct intel_ring base;
@@ -154,6 +158,9 @@ static const struct intel_context_ops mock_context_ops = {
 	.pin = mock_context_pin,
 	.unpin = mock_context_unpin,
 
+	.enter = intel_context_enter_engine,
+	.exit = intel_context_exit_engine,
+
 	.destroy = mock_context_destroy,
 };
 
@@ -262,14 +269,17 @@ struct intel_engine_cs *mock_engine(struct drm_i915_private *i915,
 	i915_timeline_set_subclass(&engine->base.timeline, TIMELINE_ENGINE);
 
 	intel_engine_init_breadcrumbs(&engine->base);
+	intel_engine_init_execlists(&engine->base);
+	intel_engine_init__pm(&engine->base);
 
 	/* fake hw queue */
 	spin_lock_init(&engine->hw_lock);
 	timer_setup(&engine->hw_delay, hw_delay_complete, 0);
 	INIT_LIST_HEAD(&engine->hw_queue);
 
-	if (pin_context(i915->kernel_context, &engine->base,
-			&engine->base.kernel_context))
+	engine->base.kernel_context =
+		intel_context_pin(i915->kernel_context, &engine->base);
+	if (IS_ERR(engine->base.kernel_context))
 		goto err_breadcrumbs;
 
 	return &engine->base;

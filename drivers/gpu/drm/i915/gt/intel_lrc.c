@@ -133,13 +133,12 @@
  */
 #include <linux/interrupt.h>
 
-#include <drm/i915_drm.h>
 #include "i915_drv.h"
 #include "i915_gem_render_state.h"
-#include "i915_reset.h"
 #include "i915_vgpu.h"
 #include "intel_lrc_reg.h"
 #include "intel_mocs.h"
+#include "intel_reset.h"
 #include "intel_workarounds.h"
 
 #define RING_EXECLIST_QFULL		(1 << 0x2)
@@ -1232,7 +1231,7 @@ __execlists_update_reg_state(struct intel_context *ce,
 	/* RPCS */
 	if (engine->class == RENDER_CLASS)
 		regs[CTX_R_PWR_CLK_STATE + 1] =
-			gen8_make_rpcs(engine->i915, &ce->sseu);
+			intel_sseu_make_rpcs(engine->i915, &ce->sseu);
 }
 
 static int
@@ -1315,6 +1314,9 @@ static void execlists_context_reset(struct intel_context *ce)
 static const struct intel_context_ops execlists_context_ops = {
 	.pin = execlists_context_pin,
 	.unpin = execlists_context_unpin,
+
+	.enter = intel_context_enter_engine,
+	.exit = intel_context_exit_engine,
 
 	.reset = execlists_context_reset,
 	.destroy = execlists_context_destroy,
@@ -1787,7 +1789,7 @@ static bool unexpected_starting_state(struct intel_engine_cs *engine)
 	return unexpected;
 }
 
-static int gen8_init_common_ring(struct intel_engine_cs *engine)
+static int execlists_resume(struct intel_engine_cs *engine)
 {
 	intel_engine_apply_workarounds(engine);
 	intel_engine_apply_whitelist(engine);
@@ -1820,7 +1822,7 @@ static void execlists_reset_prepare(struct intel_engine_cs *engine)
 	 * completed the reset in i915_gem_reset_finish(). If a request
 	 * is completed by one engine, it may then queue a request
 	 * to a second via its execlists->tasklet *just* as we are
-	 * calling engine->init_hw() and also writing the ELSP.
+	 * calling engine->resume() and also writing the ELSP.
 	 * Turning off the execlists->tasklet until the reset is over
 	 * prevents the race.
 	 */
@@ -2389,7 +2391,7 @@ static void
 logical_ring_default_vfuncs(struct intel_engine_cs *engine)
 {
 	/* Default vfuncs which can be overriden by each engine. */
-	engine->init_hw = gen8_init_common_ring;
+	engine->resume = execlists_resume;
 
 	engine->reset.prepare = execlists_reset_prepare;
 	engine->reset.reset = execlists_reset;
@@ -2549,138 +2551,6 @@ int logical_xcs_ring_init(struct intel_engine_cs *engine)
 		return err;
 
 	return logical_ring_init(engine);
-}
-
-u32 gen8_make_rpcs(struct drm_i915_private *i915, struct intel_sseu *req_sseu)
-{
-	const struct sseu_dev_info *sseu = &RUNTIME_INFO(i915)->sseu;
-	bool subslice_pg = sseu->has_subslice_pg;
-	struct intel_sseu ctx_sseu;
-	u8 slices, subslices;
-	u32 rpcs = 0;
-
-	/*
-	 * No explicit RPCS request is needed to ensure full
-	 * slice/subslice/EU enablement prior to Gen9.
-	*/
-	if (INTEL_GEN(i915) < 9)
-		return 0;
-
-	/*
-	 * If i915/perf is active, we want a stable powergating configuration
-	 * on the system.
-	 *
-	 * We could choose full enablement, but on ICL we know there are use
-	 * cases which disable slices for functional, apart for performance
-	 * reasons. So in this case we select a known stable subset.
-	 */
-	if (!i915->perf.oa.exclusive_stream) {
-		ctx_sseu = *req_sseu;
-	} else {
-		ctx_sseu = intel_device_default_sseu(i915);
-
-		if (IS_GEN(i915, 11)) {
-			/*
-			 * We only need subslice count so it doesn't matter
-			 * which ones we select - just turn off low bits in the
-			 * amount of half of all available subslices per slice.
-			 */
-			ctx_sseu.subslice_mask =
-				~(~0 << (hweight8(ctx_sseu.subslice_mask) / 2));
-			ctx_sseu.slice_mask = 0x1;
-		}
-	}
-
-	slices = hweight8(ctx_sseu.slice_mask);
-	subslices = hweight8(ctx_sseu.subslice_mask);
-
-	/*
-	 * Since the SScount bitfield in GEN8_R_PWR_CLK_STATE is only three bits
-	 * wide and Icelake has up to eight subslices, specfial programming is
-	 * needed in order to correctly enable all subslices.
-	 *
-	 * According to documentation software must consider the configuration
-	 * as 2x4x8 and hardware will translate this to 1x8x8.
-	 *
-	 * Furthemore, even though SScount is three bits, maximum documented
-	 * value for it is four. From this some rules/restrictions follow:
-	 *
-	 * 1.
-	 * If enabled subslice count is greater than four, two whole slices must
-	 * be enabled instead.
-	 *
-	 * 2.
-	 * When more than one slice is enabled, hardware ignores the subslice
-	 * count altogether.
-	 *
-	 * From these restrictions it follows that it is not possible to enable
-	 * a count of subslices between the SScount maximum of four restriction,
-	 * and the maximum available number on a particular SKU. Either all
-	 * subslices are enabled, or a count between one and four on the first
-	 * slice.
-	 */
-	if (IS_GEN(i915, 11) &&
-	    slices == 1 &&
-	    subslices > min_t(u8, 4, hweight8(sseu->subslice_mask[0]) / 2)) {
-		GEM_BUG_ON(subslices & 1);
-
-		subslice_pg = false;
-		slices *= 2;
-	}
-
-	/*
-	 * Starting in Gen9, render power gating can leave
-	 * slice/subslice/EU in a partially enabled state. We
-	 * must make an explicit request through RPCS for full
-	 * enablement.
-	*/
-	if (sseu->has_slice_pg) {
-		u32 mask, val = slices;
-
-		if (INTEL_GEN(i915) >= 11) {
-			mask = GEN11_RPCS_S_CNT_MASK;
-			val <<= GEN11_RPCS_S_CNT_SHIFT;
-		} else {
-			mask = GEN8_RPCS_S_CNT_MASK;
-			val <<= GEN8_RPCS_S_CNT_SHIFT;
-		}
-
-		GEM_BUG_ON(val & ~mask);
-		val &= mask;
-
-		rpcs |= GEN8_RPCS_ENABLE | GEN8_RPCS_S_CNT_ENABLE | val;
-	}
-
-	if (subslice_pg) {
-		u32 val = subslices;
-
-		val <<= GEN8_RPCS_SS_CNT_SHIFT;
-
-		GEM_BUG_ON(val & ~GEN8_RPCS_SS_CNT_MASK);
-		val &= GEN8_RPCS_SS_CNT_MASK;
-
-		rpcs |= GEN8_RPCS_ENABLE | GEN8_RPCS_SS_CNT_ENABLE | val;
-	}
-
-	if (sseu->has_eu_pg) {
-		u32 val;
-
-		val = ctx_sseu.min_eus_per_subslice << GEN8_RPCS_EU_MIN_SHIFT;
-		GEM_BUG_ON(val & ~GEN8_RPCS_EU_MIN_MASK);
-		val &= GEN8_RPCS_EU_MIN_MASK;
-
-		rpcs |= val;
-
-		val = ctx_sseu.max_eus_per_subslice << GEN8_RPCS_EU_MAX_SHIFT;
-		GEM_BUG_ON(val & ~GEN8_RPCS_EU_MAX_MASK);
-		val &= GEN8_RPCS_EU_MAX_MASK;
-
-		rpcs |= val;
-
-		rpcs |= GEN8_RPCS_ENABLE;
-	}
-
-	return rpcs;
 }
 
 static u32 intel_lr_indirect_ctx_offset(struct intel_engine_cs *engine)
@@ -3037,5 +2907,5 @@ void intel_lr_context_reset(struct intel_engine_cs *engine,
 }
 
 #if IS_ENABLED(CONFIG_DRM_I915_SELFTEST)
-#include "selftests/intel_lrc.c"
+#include "selftest_lrc.c"
 #endif

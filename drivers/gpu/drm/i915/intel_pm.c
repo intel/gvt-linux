@@ -7013,8 +7013,10 @@ static bool sanitize_rc6(struct drm_i915_private *i915)
 	struct intel_device_info *info = mkwrite_device_info(i915);
 
 	/* Powersaving is controlled by the host when inside a VM */
-	if (intel_vgpu_active(i915))
+	if (intel_vgpu_active(i915)) {
 		info->has_rc6 = 0;
+		info->has_rps = false;
+	}
 
 	if (info->has_rc6 &&
 	    IS_GEN9_LP(i915) && !bxt_check_bios_rc6_setup(i915)) {
@@ -8528,17 +8530,8 @@ void intel_init_gt_powersave(struct drm_i915_private *dev_priv)
 		gen6_init_rps_frequencies(dev_priv);
 
 	/* Derive initial user preferences/limits from the hardware limits */
-	rps->idle_freq = rps->min_freq;
-	rps->cur_freq = rps->idle_freq;
-
 	rps->max_freq_softlimit = rps->max_freq;
 	rps->min_freq_softlimit = rps->min_freq;
-
-	if (IS_HASWELL(dev_priv) || IS_BROADWELL(dev_priv))
-		rps->min_freq_softlimit =
-			max_t(int,
-			      rps->efficient_freq,
-			      intel_freq_opcode(dev_priv, 450));
 
 	/* After setting max-softlimit, find the overclock max freq */
 	if (IS_GEN(dev_priv, 6) ||
@@ -8556,6 +8549,8 @@ void intel_init_gt_powersave(struct drm_i915_private *dev_priv)
 
 	/* Finally allow us to boost to max by default */
 	rps->boost_freq = rps->max_freq;
+	rps->idle_freq = rps->min_freq;
+	rps->cur_freq = rps->idle_freq;
 
 	mutex_unlock(&dev_priv->pcu_lock);
 }
@@ -8723,7 +8718,8 @@ void intel_enable_gt_powersave(struct drm_i915_private *dev_priv)
 
 	if (HAS_RC6(dev_priv))
 		intel_enable_rc6(dev_priv);
-	intel_enable_rps(dev_priv);
+	if (HAS_RPS(dev_priv))
+		intel_enable_rps(dev_priv);
 	if (HAS_LLC(dev_priv))
 		intel_enable_llc_pstate(dev_priv);
 

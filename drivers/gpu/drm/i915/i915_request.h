@@ -240,6 +240,13 @@ static inline bool dma_fence_is_i915(const struct dma_fence *fence)
 }
 
 struct i915_request * __must_check
+__i915_request_create(struct intel_context *ce, gfp_t gfp);
+struct i915_request * __must_check
+i915_request_create(struct intel_context *ce);
+
+struct i915_request *__i915_request_commit(struct i915_request *request);
+
+struct i915_request * __must_check
 i915_request_alloc(struct intel_engine_cs *engine,
 		   struct i915_gem_context *ctx);
 void i915_request_retire_upto(struct i915_request *rq);
@@ -418,6 +425,6 @@ static inline void i915_request_mark_complete(struct i915_request *rq)
 	rq->hwsp_seqno = (u32 *)&rq->fence.seqno; /* decouple from HWSP */
 }
 
-void i915_retire_requests(struct drm_i915_private *i915);
+bool i915_retire_requests(struct drm_i915_private *i915);
 
 #endif /* I915_REQUEST_H */

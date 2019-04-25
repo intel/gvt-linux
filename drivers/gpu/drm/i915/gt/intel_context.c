@@ -7,8 +7,10 @@
 #include "i915_drv.h"
 #include "i915_gem_context.h"
 #include "i915_globals.h"
+
 #include "intel_context.h"
-#include "intel_ringbuffer.h"
+#include "intel_engine.h"
+#include "intel_engine_pm.h"
 
 static struct i915_global_context {
 	struct i915_global base;
@@ -161,7 +163,11 @@ intel_context_pin(struct i915_gem_context *ctx,
 		return ERR_PTR(-EINTR);
 
 	if (likely(!atomic_read(&ce->pin_count))) {
-		err = ce->ops->pin(ce);
+		intel_wakeref_t wakeref;
+
+		err = 0;
+		with_intel_runtime_pm(ce->engine->i915, wakeref)
+			err = ce->ops->pin(ce);
 		if (err)
 			goto err;
 
@@ -230,14 +236,12 @@ intel_context_init(struct intel_context *ce,
 	ce->gem_context = ctx;
 	ce->engine = engine;
 	ce->ops = engine->cops;
+	ce->sseu = engine->sseu;
 
 	INIT_LIST_HEAD(&ce->signal_link);
 	INIT_LIST_HEAD(&ce->signals);
 
 	mutex_init(&ce->pin_mutex);
-
-	/* Use the whole device by default */
-	ce->sseu = intel_device_default_sseu(ctx->i915);
 
 	i915_active_request_init(&ce->active_tracker,
 				 NULL, intel_context_retire);
@@ -266,4 +270,14 @@ int __init i915_global_context_init(void)
 
 	i915_global_register(&global.base);
 	return 0;
+}
+
+void intel_context_enter_engine(struct intel_context *ce)
+{
+	intel_engine_pm_get(ce->engine);
+}
+
+void intel_context_exit_engine(struct intel_context *ce)
+{
+	intel_engine_pm_put(ce->engine);
 }

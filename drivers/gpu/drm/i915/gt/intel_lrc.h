@@ -24,8 +24,7 @@
 #ifndef _INTEL_LRC_H_
 #define _INTEL_LRC_H_
 
-#include "intel_ringbuffer.h"
-#include "i915_gem_context.h"
+#include "intel_engine.h"
 
 /* Execlists regs */
 #define RING_ELSP(base)				_MMIO((base) + 0x230)
@@ -99,7 +98,6 @@ int logical_xcs_ring_init(struct intel_engine_cs *engine);
 struct drm_printer;
 
 struct drm_i915_private;
-struct i915_gem_context;
 
 void intel_execlists_set_default_submission(struct intel_engine_cs *engine);
 
@@ -114,7 +112,5 @@ void intel_execlists_show_requests(struct intel_engine_cs *engine,
 							struct i915_request *rq,
 							const char *prefix),
 				   unsigned int max);
-
-u32 gen8_make_rpcs(struct drm_i915_private *i915, struct intel_sseu *ctx_sseu);
 
 #endif /* _INTEL_LRC_H_ */

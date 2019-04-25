@@ -5,6 +5,7 @@
 header_test := \
 	i915_active_types.h \
 	i915_gem_context_types.h \
+	i915_gem_pm.h \
 	i915_priolist_types.h \
 	i915_scheduler_types.h \
 	i915_timeline_types.h \
@@ -13,13 +14,11 @@ header_test := \
 	intel_cdclk.h \
 	intel_color.h \
 	intel_connector.h \
-	intel_context_types.h \
 	intel_crt.h \
 	intel_csr.h \
 	intel_ddi.h \
 	intel_dp.h \
 	intel_dvo.h \
-	intel_engine_types.h \
 	intel_fbc.h \
 	intel_fbdev.h \
 	intel_frontbuffer.h \
@@ -34,7 +33,7 @@ header_test := \
 	intel_sdvo.h \
 	intel_sprite.h \
 	intel_tv.h \
-	intel_workarounds_types.h
+	intel_wakeref.h
 
 quiet_cmd_header_test = HDRTEST $@
       cmd_header_test = echo "\#include \"$(<F)\"" > $@

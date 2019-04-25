@@ -1,0 +1,30 @@
+drm drm-fixes a0cecc23cfcbf2626497a8c8770856dd56b67917
+	Revert "drm/virtio: drop prime import/export callbacks"
+drm-misc drm-misc-fixes 462ce5d963f18b71c63f6b7730a35a2ee5273540
+	drm/vc4: Fix compilation error reported by kbuild test bot
+drm-intel drm-intel-fixes f5c58ba18ab8ea2169670ed880e4d31ed772ad10
+	drm/i915: Restore correct bxt_ddi_phy_calc_lane_lat_optim_mask() calculation
+drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
+	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
+drm drm-next 08269364808fc9db1800a80dc4c147f443aa0015
+	Merge branch 'drm-legacy-cleanup' of git://people.freedesktop.org/~airlied/linux into drm-next
+drm-misc drm-misc-next-fixes 6b622063451d0756f5f3c5380fd7569afae1c377
+	drm: increase drm mmap_range size to 1TB
+drm-intel drm-intel-next-fixes 447811a686e8da7325516a78069ccfbd139ef1a7
+	drm/i915/icl: Fix MG_DP_MODE() register programming
+drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
+	Linux 4.14-rc1
+drm-misc drm-misc-next e3a9d6c53195591303b7f165f3bb0226741f911e
+	dma-buf: Make mmap callback actually optional
+drm-intel drm-intel-next-queued 8f2a1057d6ec217aefb8bf0de6996294452a2577
+	drm/i915: Explicitly pin the logical context for execbuf
+drm-intel drm-intel-next ad2c467aa92e283e9e8009bb9eb29a5c6a2d1217
+	drm/i915: Update DRIVER_DATE to 20190417
+drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
+	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
+sound-upstream for-linus 0a29c57b76624723b6b00c027e0e992d130ace49
+	ALSA: hda/realtek - Add new Dell platform for headset mode
+sound-upstream for-next 328e9f6973be2ee67862cb17bf6c0c5c5918cd72
+	ALSA: usb-audio: Handle the error from snd_usb_mixer_apply_create_quirk()
+drm-intel topic/core-for-CI b573fba52f339dc4fadef7282af4a9413fd6173d
+	ICL HACK: Disable ACPI idle driver

@@ -303,8 +303,11 @@ int usX2Y_In04_init(struct usX2Ydev *usX2Y)
 			 usX2Y->In04Buf, 21,
 			 i_usX2Y_In04Int, usX2Y,
 			 10);
-	if (usb_urb_ep_type_check(usX2Y->In04urb))
+	if (usb_urb_ep_type_check(usX2Y->In04urb)) {
+		kfree(usX2Y->In04Buf);
+		usb_put_urb(usX2Y->In04urb);
 		return -EINVAL;
+	}
 	return usb_submit_urb(usX2Y->In04urb, GFP_KERNEL);
 }
 

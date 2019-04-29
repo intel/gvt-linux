@@ -1,30 +1,12 @@
-drm drm-fixes 37624b58542fb9f2d9a70e6ea006ef8a5f66c30b
-	Linux 5.1-rc7
-drm-misc drm-misc-fixes c4cba44eeecab9d5ccd3dd2d5520a7d1e5be544f
-	drm/bridge: dw-hdmi: fix SCDC configuration for ddc-i2c-bus
-drm-intel drm-intel-fixes f5c58ba18ab8ea2169670ed880e4d31ed772ad10
-	drm/i915: Restore correct bxt_ddi_phy_calc_lane_lat_optim_mask() calculation
-drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
-	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
-drm drm-next 7c13e5cc2391950541f41fc9ab0336aae77c7f63
-	Merge tag 'drm-intel-next-fixes-2019-04-25' of git://anongit.freedesktop.org/drm/drm-intel into drm-next
-drm-misc drm-misc-next-fixes 761e473f6b23f206862d904a1a5fcbc012656b47
-	drm/gem: Fix sphinx warnings
-drm-intel drm-intel-next-fixes 447811a686e8da7325516a78069ccfbd139ef1a7
-	drm/i915/icl: Fix MG_DP_MODE() register programming
-drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
-	Linux 4.14-rc1
-drm-misc drm-misc-next 788033a92a4def4c966296be0276100954841ab2
-	drm: drop drm_bus from todo
-drm-intel drm-intel-next-queued 46472b3efb61b033f9b4807a178434c50f31d5c5
-	drm/i915: Move i915_request_alloc into selftests/
-drm-intel drm-intel-next ad2c467aa92e283e9e8009bb9eb29a5c6a2d1217
-	drm/i915: Update DRIVER_DATE to 20190417
-drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
-	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
-sound-upstream for-linus e5c812e84f0dece3400d5caf42522287e6ef139f
-	ALSA: line6: use dynamic buffers
-sound-upstream for-next bba06868f7162ca3173802fe867d7aef275e4647
-	ALSA: usx2y: fix a memory leak bug
-drm-intel topic/core-for-CI 5172ea7b473b47bf94d78cabdce3dc8eb6c4e976
-	ICL HACK: Disable ACPI idle driver
+drm-tip/drm-tip 7aa7357fd0cc364d66c8cb409701670ffe87bf8f
+	drm-tip: 2019y-04m-29d-01h-11m-40s UTC integration manifest
+vfio-upstream/for-linus 492855939bdb59c6f947b0b5b44af9ad82b7e38c
+	vfio/type1: Limit DMA mappings per container
+vfio-upstream/next 41be3e2618174fdf3361e49e64f2bf530f40c6b0
+	vfio: Fix WARNING "do not call blocking ops when !TASK_RUNNING"
+origin/gvt-fixes cd7879f79f83aec4bb13f0f823f323911dc5397b
+	drm/i915/gvt: Roundup fb->height into tile's height at calucation fb->size
+origin/gvt-next 2bfc4975083ace0e5777116514c3a75e59b3dbcd
+	drm/i915/gvt: Fix incorrect mask of mmio 0x22028 in gen8/9 mmio list
+origin/gvt-next-fixes 8631fef7f2037281efca685c9e717eaed33ee37c
+	drm/i915/gvt: Revert "drm/i915/gvt: Refine the snapshort range of I915 MCHBAR to optimize gvt-g boot time"

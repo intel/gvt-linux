@@ -65,8 +65,6 @@ static int image_header_load(const struct gvt_migration_obj_t *obj, u32 size);
 static int image_header_save(const struct gvt_migration_obj_t *obj);
 static int vreg_load(const struct gvt_migration_obj_t *obj, u32 size);
 static int vreg_save(const struct gvt_migration_obj_t *obj);
-static int sreg_load(const struct gvt_migration_obj_t *obj, u32 size);
-static int sreg_save(const struct gvt_migration_obj_t *obj);
 static int vcfg_space_load(const struct gvt_migration_obj_t *obj, u32 size);
 static int vcfg_space_save(const struct gvt_migration_obj_t *obj);
 static int vggtt_load(const struct gvt_migration_obj_t *obj, u32 size);
@@ -87,13 +85,6 @@ struct gvt_migration_operation_t vReg_ops = {
 	.pre_copy = NULL,
 	.pre_save = vreg_save,
 	.pre_load = vreg_load,
-	.post_load = NULL,
-};
-
-struct gvt_migration_operation_t sReg_ops = {
-	.pre_copy = NULL,
-	.pre_save = sreg_save,
-	.pre_load = sreg_load,
 	.post_load = NULL,
 };
 
@@ -182,9 +173,6 @@ static struct gvt_migration_obj_t gvt_device_objs[] = {
 			GVT_MIGRATION_CFG_SPACE,
 			PCI_CFG_SPACE_EXP_SIZE,
 			vcfg_space_ops),
-	MIGRATION_UNIT(struct intel_vgpu,
-			GVT_MIGRATION_SREG,
-			GVT_MMIO_SIZE, sReg_ops),
 	MIGRATION_UNIT(struct intel_vgpu,
 			GVT_MIGRATION_VREG,
 			GVT_MMIO_SIZE, vReg_ops),
@@ -346,42 +334,6 @@ static int vcfg_space_load(const struct gvt_migration_obj_t *obj, u32 size)
 		MIG_CFG_SPACE_WRITE(INTEL_GVT_PCI_OPREGION);
 		MIG_CFG_SPACE_WRITE(INTEL_GVT_PCI_SWSCI);
 	}
-	return n_transfer;
-}
-
-static int sreg_save(const struct gvt_migration_obj_t *obj)
-{
-	struct intel_vgpu *vgpu = (struct intel_vgpu *) obj->vgpu;
-	int n_transfer = INV;
-	void *src = vgpu->mmio.sreg;
-	void *des = obj->img + obj->offset;
-
-	memcpy(des, &obj->region, sizeof(struct gvt_region_t));
-
-	des += sizeof(struct gvt_region_t);
-	n_transfer = obj->region.size;
-
-	memcpy(des, src, n_transfer);
-	return sizeof(struct gvt_region_t) + n_transfer;
-}
-
-static int sreg_load(const struct gvt_migration_obj_t *obj, u32 size)
-{
-	struct intel_vgpu *vgpu = (struct intel_vgpu *) obj->vgpu;
-	void *dest = vgpu->mmio.sreg;
-	int n_transfer = INV;
-
-	if (unlikely(size != obj->region.size)) {
-		gvt_err("migration obj size isn't match between target and image!"
-		" memsize=%d imgsize=%d\n",
-		obj->region.size,
-		size);
-		return n_transfer;
-	} else {
-		n_transfer = obj->region.size;
-		memcpy(dest, obj->img + obj->offset, n_transfer);
-	}
-
 	return n_transfer;
 }
 

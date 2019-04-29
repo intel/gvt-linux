@@ -14,13 +14,14 @@
 #include <linux/types.h>
 
 #include "i915_gem.h"
+#include "i915_gem_batch_pool.h"
+#include "i915_pmu.h"
 #include "i915_priolist_types.h"
 #include "i915_selftest.h"
 #include "i915_timeline_types.h"
+#include "intel_sseu.h"
+#include "intel_wakeref.h"
 #include "intel_workarounds_types.h"
-
-#include "i915_gem_batch_pool.h"
-#include "i915_pmu.h"
 
 #define I915_MAX_SLICES	3
 #define I915_MAX_SUBSLICES 8
@@ -278,6 +279,8 @@ struct intel_engine_cs {
 	u32 context_size;
 	u32 mmio_base;
 
+	struct intel_sseu sseu;
+
 	struct intel_ring *buffer;
 
 	struct i915_timeline timeline;
@@ -285,6 +288,10 @@ struct intel_engine_cs {
 	struct intel_context *kernel_context; /* pinned */
 	struct intel_context *preempt_context; /* pinned; optional */
 
+	unsigned long serial;
+
+	unsigned long wakeref_serial;
+	struct intel_wakeref wakeref;
 	struct drm_i915_gem_object *default_state;
 	void *pinned_default_state;
 
@@ -357,7 +364,7 @@ struct intel_engine_cs {
 	void		(*irq_enable)(struct intel_engine_cs *engine);
 	void		(*irq_disable)(struct intel_engine_cs *engine);
 
-	int		(*init_hw)(struct intel_engine_cs *engine);
+	int		(*resume)(struct intel_engine_cs *engine);
 
 	struct {
 		void (*prepare)(struct intel_engine_cs *engine);

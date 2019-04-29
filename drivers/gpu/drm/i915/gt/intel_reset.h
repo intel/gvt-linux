@@ -11,7 +11,7 @@
 #include <linux/types.h>
 #include <linux/srcu.h>
 
-#include "intel_engine_types.h"
+#include "gt/intel_engine_types.h"
 
 struct drm_i915_private;
 struct i915_request;
@@ -34,7 +34,6 @@ int i915_reset_engine(struct intel_engine_cs *engine,
 		      const char *reason);
 
 void i915_reset_request(struct i915_request *rq, bool guilty);
-bool i915_reset_flush(struct drm_i915_private *i915);
 
 int __must_check i915_reset_trylock(struct drm_i915_private *i915);
 void i915_reset_unlock(struct drm_i915_private *i915, int tag);

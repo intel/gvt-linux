@@ -6,15 +6,14 @@
 
 #include <linux/prime_numbers.h>
 
-#include "../i915_reset.h"
-
-#include "../i915_selftest.h"
-#include "igt_flush_test.h"
-#include "igt_live_test.h"
-#include "igt_spinner.h"
-#include "i915_random.h"
-
-#include "mock_context.h"
+#include "gt/intel_reset.h"
+#include "i915_selftest.h"
+#include "selftests/i915_random.h"
+#include "selftests/igt_flush_test.h"
+#include "selftests/igt_gem_utils.h"
+#include "selftests/igt_live_test.h"
+#include "selftests/igt_spinner.h"
+#include "selftests/mock_context.h"
 
 static int live_sanitycheck(void *arg)
 {
@@ -150,7 +149,7 @@ static int live_busywait_preempt(void *arg)
 		 * fails, we hang instead.
 		 */
 
-		lo = i915_request_alloc(engine, ctx_lo);
+		lo = igt_request_alloc(ctx_lo, engine);
 		if (IS_ERR(lo)) {
 			err = PTR_ERR(lo);
 			goto err_vma;
@@ -194,7 +193,7 @@ static int live_busywait_preempt(void *arg)
 			goto err_vma;
 		}
 
-		hi = i915_request_alloc(engine, ctx_hi);
+		hi = igt_request_alloc(ctx_hi, engine);
 		if (IS_ERR(hi)) {
 			err = PTR_ERR(hi);
 			goto err_vma;
@@ -859,13 +858,13 @@ static int live_chain_preempt(void *arg)
 			i915_request_add(rq);
 
 			for (i = 0; i < count; i++) {
-				rq = i915_request_alloc(engine, lo.ctx);
+				rq = igt_request_alloc(lo.ctx, engine);
 				if (IS_ERR(rq))
 					goto err_wedged;
 				i915_request_add(rq);
 			}
 
-			rq = i915_request_alloc(engine, hi.ctx);
+			rq = igt_request_alloc(hi.ctx, engine);
 			if (IS_ERR(rq))
 				goto err_wedged;
 			i915_request_add(rq);
@@ -884,7 +883,7 @@ static int live_chain_preempt(void *arg)
 			}
 			igt_spinner_end(&lo.spin);
 
-			rq = i915_request_alloc(engine, lo.ctx);
+			rq = igt_request_alloc(lo.ctx, engine);
 			if (IS_ERR(rq))
 				goto err_wedged;
 			i915_request_add(rq);
@@ -1089,7 +1088,7 @@ static int smoke_submit(struct preempt_smoke *smoke,
 
 	ctx->sched.priority = prio;
 
-	rq = i915_request_alloc(smoke->engine, ctx);
+	rq = igt_request_alloc(ctx, smoke->engine);
 	if (IS_ERR(rq)) {
 		err = PTR_ERR(rq);
 		goto unpin;

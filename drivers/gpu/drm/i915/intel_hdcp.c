@@ -16,6 +16,7 @@
 #include "i915_reg.h"
 #include "intel_drv.h"
 #include "intel_hdcp.h"
+#include "intel_sideband.h"
 
 #define KEY_LOAD_TRIES	5
 #define ENCRYPT_STATUS_CHANGE_TIMEOUT_MS	50
@@ -213,10 +214,8 @@ static int intel_hdcp_load_keys(struct drm_i915_private *dev_priv)
 	 * from other platforms. So GEN9_BC uses the GT Driver Mailbox i/f.
 	 */
 	if (IS_GEN9_BC(dev_priv)) {
-		mutex_lock(&dev_priv->pcu_lock);
 		ret = sandybridge_pcode_write(dev_priv,
 					      SKL_PCODE_LOAD_HDCP_KEYS, 1);
-		mutex_unlock(&dev_priv->pcu_lock);
 		if (ret) {
 			DRM_ERROR("Failed to initiate HDCP key load (%d)\n",
 			          ret);

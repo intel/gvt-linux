@@ -46,7 +46,6 @@
 
 #include "i915_drv.h"
 #include "i915_gem_clflush.h"
-#include "i915_reset.h"
 #include "i915_trace.h"
 #include "intel_atomic_plane.h"
 #include "intel_color.h"
@@ -67,6 +66,7 @@
 #include "intel_pm.h"
 #include "intel_psr.h"
 #include "intel_sdvo.h"
+#include "intel_sideband.h"
 #include "intel_sprite.h"
 #include "intel_tv.h"
 
@@ -153,10 +153,8 @@ int vlv_get_hpll_vco(struct drm_i915_private *dev_priv)
 	int hpll_freq, vco_freq[] = { 800, 1600, 2000, 2400 };
 
 	/* Obtain SKU information */
-	mutex_lock(&dev_priv->sb_lock);
 	hpll_freq = vlv_cck_read(dev_priv, CCK_FUSE_REG) &
 		CCK_FUSE_HPLL_FREQ_MASK;
-	mutex_unlock(&dev_priv->sb_lock);
 
 	return vco_freq[hpll_freq] * 1000;
 }
@@ -167,10 +165,7 @@ int vlv_get_cck_clock(struct drm_i915_private *dev_priv,
 	u32 val;
 	int divider;
 
-	mutex_lock(&dev_priv->sb_lock);
 	val = vlv_cck_read(dev_priv, reg);
-	mutex_unlock(&dev_priv->sb_lock);
-
 	divider = val & CCK_FREQUENCY_VALUES;
 
 	WARN((val & CCK_FREQUENCY_STATUS) !=
@@ -183,11 +178,18 @@ int vlv_get_cck_clock(struct drm_i915_private *dev_priv,
 int vlv_get_cck_clock_hpll(struct drm_i915_private *dev_priv,
 			   const char *name, u32 reg)
 {
+	int hpll;
+
+	vlv_cck_get(dev_priv);
+
 	if (dev_priv->hpll_freq == 0)
 		dev_priv->hpll_freq = vlv_get_hpll_vco(dev_priv);
 
-	return vlv_get_cck_clock(dev_priv, name, reg,
-				 dev_priv->hpll_freq);
+	hpll = vlv_get_cck_clock(dev_priv, name, reg, dev_priv->hpll_freq);
+
+	vlv_cck_put(dev_priv);
+
+	return hpll;
 }
 
 static void intel_update_czclk(struct drm_i915_private *dev_priv)
@@ -476,6 +478,7 @@ static const struct intel_limit intel_limits_bxt = {
 	.p2 = { .p2_slow = 1, .p2_fast = 20 },
 };
 
+/* WA Display #0827: Gen9:all */
 static void
 skl_wa_827(struct drm_i915_private *dev_priv, int pipe, bool enable)
 {
@@ -487,6 +490,19 @@ skl_wa_827(struct drm_i915_private *dev_priv, int pipe, bool enable)
 		I915_WRITE(CLKGATE_DIS_PSL(pipe),
 			   I915_READ(CLKGATE_DIS_PSL(pipe)) &
 			   ~(DUPS1_GATING_DIS | DUPS2_GATING_DIS));
+}
+
+/* Wa_2006604312:icl */
+static void
+icl_wa_scalerclkgating(struct drm_i915_private *dev_priv, enum pipe pipe,
+		       bool enable)
+{
+	if (enable)
+		I915_WRITE(CLKGATE_DIS_PSL(pipe),
+			   I915_READ(CLKGATE_DIS_PSL(pipe)) | DPFR_GATING_DIS);
+	else
+		I915_WRITE(CLKGATE_DIS_PSL(pipe),
+			   I915_READ(CLKGATE_DIS_PSL(pipe)) & ~DPFR_GATING_DIS);
 }
 
 static bool
@@ -1080,9 +1096,9 @@ void assert_dsi_pll(struct drm_i915_private *dev_priv, bool state)
 	u32 val;
 	bool cur_state;
 
-	mutex_lock(&dev_priv->sb_lock);
+	vlv_cck_get(dev_priv);
 	val = vlv_cck_read(dev_priv, CCK_REG_DSI_PLL_CONTROL);
-	mutex_unlock(&dev_priv->sb_lock);
+	vlv_cck_put(dev_priv);
 
 	cur_state = val & DSI_PLL_VCO_EN;
 	I915_STATE_WARN(cur_state != state,
@@ -1392,14 +1408,14 @@ static void _chv_enable_pll(struct intel_crtc *crtc,
 	enum dpio_channel port = vlv_pipe_to_channel(pipe);
 	u32 tmp;
 
-	mutex_lock(&dev_priv->sb_lock);
+	vlv_dpio_get(dev_priv);
 
 	/* Enable back the 10bit clock to display controller */
 	tmp = vlv_dpio_read(dev_priv, pipe, CHV_CMN_DW14(port));
 	tmp |= DPIO_DCLKP_EN;
 	vlv_dpio_write(dev_priv, pipe, CHV_CMN_DW14(port), tmp);
 
-	mutex_unlock(&dev_priv->sb_lock);
+	vlv_dpio_put(dev_priv);
 
 	/*
 	 * Need to wait > 100ns between dclkp clock enable bit and PLL enable.
@@ -1556,14 +1572,14 @@ static void chv_disable_pll(struct drm_i915_private *dev_priv, enum pipe pipe)
 	I915_WRITE(DPLL(pipe), val);
 	POSTING_READ(DPLL(pipe));
 
-	mutex_lock(&dev_priv->sb_lock);
+	vlv_dpio_get(dev_priv);
 
 	/* Disable 10bit clock to display controller */
 	val = vlv_dpio_read(dev_priv, pipe, CHV_CMN_DW14(port));
 	val &= ~DPIO_DCLKP_EN;
 	vlv_dpio_write(dev_priv, pipe, CHV_CMN_DW14(port), val);
 
-	mutex_unlock(&dev_priv->sb_lock);
+	vlv_dpio_put(dev_priv);
 }
 
 void vlv_wait_port_ready(struct drm_i915_private *dev_priv,
@@ -2964,41 +2980,55 @@ static int skl_max_plane_width(const struct drm_framebuffer *fb,
 	switch (fb->modifier) {
 	case DRM_FORMAT_MOD_LINEAR:
 	case I915_FORMAT_MOD_X_TILED:
-		switch (cpp) {
-		case 8:
-			return 4096;
-		case 4:
-		case 2:
-		case 1:
-			return 8192;
-		default:
-			MISSING_CASE(cpp);
-			break;
-		}
-		break;
+		return 4096;
 	case I915_FORMAT_MOD_Y_TILED_CCS:
 	case I915_FORMAT_MOD_Yf_TILED_CCS:
 		/* FIXME AUX plane? */
 	case I915_FORMAT_MOD_Y_TILED:
 	case I915_FORMAT_MOD_Yf_TILED:
-		switch (cpp) {
-		case 8:
+		if (cpp == 8)
 			return 2048;
-		case 4:
+		else
 			return 4096;
-		case 2:
-		case 1:
-			return 8192;
-		default:
-			MISSING_CASE(cpp);
-			break;
-		}
-		break;
 	default:
 		MISSING_CASE(fb->modifier);
+		return 2048;
 	}
+}
 
-	return 2048;
+static int glk_max_plane_width(const struct drm_framebuffer *fb,
+			       int color_plane,
+			       unsigned int rotation)
+{
+	int cpp = fb->format->cpp[color_plane];
+
+	switch (fb->modifier) {
+	case DRM_FORMAT_MOD_LINEAR:
+	case I915_FORMAT_MOD_X_TILED:
+		if (cpp == 8)
+			return 4096;
+		else
+			return 5120;
+	case I915_FORMAT_MOD_Y_TILED_CCS:
+	case I915_FORMAT_MOD_Yf_TILED_CCS:
+		/* FIXME AUX plane? */
+	case I915_FORMAT_MOD_Y_TILED:
+	case I915_FORMAT_MOD_Yf_TILED:
+		if (cpp == 8)
+			return 2048;
+		else
+			return 5120;
+	default:
+		MISSING_CASE(fb->modifier);
+		return 2048;
+	}
+}
+
+static int icl_max_plane_width(const struct drm_framebuffer *fb,
+			       int color_plane,
+			       unsigned int rotation)
+{
+	return 5120;
 }
 
 static bool skl_check_main_ccs_coordinates(struct intel_plane_state *plane_state,
@@ -3041,15 +3071,23 @@ static bool skl_check_main_ccs_coordinates(struct intel_plane_state *plane_state
 
 static int skl_check_main_surface(struct intel_plane_state *plane_state)
 {
+	struct drm_i915_private *dev_priv = to_i915(plane_state->base.plane->dev);
 	const struct drm_framebuffer *fb = plane_state->base.fb;
 	unsigned int rotation = plane_state->base.rotation;
 	int x = plane_state->base.src.x1 >> 16;
 	int y = plane_state->base.src.y1 >> 16;
 	int w = drm_rect_width(&plane_state->base.src) >> 16;
 	int h = drm_rect_height(&plane_state->base.src) >> 16;
-	int max_width = skl_max_plane_width(fb, 0, rotation);
+	int max_width;
 	int max_height = 4096;
 	u32 alignment, offset, aux_offset = plane_state->color_plane[1].offset;
+
+	if (INTEL_GEN(dev_priv) >= 11)
+		max_width = icl_max_plane_width(fb, 0, rotation);
+	else if (INTEL_GEN(dev_priv) >= 10 || IS_GEMINILAKE(dev_priv))
+		max_width = glk_max_plane_width(fb, 0, rotation);
+	else
+		max_width = skl_max_plane_width(fb, 0, rotation);
 
 	if (w > max_width || h > max_height) {
 		DRM_DEBUG_KMS("requested Y/RGB source size %dx%d too big (limit %dx%d)\n",
@@ -5294,10 +5332,8 @@ void hsw_enable_ips(const struct intel_crtc_state *crtc_state)
 	WARN_ON(!(crtc_state->active_planes & ~BIT(PLANE_CURSOR)));
 
 	if (IS_BROADWELL(dev_priv)) {
-		mutex_lock(&dev_priv->pcu_lock);
 		WARN_ON(sandybridge_pcode_write(dev_priv, DISPLAY_IPS_CONTROL,
 						IPS_ENABLE | IPS_PCODE_CONTROL));
-		mutex_unlock(&dev_priv->pcu_lock);
 		/* Quoting Art Runyan: "its not safe to expect any particular
 		 * value in IPS_CTL bit 31 after enabling IPS through the
 		 * mailbox." Moreover, the mailbox may return a bogus state,
@@ -5327,9 +5363,7 @@ void hsw_disable_ips(const struct intel_crtc_state *crtc_state)
 		return;
 
 	if (IS_BROADWELL(dev_priv)) {
-		mutex_lock(&dev_priv->pcu_lock);
 		WARN_ON(sandybridge_pcode_write(dev_priv, DISPLAY_IPS_CONTROL, 0));
-		mutex_unlock(&dev_priv->pcu_lock);
 		/*
 		 * Wait for PCODE to finish disabling IPS. The BSpec specified
 		 * 42ms timeout value leads to occasional timeouts so use 100ms
@@ -5505,6 +5539,16 @@ static bool needs_nv12_wa(struct drm_i915_private *dev_priv,
 	return false;
 }
 
+static bool needs_scalerclk_wa(struct drm_i915_private *dev_priv,
+			       const struct intel_crtc_state *crtc_state)
+{
+	/* Wa_2006604312:icl */
+	if (crtc_state->scaler_state.scaler_users > 0 && IS_ICELAKE(dev_priv))
+		return true;
+
+	return false;
+}
+
 static void intel_post_plane_update(struct intel_crtc_state *old_crtc_state)
 {
 	struct intel_crtc *crtc = to_intel_crtc(old_crtc_state->base.crtc);
@@ -5538,11 +5582,13 @@ static void intel_post_plane_update(struct intel_crtc_state *old_crtc_state)
 			intel_post_enable_primary(&crtc->base, pipe_config);
 	}
 
-	/* Display WA 827 */
 	if (needs_nv12_wa(dev_priv, old_crtc_state) &&
-	    !needs_nv12_wa(dev_priv, pipe_config)) {
+	    !needs_nv12_wa(dev_priv, pipe_config))
 		skl_wa_827(dev_priv, crtc->pipe, false);
-	}
+
+	if (needs_scalerclk_wa(dev_priv, old_crtc_state) &&
+	    !needs_scalerclk_wa(dev_priv, pipe_config))
+		icl_wa_scalerclkgating(dev_priv, crtc->pipe, false);
 }
 
 static void intel_pre_plane_update(struct intel_crtc_state *old_crtc_state,
@@ -5579,9 +5625,13 @@ static void intel_pre_plane_update(struct intel_crtc_state *old_crtc_state,
 
 	/* Display WA 827 */
 	if (!needs_nv12_wa(dev_priv, old_crtc_state) &&
-	    needs_nv12_wa(dev_priv, pipe_config)) {
+	    needs_nv12_wa(dev_priv, pipe_config))
 		skl_wa_827(dev_priv, crtc->pipe, true);
-	}
+
+	/* Wa_2006604312:icl */
+	if (!needs_scalerclk_wa(dev_priv, old_crtc_state) &&
+	    needs_scalerclk_wa(dev_priv, pipe_config))
+		icl_wa_scalerclkgating(dev_priv, crtc->pipe, true);
 
 	/*
 	 * Vblank time updates from the shadow to live plane control register
@@ -7225,7 +7275,7 @@ static void vlv_prepare_pll(struct intel_crtc *crtc,
 	if ((pipe_config->dpll_hw_state.dpll & DPLL_VCO_ENABLE) == 0)
 		return;
 
-	mutex_lock(&dev_priv->sb_lock);
+	vlv_dpio_get(dev_priv);
 
 	bestn = pipe_config->dpll.n;
 	bestm1 = pipe_config->dpll.m1;
@@ -7302,7 +7352,8 @@ static void vlv_prepare_pll(struct intel_crtc *crtc,
 	vlv_dpio_write(dev_priv, pipe, VLV_PLL_DW7(pipe), coreclk);
 
 	vlv_dpio_write(dev_priv, pipe, VLV_PLL_DW11(pipe), 0x87871000);
-	mutex_unlock(&dev_priv->sb_lock);
+
+	vlv_dpio_put(dev_priv);
 }
 
 static void chv_prepare_pll(struct intel_crtc *crtc,
@@ -7335,7 +7386,7 @@ static void chv_prepare_pll(struct intel_crtc *crtc,
 	dpio_val = 0;
 	loopfilter = 0;
 
-	mutex_lock(&dev_priv->sb_lock);
+	vlv_dpio_get(dev_priv);
 
 	/* p1 and p2 divider */
 	vlv_dpio_write(dev_priv, pipe, CHV_CMN_DW13(port),
@@ -7407,7 +7458,7 @@ static void chv_prepare_pll(struct intel_crtc *crtc,
 			vlv_dpio_read(dev_priv, pipe, CHV_CMN_DW14(port)) |
 			DPIO_AFC_RECAL);
 
-	mutex_unlock(&dev_priv->sb_lock);
+	vlv_dpio_put(dev_priv);
 }
 
 /**
@@ -8033,9 +8084,9 @@ static void vlv_crtc_clock_get(struct intel_crtc *crtc,
 	if ((pipe_config->dpll_hw_state.dpll & DPLL_VCO_ENABLE) == 0)
 		return;
 
-	mutex_lock(&dev_priv->sb_lock);
+	vlv_dpio_get(dev_priv);
 	mdiv = vlv_dpio_read(dev_priv, pipe, VLV_PLL_DW3(pipe));
-	mutex_unlock(&dev_priv->sb_lock);
+	vlv_dpio_put(dev_priv);
 
 	clock.m1 = (mdiv >> DPIO_M1DIV_SHIFT) & 7;
 	clock.m2 = mdiv & DPIO_M2DIV_MASK;
@@ -8144,13 +8195,13 @@ static void chv_crtc_clock_get(struct intel_crtc *crtc,
 	if ((pipe_config->dpll_hw_state.dpll & DPLL_VCO_ENABLE) == 0)
 		return;
 
-	mutex_lock(&dev_priv->sb_lock);
+	vlv_dpio_get(dev_priv);
 	cmn_dw13 = vlv_dpio_read(dev_priv, pipe, CHV_CMN_DW13(port));
 	pll_dw0 = vlv_dpio_read(dev_priv, pipe, CHV_PLL_DW0(port));
 	pll_dw1 = vlv_dpio_read(dev_priv, pipe, CHV_PLL_DW1(port));
 	pll_dw2 = vlv_dpio_read(dev_priv, pipe, CHV_PLL_DW2(port));
 	pll_dw3 = vlv_dpio_read(dev_priv, pipe, CHV_PLL_DW3(port));
-	mutex_unlock(&dev_priv->sb_lock);
+	vlv_dpio_put(dev_priv);
 
 	clock.m1 = (pll_dw1 & 0x7) == DPIO_CHV_M1_DIV_BY_2 ? 2 : 0;
 	clock.m2 = (pll_dw0 & 0xff) << 22;
@@ -9452,11 +9503,9 @@ static u32 hsw_read_dcomp(struct drm_i915_private *dev_priv)
 static void hsw_write_dcomp(struct drm_i915_private *dev_priv, u32 val)
 {
 	if (IS_HASWELL(dev_priv)) {
-		mutex_lock(&dev_priv->pcu_lock);
 		if (sandybridge_pcode_write(dev_priv, GEN6_PCODE_WRITE_D_COMP,
 					    val))
 			DRM_DEBUG_KMS("Failed to write to D_COMP\n");
-		mutex_unlock(&dev_priv->pcu_lock);
 	} else {
 		I915_WRITE(D_COMP_BDW, val);
 		POSTING_READ(D_COMP_BDW);

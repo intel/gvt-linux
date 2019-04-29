@@ -31,6 +31,7 @@
 #include <linux/reboot.h>
 #include <linux/slab.h>
 #include <linux/types.h>
+
 #include <asm/byteorder.h>
 
 #include <drm/drm_atomic_helper.h>
@@ -53,6 +54,7 @@
 #include "intel_lvds.h"
 #include "intel_panel.h"
 #include "intel_psr.h"
+#include "intel_sideband.h"
 
 #define DP_DPRX_ESI_LEN 14
 
@@ -3148,12 +3150,12 @@ static void chv_post_disable_dp(struct intel_encoder *encoder,
 
 	intel_dp_link_down(encoder, old_crtc_state);
 
-	mutex_lock(&dev_priv->sb_lock);
+	vlv_dpio_get(dev_priv);
 
 	/* Assert data lane reset */
 	chv_data_lane_soft_reset(encoder, old_crtc_state, true);
 
-	mutex_unlock(&dev_priv->sb_lock);
+	vlv_dpio_put(dev_priv);
 }
 
 static void

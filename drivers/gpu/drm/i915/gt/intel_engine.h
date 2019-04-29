@@ -362,14 +362,12 @@ __intel_ring_space(unsigned int head, unsigned int tail, unsigned int size)
 	return (head - tail - CACHELINE_BYTES) & (size - 1);
 }
 
-int intel_engine_setup_common(struct intel_engine_cs *engine);
+int intel_engines_setup(struct drm_i915_private *i915);
 int intel_engine_init_common(struct intel_engine_cs *engine);
 void intel_engine_cleanup_common(struct intel_engine_cs *engine);
 
-int intel_init_render_ring_buffer(struct intel_engine_cs *engine);
-int intel_init_bsd_ring_buffer(struct intel_engine_cs *engine);
-int intel_init_blt_ring_buffer(struct intel_engine_cs *engine);
-int intel_init_vebox_ring_buffer(struct intel_engine_cs *engine);
+int intel_ring_submission_setup(struct intel_engine_cs *engine);
+int intel_ring_submission_init(struct intel_engine_cs *engine);
 
 int intel_engine_stop_cs(struct intel_engine_cs *engine);
 void intel_engine_cancel_stop_cs(struct intel_engine_cs *engine);
@@ -381,6 +379,8 @@ u64 intel_engine_get_last_batch_head(const struct intel_engine_cs *engine);
 
 void intel_engine_get_instdone(struct intel_engine_cs *engine,
 			       struct intel_instdone *instdone);
+
+void intel_engine_init_execlists(struct intel_engine_cs *engine);
 
 void intel_engine_init_breadcrumbs(struct intel_engine_cs *engine);
 void intel_engine_fini_breadcrumbs(struct intel_engine_cs *engine);
@@ -458,18 +458,13 @@ static inline void intel_engine_reset(struct intel_engine_cs *engine,
 {
 	if (engine->reset.reset)
 		engine->reset.reset(engine, stalled);
+	engine->serial++; /* contexts lost */
 }
-
-void intel_engines_sanitize(struct drm_i915_private *i915, bool force);
-void intel_gt_resume(struct drm_i915_private *i915);
 
 bool intel_engine_is_idle(struct intel_engine_cs *engine);
 bool intel_engines_are_idle(struct drm_i915_private *dev_priv);
 
 void intel_engine_lost_context(struct intel_engine_cs *engine);
-
-void intel_engines_park(struct drm_i915_private *i915);
-void intel_engines_unpark(struct drm_i915_private *i915);
 
 void intel_engines_reset_default_submission(struct drm_i915_private *i915);
 unsigned int intel_engines_has_context_isolation(struct drm_i915_private *i915);

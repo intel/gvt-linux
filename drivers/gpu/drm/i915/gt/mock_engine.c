@@ -22,8 +22,13 @@
  *
  */
 
+#include "i915_drv.h"
+#include "i915_gem_context.h"
+#include "intel_context.h"
+#include "intel_engine_pm.h"
+
 #include "mock_engine.h"
-#include "mock_request.h"
+#include "selftests/mock_request.h"
 
 struct mock_ring {
 	struct intel_ring base;
@@ -154,6 +159,9 @@ static const struct intel_context_ops mock_context_ops = {
 	.pin = mock_context_pin,
 	.unpin = mock_context_unpin,
 
+	.enter = intel_context_enter_engine,
+	.exit = intel_context_exit_engine,
+
 	.destroy = mock_context_destroy,
 };
 
@@ -257,29 +265,44 @@ struct intel_engine_cs *mock_engine(struct drm_i915_private *i915,
 	engine->base.reset.finish = mock_reset_finish;
 	engine->base.cancel_requests = mock_cancel_requests;
 
-	if (i915_timeline_init(i915, &engine->base.timeline, NULL))
-		goto err_free;
-	i915_timeline_set_subclass(&engine->base.timeline, TIMELINE_ENGINE);
-
-	intel_engine_init_breadcrumbs(&engine->base);
-
 	/* fake hw queue */
 	spin_lock_init(&engine->hw_lock);
 	timer_setup(&engine->hw_delay, hw_delay_complete, 0);
 	INIT_LIST_HEAD(&engine->hw_queue);
 
-	if (pin_context(i915->kernel_context, &engine->base,
-			&engine->base.kernel_context))
-		goto err_breadcrumbs;
-
 	return &engine->base;
+}
 
+int mock_engine_init(struct intel_engine_cs *engine)
+{
+	struct drm_i915_private *i915 = engine->i915;
+	int err;
+
+	intel_engine_init_breadcrumbs(engine);
+	intel_engine_init_execlists(engine);
+	intel_engine_init__pm(engine);
+
+	if (i915_timeline_init(i915, &engine->timeline, NULL))
+		goto err_breadcrumbs;
+	i915_timeline_set_subclass(&engine->timeline, TIMELINE_ENGINE);
+
+	engine->kernel_context =
+		i915_gem_context_get_engine(i915->kernel_context, engine->id);
+	if (IS_ERR(engine->kernel_context))
+		goto err_timeline;
+
+	err = intel_context_pin(engine->kernel_context);
+	intel_context_put(engine->kernel_context);
+	if (err)
+		goto err_timeline;
+
+	return 0;
+
+err_timeline:
+	i915_timeline_fini(&engine->timeline);
 err_breadcrumbs:
-	intel_engine_fini_breadcrumbs(&engine->base);
-	i915_timeline_fini(&engine->base.timeline);
-err_free:
-	kfree(engine);
-	return NULL;
+	intel_engine_fini_breadcrumbs(engine);
+	return -ENOMEM;
 }
 
 void mock_engine_flush(struct intel_engine_cs *engine)

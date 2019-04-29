@@ -37,6 +37,7 @@
 #include "intel_csr.h"
 #include "intel_dp.h"
 #include "intel_drv.h"
+#include "intel_sideband.h"
 
 /**
  * DOC: runtime pm
@@ -1211,7 +1212,7 @@ static void vlv_set_power_well(struct drm_i915_private *dev_priv,
 	state = enable ? PUNIT_PWRGT_PWR_ON(pw_idx) :
 			 PUNIT_PWRGT_PWR_GATE(pw_idx);
 
-	mutex_lock(&dev_priv->pcu_lock);
+	vlv_punit_get(dev_priv);
 
 #define COND \
 	((vlv_punit_read(dev_priv, PUNIT_REG_PWRGT_STATUS) & mask) == state)
@@ -1232,7 +1233,7 @@ static void vlv_set_power_well(struct drm_i915_private *dev_priv,
 #undef COND
 
 out:
-	mutex_unlock(&dev_priv->pcu_lock);
+	vlv_punit_put(dev_priv);
 }
 
 static void vlv_power_well_enable(struct drm_i915_private *dev_priv,
@@ -1259,7 +1260,7 @@ static bool vlv_power_well_enabled(struct drm_i915_private *dev_priv,
 	mask = PUNIT_PWRGT_MASK(pw_idx);
 	ctrl = PUNIT_PWRGT_PWR_ON(pw_idx);
 
-	mutex_lock(&dev_priv->pcu_lock);
+	vlv_punit_get(dev_priv);
 
 	state = vlv_punit_read(dev_priv, PUNIT_REG_PWRGT_STATUS) & mask;
 	/*
@@ -1278,7 +1279,7 @@ static bool vlv_power_well_enabled(struct drm_i915_private *dev_priv,
 	ctrl = vlv_punit_read(dev_priv, PUNIT_REG_PWRGT_CTRL) & mask;
 	WARN_ON(ctrl != state);
 
-	mutex_unlock(&dev_priv->pcu_lock);
+	vlv_punit_put(dev_priv);
 
 	return enabled;
 }
@@ -1569,7 +1570,7 @@ static void chv_dpio_cmn_power_well_enable(struct drm_i915_private *dev_priv,
 				    1))
 		DRM_ERROR("Display PHY %d is not power up\n", phy);
 
-	mutex_lock(&dev_priv->sb_lock);
+	vlv_dpio_get(dev_priv);
 
 	/* Enable dynamic power down */
 	tmp = vlv_dpio_read(dev_priv, pipe, CHV_CMN_DW28);
@@ -1592,7 +1593,7 @@ static void chv_dpio_cmn_power_well_enable(struct drm_i915_private *dev_priv,
 		vlv_dpio_write(dev_priv, pipe, CHV_CMN_DW30, tmp);
 	}
 
-	mutex_unlock(&dev_priv->sb_lock);
+	vlv_dpio_put(dev_priv);
 
 	dev_priv->chv_phy_control |= PHY_COM_LANE_RESET_DEASSERT(phy);
 	I915_WRITE(DISPLAY_PHY_CONTROL, dev_priv->chv_phy_control);
@@ -1655,9 +1656,9 @@ static void assert_chv_phy_powergate(struct drm_i915_private *dev_priv, enum dpi
 	else
 		reg = _CHV_CMN_DW6_CH1;
 
-	mutex_lock(&dev_priv->sb_lock);
+	vlv_dpio_get(dev_priv);
 	val = vlv_dpio_read(dev_priv, pipe, reg);
-	mutex_unlock(&dev_priv->sb_lock);
+	vlv_dpio_put(dev_priv);
 
 	/*
 	 * This assumes !override is only used when the port is disabled.
@@ -1764,7 +1765,7 @@ static bool chv_pipe_power_well_enabled(struct drm_i915_private *dev_priv,
 	bool enabled;
 	u32 state, ctrl;
 
-	mutex_lock(&dev_priv->pcu_lock);
+	vlv_punit_get(dev_priv);
 
 	state = vlv_punit_read(dev_priv, PUNIT_REG_DSPSSPM) & DP_SSS_MASK(pipe);
 	/*
@@ -1781,7 +1782,7 @@ static bool chv_pipe_power_well_enabled(struct drm_i915_private *dev_priv,
 	ctrl = vlv_punit_read(dev_priv, PUNIT_REG_DSPSSPM) & DP_SSC_MASK(pipe);
 	WARN_ON(ctrl << 16 != state);
 
-	mutex_unlock(&dev_priv->pcu_lock);
+	vlv_punit_put(dev_priv);
 
 	return enabled;
 }
@@ -1796,7 +1797,7 @@ static void chv_set_pipe_power_well(struct drm_i915_private *dev_priv,
 
 	state = enable ? DP_SSS_PWR_ON(pipe) : DP_SSS_PWR_GATE(pipe);
 
-	mutex_lock(&dev_priv->pcu_lock);
+	vlv_punit_get(dev_priv);
 
 #define COND \
 	((vlv_punit_read(dev_priv, PUNIT_REG_DSPSSPM) & DP_SSS_MASK(pipe)) == state)
@@ -1817,7 +1818,7 @@ static void chv_set_pipe_power_well(struct drm_i915_private *dev_priv,
 #undef COND
 
 out:
-	mutex_unlock(&dev_priv->pcu_lock);
+	vlv_punit_put(dev_priv);
 }
 
 static void chv_pipe_power_well_enable(struct drm_i915_private *dev_priv,
@@ -4011,9 +4012,9 @@ static bool vlv_punit_is_power_gated(struct drm_i915_private *dev_priv, u32 reg0
 {
 	bool ret;
 
-	mutex_lock(&dev_priv->pcu_lock);
+	vlv_punit_get(dev_priv);
 	ret = (vlv_punit_read(dev_priv, reg0) & SSPM0_SSC_MASK) == SSPM0_SSC_PWR_GATE;
-	mutex_unlock(&dev_priv->pcu_lock);
+	vlv_punit_put(dev_priv);
 
 	return ret;
 }

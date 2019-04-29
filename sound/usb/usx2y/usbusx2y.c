@@ -303,8 +303,11 @@ int usX2Y_In04_init(struct usX2Ydev *usX2Y)
 			 usX2Y->In04Buf, 21,
 			 i_usX2Y_In04Int, usX2Y,
 			 10);
-	if (usb_urb_ep_type_check(usX2Y->In04urb))
+	if (usb_urb_ep_type_check(usX2Y->In04urb)) {
+		kfree(usX2Y->In04Buf);
+		usb_put_urb(usX2Y->In04urb);
 		return -EINVAL;
+	}
 	return usb_submit_urb(usX2Y->In04urb, GFP_KERNEL);
 }
 
@@ -437,7 +440,8 @@ static void snd_usX2Y_card_private_free(struct snd_card *card)
 	kfree(usX2Y(card)->In04Buf);
 	usb_free_urb(usX2Y(card)->In04urb);
 	if (usX2Y(card)->us428ctls_sharedmem)
-		snd_free_pages(usX2Y(card)->us428ctls_sharedmem, sizeof(*usX2Y(card)->us428ctls_sharedmem));
+		free_pages_exact(usX2Y(card)->us428ctls_sharedmem,
+				 sizeof(*usX2Y(card)->us428ctls_sharedmem));
 	if (usX2Y(card)->card_index >= 0  &&  usX2Y(card)->card_index < SNDRV_CARDS)
 		snd_usX2Y_card_used[usX2Y(card)->card_index] = 0;
 }

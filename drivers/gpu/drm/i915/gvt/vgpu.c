@@ -48,8 +48,7 @@ void populate_pvinfo_page(struct intel_vgpu *vgpu)
 	vgpu_vreg_t(vgpu, vgtif_reg(vgt_caps)) |= VGT_CAPS_HWSP_EMULATION;
 	vgpu_vreg_t(vgpu, vgtif_reg(vgt_caps)) |= VGT_CAPS_HUGE_GTT;
 
-	vgpu_vreg_t(vgpu, vgtif_reg(avail_rs.mappable_gmadr.base)) =
-		vgpu_aperture_gmadr_base(vgpu);
+	vgpu_vreg_t(vgpu, vgtif_reg(avail_rs.mappable_gmadr.base)) = 0;
 	vgpu_vreg_t(vgpu, vgtif_reg(avail_rs.mappable_gmadr.size)) =
 		vgpu_aperture_sz(vgpu);
 	vgpu_vreg_t(vgpu, vgtif_reg(avail_rs.nonmappable_gmadr.base)) =
@@ -529,6 +528,9 @@ void intel_gvt_reset_vgpu_locked(struct intel_vgpu *vgpu, bool dmlr,
 	struct intel_gvt *gvt = vgpu->gvt;
 	struct intel_gvt_workload_scheduler *scheduler = &gvt->scheduler;
 	intel_engine_mask_t resetting_eng = dmlr ? ALL_ENGINES : engine_mask;
+	u64 maddr = vgpu_vreg_t(vgpu, vgtif_reg(avail_rs.mappable_gmadr.base));
+	u64 unmaddr = vgpu_vreg_t(vgpu,
+				vgtif_reg(avail_rs.nonmappable_gmadr.base));
 
 	gvt_dbg_core("------------------------------------------\n");
 	gvt_dbg_core("resseting vgpu%d, dmlr %d, engine_mask %08x\n",
@@ -560,6 +562,10 @@ void intel_gvt_reset_vgpu_locked(struct intel_vgpu *vgpu, bool dmlr,
 
 		intel_vgpu_reset_mmio(vgpu, dmlr);
 		populate_pvinfo_page(vgpu);
+		vgpu_vreg_t(vgpu, vgtif_reg(avail_rs.mappable_gmadr.base)) =
+			maddr;
+		vgpu_vreg_t(vgpu, vgtif_reg(avail_rs.nonmappable_gmadr.base)) =
+			unmaddr;
 		intel_vgpu_reset_display(vgpu);
 
 		if (dmlr) {

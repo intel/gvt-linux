@@ -217,7 +217,7 @@ static int __down_trylock_console_sem(unsigned long ip)
 	 * deadlock in printk()->down_trylock_console_sem() otherwise.
 	 */
 	printk_safe_enter_irqsave(flags);
-	lock_failed = down_trylock(&console_sem);
+	lock_failed = __down_trylock(&console_sem);
 	printk_safe_exit_irqrestore(flags);
 
 	if (lock_failed)

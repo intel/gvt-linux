@@ -144,6 +144,39 @@ int down_trylock(struct semaphore *sem)
 EXPORT_SYMBOL(down_trylock);
 
 /**
+ * __down_trylock - try to acquire the semaphore, without any locking
+ * @sem: the semaphore to be acquired
+ *
+ * Try to acquire the semaphore atomically.  Returns 0 if the semaphore has
+ * been acquired successfully or 1 if it it cannot be acquired.
+ *
+ * NOTE: This return value is inverted from both spin_trylock and
+ * mutex_trylock!  Be careful about this when converting code.
+ *
+ * Unlike mutex_trylock, this function can be used from interrupt context,
+ * and the semaphore can be released by any task or interrupt.
+ *
+ * WARNING: Unlike down_trylock this function doesn't guarantee that that the
+ * semaphore will be acquired if it could, it's best effort only. Use for
+ * down_trylock_console_sem only.
+ */
+int __down_trylock(struct semaphore *sem)
+{
+	unsigned long flags;
+	int count;
+
+	if (!raw_spin_trylock_irqsave(&sem->lock, flags))
+		return 1;
+	count = sem->count - 1;
+	if (likely(count >= 0))
+		sem->count = count;
+	raw_spin_unlock_irqrestore(&sem->lock, flags);
+
+	return (count < 0);
+}
+EXPORT_SYMBOL(__down_trylock);
+
+/**
  * down_timeout - acquire the semaphore within a specified time
  * @sem: the semaphore to be acquired
  * @timeout: how long to wait before failing

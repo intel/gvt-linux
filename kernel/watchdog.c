@@ -198,6 +198,8 @@ void watchdog_hardlockup_check(unsigned int cpu, struct pt_regs *regs)
 
 		if (hardlockup_panic)
 			nmi_panic(regs, "Hard LOCKUP");
+		else
+			add_taint(TAINT_WARN, LOCKDEP_STILL_OK);
 
 		per_cpu(watchdog_hardlockup_warned, cpu) = true;
 	} else {
@@ -556,6 +558,8 @@ static enum hrtimer_restart watchdog_timer_fn(struct hrtimer *hrtimer)
 		add_taint(TAINT_SOFTLOCKUP, LOCKDEP_STILL_OK);
 		if (softlockup_panic)
 			panic("softlockup: hung tasks");
+		else
+			add_taint(TAINT_WARN, LOCKDEP_STILL_OK);
 	}
 
 	return HRTIMER_RESTART;

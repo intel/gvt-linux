@@ -117,6 +117,8 @@ static void check_hung_task(struct task_struct *t, unsigned long timeout)
 		console_verbose();
 		hung_task_show_lock = true;
 		hung_task_call_panic = true;
+	} else {
+		add_taint(TAINT_WARN, LOCKDEP_STILL_OK);
 	}
 
 	/*

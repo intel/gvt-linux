@@ -32,7 +32,12 @@
 #include <drm/drm_debugfs.h>
 #include <drm/drm_fourcc.h>
 
-#include "i915_reset.h"
+#include "gt/intel_reset.h"
+
+#include "i915_debugfs.h"
+#include "i915_gem_context.h"
+#include "i915_irq.h"
+#include "intel_csr.h"
 #include "intel_dp.h"
 #include "intel_drv.h"
 #include "intel_fbc.h"
@@ -41,6 +46,7 @@
 #include "intel_hdmi.h"
 #include "intel_pm.h"
 #include "intel_psr.h"
+#include "intel_sideband.h"
 
 static inline struct drm_i915_private *node_to_i915(struct drm_info_node *node)
 {
@@ -395,14 +401,17 @@ static void print_context_stats(struct seq_file *m,
 	struct i915_gem_context *ctx;
 
 	list_for_each_entry(ctx, &i915->contexts.list, link) {
+		struct i915_gem_engines_iter it;
 		struct intel_context *ce;
 
-		list_for_each_entry(ce, &ctx->active_engines, active_link) {
+		for_each_gem_engine(ce,
+				    i915_gem_context_lock_engines(ctx), it) {
 			if (ce->state)
 				per_file_stats(0, ce->state->obj, &kstats);
 			if (ce->ring)
 				per_file_stats(0, ce->ring->vma->obj, &kstats);
 		}
+		i915_gem_context_unlock_engines(ctx);
 
 		if (!IS_ERR_OR_NULL(ctx->file_priv)) {
 			struct file_stats stats = { .vm = &ctx->ppgtt->vm, };
@@ -1045,8 +1054,6 @@ static int i915_frequency_info(struct seq_file *m, void *unused)
 	} else if (IS_VALLEYVIEW(dev_priv) || IS_CHERRYVIEW(dev_priv)) {
 		u32 rpmodectl, freq_sts;
 
-		mutex_lock(&dev_priv->pcu_lock);
-
 		rpmodectl = I915_READ(GEN6_RP_CONTROL);
 		seq_printf(m, "Video Turbo Mode: %s\n",
 			   yesno(rpmodectl & GEN6_RP_MEDIA_TURBO));
@@ -1056,7 +1063,10 @@ static int i915_frequency_info(struct seq_file *m, void *unused)
 			   yesno((rpmodectl & GEN6_RP_MEDIA_MODE_MASK) ==
 				  GEN6_RP_MEDIA_SW_MODE));
 
+		vlv_punit_get(dev_priv);
 		freq_sts = vlv_punit_read(dev_priv, PUNIT_REG_GPU_FREQ_STS);
+		vlv_punit_put(dev_priv);
+
 		seq_printf(m, "PUNIT_REG_GPU_FREQ_STS: 0x%08x\n", freq_sts);
 		seq_printf(m, "DDR freq: %d MHz\n", dev_priv->mem_freq);
 
@@ -1078,7 +1088,6 @@ static int i915_frequency_info(struct seq_file *m, void *unused)
 		seq_printf(m,
 			   "efficient (RPe) frequency: %d MHz\n",
 			   intel_gpu_freq(dev_priv, rps->efficient_freq));
-		mutex_unlock(&dev_priv->pcu_lock);
 	} else if (INTEL_GEN(dev_priv) >= 6) {
 		u32 rp_state_limits;
 		u32 gt_perf_status;
@@ -1483,12 +1492,9 @@ static int gen6_drpc_info(struct seq_file *m)
 		gen9_powergate_status = I915_READ(GEN9_PWRGT_DOMAIN_STATUS);
 	}
 
-	if (INTEL_GEN(dev_priv) <= 7) {
-		mutex_lock(&dev_priv->pcu_lock);
+	if (INTEL_GEN(dev_priv) <= 7)
 		sandybridge_pcode_read(dev_priv, GEN6_PCODE_READ_RC6VIDS,
 				       &rc6vids);
-		mutex_unlock(&dev_priv->pcu_lock);
-	}
 
 	seq_printf(m, "RC1e Enabled: %s\n",
 		   yesno(rcctl1 & GEN6_RC_CTL_RC1e_ENABLE));
@@ -1752,16 +1758,9 @@ static int i915_ring_freq_table(struct seq_file *m, void *unused)
 	unsigned int max_gpu_freq, min_gpu_freq;
 	intel_wakeref_t wakeref;
 	int gpu_freq, ia_freq;
-	int ret;
 
 	if (!HAS_LLC(dev_priv))
 		return -ENODEV;
-
-	wakeref = intel_runtime_pm_get(dev_priv);
-
-	ret = mutex_lock_interruptible(&dev_priv->pcu_lock);
-	if (ret)
-		goto out;
 
 	min_gpu_freq = rps->min_freq;
 	max_gpu_freq = rps->max_freq;
@@ -1773,6 +1772,7 @@ static int i915_ring_freq_table(struct seq_file *m, void *unused)
 
 	seq_puts(m, "GPU freq (MHz)\tEffective CPU freq (MHz)\tEffective Ring freq (MHz)\n");
 
+	wakeref = intel_runtime_pm_get(dev_priv);
 	for (gpu_freq = min_gpu_freq; gpu_freq <= max_gpu_freq; gpu_freq++) {
 		ia_freq = gpu_freq;
 		sandybridge_pcode_read(dev_priv,
@@ -1786,12 +1786,9 @@ static int i915_ring_freq_table(struct seq_file *m, void *unused)
 			   ((ia_freq >> 0) & 0xff) * 100,
 			   ((ia_freq >> 8) & 0xff) * 100);
 	}
-
-	mutex_unlock(&dev_priv->pcu_lock);
-
-out:
 	intel_runtime_pm_put(dev_priv, wakeref);
-	return ret;
+
+	return 0;
 }
 
 static int i915_opregion(struct seq_file *m, void *unused)
@@ -1892,6 +1889,7 @@ static int i915_context_status(struct seq_file *m, void *unused)
 		return ret;
 
 	list_for_each_entry(ctx, &dev_priv->contexts.list, link) {
+		struct i915_gem_engines_iter it;
 		struct intel_context *ce;
 
 		seq_puts(m, "HW context ");
@@ -1916,7 +1914,8 @@ static int i915_context_status(struct seq_file *m, void *unused)
 		seq_putc(m, ctx->remap_slice ? 'R' : 'r');
 		seq_putc(m, '\n');
 
-		list_for_each_entry(ce, &ctx->active_engines, active_link) {
+		for_each_gem_engine(ce,
+				    i915_gem_context_lock_engines(ctx), it) {
 			seq_printf(m, "%s: ", ce->engine->name);
 			if (ce->state)
 				describe_obj(m, ce->state->obj);
@@ -1924,6 +1923,7 @@ static int i915_context_status(struct seq_file *m, void *unused)
 				describe_ctx_ring(m, ce->ring);
 			seq_putc(m, '\n');
 		}
+		i915_gem_context_unlock_engines(ctx);
 
 		seq_putc(m, '\n');
 	}
@@ -2028,11 +2028,11 @@ static int i915_rps_boost_info(struct seq_file *m, void *data)
 
 	with_intel_runtime_pm_if_in_use(dev_priv, wakeref) {
 		if (IS_VALLEYVIEW(dev_priv) || IS_CHERRYVIEW(dev_priv)) {
-			mutex_lock(&dev_priv->pcu_lock);
+			vlv_punit_get(dev_priv);
 			act_freq = vlv_punit_read(dev_priv,
 						  PUNIT_REG_GPU_FREQ_STS);
+			vlv_punit_put(dev_priv);
 			act_freq = (act_freq >> 8) & 0xff;
-			mutex_unlock(&dev_priv->pcu_lock);
 		} else {
 			act_freq = intel_get_cagf(dev_priv,
 						  I915_READ(GEN6_RPSTAT1));
@@ -2040,8 +2040,7 @@ static int i915_rps_boost_info(struct seq_file *m, void *data)
 	}
 
 	seq_printf(m, "RPS enabled? %d\n", rps->enabled);
-	seq_printf(m, "GPU busy? %s [%d requests]\n",
-		   yesno(dev_priv->gt.awake), dev_priv->gt.active_requests);
+	seq_printf(m, "GPU busy? %s\n", yesno(dev_priv->gt.awake));
 	seq_printf(m, "Boosts outstanding? %d\n",
 		   atomic_read(&rps->num_waiters));
 	seq_printf(m, "Interactive? %d\n", READ_ONCE(rps->power.interactive));
@@ -2060,9 +2059,7 @@ static int i915_rps_boost_info(struct seq_file *m, void *data)
 
 	seq_printf(m, "Wait boosts: %d\n", atomic_read(&rps->boosts));
 
-	if (INTEL_GEN(dev_priv) >= 6 &&
-	    rps->enabled &&
-	    dev_priv->gt.active_requests) {
+	if (INTEL_GEN(dev_priv) >= 6 && rps->enabled && dev_priv->gt.awake) {
 		u32 rpup, rpupei;
 		u32 rpdown, rpdownei;
 
@@ -3091,9 +3088,9 @@ static int i915_engine_info(struct seq_file *m, void *unused)
 
 	wakeref = intel_runtime_pm_get(dev_priv);
 
-	seq_printf(m, "GT awake? %s\n", yesno(dev_priv->gt.awake));
-	seq_printf(m, "Global active requests: %d\n",
-		   dev_priv->gt.active_requests);
+	seq_printf(m, "GT awake? %s [%d]\n",
+		   yesno(dev_priv->gt.awake),
+		   atomic_read(&dev_priv->gt.wakeref.count));
 	seq_printf(m, "CS timestamp frequency: %u kHz\n",
 		   RUNTIME_INFO(dev_priv)->cs_timestamp_frequency_khz);
 
@@ -3939,9 +3936,8 @@ i915_drop_caches_set(void *data, u64 val)
 
 	if (val & DROP_IDLE) {
 		do {
-			if (READ_ONCE(i915->gt.active_requests))
-				flush_delayed_work(&i915->gt.retire_work);
-			drain_delayed_work(&i915->gt.idle_work);
+			flush_delayed_work(&i915->gem.retire_work);
+			drain_delayed_work(&i915->gem.idle_work);
 		} while (READ_ONCE(i915->gt.awake));
 	}
 

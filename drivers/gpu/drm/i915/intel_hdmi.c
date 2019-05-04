@@ -39,17 +39,24 @@
 #include <drm/i915_drm.h>
 #include <drm/intel_lpe_audio.h>
 
+#include "i915_debugfs.h"
 #include "i915_drv.h"
+#include "intel_atomic.h"
 #include "intel_audio.h"
 #include "intel_connector.h"
 #include "intel_ddi.h"
 #include "intel_dp.h"
+#include "intel_dpio_phy.h"
 #include "intel_drv.h"
+#include "intel_fifo_underrun.h"
+#include "intel_gmbus.h"
 #include "intel_hdcp.h"
 #include "intel_hdmi.h"
+#include "intel_hotplug.h"
 #include "intel_lspcon.h"
 #include "intel_sdvo.h"
 #include "intel_panel.h"
+#include "intel_sideband.h"
 
 static struct drm_device *intel_hdmi_to_dev(struct intel_hdmi *intel_hdmi)
 {
@@ -2630,12 +2637,12 @@ static void chv_hdmi_post_disable(struct intel_encoder *encoder,
 	struct drm_device *dev = encoder->base.dev;
 	struct drm_i915_private *dev_priv = to_i915(dev);
 
-	mutex_lock(&dev_priv->sb_lock);
+	vlv_dpio_get(dev_priv);
 
 	/* Assert data lane reset */
 	chv_data_lane_soft_reset(encoder, old_crtc_state, true);
 
-	mutex_unlock(&dev_priv->sb_lock);
+	vlv_dpio_put(dev_priv);
 }
 
 static void chv_hdmi_pre_enable(struct intel_encoder *encoder,

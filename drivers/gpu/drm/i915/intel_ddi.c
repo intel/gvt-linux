@@ -29,16 +29,23 @@
 
 #include "i915_drv.h"
 #include "intel_audio.h"
+#include "intel_combo_phy.h"
 #include "intel_connector.h"
 #include "intel_ddi.h"
 #include "intel_dp.h"
+#include "intel_dp_link_training.h"
+#include "intel_dpio_phy.h"
 #include "intel_drv.h"
 #include "intel_dsi.h"
+#include "intel_fifo_underrun.h"
+#include "intel_gmbus.h"
 #include "intel_hdcp.h"
 #include "intel_hdmi.h"
+#include "intel_hotplug.h"
 #include "intel_lspcon.h"
 #include "intel_panel.h"
 #include "intel_psr.h"
+#include "intel_vdsc.h"
 
 struct ddi_buf_trans {
 	u32 trans1;	/* balance leg enable, de-emph level */
@@ -3110,6 +3117,15 @@ static void intel_ddi_pre_enable_dp(struct intel_encoder *encoder,
 		bxt_ddi_vswing_sequence(encoder, level, encoder->type);
 	else
 		intel_prepare_dp_ddi_buffers(encoder, crtc_state);
+
+	if (intel_port_is_combophy(dev_priv, port)) {
+		bool lane_reversal =
+			dig_port->saved_port_bits & DDI_BUF_PORT_REVERSAL;
+
+		intel_combo_phy_power_up_lanes(dev_priv, port, false,
+					       crtc_state->lane_count,
+					       lane_reversal);
+	}
 
 	intel_ddi_init_dp_buf_reg(encoder);
 	if (!is_mst)

@@ -38,8 +38,8 @@
 #include <linux/mm.h>
 #include <linux/pagevec.h>
 
+#include "gt/intel_reset.h"
 #include "i915_request.h"
-#include "i915_reset.h"
 #include "i915_selftest.h"
 #include "i915_timeline.h"
 
@@ -384,6 +384,7 @@ struct i915_ggtt {
 	u32 pin_bias;
 
 	struct drm_mm_node error_capture;
+	struct drm_mm_node uc_fw;
 };
 
 struct i915_hw_ppgtt {
@@ -396,8 +397,6 @@ struct i915_hw_ppgtt {
 		struct i915_page_directory_pointer pdp;	/* GEN8+ */
 		struct i915_page_directory pd;		/* GEN6-7 */
 	};
-
-	u32 user_handle;
 };
 
 struct gen6_hw_ppgtt {

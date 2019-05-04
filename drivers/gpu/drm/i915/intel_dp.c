@@ -31,6 +31,7 @@
 #include <linux/reboot.h>
 #include <linux/slab.h>
 #include <linux/types.h>
+
 #include <asm/byteorder.h>
 
 #include <drm/drm_atomic_helper.h>
@@ -41,18 +42,27 @@
 #include <drm/drm_probe_helper.h>
 #include <drm/i915_drm.h>
 
+#include "i915_debugfs.h"
 #include "i915_drv.h"
+#include "intel_atomic.h"
 #include "intel_audio.h"
 #include "intel_connector.h"
 #include "intel_ddi.h"
 #include "intel_dp.h"
+#include "intel_dp_link_training.h"
+#include "intel_dp_mst.h"
+#include "intel_dpio_phy.h"
 #include "intel_drv.h"
+#include "intel_fifo_underrun.h"
 #include "intel_hdcp.h"
 #include "intel_hdmi.h"
+#include "intel_hotplug.h"
 #include "intel_lspcon.h"
 #include "intel_lvds.h"
 #include "intel_panel.h"
 #include "intel_psr.h"
+#include "intel_sideband.h"
+#include "intel_vdsc.h"
 
 #define DP_DPRX_ESI_LEN 14
 
@@ -3148,12 +3158,12 @@ static void chv_post_disable_dp(struct intel_encoder *encoder,
 
 	intel_dp_link_down(encoder, old_crtc_state);
 
-	mutex_lock(&dev_priv->sb_lock);
+	vlv_dpio_get(dev_priv);
 
 	/* Assert data lane reset */
 	chv_data_lane_soft_reset(encoder, old_crtc_state, true);
 
-	mutex_unlock(&dev_priv->sb_lock);
+	vlv_dpio_put(dev_priv);
 }
 
 static void
@@ -5219,12 +5229,15 @@ static bool icl_tc_port_connected(struct drm_i915_private *dev_priv,
 	u32 dpsp;
 
 	/*
-	 * WARN if we got a legacy port HPD, but VBT didn't mark the port as
+	 * Complain if we got a legacy port HPD, but VBT didn't mark the port as
 	 * legacy. Treat the port as legacy from now on.
 	 */
-	if (WARN_ON(!intel_dig_port->tc_legacy_port &&
-		    I915_READ(SDEISR) & SDE_TC_HOTPLUG_ICP(tc_port)))
+	if (!intel_dig_port->tc_legacy_port &&
+	    I915_READ(SDEISR) & SDE_TC_HOTPLUG_ICP(tc_port)) {
+		DRM_ERROR("VBT incorrectly claims port %c is not TypeC legacy\n",
+			  port_name(port));
 		intel_dig_port->tc_legacy_port = true;
+	}
 	is_legacy = intel_dig_port->tc_legacy_port;
 
 	/*

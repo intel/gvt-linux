@@ -1,30 +1,12 @@
-drm drm-fixes 1daa0449d287a109b93c4516914eddeff4baff65
-	Merge tag 'drm-misc-fixes-2019-05-02' of git://anongit.freedesktop.org/drm/drm-misc into drm-fixes
-drm-misc drm-misc-fixes ab042b824c11502bd39abfdfd4c7f285347d483a
-	Revert "drm/qxl: drop prime import/export callbacks"
-drm-intel drm-intel-fixes f5c58ba18ab8ea2169670ed880e4d31ed772ad10
-	drm/i915: Restore correct bxt_ddi_phy_calc_lane_lat_optim_mask() calculation
-drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
-	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
-drm drm-next 422449238e9853458283beffed77562d4b40a2fa
-	Merge branch 'drm-next-5.2' of git://people.freedesktop.org/~agd5f/linux into drm-next
-drm-misc drm-misc-next-fixes b208146b0c8f84a1d6a3df0cfa45238e2190c8a2
-	drm/panfrost: Show stored feature registers
-drm-intel drm-intel-next-fixes 9628e15ca9d5f7595ba886173e98a139d0a56cd1
-	drm/i915/icl: Whitelist GEN9_SLICE_COMMON_ECO_CHICKEN1
-drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
-	Linux 4.14-rc1
-drm-misc drm-misc-next 1d721ed679db18888f33df8cb238bc25a1d783c1
-	drm/amdgpu: Avoid HW reset if guilty job already signaled.
-drm-intel drm-intel-next-queued ca6e56f654e7b241256ffba78cd2abb22aa3bc97
-	drm/i915: Disable semaphore busywaits on saturated systems
-drm-intel drm-intel-next ad2c467aa92e283e9e8009bb9eb29a5c6a2d1217
-	drm/i915: Update DRIVER_DATE to 20190417
-drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
-	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
-sound-upstream for-linus 3887c26c0e24d50a4d0ce20cf4726737cee1a2fd
-	ALSA: hda/realtek - Apply the fixup for ASUS Q325UAR
-sound-upstream for-next 78ff2afc26251741bcdf5668990bb6278e68adcd
-	MAINTAINERS: update git tree for sound entries
-drm-intel topic/core-for-CI d9291d803f2166e283d77e69683069898fb1e1c2
-	RFC: console: hack up console_trylock more
+drm-tip/drm-tip 0cc5ef288aac64e48e65691bc550f03b5b89db28
+	drm-tip: 2019y-05m-04d-21h-12m-53s UTC integration manifest
+vfio-upstream/for-linus 492855939bdb59c6f947b0b5b44af9ad82b7e38c
+	vfio/type1: Limit DMA mappings per container
+vfio-upstream/next 41be3e2618174fdf3361e49e64f2bf530f40c6b0
+	vfio: Fix WARNING "do not call blocking ops when !TASK_RUNNING"
+origin/gvt-fixes cd7879f79f83aec4bb13f0f823f323911dc5397b
+	drm/i915/gvt: Roundup fb->height into tile's height at calucation fb->size
+origin/gvt-next 2bfc4975083ace0e5777116514c3a75e59b3dbcd
+	drm/i915/gvt: Fix incorrect mask of mmio 0x22028 in gen8/9 mmio list
+origin/gvt-next-fixes 75fdb811d93c8aa4a9f73b63db032b1e6a8668ef
+	drm/i915/gvt: Add in context mmio 0x20D8 to gen9 mmio list

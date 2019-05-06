@@ -210,6 +210,7 @@ static int vgpu_get_plane_info(struct drm_device *dev,
 {
 	struct intel_vgpu_primary_plane_format p;
 	struct intel_vgpu_cursor_plane_format c;
+	struct intel_vgpu_sprite_plane_format o;
 	int ret, tile_height = 1;
 
 	memset(info, 0, sizeof(*info));
@@ -244,6 +245,19 @@ static int vgpu_get_plane_info(struct drm_device *dev,
 		default:
 			gvt_vgpu_err("invalid tiling mode: %x\n", p.tiled);
 		}
+	} else if (plane_id == DRM_PLANE_TYPE_OVERLAY) {
+		ret = intel_vgpu_decode_sprite_plane(vgpu, &o);
+		if (ret)
+			return ret;
+		info->start = o.base;
+		info->start_gpa = o.base_gpa;
+		info->width = o.width;
+		info->height = o.height;
+		info->stride = o.width * (o.bpp / 8);
+		info->drm_format = o.drm_format;
+		info->drm_format_mod = 0;
+		info->x_pos = o.x_offset;
+		info->y_pos = o.y_offset;
 	} else if (plane_id == DRM_PLANE_TYPE_CURSOR) {
 		ret = intel_vgpu_decode_cursor_plane(vgpu, &c);
 		if (ret)

@@ -256,8 +256,8 @@ static int vgpu_get_plane_info(struct drm_device *dev,
 		info->stride = o.width * (o.bpp / 8);
 		info->drm_format = o.drm_format;
 		info->drm_format_mod = 0;
-		info->x_pos = o.x_offset;
-		info->y_pos = o.y_offset;
+		info->x_pos = o.x_pos;
+		info->y_pos = o.y_pos;
 	} else if (plane_id == DRM_PLANE_TYPE_CURSOR) {
 		ret = intel_vgpu_decode_cursor_plane(vgpu, &c);
 		if (ret)

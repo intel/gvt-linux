@@ -21,6 +21,8 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
+#include "intel_dpio_phy.h"
+#include "intel_dpll_mgr.h"
 #include "intel_drv.h"
 
 /**
@@ -1879,27 +1881,6 @@ static const struct intel_shared_dpll_funcs bxt_ddi_pll_funcs = {
 	.get_hw_state = bxt_ddi_pll_get_hw_state,
 };
 
-static void intel_ddi_pll_init(struct drm_device *dev)
-{
-	struct drm_i915_private *dev_priv = to_i915(dev);
-
-	if (INTEL_GEN(dev_priv) < 9) {
-		u32 val = I915_READ(LCPLL_CTL);
-
-		/*
-		 * The LCPLL register should be turned on by the BIOS. For now
-		 * let's just check its state and print errors in case
-		 * something is wrong.  Don't even try to turn it on.
-		 */
-
-		if (val & LCPLL_CD_SOURCE_FCLK)
-			DRM_ERROR("CDCLK source is not LCPLL\n");
-
-		if (val & LCPLL_PLL_DISABLE)
-			DRM_ERROR("LCPLL is disabled\n");
-	}
-}
-
 struct intel_dpll_mgr {
 	const struct dpll_info *dpll_info;
 
@@ -2741,11 +2722,11 @@ static bool icl_calc_mg_pll_state(struct intel_crtc_state *crtc_state)
 	}
 
 	if (use_ssc) {
-		tmp = (u64)dco_khz * 47 * 32;
+		tmp = mul_u32_u32(dco_khz, 47 * 32);
 		do_div(tmp, refclk_khz * m1div * 10000);
 		ssc_stepsize = tmp;
 
-		tmp = (u64)dco_khz * 1000;
+		tmp = mul_u32_u32(dco_khz, 1000);
 		ssc_steplen = DIV_ROUND_UP_ULL(tmp, 32 * 2 * 32);
 	} else {
 		ssc_stepsize = 0;
@@ -3303,10 +3284,6 @@ void intel_shared_dpll_init(struct drm_device *dev)
 	mutex_init(&dev_priv->dpll_lock);
 
 	BUG_ON(dev_priv->num_shared_dpll > I915_NUM_PLLS);
-
-	/* FIXME: Move this to a more suitable place */
-	if (HAS_DDI(dev_priv))
-		intel_ddi_pll_init(dev);
 }
 
 /**

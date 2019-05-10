@@ -4,9 +4,9 @@
 /**
  * DOC: Interrupt management for the V3D engine
  *
- * When we take a bin, render, or TFU done interrupt, we need to
- * signal the fence for that job so that the scheduler can queue up
- * the next one and unblock any waiters.
+ * When we take a bin, render, TFU done, or CSD done interrupt, we
+ * need to signal the fence for that job so that the scheduler can
+ * queue up the next one and unblock any waiters.
  *
  * When we take the binner out of memory interrupt, we need to
  * allocate some new memory and pass it to the binner so that the
@@ -20,6 +20,7 @@
 #define V3D_CORE_IRQS ((u32)(V3D_INT_OUTOMEM |	\
 			     V3D_INT_FLDONE |	\
 			     V3D_INT_FRDONE |	\
+			     V3D_INT_CSDDONE |	\
 			     V3D_INT_GMPV))
 
 #define V3D_HUB_IRQS ((u32)(V3D_HUB_INT_MMU_WRV |	\
@@ -62,7 +63,7 @@ v3d_overflow_mem_work(struct work_struct *work)
 	}
 
 	drm_gem_object_get(obj);
-	list_add_tail(&bo->unref_head, &v3d->bin_job->unref_list);
+	list_add_tail(&bo->unref_head, &v3d->bin_job->render->unref_list);
 	spin_unlock_irqrestore(&v3d->job_lock, irqflags);
 
 	V3D_CORE_WRITE(0, V3D_PTB_BPOA, bo->node.start << PAGE_SHIFT);
@@ -96,7 +97,7 @@ v3d_irq(int irq, void *arg)
 
 	if (intsts & V3D_INT_FLDONE) {
 		struct v3d_fence *fence =
-			to_v3d_fence(v3d->bin_job->bin.irq_fence);
+			to_v3d_fence(v3d->bin_job->base.irq_fence);
 
 		trace_v3d_bcl_irq(&v3d->drm, fence->seqno);
 		dma_fence_signal(&fence->base);
@@ -105,9 +106,18 @@ v3d_irq(int irq, void *arg)
 
 	if (intsts & V3D_INT_FRDONE) {
 		struct v3d_fence *fence =
-			to_v3d_fence(v3d->render_job->render.irq_fence);
+			to_v3d_fence(v3d->render_job->base.irq_fence);
 
 		trace_v3d_rcl_irq(&v3d->drm, fence->seqno);
+		dma_fence_signal(&fence->base);
+		status = IRQ_HANDLED;
+	}
+
+	if (intsts & V3D_INT_CSDDONE) {
+		struct v3d_fence *fence =
+			to_v3d_fence(v3d->csd_job->base.irq_fence);
+
+		trace_v3d_csd_irq(&v3d->drm, fence->seqno);
 		dma_fence_signal(&fence->base);
 		status = IRQ_HANDLED;
 	}
@@ -141,7 +151,7 @@ v3d_hub_irq(int irq, void *arg)
 
 	if (intsts & V3D_HUB_INT_TFUC) {
 		struct v3d_fence *fence =
-			to_v3d_fence(v3d->tfu_job->irq_fence);
+			to_v3d_fence(v3d->tfu_job->base.irq_fence);
 
 		trace_v3d_tfu_irq(&v3d->drm, fence->seqno);
 		dma_fence_signal(&fence->base);

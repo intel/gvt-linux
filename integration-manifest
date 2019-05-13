@@ -1,30 +1,12 @@
-drm drm-fixes e93c9c99a629c61837d5a7fc2120cd2b6c70dbdd
-	Linux 5.1
-drm-misc drm-misc-fixes ab042b824c11502bd39abfdfd4c7f285347d483a
-	Revert "drm/qxl: drop prime import/export callbacks"
-drm-intel drm-intel-fixes f5c58ba18ab8ea2169670ed880e4d31ed772ad10
-	drm/i915: Restore correct bxt_ddi_phy_calc_lane_lat_optim_mask() calculation
-drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
-	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
-drm drm-next c01ad0fe1d57dbdee6e2f77d2c21a64eb1537480
-	Merge branch 'drm-next-5.2' of git://people.freedesktop.org/~agd5f/linux into drm-next
-drm-misc drm-misc-next-fixes eb85d03e01c3e9f3b0ba7282b2e3515a635decb2
-	Merge tag 'drm-misc-next-fixes-2019-05-08' of git://anongit.freedesktop.org/drm/drm-misc into drm-next
-drm-intel drm-intel-next-fixes 23372cce8fe7ee98a6458fd3d035a55b87f0c6fe
-	Merge tag 'gvt-next-fixes-2019-05-07' of https://github.com/intel/gvt-linux into drm-intel-next-fixes
-drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
-	Linux 4.14-rc1
-drm-misc drm-misc-next 094aa54f0f9e9185babebf95745d71b07a84321c
-	drm: Some ocd in drm_file.c
-drm-intel drm-intel-next-queued dc0c0bfe112c100b0279de2e4aeda22311626c18
-	drm/i915: Add readout and state check for pch_pfit.force_thru
-drm-intel drm-intel-next ad2c467aa92e283e9e8009bb9eb29a5c6a2d1217
-	drm/i915: Update DRIVER_DATE to 20190417
-drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
-	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
-sound-upstream for-linus ed97c988bdc61ab6fb5d1f5f02a709844557b68f
-	Merge tag 'asoc-v5.2-5' of git://git.kernel.org/pub/scm/linux/kernel/git/broonie/sound into for-linus
-sound-upstream for-next ed97c988bdc61ab6fb5d1f5f02a709844557b68f
-	Merge tag 'asoc-v5.2-5' of git://git.kernel.org/pub/scm/linux/kernel/git/broonie/sound into for-linus
-drm-intel topic/core-for-CI e42ab48f69c8d67d125767793f758f0442006c3a
-	RFC: soft/hardlookup: taint kernel
+drm-tip/drm-tip c059ddabfe60a5072ace44a34a9de9b4202df6ec
+	drm-tip: 2019y-05m-10d-04h-32m-39s UTC integration manifest
+vfio-upstream/for-linus 492855939bdb59c6f947b0b5b44af9ad82b7e38c
+	vfio/type1: Limit DMA mappings per container
+vfio-upstream/next 15c80c1659f27364734a3938b04d1c67479aa11c
+	vfio: Add Cornelia Huck as reviewer
+origin/gvt-fixes cd7879f79f83aec4bb13f0f823f323911dc5397b
+	drm/i915/gvt: Roundup fb->height into tile's height at calucation fb->size
+origin/gvt-next 2bfc4975083ace0e5777116514c3a75e59b3dbcd
+	drm/i915/gvt: Fix incorrect mask of mmio 0x22028 in gen8/9 mmio list
+origin/gvt-next-fixes f8c3d14187a3ceb686a84128fc338ce6cc99cb03
+	drm/i915/gvt: do not let TRTTE and 0x4dfc write passthrough to hardware

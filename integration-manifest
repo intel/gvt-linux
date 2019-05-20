@@ -1,0 +1,30 @@
+drm drm-fixes e93c9c99a629c61837d5a7fc2120cd2b6c70dbdd
+	Linux 5.1
+drm-misc drm-misc-fixes 243c4b78923d5067b0071e285d6a90c45369ffe0
+	Merge drm-misc-next-fixes-2019-05-20 into drm-misc-fixes
+drm-intel drm-intel-fixes a491cc8e1597ea25803191cded49d3686702a406
+	drm/i915: Truly bump ready tasks ahead of busywaits
+drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
+	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
+drm drm-next a188339ca5a396acc588e5851ed7e19f66b0ebd9
+	Linux 5.2-rc1
+drm-misc drm-misc-next-fixes 51a0d1a90bff5d90a1a1c58e165928a0dd92268a
+	drm/sun4i: sun6i_mipi_dsi: Fix hsync_porch overflow
+drm-intel drm-intel-next-fixes c36beba6b296b3c05a0f29753b04775e5ae23886
+	drm/i915: Seal races between async GPU cancellation, retirement and signaling
+drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
+	Linux 4.14-rc1
+drm-misc drm-misc-next 201bd433bfa36c8b1de3c71f59d04bf5b58adfd9
+	drm/bochs: fix ptr_ret.cocci warnings
+drm-intel drm-intel-next-queued 5c000fb33b767c3fa10d29a1021edbf4f92b76a2
+	drm/i915: Bump gen7+ fb size limits to 16kx16k
+drm-intel drm-intel-next ad2c467aa92e283e9e8009bb9eb29a5c6a2d1217
+	drm/i915: Update DRIVER_DATE to 20190417
+drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
+	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
+sound-upstream for-linus c7b55fabfa441ef48f274cdfa1565ed8af92951a
+	ALSA: hdac: fix memory release for SST and SOF drivers
+sound-upstream for-next c4580f20971539a78231591852055a375a957fab
+	ALSA: dice: add stream format parameters for PreSonus FireStudio
+drm-intel topic/core-for-CI e42ab48f69c8d67d125767793f758f0442006c3a
+	RFC: soft/hardlookup: taint kernel

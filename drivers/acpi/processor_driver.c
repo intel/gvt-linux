@@ -35,6 +35,12 @@
 
 #include <acpi/processor.h>
 
+/* Only for Core-for-CI so don't want ia64 to fail compilation.*/
+#ifdef CONFIG_X86
+#include <asm/cpu_device_id.h>
+#include <asm/intel-family.h>
+#endif
+
 #include "internal.h"
 
 #define ACPI_PROCESSOR_NOTIFY_PERFORMANCE 0x80
@@ -57,6 +63,13 @@ static const struct acpi_device_id processor_device_ids[] = {
 	{"", 0},
 };
 MODULE_DEVICE_TABLE(acpi, processor_device_ids);
+
+#define ICPU(model)	{ X86_VENDOR_INTEL, 6, model, X86_FEATURE_ANY, }
+static const struct x86_cpu_id intel_cpu_ids[] = {
+	ICPU(INTEL_FAM6_ICELAKE_MOBILE),	/* ICL */
+	{}
+};
+MODULE_DEVICE_TABLE(x86cpu, intel_cpu_ids);
 
 static struct device_driver acpi_processor_driver = {
 	.name = "processor",
@@ -226,6 +239,7 @@ static inline void acpi_pss_perf_exit(struct acpi_processor *pr,
 static int __acpi_processor_start(struct acpi_device *device)
 {
 	struct acpi_processor *pr = acpi_driver_data(device);
+	const struct x86_cpu_id *id;
 	acpi_status status;
 	int result = 0;
 
@@ -239,7 +253,9 @@ static int __acpi_processor_start(struct acpi_device *device)
 	if (result && !IS_ENABLED(CONFIG_ACPI_CPU_FREQ_PSS))
 		dev_dbg(&device->dev, "CPPC data invalid or not present\n");
 
-	if (!cpuidle_get_driver() || cpuidle_get_driver() == &acpi_idle_driver)
+	id = x86_match_cpu(intel_cpu_ids);
+	if (!id && (!cpuidle_get_driver() || cpuidle_get_driver() ==
+		&acpi_idle_driver))
 		acpi_processor_power_init(pr);
 
 	result = acpi_pss_perf_init(pr, device);

@@ -31,6 +31,7 @@
 #include <linux/reboot.h>
 #include <linux/slab.h>
 #include <linux/types.h>
+
 #include <asm/byteorder.h>
 
 #include <drm/drm_atomic_helper.h>
@@ -41,18 +42,27 @@
 #include <drm/drm_probe_helper.h>
 #include <drm/i915_drm.h>
 
+#include "i915_debugfs.h"
 #include "i915_drv.h"
+#include "intel_atomic.h"
 #include "intel_audio.h"
 #include "intel_connector.h"
 #include "intel_ddi.h"
 #include "intel_dp.h"
+#include "intel_dp_link_training.h"
+#include "intel_dp_mst.h"
+#include "intel_dpio_phy.h"
 #include "intel_drv.h"
+#include "intel_fifo_underrun.h"
 #include "intel_hdcp.h"
 #include "intel_hdmi.h"
+#include "intel_hotplug.h"
 #include "intel_lspcon.h"
 #include "intel_lvds.h"
 #include "intel_panel.h"
 #include "intel_psr.h"
+#include "intel_sideband.h"
+#include "intel_vdsc.h"
 
 #define DP_DPRX_ESI_LEN 14
 
@@ -206,14 +216,17 @@ static int intel_dp_get_fia_supported_lane_count(struct intel_dp *intel_dp)
 	struct intel_digital_port *dig_port = dp_to_dig_port(intel_dp);
 	struct drm_i915_private *dev_priv = to_i915(dig_port->base.base.dev);
 	enum tc_port tc_port = intel_port_to_tc(dev_priv, dig_port->base.port);
+	intel_wakeref_t wakeref;
 	u32 lane_info;
 
 	if (tc_port == PORT_TC_NONE || dig_port->tc_type != TC_PORT_TYPEC)
 		return 4;
 
-	lane_info = (I915_READ(PORT_TX_DFLEXDPSP) &
-		     DP_LANE_ASSIGNMENT_MASK(tc_port)) >>
-		    DP_LANE_ASSIGNMENT_SHIFT(tc_port);
+	lane_info = 0;
+	with_intel_display_power(dev_priv, POWER_DOMAIN_DISPLAY_CORE, wakeref)
+		lane_info = (I915_READ(PORT_TX_DFLEXDPSP) &
+			     DP_LANE_ASSIGNMENT_MASK(tc_port)) >>
+				DP_LANE_ASSIGNMENT_SHIFT(tc_port);
 
 	switch (lane_info) {
 	default:
@@ -1211,7 +1224,10 @@ intel_dp_aux_xfer(struct intel_dp *intel_dp,
 			to_i915(intel_dig_port->base.base.dev);
 	i915_reg_t ch_ctl, ch_data[5];
 	u32 aux_clock_divider;
-	intel_wakeref_t wakeref;
+	enum intel_display_power_domain aux_domain =
+		intel_aux_power_domain(intel_dig_port);
+	intel_wakeref_t aux_wakeref;
+	intel_wakeref_t pps_wakeref;
 	int i, ret, recv_bytes;
 	int try, clock = 0;
 	u32 status;
@@ -1221,7 +1237,8 @@ intel_dp_aux_xfer(struct intel_dp *intel_dp,
 	for (i = 0; i < ARRAY_SIZE(ch_data); i++)
 		ch_data[i] = intel_dp->aux_ch_data_reg(intel_dp, i);
 
-	wakeref = pps_lock(intel_dp);
+	aux_wakeref = intel_display_power_get(dev_priv, aux_domain);
+	pps_wakeref = pps_lock(intel_dp);
 
 	/*
 	 * We will be called with VDD already enabled for dpcd/edid/oui reads.
@@ -1367,7 +1384,8 @@ out:
 	if (vdd)
 		edp_panel_vdd_off(intel_dp, false);
 
-	pps_unlock(intel_dp, wakeref);
+	pps_unlock(intel_dp, pps_wakeref);
+	intel_display_power_put_async(dev_priv, aux_domain, aux_wakeref);
 
 	return ret;
 }
@@ -3148,12 +3166,12 @@ static void chv_post_disable_dp(struct intel_encoder *encoder,
 
 	intel_dp_link_down(encoder, old_crtc_state);
 
-	mutex_lock(&dev_priv->sb_lock);
+	vlv_dpio_get(dev_priv);
 
 	/* Assert data lane reset */
 	chv_data_lane_soft_reset(encoder, old_crtc_state, true);
 
-	mutex_unlock(&dev_priv->sb_lock);
+	vlv_dpio_put(dev_priv);
 }
 
 static void
@@ -4829,14 +4847,14 @@ intel_dp_detect_dpcd(struct intel_dp *intel_dp)
 	u8 *dpcd = intel_dp->dpcd;
 	u8 type;
 
+	if (WARN_ON(intel_dp_is_edp(intel_dp)))
+		return connector_status_connected;
+
 	if (lspcon->active)
 		lspcon_resume(lspcon);
 
 	if (!intel_dp_get_dpcd(intel_dp))
 		return connector_status_disconnected;
-
-	if (intel_dp_is_edp(intel_dp))
-		return connector_status_connected;
 
 	/* if there's no downstream port, we're done */
 	if (!drm_dp_is_branch(dpcd))
@@ -5219,12 +5237,15 @@ static bool icl_tc_port_connected(struct drm_i915_private *dev_priv,
 	u32 dpsp;
 
 	/*
-	 * WARN if we got a legacy port HPD, but VBT didn't mark the port as
+	 * Complain if we got a legacy port HPD, but VBT didn't mark the port as
 	 * legacy. Treat the port as legacy from now on.
 	 */
-	if (WARN_ON(!intel_dig_port->tc_legacy_port &&
-		    I915_READ(SDEISR) & SDE_TC_HOTPLUG_ICP(tc_port)))
+	if (!intel_dig_port->tc_legacy_port &&
+	    I915_READ(SDEISR) & SDE_TC_HOTPLUG_ICP(tc_port)) {
+		DRM_ERROR("VBT incorrectly claims port %c is not TypeC legacy\n",
+			  port_name(port));
 		intel_dig_port->tc_legacy_port = true;
+	}
 	is_legacy = intel_dig_port->tc_legacy_port;
 
 	/*
@@ -5276,7 +5297,7 @@ static bool icl_digital_port_connected(struct intel_encoder *encoder)
  *
  * Return %true if port is connected, %false otherwise.
  */
-bool intel_digital_port_connected(struct intel_encoder *encoder)
+static bool __intel_digital_port_connected(struct intel_encoder *encoder)
 {
 	struct drm_i915_private *dev_priv = to_i915(encoder->base.dev);
 
@@ -5304,6 +5325,18 @@ bool intel_digital_port_connected(struct intel_encoder *encoder)
 
 	MISSING_CASE(INTEL_GEN(dev_priv));
 	return false;
+}
+
+bool intel_digital_port_connected(struct intel_encoder *encoder)
+{
+	struct drm_i915_private *dev_priv = to_i915(encoder->base.dev);
+	bool is_connected = false;
+	intel_wakeref_t wakeref;
+
+	with_intel_display_power(dev_priv, POWER_DOMAIN_DISPLAY_CORE, wakeref)
+		is_connected = __intel_digital_port_connected(encoder);
+
+	return is_connected;
 }
 
 static struct edid *
@@ -5359,15 +5392,10 @@ intel_dp_detect(struct drm_connector *connector,
 	struct intel_digital_port *dig_port = dp_to_dig_port(intel_dp);
 	struct intel_encoder *encoder = &dig_port->base;
 	enum drm_connector_status status;
-	enum intel_display_power_domain aux_domain =
-		intel_aux_power_domain(dig_port);
-	intel_wakeref_t wakeref;
 
 	DRM_DEBUG_KMS("[CONNECTOR:%d:%s]\n",
 		      connector->base.id, connector->name);
 	WARN_ON(!drm_modeset_is_locked(&dev_priv->drm.mode_config.connection_mutex));
-
-	wakeref = intel_display_power_get(dev_priv, aux_domain);
 
 	/* Can't disconnect eDP */
 	if (intel_dp_is_edp(intel_dp))
@@ -5432,10 +5460,8 @@ intel_dp_detect(struct drm_connector *connector,
 		int ret;
 
 		ret = intel_dp_retrain_link(encoder, ctx);
-		if (ret) {
-			intel_display_power_put(dev_priv, aux_domain, wakeref);
+		if (ret)
 			return ret;
-		}
 	}
 
 	/*
@@ -5457,7 +5483,6 @@ out:
 	if (status != connector_status_connected && !intel_dp->is_mst)
 		intel_dp_unset_edid(intel_dp);
 
-	intel_display_power_put(dev_priv, aux_domain, wakeref);
 	return status;
 }
 
@@ -6235,6 +6260,10 @@ void intel_dp_encoder_reset(struct drm_encoder *encoder)
 
 	intel_dp->reset_link_params = true;
 
+	if (!IS_VALLEYVIEW(dev_priv) && !IS_CHERRYVIEW(dev_priv) &&
+	    !intel_dp_is_edp(intel_dp))
+		return;
+
 	with_pps_lock(intel_dp, wakeref) {
 		if (IS_VALLEYVIEW(dev_priv) || IS_CHERRYVIEW(dev_priv))
 			intel_dp->active_pipe = vlv_active_pipe(intel_dp);
@@ -6278,9 +6307,6 @@ enum irqreturn
 intel_dp_hpd_pulse(struct intel_digital_port *intel_dig_port, bool long_hpd)
 {
 	struct intel_dp *intel_dp = &intel_dig_port->dp;
-	struct drm_i915_private *dev_priv = dp_to_i915(intel_dp);
-	enum irqreturn ret = IRQ_NONE;
-	intel_wakeref_t wakeref;
 
 	if (long_hpd && intel_dig_port->base.type == INTEL_OUTPUT_EDP) {
 		/*
@@ -6303,9 +6329,6 @@ intel_dp_hpd_pulse(struct intel_digital_port *intel_dig_port, bool long_hpd)
 		return IRQ_NONE;
 	}
 
-	wakeref = intel_display_power_get(dev_priv,
-					  intel_aux_power_domain(intel_dig_port));
-
 	if (intel_dp->is_mst) {
 		if (intel_dp_check_mst_status(intel_dp) == -EINVAL) {
 			/*
@@ -6317,7 +6340,8 @@ intel_dp_hpd_pulse(struct intel_digital_port *intel_dig_port, bool long_hpd)
 			intel_dp->is_mst = false;
 			drm_dp_mst_topology_mgr_set_mst(&intel_dp->mst_mgr,
 							intel_dp->is_mst);
-			goto put_power;
+
+			return IRQ_NONE;
 		}
 	}
 
@@ -6327,17 +6351,10 @@ intel_dp_hpd_pulse(struct intel_digital_port *intel_dig_port, bool long_hpd)
 		handled = intel_dp_short_pulse(intel_dp);
 
 		if (!handled)
-			goto put_power;
+			return IRQ_NONE;
 	}
 
-	ret = IRQ_HANDLED;
-
-put_power:
-	intel_display_power_put(dev_priv,
-				intel_aux_power_domain(intel_dig_port),
-				wakeref);
-
-	return ret;
+	return IRQ_HANDLED;
 }
 
 /* check the VBT to see whether the eDP is on another port */
@@ -7190,10 +7207,16 @@ intel_dp_init_connector(struct intel_digital_port *intel_dig_port,
 	intel_dp->DP = I915_READ(intel_dp->output_reg);
 	intel_dp->attached_connector = intel_connector;
 
-	if (intel_dp_is_port_edp(dev_priv, port))
+	if (intel_dp_is_port_edp(dev_priv, port)) {
+		/*
+		 * Currently we don't support eDP on TypeC ports, although in
+		 * theory it could work on TypeC legacy ports.
+		 */
+		WARN_ON(intel_port_is_tc(dev_priv, port));
 		type = DRM_MODE_CONNECTOR_eDP;
-	else
+	} else {
 		type = DRM_MODE_CONNECTOR_DisplayPort;
+	}
 
 	if (IS_VALLEYVIEW(dev_priv) || IS_CHERRYVIEW(dev_priv))
 		intel_dp->active_pipe = vlv_active_pipe(intel_dp);

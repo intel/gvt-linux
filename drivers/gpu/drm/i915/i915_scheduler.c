@@ -163,16 +163,27 @@ sched_lock_engine(const struct i915_sched_node *node,
 	return engine;
 }
 
-static bool inflight(const struct i915_request *rq,
-		     const struct intel_engine_cs *engine)
+static inline int rq_prio(const struct i915_request *rq)
 {
-	const struct i915_request *active;
+	return rq->sched.attr.priority | __NO_PREEMPTION;
+}
 
-	if (!i915_request_is_active(rq))
-		return false;
+static void kick_submission(struct intel_engine_cs *engine, int prio)
+{
+	const struct i915_request *inflight =
+		port_request(engine->execlists.port);
 
-	active = port_request(engine->execlists.port);
-	return active->hw_context == rq->hw_context;
+	/*
+	 * If we are already the currently executing context, don't
+	 * bother evaluating if we should preempt ourselves, or if
+	 * we expect nothing to change as a result of running the
+	 * tasklet, i.e. we have not change the priority queue
+	 * sufficiently to oust the running context.
+	 */
+	if (inflight && !i915_scheduler_need_preempt(prio, rq_prio(inflight)))
+		return;
+
+	tasklet_hi_schedule(&engine->execlists.tasklet);
 }
 
 static void __i915_schedule(struct i915_sched_node *node,
@@ -189,10 +200,10 @@ static void __i915_schedule(struct i915_sched_node *node,
 	lockdep_assert_held(&schedule_lock);
 	GEM_BUG_ON(prio == I915_PRIORITY_INVALID);
 
-	if (node_signaled(node))
+	if (prio <= READ_ONCE(node->attr.priority))
 		return;
 
-	if (prio <= READ_ONCE(node->attr.priority))
+	if (node_signaled(node))
 		return;
 
 	stack.signaler = node;
@@ -297,15 +308,8 @@ static void __i915_schedule(struct i915_sched_node *node,
 
 		engine->execlists.queue_priority_hint = prio;
 
-		/*
-		 * If we are already the currently executing context, don't
-		 * bother evaluating if we should preempt ourselves.
-		 */
-		if (inflight(node_to_request(node), engine))
-			continue;
-
 		/* Defer (tasklet) submission until after all of our updates. */
-		tasklet_hi_schedule(&engine->execlists.tasklet);
+		kick_submission(engine, prio);
 	}
 
 	spin_unlock(&engine->timeline.lock);

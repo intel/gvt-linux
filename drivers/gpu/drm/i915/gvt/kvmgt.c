@@ -1547,6 +1547,13 @@ static long intel_vgpu_ioctl(struct mdev_device *mdev, unsigned int cmd,
 		dmabuf_fd = intel_gvt_ops->vgpu_get_dmabuf(vgpu, dmabuf_id);
 		return dmabuf_fd;
 
+	} else if (cmd == VFIO_DEVICE_SET_GFX_FLIP_TRIGGER) {
+		__s32 event_fd;
+
+		if (get_user(event_fd, (__s32 __user *)arg))
+			return -EFAULT;
+
+		return intel_gvt_ops->vgpu_set_flip_trigger(vgpu, event_fd);
 	}
 
 	return -ENOTTY;

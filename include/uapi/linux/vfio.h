@@ -638,6 +638,7 @@ struct vfio_device_gfx_plane_info {
 #define VFIO_GFX_PLANE_TYPE_PROBE (1 << 0)
 #define VFIO_GFX_PLANE_TYPE_DMABUF (1 << 1)
 #define VFIO_GFX_PLANE_TYPE_REGION (1 << 2)
+#define VFIO_GFX_PLANE_TYPE_SUPPORT_FLIP_EVENT (1 << 3)
 	/* in */
 	__u32 drm_plane_type;	/* type of plane: DRM_PLANE_TYPE_* */
 	/* out */
@@ -695,6 +696,14 @@ struct vfio_device_ioeventfd {
 };
 
 #define VFIO_DEVICE_IOEVENTFD		_IO(VFIO_TYPE, VFIO_BASE + 16)
+
+/**
+ * VFIO_DEVICE_SET_GFX_FLIP_TRIGGER - _IOW(VFIO_TYPE, VFIO_BASE + 17, __s32)
+ *
+ * Return: 0 on success, -errno on failure.
+ */
+
+#define VFIO_DEVICE_SET_GFX_FLIP_TRIGGER _IO(VFIO_TYPE, VFIO_BASE + 17)
 
 /* -------- API for Type1 VFIO IOMMU -------- */
 

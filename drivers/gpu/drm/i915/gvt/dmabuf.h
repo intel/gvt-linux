@@ -62,6 +62,7 @@ struct intel_vgpu_dmabuf_obj {
 
 int intel_vgpu_query_plane(struct intel_vgpu *vgpu, void *args);
 int intel_vgpu_get_dmabuf(struct intel_vgpu *vgpu, unsigned int dmabuf_id);
+int intel_vgpu_set_flip_trigger(struct intel_vgpu *vgpu, int fd);
 void intel_vgpu_dmabuf_cleanup(struct intel_vgpu *vgpu);
 
 #endif

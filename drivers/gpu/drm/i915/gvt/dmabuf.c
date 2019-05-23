@@ -372,6 +372,9 @@ int intel_vgpu_query_plane(struct intel_vgpu *vgpu, void *args)
 	if (gfx_plane_info->flags == (VFIO_GFX_PLANE_TYPE_DMABUF |
 				       VFIO_GFX_PLANE_TYPE_PROBE))
 		return ret;
+	else if (gfx_plane_info->flags == (VFIO_GFX_PLANE_TYPE_SUPPORT_FLIP_EVENT |
+					   VFIO_GFX_PLANE_TYPE_PROBE))
+		return ret;
 	else if ((gfx_plane_info->flags & ~VFIO_GFX_PLANE_TYPE_DMABUF) ||
 			(!gfx_plane_info->flags))
 		return -EINVAL;
@@ -538,6 +541,34 @@ out:
 	return ret;
 }
 
+static void release_flip_eventfd_ctx(struct intel_vgpu *vgpu)
+{
+	struct eventfd_ctx *trigger;
+
+	trigger = vgpu->page_flip_trigger;
+	if (trigger) {
+		eventfd_ctx_put(trigger);
+		vgpu->page_flip_trigger = NULL;
+	}
+}
+
+int intel_vgpu_set_flip_trigger(struct intel_vgpu *vgpu, int fd)
+{
+	struct eventfd_ctx *trigger;
+	if (fd) {
+		trigger = eventfd_ctx_fdget(fd);
+		if (IS_ERR(trigger)) {
+			gvt_vgpu_err("eventfd_ctx_fdget failed\n");
+			return PTR_ERR(trigger);
+		}
+		vgpu->page_flip_trigger = trigger;
+	} else
+		release_flip_eventfd_ctx(vgpu);
+
+
+	return 0;
+}
+
 void intel_vgpu_dmabuf_cleanup(struct intel_vgpu *vgpu)
 {
 	struct list_head *pos, *n;
@@ -561,4 +592,6 @@ void intel_vgpu_dmabuf_cleanup(struct intel_vgpu *vgpu)
 
 	}
 	mutex_unlock(&vgpu->dmabuf_lock);
+
+	release_flip_eventfd_ctx(vgpu);
 }

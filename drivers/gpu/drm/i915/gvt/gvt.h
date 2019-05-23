@@ -229,6 +229,7 @@ struct intel_vgpu {
 	struct completion vblank_done;
 
 	u32 scan_nonprivbb;
+	struct eventfd_ctx *page_flip_trigger;
 };
 
 /* validating GM healthy status*/
@@ -570,6 +571,7 @@ struct intel_gvt_ops {
 			struct attribute_group ***intel_vgpu_type_groups);
 	int (*vgpu_query_plane)(struct intel_vgpu *vgpu, void *);
 	int (*vgpu_get_dmabuf)(struct intel_vgpu *vgpu, unsigned int);
+	int (*vgpu_set_flip_trigger)(struct intel_vgpu *vgpu, int);
 	int (*write_protect_handler)(struct intel_vgpu *, u64, void *,
 				     unsigned int);
 	void (*emulate_hotplug)(struct intel_vgpu *vgpu, bool connected);

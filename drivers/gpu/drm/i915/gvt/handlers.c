@@ -763,6 +763,8 @@ static int pri_surf_mmio_write(struct intel_vgpu *vgpu, unsigned int offset,
 	else
 		set_bit(event, vgpu->irq.flip_done_event[pipe]);
 
+	eventfd_signal(vgpu->page_flip_trigger, 1);
+
 	return 0;
 }
 

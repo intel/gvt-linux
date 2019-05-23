@@ -1,0 +1,30 @@
+drm drm-fixes 6b0538da5a6ca2129b93cea5afc997226875c402
+	Merge branch 'drm-fixes-5.2' of git://people.freedesktop.org/~agd5f/linux into drm-fixes
+drm-misc drm-misc-fixes f3617b449d0bcf3b5d80a97f51498dcf7463cf7e
+	drm/panfrost: Select devfreq
+drm-intel drm-intel-fixes 57cb853d1d5b07ed4e4647ad61b0c16a9c21996e
+	Merge tag 'gvt-fixes-2019-05-21' of https://github.com/intel/gvt-linux into drm-intel-fixes
+drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
+	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
+drm drm-next a188339ca5a396acc588e5851ed7e19f66b0ebd9
+	Linux 5.2-rc1
+drm-misc drm-misc-next-fixes 51a0d1a90bff5d90a1a1c58e165928a0dd92268a
+	drm/sun4i: sun6i_mipi_dsi: Fix hsync_porch overflow
+drm-intel drm-intel-next-fixes c36beba6b296b3c05a0f29753b04775e5ae23886
+	drm/i915: Seal races between async GPU cancellation, retirement and signaling
+drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
+	Linux 4.14-rc1
+drm-misc drm-misc-next 3b1d715dc2edda1efa590fdf7cf9731501d4a44f
+	dt-bindings: gpu: mali-midgard: Add H6 mali gpu compatible
+drm-intel drm-intel-next-queued c5d3e39caa456b1e061644b739131f2b54c84c08
+	drm/i915: Engine discovery query
+drm-intel drm-intel-next ad2c467aa92e283e9e8009bb9eb29a5c6a2d1217
+	drm/i915: Update DRIVER_DATE to 20190417
+drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
+	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
+sound-upstream for-linus aeac1a0dadb4ab699a61136a5729d048abe6ee5f
+	ALSA: hda/realtek - Check headset type by unplug and resume
+sound-upstream for-next 26cd1e5850b70b4ee4a652e5246a356060ea852c
+	ALSA: firewire-lib: use IT context header to compute cycle count for scheduling packet
+drm-intel topic/core-for-CI e223a7b99df09bb5e19222eea7da38560ff3c0ef
+	Revert "ext4: protect journal inode's blocks using block_validity"

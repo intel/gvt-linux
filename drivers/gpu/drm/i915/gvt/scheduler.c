@@ -218,6 +218,10 @@ static void save_ring_hw_state(struct intel_vgpu *vgpu, int ring_id)
 	vgpu_vreg(vgpu, i915_mmio_reg_offset(reg)) = I915_READ_FW(reg);
 	reg = RING_ACTHD_UDW(ring_base);
 	vgpu_vreg(vgpu, i915_mmio_reg_offset(reg)) = I915_READ_FW(reg);
+	reg = RING_HEAD(ring_base);
+	vgpu_vreg(vgpu, i915_mmio_reg_offset(reg)) = I915_READ_FW(reg);
+	reg = RING_TAIL(ring_base);
+	vgpu_vreg(vgpu, i915_mmio_reg_offset(reg)) = I915_READ_FW(reg);
 }
 
 static int shadow_context_status_change(struct notifier_block *nb,

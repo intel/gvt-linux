@@ -126,7 +126,7 @@
  */
 #define REG_BIT(__n)							\
 	((u32)(BIT(__n) +						\
-	       BUILD_BUG_ON_ZERO(__builtin_constant_p(__n) &&		\
+	       BUILD_BUG_ON_ZERO(__is_constexpr(__n) &&		\
 				 ((__n) < 0 || (__n) > 31))))
 
 /**
@@ -140,8 +140,8 @@
  */
 #define REG_GENMASK(__high, __low)					\
 	((u32)(GENMASK(__high, __low) +					\
-	       BUILD_BUG_ON_ZERO(__builtin_constant_p(__high) &&	\
-				 __builtin_constant_p(__low) &&		\
+	       BUILD_BUG_ON_ZERO(__is_constexpr(__high) &&	\
+				 __is_constexpr(__low) &&		\
 				 ((__low) < 0 || (__high) > 31 || (__low) > (__high)))))
 
 /*
@@ -1845,6 +1845,9 @@ enum i915_power_well_id {
 #define   VOLTAGE_INFO_1_05V		(2 << 24)
 #define   VOLTAGE_INFO_MASK		(3 << 24)
 #define   VOLTAGE_INFO_SHIFT		24
+
+#define ICL_PORT_COMP_DW8(port)		_MMIO(_ICL_PORT_COMP_DW(8, port))
+#define   IREFGEN			(1 << 24)
 
 #define CNL_PORT_COMP_DW9		_MMIO(0x162124)
 #define ICL_PORT_COMP_DW9(port)		_MMIO(_ICL_PORT_COMP_DW(9, port))
@@ -8777,6 +8780,9 @@ enum {
 #define   GEN6_PCODE_WRITE_MIN_FREQ_TABLE	0x8
 #define   GEN6_PCODE_READ_MIN_FREQ_TABLE	0x9
 #define   GEN6_READ_OC_PARAMS			0xc
+#define   ICL_PCODE_MEM_SUBSYSYSTEM_INFO	0xd
+#define     ICL_PCODE_MEM_SS_READ_GLOBAL_INFO	(0x0 << 8)
+#define     ICL_PCODE_MEM_SS_READ_QGV_POINT_INFO(point)	(((point) << 16) | (0x1 << 8))
 #define   GEN6_PCODE_READ_D_COMP		0x10
 #define   GEN6_PCODE_WRITE_D_COMP		0x11
 #define   HSW_PCODE_DE_WRITE_FREQ_REQ		0x17

@@ -24,10 +24,12 @@
 
 #include <linux/prime_numbers.h>
 
-#include "../i915_selftest.h"
+#include "gem/selftests/mock_context.h"
+
+#include "i915_scatterlist.h"
+#include "i915_selftest.h"
 
 #include "mock_gem_device.h"
-#include "mock_context.h"
 #include "mock_gtt.h"
 
 static bool assert_vma(struct i915_vma *vma,
@@ -884,7 +886,9 @@ static int igt_vma_remapped_gtt(void *arg)
 			unsigned int x, y;
 			int err;
 
+			i915_gem_object_lock(obj);
 			err = i915_gem_object_set_to_gtt_domain(obj, true);
+			i915_gem_object_unlock(obj);
 			if (err)
 				goto out;
 

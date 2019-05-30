@@ -4,16 +4,18 @@
  * Copyright © 2018 Intel Corporation
  */
 
+#include "gem/i915_gem_pm.h"
 #include "i915_selftest.h"
 #include "intel_reset.h"
 
 #include "selftests/igt_flush_test.h"
-#include "selftests/igt_gem_utils.h"
 #include "selftests/igt_reset.h"
 #include "selftests/igt_spinner.h"
 #include "selftests/igt_wedge_me.h"
-#include "selftests/mock_context.h"
 #include "selftests/mock_drm.h"
+
+#include "gem/selftests/igt_gem_utils.h"
+#include "gem/selftests/mock_context.h"
 
 static const struct wo_register {
 	enum intel_platform platform;
@@ -116,7 +118,9 @@ read_nonprivs(struct i915_gem_context *ctx, struct intel_engine_cs *engine)
 		goto err_pin;
 	}
 
+	i915_vma_lock(vma);
 	err = i915_vma_move_to_active(vma, rq, EXEC_OBJECT_WRITE);
+	i915_vma_unlock(vma);
 	if (err)
 		goto err_req;
 
@@ -137,9 +141,6 @@ read_nonprivs(struct i915_gem_context *ctx, struct intel_engine_cs *engine)
 		*cs++ = 0;
 	}
 	intel_ring_advance(rq, cs);
-
-	i915_gem_object_get(result);
-	i915_gem_object_set_active_reference(result);
 
 	i915_request_add(rq);
 	i915_vma_unpin(vma);
@@ -193,8 +194,10 @@ static int check_whitelist(struct i915_gem_context *ctx,
 		return PTR_ERR(results);
 
 	err = 0;
+	i915_gem_object_lock(results);
 	igt_wedge_on_timeout(&wedge, ctx->i915, HZ / 5) /* a safety net! */
 		err = i915_gem_object_set_to_cpu_domain(results, false);
+	i915_gem_object_unlock(results);
 	if (i915_terminally_wedged(ctx->i915))
 		err = -EIO;
 	if (err)
@@ -365,7 +368,9 @@ static struct i915_vma *create_batch(struct i915_gem_context *ctx)
 	if (err)
 		goto err_obj;
 
+	i915_gem_object_lock(obj);
 	err = i915_gem_object_set_to_wc_domain(obj, true);
+	i915_gem_object_unlock(obj);
 	if (err)
 		goto err_obj;
 

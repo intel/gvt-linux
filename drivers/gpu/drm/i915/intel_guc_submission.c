@@ -26,6 +26,8 @@
 
 #include "gt/intel_engine_pm.h"
 #include "gt/intel_lrc_reg.h"
+#include "gt/intel_context.h"
+#include "gem/i915_gem_context.h"
 
 #include "intel_guc_submission.h"
 #include "i915_drv.h"
@@ -1425,10 +1427,6 @@ int intel_guc_submission_enable(struct intel_guc *guc)
 		     I915_NUM_ENGINES > GUC_WQ_SIZE);
 
 	GEM_BUG_ON(!guc->execbuf_client);
-
-	err = intel_guc_sample_forcewake(guc);
-	if (err)
-		return err;
 
 	err = guc_clients_enable(guc);
 	if (err)

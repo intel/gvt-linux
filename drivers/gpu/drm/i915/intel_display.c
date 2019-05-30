@@ -45,11 +45,11 @@
 #include <drm/i915_drm.h>
 
 #include "i915_drv.h"
-#include "i915_gem_clflush.h"
 #include "i915_trace.h"
 #include "intel_acpi.h"
 #include "intel_atomic.h"
 #include "intel_atomic_plane.h"
+#include "intel_bw.h"
 #include "intel_color.h"
 #include "intel_cdclk.h"
 #include "intel_crt.h"
@@ -2113,6 +2113,7 @@ intel_pin_and_fence_fb_obj(struct drm_framebuffer *fb,
 	 * pin/unpin/fence and not more.
 	 */
 	wakeref = intel_runtime_pm_get(dev_priv);
+	i915_gem_object_lock(obj);
 
 	atomic_inc(&dev_priv->gpu_error.pending_fb_pin);
 
@@ -2167,6 +2168,7 @@ intel_pin_and_fence_fb_obj(struct drm_framebuffer *fb,
 err:
 	atomic_dec(&dev_priv->gpu_error.pending_fb_pin);
 
+	i915_gem_object_unlock(obj);
 	intel_runtime_pm_put(dev_priv, wakeref);
 	return vma;
 }
@@ -2175,9 +2177,12 @@ void intel_unpin_fb_vma(struct i915_vma *vma, unsigned long flags)
 {
 	lockdep_assert_held(&vma->vm->i915->drm.struct_mutex);
 
+	i915_gem_object_lock(vma->obj);
 	if (flags & PLANE_HAS_FENCE)
 		i915_vma_unpin_fence(vma);
 	i915_gem_object_unpin_from_display_plane(vma);
+	i915_gem_object_unlock(vma->obj);
+
 	i915_vma_put(vma);
 }
 
@@ -3155,6 +3160,7 @@ static void intel_plane_disable_noatomic(struct intel_crtc *crtc,
 
 	intel_set_plane_visible(crtc_state, plane_state, false);
 	fixup_active_planes(crtc_state);
+	crtc_state->data_rate[plane->id] = 0;
 
 	if (plane->id == PLANE_PRIMARY)
 		intel_pre_disable_primary_noatomic(&crtc->base);
@@ -6879,6 +6885,8 @@ static void intel_crtc_disable_noatomic(struct drm_crtc *crtc,
 	struct intel_encoder *encoder;
 	struct intel_crtc *intel_crtc = to_intel_crtc(crtc);
 	struct drm_i915_private *dev_priv = to_i915(crtc->dev);
+	struct intel_bw_state *bw_state =
+		to_intel_bw_state(dev_priv->bw_obj.state);
 	enum intel_display_power_domain domain;
 	struct intel_plane *plane;
 	u64 domains;
@@ -6941,6 +6949,9 @@ static void intel_crtc_disable_noatomic(struct drm_crtc *crtc,
 	dev_priv->active_crtcs &= ~(1 << intel_crtc->pipe);
 	dev_priv->min_cdclk[intel_crtc->pipe] = 0;
 	dev_priv->min_voltage_level[intel_crtc->pipe] = 0;
+
+	bw_state->data_rate[intel_crtc->pipe] = 0;
+	bw_state->num_active_planes[intel_crtc->pipe] = 0;
 }
 
 /*
@@ -11280,6 +11291,7 @@ int intel_plane_atomic_calc_changes(const struct intel_crtc_state *old_crtc_stat
 	if (!is_crtc_enabled) {
 		plane_state->visible = visible = false;
 		to_intel_crtc_state(crtc_state)->active_planes &= ~BIT(plane->id);
+		to_intel_crtc_state(crtc_state)->data_rate[plane->id] = 0;
 	}
 
 	if (!was_visible && !visible)
@@ -11495,6 +11507,17 @@ static int icl_check_nv12_planes(struct intel_crtc_state *crtc_state)
 	return 0;
 }
 
+static bool c8_planes_changed(const struct intel_crtc_state *new_crtc_state)
+{
+	struct intel_crtc *crtc = to_intel_crtc(new_crtc_state->base.crtc);
+	struct intel_atomic_state *state =
+		to_intel_atomic_state(new_crtc_state->base.state);
+	const struct intel_crtc_state *old_crtc_state =
+		intel_atomic_get_old_crtc_state(state, crtc);
+
+	return !old_crtc_state->c8_planes != !new_crtc_state->c8_planes;
+}
+
 static int intel_crtc_atomic_check(struct drm_crtc *crtc,
 				   struct drm_crtc_state *crtc_state)
 {
@@ -11517,6 +11540,13 @@ static int intel_crtc_atomic_check(struct drm_crtc *crtc,
 		if (ret)
 			return ret;
 	}
+
+	/*
+	 * May need to update pipe gamma enable bits
+	 * when C8 planes are getting enabled/disabled.
+	 */
+	if (c8_planes_changed(pipe_config))
+		crtc_state->color_mgmt_changed = true;
 
 	if (mode_changed || pipe_config->update_pipe ||
 	    crtc_state->color_mgmt_changed) {
@@ -12561,6 +12591,7 @@ intel_pipe_config_compare(struct drm_i915_private *dev_priv,
 	PIPE_CONF_CHECK_INFOFRAME(avi);
 	PIPE_CONF_CHECK_INFOFRAME(spd);
 	PIPE_CONF_CHECK_INFOFRAME(hdmi);
+	PIPE_CONF_CHECK_INFOFRAME(drm);
 
 #undef PIPE_CONF_CHECK_X
 #undef PIPE_CONF_CHECK_I
@@ -13406,7 +13437,15 @@ static int intel_atomic_check(struct drm_device *dev,
 		return ret;
 
 	intel_fbc_choose_crtc(dev_priv, intel_state);
-	return calc_watermark_data(intel_state);
+	ret = calc_watermark_data(intel_state);
+	if (ret)
+		return ret;
+
+	ret = intel_bw_atomic_check(intel_state);
+	if (ret)
+		return ret;
+
+	return 0;
 }
 
 static int intel_atomic_prepare_commit(struct drm_device *dev,
@@ -13795,6 +13834,7 @@ static void intel_atomic_commit_tail(struct drm_atomic_state *state)
 		intel_uncore_arm_unclaimed_mmio_detection(&dev_priv->uncore);
 		intel_display_power_put(dev_priv, POWER_DOMAIN_MODESET, wakeref);
 	}
+	intel_runtime_pm_put(dev_priv, intel_state->wakeref);
 
 	/*
 	 * Defer the cleanup of the old state to a separate worker to not
@@ -13873,6 +13913,8 @@ static int intel_atomic_commit(struct drm_device *dev,
 	struct drm_i915_private *dev_priv = to_i915(dev);
 	int ret = 0;
 
+	intel_state->wakeref = intel_runtime_pm_get(dev_priv);
+
 	drm_atomic_state_get(state);
 	i915_sw_fence_init(&intel_state->commit_ready,
 			   intel_atomic_commit_ready);
@@ -13909,6 +13951,7 @@ static int intel_atomic_commit(struct drm_device *dev,
 	if (ret) {
 		DRM_DEBUG_ATOMIC("Preparing state failed with %i\n", ret);
 		i915_sw_fence_commit(&intel_state->commit_ready);
+		intel_runtime_pm_put(dev_priv, intel_state->wakeref);
 		return ret;
 	}
 
@@ -13920,6 +13963,7 @@ static int intel_atomic_commit(struct drm_device *dev,
 		i915_sw_fence_commit(&intel_state->commit_ready);
 
 		drm_atomic_helper_cleanup_planes(dev, state);
+		intel_runtime_pm_put(dev_priv, intel_state->wakeref);
 		return ret;
 	}
 	dev_priv->wm.distrust_bios_wm = false;
@@ -15788,6 +15832,10 @@ int intel_modeset_init(struct drm_device *dev)
 
 	drm_mode_config_init(dev);
 
+	ret = intel_bw_init(dev_priv);
+	if (ret)
+		return ret;
+
 	dev->mode_config.min_width = 0;
 	dev->mode_config.min_height = 0;
 
@@ -16416,8 +16464,11 @@ static void intel_modeset_readout_hw_state(struct drm_device *dev)
 	drm_connector_list_iter_end(&conn_iter);
 
 	for_each_intel_crtc(dev, crtc) {
+		struct intel_bw_state *bw_state =
+			to_intel_bw_state(dev_priv->bw_obj.state);
 		struct intel_crtc_state *crtc_state =
 			to_intel_crtc_state(crtc->base.state);
+		struct intel_plane *plane;
 		int min_cdclk = 0;
 
 		memset(&crtc->base.mode, 0, sizeof(crtc->base.mode));
@@ -16455,6 +16506,21 @@ static void intel_modeset_readout_hw_state(struct drm_device *dev)
 		dev_priv->min_cdclk[crtc->pipe] = min_cdclk;
 		dev_priv->min_voltage_level[crtc->pipe] =
 			crtc_state->min_voltage_level;
+
+		for_each_intel_plane_on_crtc(&dev_priv->drm, crtc, plane) {
+			const struct intel_plane_state *plane_state =
+				to_intel_plane_state(plane->base.state);
+
+			/*
+			 * FIXME don't have the fb yet, so can't
+			 * use intel_plane_data_rate() :(
+			 */
+			if (plane_state->base.visible)
+				crtc_state->data_rate[plane->id] =
+					4 * crtc_state->pixel_rate;
+		}
+
+		intel_bw_crtc_update(bw_state, crtc_state);
 
 		intel_pipe_config_sanity_check(dev_priv, crtc_state);
 	}

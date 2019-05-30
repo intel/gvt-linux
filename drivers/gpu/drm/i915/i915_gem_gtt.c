@@ -36,8 +36,9 @@
 #include <drm/i915_drm.h>
 
 #include "i915_drv.h"
-#include "i915_vgpu.h"
+#include "i915_scatterlist.h"
 #include "i915_trace.h"
+#include "i915_vgpu.h"
 #include "intel_drv.h"
 #include "intel_frontbuffer.h"
 
@@ -340,11 +341,11 @@ static struct page *stash_pop_page(struct pagestash *stash)
 
 static void stash_push_pagevec(struct pagestash *stash, struct pagevec *pvec)
 {
-	int nr;
+	unsigned int nr;
 
 	spin_lock_nested(&stash->lock, SINGLE_DEPTH_NESTING);
 
-	nr = min_t(int, pvec->nr, pagevec_space(&stash->pvec));
+	nr = min_t(typeof(nr), pvec->nr, pagevec_space(&stash->pvec));
 	memcpy(stash->pvec.pages + stash->pvec.nr,
 	       pvec->pages + pvec->nr - nr,
 	       sizeof(pvec->pages[0]) * nr);
@@ -398,7 +399,8 @@ static struct page *vm_alloc_page(struct i915_address_space *vm, gfp_t gfp)
 		page = stack.pages[--stack.nr];
 
 		/* Merge spare WC pages to the global stash */
-		stash_push_pagevec(&vm->i915->mm.wc_stash, &stack);
+		if (stack.nr)
+			stash_push_pagevec(&vm->i915->mm.wc_stash, &stack);
 
 		/* Push any surplus WC pages onto the local VM stash */
 		if (stack.nr)
@@ -468,8 +470,10 @@ static void vm_free_page(struct i915_address_space *vm, struct page *page)
 	 */
 	might_sleep();
 	spin_lock(&vm->free_pages.lock);
-	if (!pagevec_add(&vm->free_pages.pvec, page))
+	while (!pagevec_space(&vm->free_pages.pvec))
 		vm_free_pages_release(vm, false);
+	GEM_BUG_ON(pagevec_count(&vm->free_pages.pvec) >= PAGEVEC_SIZE);
+	pagevec_add(&vm->free_pages.pvec, page);
 	spin_unlock(&vm->free_pages.lock);
 }
 
@@ -2063,8 +2067,10 @@ static struct i915_hw_ppgtt *gen6_ppgtt_create(struct drm_i915_private *i915)
 	ppgtt->base.vm.pte_encode = ggtt->vm.pte_encode;
 
 	ppgtt->work = kmalloc(sizeof(*ppgtt->work), GFP_KERNEL);
-	if (!ppgtt->work)
+	if (!ppgtt->work) {
+		err = -ENOMEM;
 		goto err_free;
+	}
 
 	err = gen6_ppgtt_init_scratch(ppgtt);
 	if (err)
@@ -3575,8 +3581,11 @@ void i915_gem_restore_gtt_mappings(struct drm_i915_private *dev_priv)
 		WARN_ON(i915_vma_bind(vma,
 				      obj ? obj->cache_level : 0,
 				      PIN_UPDATE));
-		if (obj)
+		if (obj) {
+			i915_gem_object_lock(obj);
 			WARN_ON(i915_gem_object_set_to_gtt_domain(obj, false));
+			i915_gem_object_unlock(obj);
+		}
 
 lock:
 		mutex_lock(&ggtt->vm.mutex);

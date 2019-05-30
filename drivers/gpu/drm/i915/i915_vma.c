@@ -112,10 +112,7 @@ static void __i915_vma_retire(struct i915_active *ref)
 	 */
 	obj_bump_mru(obj);
 
-	if (i915_gem_object_has_active_reference(obj)) {
-		i915_gem_object_clear_active_reference(obj);
-		i915_gem_object_put(obj);
-	}
+	i915_gem_object_put(obj); /* and drop the active reference */
 }
 
 static struct i915_vma *
@@ -443,7 +440,7 @@ void i915_vma_unpin_and_release(struct i915_vma **p_vma, unsigned int flags)
 	if (flags & I915_VMA_RELEASE_MAP)
 		i915_gem_object_unpin_map(obj);
 
-	__i915_gem_object_release_unless_active(obj);
+	i915_gem_object_put(obj);
 }
 
 bool i915_vma_misplaced(const struct i915_vma *vma,
@@ -840,13 +837,14 @@ void i915_vma_destroy(struct i915_vma *vma)
 {
 	lockdep_assert_held(&vma->vm->i915->drm.struct_mutex);
 
-	GEM_BUG_ON(i915_vma_is_active(vma));
 	GEM_BUG_ON(i915_vma_is_pinned(vma));
 
 	if (i915_vma_is_closed(vma))
 		list_del(&vma->closed_link);
 
 	WARN_ON(i915_vma_unbind(vma));
+	GEM_BUG_ON(i915_vma_is_active(vma));
+
 	__i915_vma_destroy(vma);
 }
 
@@ -908,12 +906,10 @@ static void export_fence(struct i915_vma *vma,
 	 * handle an error right now. Worst case should be missed
 	 * synchronisation leading to rendering corruption.
 	 */
-	reservation_object_lock(resv, NULL);
 	if (flags & EXEC_OBJECT_WRITE)
 		reservation_object_add_excl_fence(resv, &rq->fence);
 	else if (reservation_object_reserve_shared(resv, 1) == 0)
 		reservation_object_add_shared_fence(resv, &rq->fence);
-	reservation_object_unlock(resv);
 }
 
 int i915_vma_move_to_active(struct i915_vma *vma,
@@ -922,7 +918,8 @@ int i915_vma_move_to_active(struct i915_vma *vma,
 {
 	struct drm_i915_gem_object *obj = vma->obj;
 
-	lockdep_assert_held(&rq->i915->drm.struct_mutex);
+	assert_vma_held(vma);
+	assert_object_held(obj);
 	GEM_BUG_ON(!drm_mm_node_allocated(&vma->node));
 
 	/*
@@ -933,12 +930,12 @@ int i915_vma_move_to_active(struct i915_vma *vma,
 	 * add the active reference first and queue for it to be dropped
 	 * *last*.
 	 */
-	if (!vma->active.count)
-		obj->active_count++;
+	if (!vma->active.count && !obj->active_count++)
+		i915_gem_object_get(obj); /* once more for the active ref */
 
 	if (unlikely(i915_active_ref(&vma->active, rq->fence.context, rq))) {
-		if (!vma->active.count)
-			obj->active_count--;
+		if (!vma->active.count && !--obj->active_count)
+			i915_gem_object_put(obj);
 		return -ENOMEM;
 	}
 

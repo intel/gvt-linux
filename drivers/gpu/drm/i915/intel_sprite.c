@@ -256,6 +256,16 @@ int intel_plane_check_stride(const struct intel_plane_state *plane_state)
 	unsigned int rotation = plane_state->base.rotation;
 	u32 stride, max_stride;
 
+	/*
+	 * We ignore stride for all invisible planes that
+	 * can be remapped. Otherwise we could end up
+	 * with a false positive when the remapping didn't
+	 * kick in due the plane being invisible.
+	 */
+	if (intel_plane_can_remap(plane_state) &&
+	    !plane_state->base.visible)
+		return 0;
+
 	/* FIXME other color planes? */
 	stride = plane_state->color_plane[0].stride;
 	max_stride = plane->max_stride(plane, fb->format->format,
@@ -325,7 +335,8 @@ skl_plane_max_stride(struct intel_plane *plane,
 		     u32 pixel_format, u64 modifier,
 		     unsigned int rotation)
 {
-	int cpp = drm_format_plane_cpp(pixel_format, 0);
+	const struct drm_format_info *info = drm_format_info(pixel_format);
+	int cpp = info->cpp[0];
 
 	/*
 	 * "The stride in bytes must not exceed the
@@ -1417,6 +1428,10 @@ g4x_sprite_check(struct intel_crtc_state *crtc_state,
 	if (ret)
 		return ret;
 
+	ret = i9xx_check_plane_surface(plane_state);
+	if (ret)
+		return ret;
+
 	if (!plane_state->base.visible)
 		return 0;
 
@@ -1425,10 +1440,6 @@ g4x_sprite_check(struct intel_crtc_state *crtc_state,
 		return ret;
 
 	ret = g4x_sprite_check_scaling(crtc_state, plane_state);
-	if (ret)
-		return ret;
-
-	ret = i9xx_check_plane_surface(plane_state);
 	if (ret)
 		return ret;
 
@@ -1475,14 +1486,14 @@ vlv_sprite_check(struct intel_crtc_state *crtc_state,
 	if (ret)
 		return ret;
 
+	ret = i9xx_check_plane_surface(plane_state);
+	if (ret)
+		return ret;
+
 	if (!plane_state->base.visible)
 		return 0;
 
 	ret = intel_plane_check_src_coordinates(plane_state);
-	if (ret)
-		return ret;
-
-	ret = i9xx_check_plane_surface(plane_state);
 	if (ret)
 		return ret;
 
@@ -1639,6 +1650,10 @@ static int skl_plane_check(struct intel_crtc_state *crtc_state,
 	if (ret)
 		return ret;
 
+	ret = skl_check_plane_surface(plane_state);
+	if (ret)
+		return ret;
+
 	if (!plane_state->base.visible)
 		return 0;
 
@@ -1651,10 +1666,6 @@ static int skl_plane_check(struct intel_crtc_state *crtc_state,
 		return ret;
 
 	ret = skl_plane_check_nv12_rotation(plane_state);
-	if (ret)
-		return ret;
-
-	ret = skl_check_plane_surface(plane_state);
 	if (ret)
 		return ret;
 

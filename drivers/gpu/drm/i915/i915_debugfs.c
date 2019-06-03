@@ -32,10 +32,10 @@
 #include <drm/drm_debugfs.h>
 #include <drm/drm_fourcc.h>
 
+#include "gem/i915_gem_context.h"
 #include "gt/intel_reset.h"
 
 #include "i915_debugfs.h"
-#include "i915_gem_context.h"
 #include "i915_irq.h"
 #include "intel_csr.h"
 #include "intel_dp.h"
@@ -271,7 +271,7 @@ static int i915_gem_stolen_list_info(struct seq_file *m, void *data)
 	unsigned long total, count, n;
 	int ret;
 
-	total = READ_ONCE(dev_priv->mm.object_count);
+	total = READ_ONCE(dev_priv->mm.shrink_count);
 	objects = kvmalloc_array(total, sizeof(*objects), GFP_KERNEL);
 	if (!objects)
 		return -ENOMEM;
@@ -460,9 +460,9 @@ static int i915_gem_object_info(struct seq_file *m, void *data)
 	char buf[80];
 	int ret;
 
-	seq_printf(m, "%u objects, %llu bytes\n",
-		   dev_priv->mm.object_count,
-		   dev_priv->mm.object_memory);
+	seq_printf(m, "%u shrinkable objects, %llu bytes\n",
+		   dev_priv->mm.shrink_count,
+		   dev_priv->mm.shrink_memory);
 
 	size = count = 0;
 	mapped_size = mapped_count = 0;
@@ -548,55 +548,6 @@ static int i915_gem_object_info(struct seq_file *m, void *data)
 	print_batch_pool_stats(m, dev_priv);
 	print_context_stats(m, dev_priv);
 	mutex_unlock(&dev->struct_mutex);
-
-	return 0;
-}
-
-static int i915_gem_gtt_info(struct seq_file *m, void *data)
-{
-	struct drm_info_node *node = m->private;
-	struct drm_i915_private *dev_priv = node_to_i915(node);
-	struct drm_device *dev = &dev_priv->drm;
-	struct drm_i915_gem_object **objects;
-	struct drm_i915_gem_object *obj;
-	u64 total_obj_size, total_gtt_size;
-	unsigned long nobject, n;
-	int count, ret;
-
-	nobject = READ_ONCE(dev_priv->mm.object_count);
-	objects = kvmalloc_array(nobject, sizeof(*objects), GFP_KERNEL);
-	if (!objects)
-		return -ENOMEM;
-
-	ret = mutex_lock_interruptible(&dev->struct_mutex);
-	if (ret)
-		return ret;
-
-	count = 0;
-	spin_lock(&dev_priv->mm.obj_lock);
-	list_for_each_entry(obj, &dev_priv->mm.bound_list, mm.link) {
-		objects[count++] = obj;
-		if (count == nobject)
-			break;
-	}
-	spin_unlock(&dev_priv->mm.obj_lock);
-
-	total_obj_size = total_gtt_size = 0;
-	for (n = 0;  n < count; n++) {
-		obj = objects[n];
-
-		seq_puts(m, "   ");
-		describe_obj(m, obj);
-		seq_putc(m, '\n');
-		total_obj_size += obj->base.size;
-		total_gtt_size += i915_gem_obj_total_ggtt_size(obj);
-	}
-
-	mutex_unlock(&dev->struct_mutex);
-
-	seq_printf(m, "Total %d objects, %llu bytes, %llu GTT size\n",
-		   count, total_obj_size, total_gtt_size);
-	kvfree(objects);
 
 	return 0;
 }
@@ -1500,7 +1451,7 @@ static int gen6_drpc_info(struct seq_file *m)
 
 	if (INTEL_GEN(dev_priv) <= 7)
 		sandybridge_pcode_read(dev_priv, GEN6_PCODE_READ_RC6VIDS,
-				       &rc6vids);
+				       &rc6vids, NULL);
 
 	seq_printf(m, "RC1e Enabled: %s\n",
 		   yesno(rcctl1 & GEN6_RC_CTL_RC1e_ENABLE));
@@ -1783,7 +1734,7 @@ static int i915_ring_freq_table(struct seq_file *m, void *unused)
 		ia_freq = gpu_freq;
 		sandybridge_pcode_read(dev_priv,
 				       GEN6_PCODE_READ_MIN_FREQ_TABLE,
-				       &ia_freq);
+				       &ia_freq, NULL);
 		seq_printf(m, "%d\t\t%d\t\t\t\t%d\n",
 			   intel_gpu_freq(dev_priv, (gpu_freq *
 						     (IS_GEN9_BC(dev_priv) ||
@@ -4176,7 +4127,7 @@ static void broadwell_sseu_device_status(struct drm_i915_private *dev_priv,
 				RUNTIME_INFO(dev_priv)->sseu.subslice_mask[s];
 		}
 		sseu->eu_total = sseu->eu_per_subslice *
-				 sseu_subslice_total(sseu);
+				 intel_sseu_subslice_total(sseu);
 
 		/* subtract fused off EU(s) from enabled slice(s) */
 		for (s = 0; s < fls(sseu->slice_mask); s++) {
@@ -4200,10 +4151,10 @@ static void i915_print_sseu_info(struct seq_file *m, bool is_available_info,
 	seq_printf(m, "  %s Slice Total: %u\n", type,
 		   hweight8(sseu->slice_mask));
 	seq_printf(m, "  %s Subslice Total: %u\n", type,
-		   sseu_subslice_total(sseu));
+		   intel_sseu_subslice_total(sseu));
 	for (s = 0; s < fls(sseu->slice_mask); s++) {
 		seq_printf(m, "  %s Slice%i subslices: %u\n", type,
-			   s, hweight8(sseu->subslice_mask[s]));
+			   s, intel_sseu_subslices_per_slice(sseu, s));
 	}
 	seq_printf(m, "  %s EU Total: %u\n", type,
 		   sseu->eu_total);
@@ -4582,7 +4533,6 @@ static const struct file_operations i915_fifo_underrun_reset_ops = {
 static const struct drm_info_list i915_debugfs_list[] = {
 	{"i915_capabilities", i915_capabilities, 0},
 	{"i915_gem_objects", i915_gem_object_info, 0},
-	{"i915_gem_gtt", i915_gem_gtt_info, 0},
 	{"i915_gem_stolen", i915_gem_stolen_list_info },
 	{"i915_gem_fence_regs", i915_gem_fence_regs_info, 0},
 	{"i915_gem_interrupt", i915_interrupt_info, 0},

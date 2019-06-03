@@ -24,18 +24,20 @@
 
 #include <linux/kthread.h>
 
+#include "gem/i915_gem_context.h"
 #include "intel_engine_pm.h"
 
 #include "i915_selftest.h"
 #include "selftests/i915_random.h"
 #include "selftests/igt_flush_test.h"
-#include "selftests/igt_gem_utils.h"
 #include "selftests/igt_reset.h"
 #include "selftests/igt_wedge_me.h"
 #include "selftests/igt_atomic.h"
 
-#include "selftests/mock_context.h"
 #include "selftests/mock_drm.h"
+
+#include "gem/selftests/mock_context.h"
+#include "gem/selftests/igt_gem_utils.h"
 
 #define IGT_IDLE_TIMEOUT 50 /* ms; time to wait after flushing between tests */
 
@@ -115,16 +117,11 @@ static int move_to_active(struct i915_vma *vma,
 {
 	int err;
 
+	i915_vma_lock(vma);
 	err = i915_vma_move_to_active(vma, rq, flags);
-	if (err)
-		return err;
+	i915_vma_unlock(vma);
 
-	if (!i915_gem_object_has_active_reference(vma->obj)) {
-		i915_gem_object_get(vma->obj);
-		i915_gem_object_set_active_reference(vma->obj);
-	}
-
-	return 0;
+	return err;
 }
 
 static struct i915_request *
@@ -1250,7 +1247,9 @@ static int __igt_reset_evict_vma(struct drm_i915_private *i915,
 		}
 	}
 
+	i915_vma_lock(arg.vma);
 	err = i915_vma_move_to_active(arg.vma, rq, flags);
+	i915_vma_unlock(arg.vma);
 
 	if (flags & EXEC_OBJECT_NEEDS_FENCE)
 		i915_vma_unpin_fence(arg.vma);

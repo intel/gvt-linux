@@ -5,6 +5,7 @@
  */
 
 #include "i915_drv.h"
+#include "intel_context.h"
 #include "intel_workarounds.h"
 
 /**
@@ -528,12 +529,6 @@ static void icl_ctx_workarounds_init(struct intel_engine_cs *engine,
 				     struct i915_wa_list *wal)
 {
 	struct drm_i915_private *i915 = engine->i915;
-
-	/* WaDisableBankHangMode:icl */
-	wa_write(wal,
-		 GEN8_L3CNTLREG,
-		 intel_uncore_read(engine->uncore, GEN8_L3CNTLREG) |
-		 GEN8_ERRDETBCTRL);
 
 	/* WaDisableBankHangMode:icl */
 	wa_write(wal,

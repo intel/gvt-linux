@@ -54,6 +54,7 @@
 #include <drm/drm_cache.h>
 #include <drm/drm_util.h>
 #include <drm/drm_dsc.h>
+#include <drm/drm_atomic.h>
 #include <drm/drm_connector.h>
 #include <drm/i915_mei_hdcp_interface.h>
 
@@ -79,9 +80,8 @@
 #include "intel_wopcm.h"
 
 #include "i915_gem.h"
-#include "i915_gem_context.h"
+#include "gem/i915_gem_context_types.h"
 #include "i915_gem_fence_reg.h"
-#include "i915_gem_object.h"
 #include "i915_gem_gtt.h"
 #include "i915_gpu_error.h"
 #include "i915_request.h"
@@ -135,6 +135,8 @@ bool i915_error_injected(void);
 #define i915_load_error(i915, fmt, ...)					 \
 	__i915_printk(i915, i915_error_injected() ? KERN_DEBUG : KERN_ERR, \
 		      fmt, ##__VA_ARGS__)
+
+struct drm_i915_gem_object;
 
 enum hpd_pin {
 	HPD_NONE = 0,
@@ -211,12 +213,6 @@ struct drm_i915_file_private {
 	struct {
 		spinlock_t lock;
 		struct list_head request_list;
-/* 20ms is a fairly arbitrary limit (greater than the average frame time)
- * chosen to prevent the CPU getting more than a frame ahead of the GPU
- * (when using lax throttling for the frontbuffer). We also use it to
- * offer free GPU waitboosts for severely congested workloads.
- */
-#define DRM_I915_THROTTLE_JIFFIES msecs_to_jiffies(20)
 	} mm;
 
 	struct idr context_idr;
@@ -868,11 +864,18 @@ struct i915_gem_mm {
 	 * not actually have any pages attached.
 	 */
 	struct list_head unbound_list;
+	/**
+	 * List of objects which are purgeable. May be active.
+	 */
+	struct list_head purge_list;
 
 	/** List of all objects in gtt_space, currently mmaped by userspace.
 	 * All objects within this list must also be on bound_list.
 	 */
 	struct list_head userfault_list;
+
+	/* Manual runtime pm autosuspend delay for user GGTT mmaps */
+	struct intel_wakeref_auto userfault_wakeref;
 
 	/**
 	 * List of objects which are pending destruction.
@@ -923,10 +926,9 @@ struct i915_gem_mm {
 	/** Bit 6 swizzling required for Y tiling */
 	u32 bit_6_swizzle_y;
 
-	/* accounting, useful for userland debugging */
-	spinlock_t object_stat_lock;
-	u64 object_memory;
-	u32 object_count;
+	/* shrinker accounting, also useful for userland debugging */
+	u64 shrink_memory;
+	u32 shrink_count;
 };
 
 #define I915_IDLE_ENGINES_TIMEOUT (200) /* in ms */
@@ -1841,6 +1843,13 @@ struct drm_i915_private {
 		} type;
 	} dram_info;
 
+	struct intel_bw_info {
+		int num_planes;
+		int deratedbw[3];
+	} max_bw[6];
+
+	struct drm_private_obj bw_obj;
+
 	struct i915_runtime_pm runtime_pm;
 
 	struct {
@@ -2157,111 +2166,6 @@ enum hdmi_force_audio {
 	GENMASK(INTEL_FRONTBUFFER_BITS_PER_PIPE * ((pipe) + 1) - 1, \
 		INTEL_FRONTBUFFER_BITS_PER_PIPE * (pipe))
 
-/*
- * Optimised SGL iterator for GEM objects
- */
-static __always_inline struct sgt_iter {
-	struct scatterlist *sgp;
-	union {
-		unsigned long pfn;
-		dma_addr_t dma;
-	};
-	unsigned int curr;
-	unsigned int max;
-} __sgt_iter(struct scatterlist *sgl, bool dma) {
-	struct sgt_iter s = { .sgp = sgl };
-
-	if (s.sgp) {
-		s.max = s.curr = s.sgp->offset;
-		s.max += s.sgp->length;
-		if (dma)
-			s.dma = sg_dma_address(s.sgp);
-		else
-			s.pfn = page_to_pfn(sg_page(s.sgp));
-	}
-
-	return s;
-}
-
-static inline struct scatterlist *____sg_next(struct scatterlist *sg)
-{
-	++sg;
-	if (unlikely(sg_is_chain(sg)))
-		sg = sg_chain_ptr(sg);
-	return sg;
-}
-
-/**
- * __sg_next - return the next scatterlist entry in a list
- * @sg:		The current sg entry
- *
- * Description:
- *   If the entry is the last, return NULL; otherwise, step to the next
- *   element in the array (@sg@+1). If that's a chain pointer, follow it;
- *   otherwise just return the pointer to the current element.
- **/
-static inline struct scatterlist *__sg_next(struct scatterlist *sg)
-{
-	return sg_is_last(sg) ? NULL : ____sg_next(sg);
-}
-
-/**
- * for_each_sgt_dma - iterate over the DMA addresses of the given sg_table
- * @__dmap:	DMA address (output)
- * @__iter:	'struct sgt_iter' (iterator state, internal)
- * @__sgt:	sg_table to iterate over (input)
- */
-#define for_each_sgt_dma(__dmap, __iter, __sgt)				\
-	for ((__iter) = __sgt_iter((__sgt)->sgl, true);			\
-	     ((__dmap) = (__iter).dma + (__iter).curr);			\
-	     (((__iter).curr += I915_GTT_PAGE_SIZE) >= (__iter).max) ?	\
-	     (__iter) = __sgt_iter(__sg_next((__iter).sgp), true), 0 : 0)
-
-/**
- * for_each_sgt_page - iterate over the pages of the given sg_table
- * @__pp:	page pointer (output)
- * @__iter:	'struct sgt_iter' (iterator state, internal)
- * @__sgt:	sg_table to iterate over (input)
- */
-#define for_each_sgt_page(__pp, __iter, __sgt)				\
-	for ((__iter) = __sgt_iter((__sgt)->sgl, false);		\
-	     ((__pp) = (__iter).pfn == 0 ? NULL :			\
-	      pfn_to_page((__iter).pfn + ((__iter).curr >> PAGE_SHIFT))); \
-	     (((__iter).curr += PAGE_SIZE) >= (__iter).max) ?		\
-	     (__iter) = __sgt_iter(__sg_next((__iter).sgp), false), 0 : 0)
-
-bool i915_sg_trim(struct sg_table *orig_st);
-
-static inline unsigned int i915_sg_page_sizes(struct scatterlist *sg)
-{
-	unsigned int page_sizes;
-
-	page_sizes = 0;
-	while (sg) {
-		GEM_BUG_ON(sg->offset);
-		GEM_BUG_ON(!IS_ALIGNED(sg->length, PAGE_SIZE));
-		page_sizes |= sg->length;
-		sg = __sg_next(sg);
-	}
-
-	return page_sizes;
-}
-
-static inline unsigned int i915_sg_segment_size(void)
-{
-	unsigned int size = swiotlb_max_segment();
-
-	if (size == 0)
-		return SCATTERLIST_MAX_SEGMENT;
-
-	size = rounddown(size, PAGE_SIZE);
-	/* swiotlb_max_segment_size can return 1 byte when it means one page. */
-	if (size < PAGE_SIZE)
-		size = PAGE_SIZE;
-
-	return size;
-}
-
 #define INTEL_INFO(dev_priv)	(&(dev_priv)->__info)
 #define RUNTIME_INFO(dev_priv)	(&(dev_priv)->__runtime)
 #define DRIVER_CAPS(dev_priv)	(&(dev_priv)->caps)
@@ -2438,8 +2342,6 @@ IS_SUBPLATFORM(const struct drm_i915_private *i915,
 	IS_SUBPLATFORM(dev_priv, INTEL_CANNONLAKE, INTEL_SUBPLATFORM_PORTF)
 #define IS_ICL_WITH_PORT_F(dev_priv) \
 	IS_SUBPLATFORM(dev_priv, INTEL_ICELAKE, INTEL_SUBPLATFORM_PORTF)
-
-#define IS_ALPHA_SUPPORT(intel_info) ((intel_info)->is_alpha_support)
 
 #define SKL_REVID_A0		0x0
 #define SKL_REVID_B0		0x1
@@ -2740,62 +2642,14 @@ static inline bool intel_vgpu_active(struct drm_i915_private *dev_priv)
 }
 
 /* i915_gem.c */
-int i915_gem_create_ioctl(struct drm_device *dev, void *data,
-			  struct drm_file *file_priv);
-int i915_gem_pread_ioctl(struct drm_device *dev, void *data,
-			 struct drm_file *file_priv);
-int i915_gem_pwrite_ioctl(struct drm_device *dev, void *data,
-			  struct drm_file *file_priv);
-int i915_gem_mmap_ioctl(struct drm_device *dev, void *data,
-			struct drm_file *file_priv);
-int i915_gem_mmap_gtt_ioctl(struct drm_device *dev, void *data,
-			struct drm_file *file_priv);
-int i915_gem_set_domain_ioctl(struct drm_device *dev, void *data,
-			      struct drm_file *file_priv);
-int i915_gem_sw_finish_ioctl(struct drm_device *dev, void *data,
-			     struct drm_file *file_priv);
-int i915_gem_execbuffer_ioctl(struct drm_device *dev, void *data,
-			      struct drm_file *file_priv);
-int i915_gem_execbuffer2_ioctl(struct drm_device *dev, void *data,
-			       struct drm_file *file_priv);
-int i915_gem_busy_ioctl(struct drm_device *dev, void *data,
-			struct drm_file *file_priv);
-int i915_gem_get_caching_ioctl(struct drm_device *dev, void *data,
-			       struct drm_file *file);
-int i915_gem_set_caching_ioctl(struct drm_device *dev, void *data,
-			       struct drm_file *file);
-int i915_gem_throttle_ioctl(struct drm_device *dev, void *data,
-			    struct drm_file *file_priv);
-int i915_gem_madvise_ioctl(struct drm_device *dev, void *data,
-			   struct drm_file *file_priv);
-int i915_gem_set_tiling_ioctl(struct drm_device *dev, void *data,
-			      struct drm_file *file_priv);
-int i915_gem_get_tiling_ioctl(struct drm_device *dev, void *data,
-			      struct drm_file *file_priv);
 int i915_gem_init_userptr(struct drm_i915_private *dev_priv);
 void i915_gem_cleanup_userptr(struct drm_i915_private *dev_priv);
-int i915_gem_userptr_ioctl(struct drm_device *dev, void *data,
-			   struct drm_file *file);
-int i915_gem_get_aperture_ioctl(struct drm_device *dev, void *data,
-				struct drm_file *file_priv);
-int i915_gem_wait_ioctl(struct drm_device *dev, void *data,
-			struct drm_file *file_priv);
 void i915_gem_sanitize(struct drm_i915_private *i915);
 int i915_gem_init_early(struct drm_i915_private *dev_priv);
 void i915_gem_cleanup_early(struct drm_i915_private *dev_priv);
 void i915_gem_load_init_fences(struct drm_i915_private *dev_priv);
 int i915_gem_freeze(struct drm_i915_private *dev_priv);
 int i915_gem_freeze_late(struct drm_i915_private *dev_priv);
-
-void i915_gem_object_init(struct drm_i915_gem_object *obj,
-			 const struct drm_i915_gem_object_ops *ops);
-struct drm_i915_gem_object *
-i915_gem_object_create(struct drm_i915_private *dev_priv, u64 size);
-struct drm_i915_gem_object *
-i915_gem_object_create_from_data(struct drm_i915_private *dev_priv,
-				 const void *data, size_t size);
-void i915_gem_close_object(struct drm_gem_object *gem, struct drm_file *file);
-void i915_gem_free_object(struct drm_gem_object *obj);
 
 static inline void i915_gem_drain_freed_objects(struct drm_i915_private *i915)
 {
@@ -2842,163 +2696,8 @@ i915_gem_object_ggtt_pin(struct drm_i915_gem_object *obj,
 			 u64 flags);
 
 int i915_gem_object_unbind(struct drm_i915_gem_object *obj);
-void i915_gem_release_mmap(struct drm_i915_gem_object *obj);
 
 void i915_gem_runtime_suspend(struct drm_i915_private *dev_priv);
-
-static inline int __sg_page_count(const struct scatterlist *sg)
-{
-	return sg->length >> PAGE_SHIFT;
-}
-
-struct scatterlist *
-i915_gem_object_get_sg(struct drm_i915_gem_object *obj,
-		       unsigned int n, unsigned int *offset);
-
-struct page *
-i915_gem_object_get_page(struct drm_i915_gem_object *obj,
-			 unsigned int n);
-
-struct page *
-i915_gem_object_get_dirty_page(struct drm_i915_gem_object *obj,
-			       unsigned int n);
-
-dma_addr_t
-i915_gem_object_get_dma_address_len(struct drm_i915_gem_object *obj,
-				    unsigned long n,
-				    unsigned int *len);
-dma_addr_t
-i915_gem_object_get_dma_address(struct drm_i915_gem_object *obj,
-				unsigned long n);
-
-void __i915_gem_object_set_pages(struct drm_i915_gem_object *obj,
-				 struct sg_table *pages,
-				 unsigned int sg_page_sizes);
-int __i915_gem_object_get_pages(struct drm_i915_gem_object *obj);
-
-static inline int __must_check
-i915_gem_object_pin_pages(struct drm_i915_gem_object *obj)
-{
-	might_lock(&obj->mm.lock);
-
-	if (atomic_inc_not_zero(&obj->mm.pages_pin_count))
-		return 0;
-
-	return __i915_gem_object_get_pages(obj);
-}
-
-static inline bool
-i915_gem_object_has_pages(struct drm_i915_gem_object *obj)
-{
-	return !IS_ERR_OR_NULL(READ_ONCE(obj->mm.pages));
-}
-
-static inline void
-__i915_gem_object_pin_pages(struct drm_i915_gem_object *obj)
-{
-	GEM_BUG_ON(!i915_gem_object_has_pages(obj));
-
-	atomic_inc(&obj->mm.pages_pin_count);
-}
-
-static inline bool
-i915_gem_object_has_pinned_pages(struct drm_i915_gem_object *obj)
-{
-	return atomic_read(&obj->mm.pages_pin_count);
-}
-
-static inline void
-__i915_gem_object_unpin_pages(struct drm_i915_gem_object *obj)
-{
-	GEM_BUG_ON(!i915_gem_object_has_pages(obj));
-	GEM_BUG_ON(!i915_gem_object_has_pinned_pages(obj));
-
-	atomic_dec(&obj->mm.pages_pin_count);
-}
-
-static inline void
-i915_gem_object_unpin_pages(struct drm_i915_gem_object *obj)
-{
-	__i915_gem_object_unpin_pages(obj);
-}
-
-enum i915_mm_subclass { /* lockdep subclass for obj->mm.lock/struct_mutex */
-	I915_MM_NORMAL = 0,
-	I915_MM_SHRINKER /* called "recursively" from direct-reclaim-esque */
-};
-
-int __i915_gem_object_put_pages(struct drm_i915_gem_object *obj,
-				enum i915_mm_subclass subclass);
-void __i915_gem_object_truncate(struct drm_i915_gem_object *obj);
-
-enum i915_map_type {
-	I915_MAP_WB = 0,
-	I915_MAP_WC,
-#define I915_MAP_OVERRIDE BIT(31)
-	I915_MAP_FORCE_WB = I915_MAP_WB | I915_MAP_OVERRIDE,
-	I915_MAP_FORCE_WC = I915_MAP_WC | I915_MAP_OVERRIDE,
-};
-
-static inline enum i915_map_type
-i915_coherent_map_type(struct drm_i915_private *i915)
-{
-	return HAS_LLC(i915) ? I915_MAP_WB : I915_MAP_WC;
-}
-
-/**
- * i915_gem_object_pin_map - return a contiguous mapping of the entire object
- * @obj: the object to map into kernel address space
- * @type: the type of mapping, used to select pgprot_t
- *
- * Calls i915_gem_object_pin_pages() to prevent reaping of the object's
- * pages and then returns a contiguous mapping of the backing storage into
- * the kernel address space. Based on the @type of mapping, the PTE will be
- * set to either WriteBack or WriteCombine (via pgprot_t).
- *
- * The caller is responsible for calling i915_gem_object_unpin_map() when the
- * mapping is no longer required.
- *
- * Returns the pointer through which to access the mapped object, or an
- * ERR_PTR() on error.
- */
-void *__must_check i915_gem_object_pin_map(struct drm_i915_gem_object *obj,
-					   enum i915_map_type type);
-
-void __i915_gem_object_flush_map(struct drm_i915_gem_object *obj,
-				 unsigned long offset,
-				 unsigned long size);
-static inline void i915_gem_object_flush_map(struct drm_i915_gem_object *obj)
-{
-	__i915_gem_object_flush_map(obj, 0, obj->base.size);
-}
-
-/**
- * i915_gem_object_unpin_map - releases an earlier mapping
- * @obj: the object to unmap
- *
- * After pinning the object and mapping its pages, once you are finished
- * with your access, call i915_gem_object_unpin_map() to release the pin
- * upon the mapping. Once the pin count reaches zero, that mapping may be
- * removed.
- */
-static inline void i915_gem_object_unpin_map(struct drm_i915_gem_object *obj)
-{
-	i915_gem_object_unpin_pages(obj);
-}
-
-int i915_gem_obj_prepare_shmem_read(struct drm_i915_gem_object *obj,
-				    unsigned int *needs_clflush);
-int i915_gem_obj_prepare_shmem_write(struct drm_i915_gem_object *obj,
-				     unsigned int *needs_clflush);
-#define CLFLUSH_BEFORE	BIT(0)
-#define CLFLUSH_AFTER	BIT(1)
-#define CLFLUSH_FLAGS	(CLFLUSH_BEFORE | CLFLUSH_AFTER)
-
-static inline void
-i915_gem_obj_finish_shmem_access(struct drm_i915_gem_object *obj)
-{
-	i915_gem_object_unpin_pages(obj);
-}
 
 static inline int __must_check
 i915_mutex_lock_interruptible(struct drm_device *dev)
@@ -3047,6 +2746,7 @@ void i915_gem_init_mmio(struct drm_i915_private *i915);
 int __must_check i915_gem_init(struct drm_i915_private *dev_priv);
 int __must_check i915_gem_init_hw(struct drm_i915_private *dev_priv);
 void i915_gem_init_swizzling(struct drm_i915_private *dev_priv);
+void i915_gem_fini_hw(struct drm_i915_private *dev_priv);
 void i915_gem_fini(struct drm_i915_private *dev_priv);
 int i915_gem_wait_for_idle(struct drm_i915_private *dev_priv,
 			   unsigned int flags, long timeout);
@@ -3054,28 +2754,7 @@ void i915_gem_suspend(struct drm_i915_private *dev_priv);
 void i915_gem_suspend_late(struct drm_i915_private *dev_priv);
 void i915_gem_resume(struct drm_i915_private *dev_priv);
 vm_fault_t i915_gem_fault(struct vm_fault *vmf);
-int i915_gem_object_wait(struct drm_i915_gem_object *obj,
-			 unsigned int flags,
-			 long timeout);
-int i915_gem_object_wait_priority(struct drm_i915_gem_object *obj,
-				  unsigned int flags,
-				  const struct i915_sched_attr *attr);
-#define I915_PRIORITY_DISPLAY I915_USER_PRIORITY(I915_PRIORITY_MAX)
 
-int __must_check
-i915_gem_object_set_to_wc_domain(struct drm_i915_gem_object *obj, bool write);
-int __must_check
-i915_gem_object_set_to_gtt_domain(struct drm_i915_gem_object *obj, bool write);
-int __must_check
-i915_gem_object_set_to_cpu_domain(struct drm_i915_gem_object *obj, bool write);
-struct i915_vma * __must_check
-i915_gem_object_pin_to_display_plane(struct drm_i915_gem_object *obj,
-				     u32 alignment,
-				     const struct i915_ggtt_view *view,
-				     unsigned int flags);
-void i915_gem_object_unpin_from_display_plane(struct i915_vma *vma);
-int i915_gem_object_attach_phys(struct drm_i915_gem_object *obj,
-				int align);
 int i915_gem_open(struct drm_i915_private *i915, struct drm_file *file);
 void i915_gem_release(struct drm_device *dev, struct drm_file *file);
 
@@ -3189,12 +2868,12 @@ unsigned long i915_gem_shrink(struct drm_i915_private *i915,
 			      unsigned long target,
 			      unsigned long *nr_scanned,
 			      unsigned flags);
-#define I915_SHRINK_PURGEABLE	BIT(0)
-#define I915_SHRINK_UNBOUND	BIT(1)
-#define I915_SHRINK_BOUND	BIT(2)
-#define I915_SHRINK_ACTIVE	BIT(3)
-#define I915_SHRINK_VMAPS	BIT(4)
-#define I915_SHRINK_WRITEBACK	BIT(5)
+#define I915_SHRINK_UNBOUND	BIT(0)
+#define I915_SHRINK_BOUND	BIT(1)
+#define I915_SHRINK_ACTIVE	BIT(2)
+#define I915_SHRINK_VMAPS	BIT(3)
+#define I915_SHRINK_WRITEBACK	BIT(4)
+
 unsigned long i915_gem_shrink_all(struct drm_i915_private *i915);
 void i915_gem_shrinker_register(struct drm_i915_private *i915);
 void i915_gem_shrinker_unregister(struct drm_i915_private *i915);
@@ -3382,6 +3061,12 @@ static inline int intel_hws_csb_write_index(struct drm_i915_private *i915)
 static inline u32 i915_scratch_offset(const struct drm_i915_private *i915)
 {
 	return i915_ggtt_offset(i915->gt.scratch);
+}
+
+static inline enum i915_map_type
+i915_coherent_map_type(struct drm_i915_private *i915)
+{
+	return HAS_LLC(i915) ? I915_MAP_WB : I915_MAP_WC;
 }
 
 static inline void add_taint_for_CI(unsigned int taint)

@@ -2499,6 +2499,11 @@ static void __split_huge_page(struct page *page, struct list_head *list,
 		} else if (!PageAnon(page)) {
 			__xa_store(&head->mapping->i_pages, head[i].index,
 					head + i, 0);
+		} else if (PageSwapCache(page)) {
+			swp_entry_t entry = { .val = page_private(head + i) };
+			__xa_store(&swap_address_space(entry)->i_pages,
+				   swp_offset(entry),
+				   head + i, 0);
 		}
 	}
 

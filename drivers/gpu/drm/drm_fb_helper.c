@@ -38,7 +38,6 @@
 #include <linux/vmalloc.h>
 
 #include <drm/drm_atomic.h>
-#include <drm/drm_atomic_helper.h>
 #include <drm/drm_crtc.h>
 #include <drm/drm_crtc_helper.h>
 #include <drm/drm_drv.h>
@@ -47,8 +46,6 @@
 #include <drm/drm_print.h>
 #include <drm/drm_vblank.h>
 
-#include "drm_crtc_helper_internal.h"
-#include "drm_crtc_internal.h"
 #include "drm_internal.h"
 
 static bool drm_fbdev_emulation = true;
@@ -393,206 +390,6 @@ int drm_fb_helper_debug_leave(struct fb_info *info)
 }
 EXPORT_SYMBOL(drm_fb_helper_debug_leave);
 
-/* Check if the plane can hw rotate to match panel orientation */
-static bool drm_fb_helper_panel_rotation(struct drm_mode_set *modeset,
-					 unsigned int *rotation)
-{
-	struct drm_connector *connector = modeset->connectors[0];
-	struct drm_plane *plane = modeset->crtc->primary;
-	u64 valid_mask = 0;
-	unsigned int i;
-
-	if (!modeset->num_connectors)
-		return false;
-
-	switch (connector->display_info.panel_orientation) {
-	case DRM_MODE_PANEL_ORIENTATION_BOTTOM_UP:
-		*rotation = DRM_MODE_ROTATE_180;
-		break;
-	case DRM_MODE_PANEL_ORIENTATION_LEFT_UP:
-		*rotation = DRM_MODE_ROTATE_90;
-		break;
-	case DRM_MODE_PANEL_ORIENTATION_RIGHT_UP:
-		*rotation = DRM_MODE_ROTATE_270;
-		break;
-	default:
-		*rotation = DRM_MODE_ROTATE_0;
-	}
-
-	/*
-	 * TODO: support 90 / 270 degree hardware rotation,
-	 * depending on the hardware this may require the framebuffer
-	 * to be in a specific tiling format.
-	 */
-	if (*rotation != DRM_MODE_ROTATE_180 || !plane->rotation_property)
-		return false;
-
-	for (i = 0; i < plane->rotation_property->num_values; i++)
-		valid_mask |= (1ULL << plane->rotation_property->values[i]);
-
-	if (!(*rotation & valid_mask))
-		return false;
-
-	return true;
-}
-
-static int restore_fbdev_mode_atomic(struct drm_fb_helper *fb_helper, bool active)
-{
-	struct drm_client_dev *client = &fb_helper->client;
-	struct drm_device *dev = fb_helper->dev;
-	struct drm_plane_state *plane_state;
-	struct drm_plane *plane;
-	struct drm_atomic_state *state;
-	struct drm_modeset_acquire_ctx ctx;
-	struct drm_mode_set *mode_set;
-	int ret;
-
-	drm_modeset_acquire_init(&ctx, 0);
-
-	state = drm_atomic_state_alloc(dev);
-	if (!state) {
-		ret = -ENOMEM;
-		goto out_ctx;
-	}
-
-	state->acquire_ctx = &ctx;
-retry:
-	drm_for_each_plane(plane, dev) {
-		plane_state = drm_atomic_get_plane_state(state, plane);
-		if (IS_ERR(plane_state)) {
-			ret = PTR_ERR(plane_state);
-			goto out_state;
-		}
-
-		plane_state->rotation = DRM_MODE_ROTATE_0;
-
-		/* disable non-primary: */
-		if (plane->type == DRM_PLANE_TYPE_PRIMARY)
-			continue;
-
-		ret = __drm_atomic_helper_disable_plane(plane, plane_state);
-		if (ret != 0)
-			goto out_state;
-	}
-
-	drm_client_for_each_modeset(mode_set, client) {
-		struct drm_plane *primary = mode_set->crtc->primary;
-		unsigned int rotation;
-
-		if (drm_fb_helper_panel_rotation(mode_set, &rotation)) {
-			/* Cannot fail as we've already gotten the plane state above */
-			plane_state = drm_atomic_get_new_plane_state(state, primary);
-			plane_state->rotation = rotation;
-		}
-
-		ret = __drm_atomic_helper_set_config(mode_set, state);
-		if (ret != 0)
-			goto out_state;
-
-		/*
-		 * __drm_atomic_helper_set_config() sets active when a
-		 * mode is set, unconditionally clear it if we force DPMS off
-		 */
-		if (!active) {
-			struct drm_crtc *crtc = mode_set->crtc;
-			struct drm_crtc_state *crtc_state = drm_atomic_get_new_crtc_state(state, crtc);
-
-			crtc_state->active = false;
-		}
-	}
-
-	ret = drm_atomic_commit(state);
-
-out_state:
-	if (ret == -EDEADLK)
-		goto backoff;
-
-	drm_atomic_state_put(state);
-out_ctx:
-	drm_modeset_drop_locks(&ctx);
-	drm_modeset_acquire_fini(&ctx);
-
-	return ret;
-
-backoff:
-	drm_atomic_state_clear(state);
-	drm_modeset_backoff(&ctx);
-
-	goto retry;
-}
-
-static int restore_fbdev_mode_legacy(struct drm_fb_helper *fb_helper)
-{
-	struct drm_client_dev *client = &fb_helper->client;
-	struct drm_device *dev = fb_helper->dev;
-	struct drm_mode_set *mode_set;
-	struct drm_plane *plane;
-	int ret = 0;
-
-	drm_modeset_lock_all(fb_helper->dev);
-	drm_for_each_plane(plane, dev) {
-		if (plane->type != DRM_PLANE_TYPE_PRIMARY)
-			drm_plane_force_disable(plane);
-
-		if (plane->rotation_property)
-			drm_mode_plane_set_obj_prop(plane,
-						    plane->rotation_property,
-						    DRM_MODE_ROTATE_0);
-	}
-
-	drm_client_for_each_modeset(mode_set, client) {
-		struct drm_crtc *crtc = mode_set->crtc;
-
-		if (crtc->funcs->cursor_set2) {
-			ret = crtc->funcs->cursor_set2(crtc, NULL, 0, 0, 0, 0, 0);
-			if (ret)
-				goto out;
-		} else if (crtc->funcs->cursor_set) {
-			ret = crtc->funcs->cursor_set(crtc, NULL, 0, 0, 0);
-			if (ret)
-				goto out;
-		}
-
-		ret = drm_mode_set_config_internal(mode_set);
-		if (ret)
-			goto out;
-	}
-out:
-	drm_modeset_unlock_all(fb_helper->dev);
-
-	return ret;
-}
-
-static int restore_fbdev_mode_force(struct drm_fb_helper *fb_helper)
-{
-	struct drm_device *dev = fb_helper->dev;
-	int ret;
-
-	mutex_lock(&fb_helper->client.modeset_mutex);
-	if (drm_drv_uses_atomic_modeset(dev))
-		ret = restore_fbdev_mode_atomic(fb_helper, true);
-	else
-		ret = restore_fbdev_mode_legacy(fb_helper);
-	mutex_unlock(&fb_helper->client.modeset_mutex);
-
-	return ret;
-}
-
-static int restore_fbdev_mode(struct drm_fb_helper *fb_helper)
-{
-	struct drm_device *dev = fb_helper->dev;
-	int ret;
-
-	if (!drm_master_internal_acquire(dev))
-		return -EBUSY;
-
-	ret = restore_fbdev_mode_force(fb_helper);
-
-	drm_master_internal_release(dev);
-
-	return ret;
-}
-
 /**
  * drm_fb_helper_restore_fbdev_mode_unlocked - restore fbdev configuration
  * @fb_helper: driver-allocated fbdev helper, can be NULL
@@ -626,7 +423,7 @@ int drm_fb_helper_restore_fbdev_mode_unlocked(struct drm_fb_helper *fb_helper)
 	 * So first these tests need to be fixed so they drop master or don't
 	 * have an fd open.
 	 */
-	ret = restore_fbdev_mode_force(fb_helper);
+	ret = drm_client_modeset_commit_force(&fb_helper->client);
 
 	do_delayed = fb_helper->delayed_hotplug;
 	if (do_delayed)
@@ -660,7 +457,7 @@ static bool drm_fb_helper_force_kernel_mode(void)
 			continue;
 
 		mutex_lock(&helper->lock);
-		ret = restore_fbdev_mode_force(helper);
+		ret = drm_client_modeset_commit_force(&helper->client);
 		if (ret)
 			error = true;
 		mutex_unlock(&helper->lock);
@@ -692,51 +489,12 @@ static struct sysrq_key_op sysrq_drm_fb_helper_restore_op = {
 static struct sysrq_key_op sysrq_drm_fb_helper_restore_op = { };
 #endif
 
-static void dpms_legacy(struct drm_fb_helper *fb_helper, int dpms_mode)
-{
-	struct drm_client_dev *client = &fb_helper->client;
-	struct drm_device *dev = fb_helper->dev;
-	struct drm_connector *connector;
-	struct drm_mode_set *modeset;
-	int j;
-
-	drm_modeset_lock_all(dev);
-	drm_client_for_each_modeset(modeset, client) {
-		if (!modeset->crtc->enabled)
-			continue;
-
-		for (j = 0; j < modeset->num_connectors; j++) {
-			connector = modeset->connectors[j];
-			connector->funcs->dpms(connector, dpms_mode);
-			drm_object_property_set_value(&connector->base,
-				dev->mode_config.dpms_property, dpms_mode);
-		}
-	}
-	drm_modeset_unlock_all(dev);
-}
-
 static void drm_fb_helper_dpms(struct fb_info *info, int dpms_mode)
 {
 	struct drm_fb_helper *fb_helper = info->par;
-	struct drm_client_dev *client = &fb_helper->client;
-	struct drm_device *dev = fb_helper->dev;
 
-	/*
-	 * For each CRTC in this fb, turn the connectors on/off.
-	 */
 	mutex_lock(&fb_helper->lock);
-	if (!drm_master_internal_acquire(dev))
-		goto unlock;
-
-	mutex_lock(&client->modeset_mutex);
-	if (drm_drv_uses_atomic_modeset(dev))
-		restore_fbdev_mode_atomic(fb_helper, dpms_mode == DRM_MODE_DPMS_ON);
-	else
-		dpms_legacy(fb_helper, dpms_mode);
-	mutex_unlock(&client->modeset_mutex);
-
-	drm_master_internal_release(dev);
-unlock:
+	drm_client_modeset_dpms(&fb_helper->client, dpms_mode);
 	mutex_unlock(&fb_helper->lock);
 }
 
@@ -1810,7 +1568,7 @@ static int pan_display_atomic(struct fb_var_screeninfo *var,
 
 	pan_set(fb_helper, var->xoffset, var->yoffset);
 
-	ret = restore_fbdev_mode_force(fb_helper);
+	ret = drm_client_modeset_commit_force(&fb_helper->client);
 	if (!ret) {
 		info->var.xoffset = var->xoffset;
 		info->var.yoffset = var->yoffset;
@@ -2036,7 +1794,7 @@ static int drm_fb_helper_single_fb_probe(struct drm_fb_helper *fb_helper,
 
 		/* First time: disable all crtc's.. */
 		if (!fb_helper->deferred_setup)
-			restore_fbdev_mode(fb_helper);
+			drm_client_modeset_commit(client);
 		return -EAGAIN;
 	}
 
@@ -2810,7 +2568,7 @@ static void drm_setup_crtcs_fb(struct drm_fb_helper *fb_helper)
 
 		modeset->fb = fb_helper->fb;
 
-		if (drm_fb_helper_panel_rotation(modeset, &rotation))
+		if (drm_client_panel_rotation(modeset, &rotation))
 			/* Rotating in hardware, fbcon should not rotate */
 			sw_rotations |= DRM_MODE_ROTATE_0;
 		else

@@ -61,7 +61,7 @@ Intel GVT-g Host Support(vGPU device model)
 Workarounds
 -----------
 
-.. kernel-doc:: drivers/gpu/drm/i915/intel_workarounds.c
+.. kernel-doc:: drivers/gpu/drm/i915/gt/intel_workarounds.c
    :doc: Hardware workarounds
 
 Display Hardware Handling
@@ -349,7 +349,7 @@ of buffer object caches. Shrinking is used to make main memory
 available. Note that this is mostly orthogonal to evicting buffer
 objects, which has the goal to make space in gpu virtual address spaces.
 
-.. kernel-doc:: drivers/gpu/drm/i915/i915_gem_shrinker.c
+.. kernel-doc:: drivers/gpu/drm/i915/gem/i915_gem_shrinker.c
    :internal:
 
 Batchbuffer Parsing
@@ -373,17 +373,14 @@ Batchbuffer Pools
 User Batchbuffer Execution
 --------------------------
 
-.. kernel-doc:: drivers/gpu/drm/i915/i915_gem_execbuffer.c
+.. kernel-doc:: drivers/gpu/drm/i915/gem/i915_gem_execbuffer.c
    :doc: User command execution
 
 Logical Rings, Logical Ring Contexts and Execlists
 --------------------------------------------------
 
-.. kernel-doc:: drivers/gpu/drm/i915/intel_lrc.c
+.. kernel-doc:: drivers/gpu/drm/i915/gt/intel_lrc.c
    :doc: Logical Rings, Logical Ring Contexts and Execlists
-
-.. kernel-doc:: drivers/gpu/drm/i915/intel_lrc.c
-   :internal:
 
 Global GTT views
 ----------------
@@ -415,10 +412,10 @@ Hardware Tiling and Swizzling Details
 Object Tiling IOCTLs
 --------------------
 
-.. kernel-doc:: drivers/gpu/drm/i915/i915_gem_tiling.c
+.. kernel-doc:: drivers/gpu/drm/i915/gem/i915_gem_tiling.c
    :internal:
 
-.. kernel-doc:: drivers/gpu/drm/i915/i915_gem_tiling.c
+.. kernel-doc:: drivers/gpu/drm/i915/gem/i915_gem_tiling.c
    :doc: buffer object tiling
 
 WOPCM
@@ -477,12 +474,6 @@ i915_context_create and i915_context_free
 
 .. kernel-doc:: drivers/gpu/drm/i915/i915_trace.h
    :doc: i915_context_create and i915_context_free tracepoints
-
-switch_mm
----------
-
-.. kernel-doc:: drivers/gpu/drm/i915/i915_trace.h
-   :doc: switch_mm tracepoint
 
 Perf
 ====

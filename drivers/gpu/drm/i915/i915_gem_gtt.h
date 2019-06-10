@@ -40,6 +40,7 @@
 
 #include "gt/intel_reset.h"
 #include "i915_request.h"
+#include "i915_scatterlist.h"
 #include "i915_selftest.h"
 #include "i915_timeline.h"
 
@@ -61,6 +62,7 @@
 
 struct drm_i915_file_private;
 struct drm_i915_fence_reg;
+struct drm_i915_gem_object;
 struct i915_vma;
 
 typedef u32 gen6_pte_t;
@@ -161,7 +163,8 @@ typedef u64 gen8_ppgtt_pml4e_t;
 #define GEN8_PDE_IPS_64K BIT(11)
 #define GEN8_PDE_PS_2M   BIT(7)
 
-struct sg_table;
+#define for_each_sgt_dma(__dmap, __iter, __sgt) \
+	__for_each_sgt_dma(__dmap, __iter, __sgt, I915_GTT_PAGE_SIZE)
 
 struct intel_remapped_plane_info {
 	/* in gtt pages */
@@ -245,25 +248,28 @@ struct i915_page_dma {
 
 struct i915_page_table {
 	struct i915_page_dma base;
-	unsigned int used_ptes;
+	atomic_t used_ptes;
 };
 
 struct i915_page_directory {
 	struct i915_page_dma base;
 
 	struct i915_page_table *page_table[I915_PDES]; /* PDEs */
-	unsigned int used_pdes;
+	atomic_t used_pdes;
+	spinlock_t lock;
 };
 
 struct i915_page_directory_pointer {
 	struct i915_page_dma base;
 	struct i915_page_directory **page_directory;
-	unsigned int used_pdpes;
+	atomic_t used_pdpes;
+	spinlock_t lock;
 };
 
 struct i915_pml4 {
 	struct i915_page_dma base;
 	struct i915_page_directory_pointer *pdps[GEN8_PML4ES_PER_PML4];
+	spinlock_t lock;
 };
 
 struct i915_vma_ops {
@@ -611,9 +617,6 @@ const struct intel_ppat_entry *
 intel_ppat_get(struct drm_i915_private *i915, u8 value);
 void intel_ppat_put(const struct intel_ppat_entry *entry);
 
-int i915_gem_init_aliasing_ppgtt(struct drm_i915_private *i915);
-void i915_gem_fini_aliasing_ppgtt(struct drm_i915_private *i915);
-
 int i915_ggtt_probe_hw(struct drm_i915_private *dev_priv);
 int i915_ggtt_init_hw(struct drm_i915_private *dev_priv);
 int i915_ggtt_enable_hw(struct drm_i915_private *dev_priv);
@@ -643,7 +646,6 @@ int gen6_ppgtt_pin(struct i915_hw_ppgtt *base);
 void gen6_ppgtt_unpin(struct i915_hw_ppgtt *base);
 void gen6_ppgtt_unpin_all(struct i915_hw_ppgtt *base);
 
-void i915_check_and_clear_faults(struct drm_i915_private *dev_priv);
 void i915_gem_suspend_gtt_mappings(struct drm_i915_private *dev_priv);
 void i915_gem_restore_gtt_mappings(struct drm_i915_private *dev_priv);
 

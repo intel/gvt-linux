@@ -332,6 +332,7 @@ static int icl_max_source_rate(struct intel_dp *intel_dp)
 	enum port port = dig_port->base.port;
 
 	if (intel_port_is_combophy(dev_priv, port) &&
+	    !IS_ELKHARTLAKE(dev_priv) &&
 	    !intel_dp_is_edp(intel_dp))
 		return 540000;
 
@@ -3994,9 +3995,6 @@ intel_dp_link_down(struct intel_encoder *encoder,
 	enum port port = encoder->port;
 	u32 DP = intel_dp->DP;
 
-	if (WARN_ON(HAS_DDI(dev_priv)))
-		return;
-
 	if (WARN_ON((I915_READ(intel_dp->output_reg) & DP_PORT_EN) == 0))
 		return;
 
@@ -7347,10 +7345,6 @@ intel_dp_init_connector(struct intel_digital_port *intel_dig_port,
 	intel_dp->reset_link_params = true;
 	intel_dp->pps_pipe = INVALID_PIPE;
 	intel_dp->active_pipe = INVALID_PIPE;
-
-	/* intel_dp vfuncs */
-	if (HAS_DDI(dev_priv))
-		intel_dp->prepare_link_retrain = intel_ddi_prepare_link_retrain;
 
 	/* Preserve the current hw state. */
 	intel_dp->DP = I915_READ(intel_dp->output_reg);

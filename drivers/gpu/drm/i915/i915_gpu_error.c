@@ -36,8 +36,11 @@
 
 #include <drm/drm_print.h>
 
+#include "gem/i915_gem_context.h"
+
 #include "i915_drv.h"
 #include "i915_gpu_error.h"
+#include "i915_scatterlist.h"
 #include "intel_atomic.h"
 #include "intel_csr.h"
 #include "intel_overlay.h"
@@ -1120,17 +1123,23 @@ static u32 i915_error_generate_code(struct i915_gpu_state *error,
 static void gem_record_fences(struct i915_gpu_state *error)
 {
 	struct drm_i915_private *dev_priv = error->i915;
+	struct intel_uncore *uncore = &dev_priv->uncore;
 	int i;
 
 	if (INTEL_GEN(dev_priv) >= 6) {
 		for (i = 0; i < dev_priv->num_fence_regs; i++)
-			error->fence[i] = I915_READ64(FENCE_REG_GEN6_LO(i));
+			error->fence[i] =
+				intel_uncore_read64(uncore,
+						    FENCE_REG_GEN6_LO(i));
 	} else if (INTEL_GEN(dev_priv) >= 4) {
 		for (i = 0; i < dev_priv->num_fence_regs; i++)
-			error->fence[i] = I915_READ64(FENCE_REG_965_LO(i));
+			error->fence[i] =
+				intel_uncore_read64(uncore,
+						    FENCE_REG_965_LO(i));
 	} else {
 		for (i = 0; i < dev_priv->num_fence_regs; i++)
-			error->fence[i] = I915_READ(FENCE_REG(i));
+			error->fence[i] =
+				intel_uncore_read(uncore, FENCE_REG(i));
 	}
 	error->nfence = i;
 }
@@ -1146,7 +1155,7 @@ static void error_record_engine_registers(struct i915_gpu_state *error,
 		if (INTEL_GEN(dev_priv) >= 8)
 			ee->fault_reg = I915_READ(GEN8_RING_FAULT_REG);
 		else
-			ee->fault_reg = I915_READ(RING_FAULT_REG(engine));
+			ee->fault_reg = GEN6_RING_FAULT_REG_READ(engine);
 	}
 
 	if (INTEL_GEN(dev_priv) >= 4) {
@@ -1216,7 +1225,7 @@ static void error_record_engine_registers(struct i915_gpu_state *error,
 	if (HAS_PPGTT(dev_priv)) {
 		int i;
 
-		ee->vm_info.gfx_mode = I915_READ(RING_MODE_GEN7(engine));
+		ee->vm_info.gfx_mode = ENGINE_READ(engine, RING_MODE_GEN7);
 
 		if (IS_GEN(dev_priv, 6)) {
 			ee->vm_info.pp_dir_base =

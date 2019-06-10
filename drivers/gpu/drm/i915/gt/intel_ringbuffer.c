@@ -31,9 +31,12 @@
 
 #include <drm/i915_drm.h>
 
+#include "gem/i915_gem_context.h"
+
 #include "i915_drv.h"
 #include "i915_gem_render_state.h"
 #include "i915_trace.h"
+#include "intel_context.h"
 #include "intel_reset.h"
 #include "intel_workarounds.h"
 
@@ -1299,10 +1302,9 @@ intel_engine_create_ring(struct intel_engine_cs *engine,
 void intel_ring_free(struct kref *ref)
 {
 	struct intel_ring *ring = container_of(ref, typeof(*ring), ref);
-	struct drm_i915_gem_object *obj = ring->vma->obj;
 
 	i915_vma_close(ring->vma);
-	__i915_gem_object_release_unless_active(obj);
+	i915_vma_put(ring->vma);
 
 	i915_timeline_put(ring->timeline);
 	kfree(ring);
@@ -1396,7 +1398,7 @@ alloc_context_vma(struct intel_engine_cs *engine)
 	struct i915_vma *vma;
 	int err;
 
-	obj = i915_gem_object_create(i915, engine->context_size);
+	obj = i915_gem_object_create_shmem(i915, engine->context_size);
 	if (IS_ERR(obj))
 		return ERR_CAST(obj);
 

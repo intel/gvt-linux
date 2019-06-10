@@ -6,15 +6,18 @@
 
 #include <linux/prime_numbers.h>
 
+#include "gem/i915_gem_pm.h"
 #include "gt/intel_reset.h"
+
 #include "i915_selftest.h"
 #include "selftests/i915_random.h"
 #include "selftests/igt_flush_test.h"
-#include "selftests/igt_gem_utils.h"
 #include "selftests/igt_live_test.h"
 #include "selftests/igt_spinner.h"
 #include "selftests/lib_sw_fence.h"
-#include "selftests/mock_context.h"
+
+#include "gem/selftests/igt_gem_utils.h"
+#include "gem/selftests/mock_context.h"
 
 static int live_sanitycheck(void *arg)
 {
@@ -1105,11 +1108,13 @@ static int smoke_submit(struct preempt_smoke *smoke,
 	}
 
 	if (vma) {
+		i915_vma_lock(vma);
 		err = rq->engine->emit_bb_start(rq,
 						vma->node.start,
 						PAGE_SIZE, 0);
 		if (!err)
 			err = i915_vma_move_to_active(vma, rq, 0);
+		i915_vma_unlock(vma);
 	}
 
 	i915_request_add(rq);
@@ -1526,8 +1531,8 @@ static int mask_virtual_engine(struct drm_i915_private *i915,
 
 	for (n = 0; n < nsibling; n++) {
 		request[n] = i915_request_create(ve);
-		if (IS_ERR(request)) {
-			err = PTR_ERR(request);
+		if (IS_ERR(request[n])) {
+			err = PTR_ERR(request[n]);
 			nsibling = n;
 			goto out;
 		}

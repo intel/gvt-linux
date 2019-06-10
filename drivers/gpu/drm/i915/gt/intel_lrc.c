@@ -133,6 +133,8 @@
  */
 #include <linux/interrupt.h>
 
+#include "gem/i915_gem_context.h"
+
 #include "i915_drv.h"
 #include "i915_gem_render_state.h"
 #include "i915_vgpu.h"
@@ -445,7 +447,7 @@ __unwind_incomplete_requests(struct intel_engine_cs *engine)
 		__i915_request_unsubmit(rq);
 		unwind_wa_tail(rq);
 
-		GEM_BUG_ON(rq->hw_context->active);
+		GEM_BUG_ON(rq->hw_context->inflight);
 
 		/*
 		 * Push the request back into the queue for later resubmission.
@@ -514,11 +516,11 @@ execlists_user_end(struct intel_engine_execlists *execlists)
 static inline void
 execlists_context_schedule_in(struct i915_request *rq)
 {
-	GEM_BUG_ON(rq->hw_context->active);
+	GEM_BUG_ON(rq->hw_context->inflight);
 
 	execlists_context_status_change(rq, INTEL_CONTEXT_SCHEDULE_IN);
 	intel_engine_context_in(rq->engine);
-	rq->hw_context->active = rq->engine;
+	rq->hw_context->inflight = rq->engine;
 }
 
 static void kick_siblings(struct i915_request *rq)
@@ -533,7 +535,7 @@ static void kick_siblings(struct i915_request *rq)
 static inline void
 execlists_context_schedule_out(struct i915_request *rq, unsigned long status)
 {
-	rq->hw_context->active = NULL;
+	rq->hw_context->inflight = NULL;
 	intel_engine_context_out(rq->engine);
 	execlists_context_status_change(rq, status);
 	trace_i915_request_out(rq);
@@ -776,7 +778,7 @@ static bool virtual_matches(const struct virtual_engine *ve,
 			    const struct i915_request *rq,
 			    const struct intel_engine_cs *engine)
 {
-	const struct intel_engine_cs *active;
+	const struct intel_engine_cs *inflight;
 
 	if (!(rq->execution_mask & engine->mask)) /* We peeked too soon! */
 		return false;
@@ -790,8 +792,8 @@ static bool virtual_matches(const struct virtual_engine *ve,
 	 * we reuse the register offsets). This is a very small
 	 * hystersis on the greedy seelction algorithm.
 	 */
-	active = READ_ONCE(ve->context.active);
-	if (active && active != engine)
+	inflight = READ_ONCE(ve->context.inflight);
+	if (inflight && inflight != engine)
 		return false;
 
 	return true;
@@ -979,7 +981,7 @@ static void execlists_dequeue(struct intel_engine_cs *engine)
 				u32 *regs = ve->context.lrc_reg_state;
 				unsigned int n;
 
-				GEM_BUG_ON(READ_ONCE(ve->context.active));
+				GEM_BUG_ON(READ_ONCE(ve->context.inflight));
 				virtual_update_register_offsets(regs, engine);
 
 				if (!list_empty(&ve->context.signals))
@@ -1457,7 +1459,7 @@ static void execlists_context_unpin(struct intel_context *ce)
 	 * had the chance to run yet; let it run before we teardown the
 	 * reference it may use.
 	 */
-	engine = READ_ONCE(ce->active);
+	engine = READ_ONCE(ce->inflight);
 	if (unlikely(engine)) {
 		unsigned long flags;
 
@@ -1465,7 +1467,7 @@ static void execlists_context_unpin(struct intel_context *ce)
 		process_csb(engine);
 		spin_unlock_irqrestore(&engine->timeline.lock, flags);
 
-		GEM_BUG_ON(READ_ONCE(ce->active));
+		GEM_BUG_ON(READ_ONCE(ce->inflight));
 	}
 
 	i915_gem_context_unpin_hw_id(ce->gem_context);
@@ -1919,7 +1921,7 @@ static int lrc_setup_wa_ctx(struct intel_engine_cs *engine)
 	struct i915_vma *vma;
 	int err;
 
-	obj = i915_gem_object_create(engine->i915, CTX_WA_BB_OBJ_SIZE);
+	obj = i915_gem_object_create_shmem(engine->i915, CTX_WA_BB_OBJ_SIZE);
 	if (IS_ERR(obj))
 		return PTR_ERR(obj);
 
@@ -2019,31 +2021,30 @@ static int intel_init_workaround_bb(struct intel_engine_cs *engine)
 
 static void enable_execlists(struct intel_engine_cs *engine)
 {
-	struct drm_i915_private *dev_priv = engine->i915;
-
 	intel_engine_set_hwsp_writemask(engine, ~0u); /* HWSTAM */
 
-	if (INTEL_GEN(dev_priv) >= 11)
-		I915_WRITE(RING_MODE_GEN7(engine),
-			   _MASKED_BIT_ENABLE(GEN11_GFX_DISABLE_LEGACY_MODE));
+	if (INTEL_GEN(engine->i915) >= 11)
+		ENGINE_WRITE(engine,
+			     RING_MODE_GEN7,
+			     _MASKED_BIT_ENABLE(GEN11_GFX_DISABLE_LEGACY_MODE));
 	else
-		I915_WRITE(RING_MODE_GEN7(engine),
-			   _MASKED_BIT_ENABLE(GFX_RUN_LIST_ENABLE));
+		ENGINE_WRITE(engine,
+			     RING_MODE_GEN7,
+			     _MASKED_BIT_ENABLE(GFX_RUN_LIST_ENABLE));
 
-	I915_WRITE(RING_MI_MODE(engine->mmio_base),
-		   _MASKED_BIT_DISABLE(STOP_RING));
+	ENGINE_WRITE(engine, RING_MI_MODE, _MASKED_BIT_DISABLE(STOP_RING));
 
-	I915_WRITE(RING_HWS_PGA(engine->mmio_base),
-		   i915_ggtt_offset(engine->status_page.vma));
-	POSTING_READ(RING_HWS_PGA(engine->mmio_base));
+	ENGINE_WRITE(engine,
+		     RING_HWS_PGA,
+		     i915_ggtt_offset(engine->status_page.vma));
+	ENGINE_POSTING_READ(engine, RING_HWS_PGA);
 }
 
 static bool unexpected_starting_state(struct intel_engine_cs *engine)
 {
-	struct drm_i915_private *dev_priv = engine->i915;
 	bool unexpected = false;
 
-	if (I915_READ(RING_MI_MODE(engine->mmio_base)) & STOP_RING) {
+	if (ENGINE_READ(engine, RING_MI_MODE) & STOP_RING) {
 		DRM_DEBUG_DRIVER("STOP_RING still set in RING_MI_MODE\n");
 		unexpected = true;
 	}
@@ -2737,8 +2738,9 @@ int intel_execlists_submission_setup(struct intel_engine_cs *engine)
 
 int intel_execlists_submission_init(struct intel_engine_cs *engine)
 {
-	struct drm_i915_private *i915 = engine->i915;
 	struct intel_engine_execlists * const execlists = &engine->execlists;
+	struct drm_i915_private *i915 = engine->i915;
+	struct intel_uncore *uncore = engine->uncore;
 	u32 base = engine->mmio_base;
 	int ret;
 
@@ -2758,12 +2760,12 @@ int intel_execlists_submission_init(struct intel_engine_cs *engine)
 		DRM_ERROR("WA batch buffer initialization failed\n");
 
 	if (HAS_LOGICAL_RING_ELSQ(i915)) {
-		execlists->submit_reg = i915->uncore.regs +
+		execlists->submit_reg = uncore->regs +
 			i915_mmio_reg_offset(RING_EXECLIST_SQ_CONTENTS(base));
-		execlists->ctrl_reg = i915->uncore.regs +
+		execlists->ctrl_reg = uncore->regs +
 			i915_mmio_reg_offset(RING_EXECLIST_CONTROL(base));
 	} else {
-		execlists->submit_reg = i915->uncore.regs +
+		execlists->submit_reg = uncore->regs +
 			i915_mmio_reg_offset(RING_ELSP(base));
 	}
 
@@ -2778,7 +2780,7 @@ int intel_execlists_submission_init(struct intel_engine_cs *engine)
 	execlists->csb_write =
 		&engine->status_page.addr[intel_hws_csb_write_index(i915)];
 
-	if (INTEL_GEN(engine->i915) < 11)
+	if (INTEL_GEN(i915) < 11)
 		execlists->csb_size = GEN8_CSB_ENTRIES;
 	else
 		execlists->csb_size = GEN11_CSB_ENTRIES;
@@ -3010,7 +3012,7 @@ static int execlists_context_deferred_alloc(struct intel_context *ce,
 	 */
 	context_size += LRC_HEADER_PAGES * PAGE_SIZE;
 
-	ctx_obj = i915_gem_object_create(engine->i915, context_size);
+	ctx_obj = i915_gem_object_create_shmem(engine->i915, context_size);
 	if (IS_ERR(ctx_obj))
 		return PTR_ERR(ctx_obj);
 
@@ -3060,7 +3062,7 @@ static void virtual_context_destroy(struct kref *kref)
 	unsigned int n;
 
 	GEM_BUG_ON(ve->request);
-	GEM_BUG_ON(ve->context.active);
+	GEM_BUG_ON(ve->context.inflight);
 
 	for (n = 0; n < ve->num_siblings; n++) {
 		struct intel_engine_cs *sibling = ve->siblings[n];

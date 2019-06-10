@@ -55,8 +55,14 @@ struct intel_guc {
 
 	/* intel_guc_recv interrupt related state */
 	spinlock_t irq_lock;
-	bool interrupts_enabled;
 	unsigned int msg_enabled_mask;
+
+	struct {
+		bool enabled;
+		void (*reset)(struct drm_i915_private *i915);
+		void (*enable)(struct drm_i915_private *i915);
+		void (*disable)(struct drm_i915_private *i915);
+	} interrupts;
 
 	struct i915_vma *ads_vma;
 	struct i915_vma *stage_desc_pool;
@@ -159,7 +165,6 @@ int intel_guc_send_mmio(struct intel_guc *guc, const u32 *action, u32 len,
 			u32 *response_buf, u32 response_buf_size);
 void intel_guc_to_host_event_handler(struct intel_guc *guc);
 void intel_guc_to_host_event_handler_nop(struct intel_guc *guc);
-void intel_guc_to_host_event_handler_mmio(struct intel_guc *guc);
 int intel_guc_to_host_process_recv_msg(struct intel_guc *guc,
 				       const u32 *payload, u32 len);
 int intel_guc_sample_forcewake(struct intel_guc *guc);

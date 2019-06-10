@@ -4,7 +4,8 @@
  * Copyright © 2018 Intel Corporation
  */
 
-#include "igt_gem_utils.h"
+#include "gem/selftests/igt_gem_utils.h"
+
 #include "igt_spinner.h"
 
 int igt_spinner_init(struct igt_spinner *spin, struct drm_i915_private *i915)
@@ -75,16 +76,11 @@ static int move_to_active(struct i915_vma *vma,
 {
 	int err;
 
+	i915_vma_lock(vma);
 	err = i915_vma_move_to_active(vma, rq, flags);
-	if (err)
-		return err;
+	i915_vma_unlock(vma);
 
-	if (!i915_gem_object_has_active_reference(vma->obj)) {
-		i915_gem_object_get(vma->obj);
-		i915_gem_object_set_active_reference(vma->obj);
-	}
-
-	return 0;
+	return err;
 }
 
 struct i915_request *

@@ -24,12 +24,14 @@
 
 #include <linux/prime_numbers.h>
 
-#include "../i915_selftest.h"
+#include "gem/i915_gem_pm.h"
+#include "gem/selftests/mock_context.h"
+
 #include "i915_random.h"
+#include "i915_selftest.h"
 #include "igt_live_test.h"
 #include "lib_sw_fence.h"
 
-#include "mock_context.h"
 #include "mock_drm.h"
 #include "mock_gem_device.h"
 
@@ -867,12 +869,9 @@ static int live_all_engines(void *arg)
 		GEM_BUG_ON(err);
 		request[id]->batch = batch;
 
-		if (!i915_gem_object_has_active_reference(batch->obj)) {
-			i915_gem_object_get(batch->obj);
-			i915_gem_object_set_active_reference(batch->obj);
-		}
-
+		i915_vma_lock(batch);
 		err = i915_vma_move_to_active(batch, request[id], 0);
+		i915_vma_unlock(batch);
 		GEM_BUG_ON(err);
 
 		i915_request_get(request[id]);
@@ -987,11 +986,10 @@ static int live_sequential_engines(void *arg)
 		GEM_BUG_ON(err);
 		request[id]->batch = batch;
 
+		i915_vma_lock(batch);
 		err = i915_vma_move_to_active(batch, request[id], 0);
+		i915_vma_unlock(batch);
 		GEM_BUG_ON(err);
-
-		i915_gem_object_set_active_reference(batch->obj);
-		i915_vma_get(batch);
 
 		i915_request_get(request[id]);
 		i915_request_add(request[id]);

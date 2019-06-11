@@ -47,13 +47,6 @@ struct drm_fb_offset {
 	int x, y;
 };
 
-struct drm_fb_helper_crtc {
-	struct drm_mode_set mode_set;
-	struct drm_display_mode *desired_mode;
-	int x, y;
-	int rotation;
-};
-
 /**
  * struct drm_fb_helper_surface_size - describes fbdev size and scanout surface size
  * @fb_width: fbdev width
@@ -112,8 +105,6 @@ struct drm_fb_helper_connector {
  * struct drm_fb_helper - main structure to emulate fbdev on top of KMS
  * @fb: Scanout framebuffer object
  * @dev: DRM device
- * @crtc_count: number of possible CRTCs
- * @crtc_info: per-CRTC helper state (mode, x/y offset, etc)
  * @connector_count: number of connected connectors
  * @connector_info_alloc_count: size of connector_info
  * @funcs: driver callbacks for fb helper
@@ -147,17 +138,8 @@ struct drm_fb_helper {
 
 	struct drm_framebuffer *fb;
 	struct drm_device *dev;
-	int crtc_count;
-	struct drm_fb_helper_crtc *crtc_info;
 	int connector_count;
 	int connector_info_alloc_count;
-	/**
-	 * @sw_rotations:
-	 * Bitmask of all rotations requested for panel-orientation which
-	 * could not be handled in hardware. If only one bit is set
-	 * fbdev->fbcon_rotate_hint gets set to the requested rotation.
-	 */
-	int sw_rotations;
 	/**
 	 * @connector_info:
 	 *

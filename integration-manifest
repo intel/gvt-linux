@@ -1,30 +1,12 @@
-drm drm-fixes 671e2ee5ee2127179ca884b439ab6001a623edd6
-	Merge branch 'linux-5.2' of git://github.com/skeggsb/linux into drm-fixes
-drm-misc drm-misc-fixes de060de333eff20c1c2dad0139983f19150f776b
-	drm/panfrost: Require the simple_ondemand governor
-drm-intel drm-intel-fixes d1fdb6d8f6a4109a4263176c84b899076a5f8008
-	Linux 5.2-rc4
-drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
-	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
-drm drm-next 396f9acaffd87e44b8b02bc60f06dc949b832b7e
-	Merge branch 'drm-next-5.3' of git://people.freedesktop.org/~agd5f/linux into drm-next
-drm-misc drm-misc-next-fixes 51a0d1a90bff5d90a1a1c58e165928a0dd92268a
-	drm/sun4i: sun6i_mipi_dsi: Fix hsync_porch overflow
-drm-intel drm-intel-next-fixes c36beba6b296b3c05a0f29753b04775e5ae23886
-	drm/i915: Seal races between async GPU cancellation, retirement and signaling
-drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
-	Linux 4.14-rc1
-drm-misc drm-misc-next c182615f3ea31eb4df6133beb0d62d8ff7b83e08
-	drm/radeon: drop use of drmP.h (2/2)
-drm-intel drm-intel-next-queued a8cff4c8283af35546339c9ada5a90a70fe4a075
-	drm/i915: Promote i915->mm.obj_lock to be irqsafe
-drm-intel drm-intel-next c0a74c732568ad347f7b3de281922808dab30504
-	drm/i915: Update DRIVER_DATE to 20190524
-drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
-	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
-sound-upstream for-linus 717f43d81afc1250300479075952a0e36d74ded3
-	ALSA: hda/realtek - Update headset mode for ALC256
-sound-upstream for-next e046b64b1547e2dc1ac27e0a5ac57e55213e16f1
-	ALSA: hda/ca0132: Use struct_size()
-drm-intel topic/core-for-CI b3058c553658db1ca8cc64b7327a000364eebc54
-	mm: Band aid for 5fd4ca2d84b249f0858ce28cf637cf25b61a398f
+drm-tip/drm-tip 57bd224fa47bfe2a2b83fbfcfc48aaded027d211
+	drm-tip: 2019y-06m-10d-20h-56m-21s UTC integration manifest
+vfio-upstream/for-linus 5715c4dd66a315515eedef3fc4cbe1bf4620f009
+	vfio/mdev: Synchronize device create/remove with parent removal
+vfio-upstream/next 15c80c1659f27364734a3938b04d1c67479aa11c
+	vfio: Add Cornelia Huck as reviewer
+origin/gvt-fixes 15e7f52a4596b496ce3da2fa4c1f94c6fb0023f2
+	drm/i915/gvt: save RING_HEAD into vreg when vgpu switched out
+origin/gvt-next 612b2f661e169bdc9efcdf0f9072c4d51fab26c8
+	drm/i915/gvt: remove duplicate entry of trace
+origin/gvt-next-fixes e8f6c88e3d27cb58cacbef8d03025b86989ee50e
+	drm/i915/gvt: Fix an error code in ppgtt_populate_spt_by_guest_entry()

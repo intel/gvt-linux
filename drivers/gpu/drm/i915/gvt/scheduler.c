@@ -35,8 +35,11 @@
 
 #include <linux/kthread.h>
 
+#include "gem/i915_gem_context.h"
+#include "gem/i915_gem_pm.h"
+#include "gt/intel_context.h"
+
 #include "i915_drv.h"
-#include "i915_gem_pm.h"
 #include "gvt.h"
 
 #define RING_CTX_OFF(x) \
@@ -365,7 +368,7 @@ static int set_context_ppgtt_from_shadow(struct intel_vgpu_workload *workload,
 					 struct i915_gem_context *ctx)
 {
 	struct intel_vgpu_mm *mm = workload->shadow_mm;
-	struct i915_hw_ppgtt *ppgtt = ctx->ppgtt;
+	struct i915_ppgtt *ppgtt = i915_vm_to_ppgtt(ctx->vm);
 	int i = 0;
 
 	if (mm->type != INTEL_GVT_MM_PPGTT || !mm->ppgtt_mm.shadowed)
@@ -482,7 +485,7 @@ static int prepare_shadow_batch_buffer(struct intel_vgpu_workload *workload)
 						bb->obj->base.size);
 				bb->clflush &= ~CLFLUSH_AFTER;
 			}
-			i915_gem_obj_finish_shmem_access(bb->obj);
+			i915_gem_object_finish_access(bb->obj);
 			bb->accessing = false;
 
 		} else {
@@ -506,18 +509,18 @@ static int prepare_shadow_batch_buffer(struct intel_vgpu_workload *workload)
 			}
 
 			ret = i915_gem_object_set_to_gtt_domain(bb->obj,
-					false);
+								false);
 			if (ret)
 				goto err;
-
-			i915_gem_obj_finish_shmem_access(bb->obj);
-			bb->accessing = false;
 
 			ret = i915_vma_move_to_active(bb->vma,
 						      workload->req,
 						      0);
 			if (ret)
 				goto err;
+
+			i915_gem_object_finish_access(bb->obj);
+			bb->accessing = false;
 		}
 	}
 	return 0;
@@ -588,7 +591,7 @@ static void release_shadow_batch_buffer(struct intel_vgpu_workload *workload)
 	list_for_each_entry_safe(bb, pos, &workload->shadow_bb, list) {
 		if (bb->obj) {
 			if (bb->accessing)
-				i915_gem_obj_finish_shmem_access(bb->obj);
+				i915_gem_object_finish_access(bb->obj);
 
 			if (bb->va && !IS_ERR(bb->va))
 				i915_gem_object_unpin_map(bb->obj);
@@ -597,7 +600,7 @@ static void release_shadow_batch_buffer(struct intel_vgpu_workload *workload)
 				i915_vma_unpin(bb->vma);
 				i915_vma_close(bb->vma);
 			}
-			__i915_gem_object_release_unless_active(bb->obj);
+			i915_gem_object_put(bb->obj);
 		}
 		list_del(&bb->list);
 		kfree(bb);
@@ -1120,7 +1123,7 @@ err:
 
 static void
 i915_context_ppgtt_root_restore(struct intel_vgpu_submission *s,
-				struct i915_hw_ppgtt *ppgtt)
+				struct i915_ppgtt *ppgtt)
 {
 	int i;
 
@@ -1148,7 +1151,7 @@ void intel_vgpu_clean_submission(struct intel_vgpu *vgpu)
 
 	intel_vgpu_select_submission_ops(vgpu, ALL_ENGINES, 0);
 
-	i915_context_ppgtt_root_restore(s, s->shadow[0]->gem_context->ppgtt);
+	i915_context_ppgtt_root_restore(s, i915_vm_to_ppgtt(s->shadow[0]->gem_context->vm));
 	for_each_engine(engine, vgpu->gvt->dev_priv, id)
 		intel_context_unpin(s->shadow[id]);
 
@@ -1178,7 +1181,7 @@ void intel_vgpu_reset_submission(struct intel_vgpu *vgpu,
 
 static void
 i915_context_ppgtt_root_save(struct intel_vgpu_submission *s,
-			     struct i915_hw_ppgtt *ppgtt)
+			     struct i915_ppgtt *ppgtt)
 {
 	int i;
 
@@ -1213,7 +1216,7 @@ int intel_vgpu_setup_submission(struct intel_vgpu *vgpu)
 	if (IS_ERR(ctx))
 		return PTR_ERR(ctx);
 
-	i915_context_ppgtt_root_save(s, ctx->ppgtt);
+	i915_context_ppgtt_root_save(s, i915_vm_to_ppgtt(ctx->vm));
 
 	for_each_engine(engine, vgpu->gvt->dev_priv, i) {
 		struct intel_context *ce;
@@ -1256,7 +1259,7 @@ int intel_vgpu_setup_submission(struct intel_vgpu *vgpu)
 	return 0;
 
 out_shadow_ctx:
-	i915_context_ppgtt_root_restore(s, ctx->ppgtt);
+	i915_context_ppgtt_root_restore(s, i915_vm_to_ppgtt(ctx->vm));
 	for_each_engine(engine, vgpu->gvt->dev_priv, i) {
 		if (IS_ERR(s->shadow[i]))
 			break;

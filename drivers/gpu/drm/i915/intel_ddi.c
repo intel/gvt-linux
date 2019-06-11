@@ -3650,7 +3650,7 @@ intel_ddi_post_pll_disable(struct intel_encoder *encoder,
 						  intel_ddi_main_link_aux_domain(dig_port));
 }
 
-void intel_ddi_prepare_link_retrain(struct intel_dp *intel_dp)
+static void intel_ddi_prepare_link_retrain(struct intel_dp *intel_dp)
 {
 	struct intel_digital_port *intel_dig_port = dp_to_dig_port(intel_dp);
 	struct drm_i915_private *dev_priv =
@@ -3844,6 +3844,9 @@ void intel_ddi_get_config(struct intel_encoder *encoder,
 	intel_read_infoframe(encoder, pipe_config,
 			     HDMI_INFOFRAME_TYPE_VENDOR,
 			     &pipe_config->infoframes.hdmi);
+	intel_read_infoframe(encoder, pipe_config,
+			     HDMI_INFOFRAME_TYPE_DRM,
+			     &pipe_config->infoframes.drm);
 }
 
 static enum intel_output_type
@@ -3955,6 +3958,9 @@ intel_ddi_init_dp_connector(struct intel_digital_port *intel_dig_port)
 		return NULL;
 
 	intel_dig_port->dp.output_reg = DDI_BUF_CTL(port);
+	intel_dig_port->dp.prepare_link_retrain =
+		intel_ddi_prepare_link_retrain;
+
 	if (!intel_dp_init_connector(intel_dig_port, connector)) {
 		kfree(connector);
 		return NULL;

@@ -2813,6 +2813,8 @@ hsw_compute_linetime_wm(const struct intel_crtc_state *cstate)
 static void intel_read_wm_latency(struct drm_i915_private *dev_priv,
 				  u16 wm[8])
 {
+	struct intel_uncore *uncore = &dev_priv->uncore;
+
 	if (INTEL_GEN(dev_priv) >= 9) {
 		u32 val;
 		int ret, i;
@@ -2822,7 +2824,7 @@ static void intel_read_wm_latency(struct drm_i915_private *dev_priv,
 		val = 0; /* data0 to be programmed to 0 for first set */
 		ret = sandybridge_pcode_read(dev_priv,
 					     GEN9_PCODE_READ_MEM_LATENCY,
-					     &val);
+					     &val, NULL);
 
 		if (ret) {
 			DRM_ERROR("SKL Mailbox read error = %d\n", ret);
@@ -2841,7 +2843,7 @@ static void intel_read_wm_latency(struct drm_i915_private *dev_priv,
 		val = 1; /* data0 to be programmed to 1 for second set */
 		ret = sandybridge_pcode_read(dev_priv,
 					     GEN9_PCODE_READ_MEM_LATENCY,
-					     &val);
+					     &val, NULL);
 		if (ret) {
 			DRM_ERROR("SKL Mailbox read error = %d\n", ret);
 			return;
@@ -2894,7 +2896,7 @@ static void intel_read_wm_latency(struct drm_i915_private *dev_priv,
 			wm[0] += 1;
 
 	} else if (IS_HASWELL(dev_priv) || IS_BROADWELL(dev_priv)) {
-		u64 sskpd = I915_READ64(MCH_SSKPD);
+		u64 sskpd = intel_uncore_read64(uncore, MCH_SSKPD);
 
 		wm[0] = (sskpd >> 56) & 0xFF;
 		if (wm[0] == 0)
@@ -2904,14 +2906,14 @@ static void intel_read_wm_latency(struct drm_i915_private *dev_priv,
 		wm[3] = (sskpd >> 20) & 0x1FF;
 		wm[4] = (sskpd >> 32) & 0x1FF;
 	} else if (INTEL_GEN(dev_priv) >= 6) {
-		u32 sskpd = I915_READ(MCH_SSKPD);
+		u32 sskpd = intel_uncore_read(uncore, MCH_SSKPD);
 
 		wm[0] = (sskpd >> SSKPD_WM0_SHIFT) & SSKPD_WM_MASK;
 		wm[1] = (sskpd >> SSKPD_WM1_SHIFT) & SSKPD_WM_MASK;
 		wm[2] = (sskpd >> SSKPD_WM2_SHIFT) & SSKPD_WM_MASK;
 		wm[3] = (sskpd >> SSKPD_WM3_SHIFT) & SSKPD_WM_MASK;
 	} else if (INTEL_GEN(dev_priv) >= 5) {
-		u32 mltr = I915_READ(MLTR_ILK);
+		u32 mltr = intel_uncore_read(uncore, MLTR_ILK);
 
 		/* ILK primary LP0 latency is 700 ns */
 		wm[0] = 7;
@@ -7072,7 +7074,7 @@ static void gen6_init_rps_frequencies(struct drm_i915_private *dev_priv)
 
 		if (sandybridge_pcode_read(dev_priv,
 					   HSW_PCODE_DYNAMIC_DUTY_CYCLE_CONTROL,
-					   &ddcc_status) == 0)
+					   &ddcc_status, NULL) == 0)
 			rps->efficient_freq =
 				clamp_t(u8,
 					((ddcc_status >> 8) & 0xff),
@@ -7419,7 +7421,8 @@ static void gen6_enable_rc6(struct drm_i915_private *dev_priv)
 		   GEN6_RC_CTL_HW_ENABLE);
 
 	rc6vids = 0;
-	ret = sandybridge_pcode_read(dev_priv, GEN6_PCODE_READ_RC6VIDS, &rc6vids);
+	ret = sandybridge_pcode_read(dev_priv, GEN6_PCODE_READ_RC6VIDS,
+				     &rc6vids, NULL);
 	if (IS_GEN(dev_priv, 6) && ret) {
 		DRM_DEBUG_DRIVER("Couldn't check for BIOS workaround\n");
 	} else if (IS_GEN(dev_priv, 6) && (GEN6_DECODE_RC6_VID(rc6vids & 0xff) < 450)) {
@@ -8566,7 +8569,8 @@ void intel_init_gt_powersave(struct drm_i915_private *dev_priv)
 	    IS_IVYBRIDGE(dev_priv) || IS_HASWELL(dev_priv)) {
 		u32 params = 0;
 
-		sandybridge_pcode_read(dev_priv, GEN6_READ_OC_PARAMS, &params);
+		sandybridge_pcode_read(dev_priv, GEN6_READ_OC_PARAMS,
+				       &params, NULL);
 		if (params & BIT(31)) { /* OC supported */
 			DRM_DEBUG_DRIVER("Overclocking supported, max: %dMHz, overclock: %dMHz\n",
 					 (rps->max_freq & 0xff) * 50,

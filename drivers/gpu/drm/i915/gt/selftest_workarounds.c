@@ -4,16 +4,18 @@
  * Copyright © 2018 Intel Corporation
  */
 
+#include "gem/i915_gem_pm.h"
 #include "i915_selftest.h"
 #include "intel_reset.h"
 
 #include "selftests/igt_flush_test.h"
-#include "selftests/igt_gem_utils.h"
 #include "selftests/igt_reset.h"
 #include "selftests/igt_spinner.h"
 #include "selftests/igt_wedge_me.h"
-#include "selftests/mock_context.h"
 #include "selftests/mock_drm.h"
+
+#include "gem/selftests/igt_gem_utils.h"
+#include "gem/selftests/mock_context.h"
 
 static const struct wo_register {
 	enum intel_platform platform;
@@ -116,7 +118,9 @@ read_nonprivs(struct i915_gem_context *ctx, struct intel_engine_cs *engine)
 		goto err_pin;
 	}
 
+	i915_vma_lock(vma);
 	err = i915_vma_move_to_active(vma, rq, EXEC_OBJECT_WRITE);
+	i915_vma_unlock(vma);
 	if (err)
 		goto err_req;
 
@@ -137,9 +141,6 @@ read_nonprivs(struct i915_gem_context *ctx, struct intel_engine_cs *engine)
 		*cs++ = 0;
 	}
 	intel_ring_advance(rq, cs);
-
-	i915_gem_object_get(result);
-	i915_gem_object_set_active_reference(result);
 
 	i915_request_add(rq);
 	i915_vma_unpin(vma);
@@ -193,8 +194,10 @@ static int check_whitelist(struct i915_gem_context *ctx,
 		return PTR_ERR(results);
 
 	err = 0;
+	i915_gem_object_lock(results);
 	igt_wedge_on_timeout(&wedge, ctx->i915, HZ / 5) /* a safety net! */
 		err = i915_gem_object_set_to_cpu_domain(results, false);
+	i915_gem_object_unlock(results);
 	if (i915_terminally_wedged(ctx->i915))
 		err = -EIO;
 	if (err)
@@ -355,7 +358,7 @@ static struct i915_vma *create_batch(struct i915_gem_context *ctx)
 	if (IS_ERR(obj))
 		return ERR_CAST(obj);
 
-	vma = i915_vma_instance(obj, &ctx->ppgtt->vm, NULL);
+	vma = i915_vma_instance(obj, ctx->vm, NULL);
 	if (IS_ERR(vma)) {
 		err = PTR_ERR(vma);
 		goto err_obj;
@@ -365,7 +368,9 @@ static struct i915_vma *create_batch(struct i915_gem_context *ctx)
 	if (err)
 		goto err_obj;
 
+	i915_gem_object_lock(obj);
 	err = i915_gem_object_set_to_wc_domain(obj, true);
+	i915_gem_object_unlock(obj);
 	if (err)
 		goto err_obj;
 
@@ -437,7 +442,7 @@ static int check_dirty_whitelist(struct i915_gem_context *ctx,
 	int err = 0, i, v;
 	u32 *cs, *results;
 
-	scratch = create_scratch(&ctx->ppgtt->vm, 2 * ARRAY_SIZE(values) + 1);
+	scratch = create_scratch(ctx->vm, 2 * ARRAY_SIZE(values) + 1);
 	if (IS_ERR(scratch))
 		return PTR_ERR(scratch);
 
@@ -920,7 +925,7 @@ static int live_isolated_whitelist(void *arg)
 	if (!intel_engines_has_context_isolation(i915))
 		return 0;
 
-	if (!i915->kernel_context->ppgtt)
+	if (!i915->kernel_context->vm)
 		return 0;
 
 	for (i = 0; i < ARRAY_SIZE(client); i++) {
@@ -932,14 +937,14 @@ static int live_isolated_whitelist(void *arg)
 			goto err;
 		}
 
-		client[i].scratch[0] = create_scratch(&c->ppgtt->vm, 1024);
+		client[i].scratch[0] = create_scratch(c->vm, 1024);
 		if (IS_ERR(client[i].scratch[0])) {
 			err = PTR_ERR(client[i].scratch[0]);
 			kernel_context_close(c);
 			goto err;
 		}
 
-		client[i].scratch[1] = create_scratch(&c->ppgtt->vm, 1024);
+		client[i].scratch[1] = create_scratch(c->vm, 1024);
 		if (IS_ERR(client[i].scratch[1])) {
 			err = PTR_ERR(client[i].scratch[1]);
 			i915_vma_unpin_and_release(&client[i].scratch[0], 0);

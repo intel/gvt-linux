@@ -26,6 +26,8 @@
 
 #include "gt/intel_engine_pm.h"
 #include "gt/intel_lrc_reg.h"
+#include "gt/intel_context.h"
+#include "gem/i915_gem_context.h"
 
 #include "intel_guc_submission.h"
 #include "i915_drv.h"
@@ -1304,7 +1306,7 @@ static void guc_interrupts_capture(struct drm_i915_private *dev_priv)
 	 */
 	irqs = _MASKED_BIT_ENABLE(GFX_INTERRUPT_STEERING);
 	for_each_engine(engine, dev_priv, id)
-		I915_WRITE(RING_MODE_GEN7(engine), irqs);
+		ENGINE_WRITE(engine, RING_MODE_GEN7, irqs);
 
 	/* route USER_INTERRUPT to Host, all others are sent to GuC. */
 	irqs = GT_RENDER_USER_INTERRUPT << GEN8_RCS_IRQ_SHIFT |
@@ -1351,7 +1353,7 @@ static void guc_interrupts_release(struct drm_i915_private *dev_priv)
 	irqs = _MASKED_FIELD(GFX_FORWARD_VBLANK_MASK, GFX_FORWARD_VBLANK_NEVER);
 	irqs |= _MASKED_BIT_DISABLE(GFX_INTERRUPT_STEERING);
 	for_each_engine(engine, dev_priv, id)
-		I915_WRITE(RING_MODE_GEN7(engine), irqs);
+		ENGINE_WRITE(engine, RING_MODE_GEN7, irqs);
 
 	/* route all GT interrupts to the host */
 	I915_WRITE(GUC_BCS_RCS_IER, 0);
@@ -1425,10 +1427,6 @@ int intel_guc_submission_enable(struct intel_guc *guc)
 		     I915_NUM_ENGINES > GUC_WQ_SIZE);
 
 	GEM_BUG_ON(!guc->execbuf_client);
-
-	err = intel_guc_sample_forcewake(guc);
-	if (err)
-		return err;
 
 	err = guc_clients_enable(guc);
 	if (err)

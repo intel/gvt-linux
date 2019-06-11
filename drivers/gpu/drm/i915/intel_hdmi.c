@@ -129,6 +129,8 @@ static u32 g4x_infoframe_enable(unsigned int type)
 		return VIDEO_DIP_ENABLE_SPD;
 	case HDMI_INFOFRAME_TYPE_VENDOR:
 		return VIDEO_DIP_ENABLE_VENDOR;
+	case HDMI_INFOFRAME_TYPE_DRM:
+		return 0;
 	default:
 		MISSING_CASE(type);
 		return 0;
@@ -152,6 +154,8 @@ static u32 hsw_infoframe_enable(unsigned int type)
 		return VIDEO_DIP_ENABLE_SPD_HSW;
 	case HDMI_INFOFRAME_TYPE_VENDOR:
 		return VIDEO_DIP_ENABLE_VS_HSW;
+	case HDMI_INFOFRAME_TYPE_DRM:
+		return VIDEO_DIP_ENABLE_DRM_GLK;
 	default:
 		MISSING_CASE(type);
 		return 0;
@@ -177,6 +181,8 @@ hsw_dip_data_reg(struct drm_i915_private *dev_priv,
 		return HSW_TVIDEO_DIP_SPD_DATA(cpu_transcoder, i);
 	case HDMI_INFOFRAME_TYPE_VENDOR:
 		return HSW_TVIDEO_DIP_VS_DATA(cpu_transcoder, i);
+	case HDMI_INFOFRAME_TYPE_DRM:
+		return GLK_TVIDEO_DIP_DRM_DATA(cpu_transcoder, i);
 	default:
 		MISSING_CASE(type);
 		return INVALID_MMIO_REG;
@@ -550,10 +556,16 @@ static u32 hsw_infoframes_enabled(struct intel_encoder *encoder,
 {
 	struct drm_i915_private *dev_priv = to_i915(encoder->base.dev);
 	u32 val = I915_READ(HSW_TVIDEO_DIP_CTL(pipe_config->cpu_transcoder));
+	u32 mask;
 
-	return val & (VIDEO_DIP_ENABLE_VSC_HSW | VIDEO_DIP_ENABLE_AVI_HSW |
-		      VIDEO_DIP_ENABLE_GCP_HSW | VIDEO_DIP_ENABLE_VS_HSW |
-		      VIDEO_DIP_ENABLE_GMP_HSW | VIDEO_DIP_ENABLE_SPD_HSW);
+	mask = (VIDEO_DIP_ENABLE_VSC_HSW | VIDEO_DIP_ENABLE_AVI_HSW |
+		VIDEO_DIP_ENABLE_GCP_HSW | VIDEO_DIP_ENABLE_VS_HSW |
+		VIDEO_DIP_ENABLE_GMP_HSW | VIDEO_DIP_ENABLE_SPD_HSW);
+
+	if (INTEL_GEN(dev_priv) >= 10 || IS_GEMINILAKE(dev_priv))
+		mask |= VIDEO_DIP_ENABLE_DRM_GLK;
+
+	return val & mask;
 }
 
 static const u8 infoframe_type_to_idx[] = {
@@ -563,6 +575,7 @@ static const u8 infoframe_type_to_idx[] = {
 	HDMI_INFOFRAME_TYPE_AVI,
 	HDMI_INFOFRAME_TYPE_SPD,
 	HDMI_INFOFRAME_TYPE_VENDOR,
+	HDMI_INFOFRAME_TYPE_DRM,
 };
 
 u32 intel_hdmi_infoframe_enable(unsigned int type)
@@ -779,6 +792,40 @@ intel_hdmi_compute_hdmi_infoframe(struct intel_encoder *encoder,
 		return false;
 
 	ret = hdmi_vendor_infoframe_check(frame);
+	if (WARN_ON(ret))
+		return false;
+
+	return true;
+}
+
+static bool
+intel_hdmi_compute_drm_infoframe(struct intel_encoder *encoder,
+				 struct intel_crtc_state *crtc_state,
+				 struct drm_connector_state *conn_state)
+{
+	struct hdmi_drm_infoframe *frame = &crtc_state->infoframes.drm.drm;
+	struct drm_i915_private *dev_priv = to_i915(encoder->base.dev);
+	int ret;
+
+	if (!(INTEL_GEN(dev_priv) >= 10 || IS_GEMINILAKE(dev_priv)))
+		return true;
+
+	if (!crtc_state->has_infoframe)
+		return true;
+
+	if (!conn_state->hdr_output_metadata)
+		return true;
+
+	crtc_state->infoframes.enable |=
+		intel_hdmi_infoframe_enable(HDMI_INFOFRAME_TYPE_DRM);
+
+	ret = drm_hdmi_infoframe_set_hdr_metadata(frame, conn_state);
+	if (ret < 0) {
+		DRM_DEBUG_KMS("couldn't set HDR metadata in infoframe\n");
+		return false;
+	}
+
+	ret = hdmi_drm_infoframe_check(frame);
 	if (WARN_ON(ret))
 		return false;
 
@@ -1147,7 +1194,8 @@ static void hsw_set_infoframes(struct intel_encoder *encoder,
 
 	val &= ~(VIDEO_DIP_ENABLE_VSC_HSW | VIDEO_DIP_ENABLE_AVI_HSW |
 		 VIDEO_DIP_ENABLE_GCP_HSW | VIDEO_DIP_ENABLE_VS_HSW |
-		 VIDEO_DIP_ENABLE_GMP_HSW | VIDEO_DIP_ENABLE_SPD_HSW);
+		 VIDEO_DIP_ENABLE_GMP_HSW | VIDEO_DIP_ENABLE_SPD_HSW |
+		 VIDEO_DIP_ENABLE_DRM_GLK);
 
 	if (!enable) {
 		I915_WRITE(reg, val);
@@ -1170,6 +1218,9 @@ static void hsw_set_infoframes(struct intel_encoder *encoder,
 	intel_write_infoframe(encoder, crtc_state,
 			      HDMI_INFOFRAME_TYPE_VENDOR,
 			      &crtc_state->infoframes.hdmi);
+	intel_write_infoframe(encoder, crtc_state,
+			      HDMI_INFOFRAME_TYPE_DRM,
+			      &crtc_state->infoframes.drm);
 }
 
 void intel_dp_dual_mode_set_tmds_output(struct intel_hdmi *hdmi, bool enable)
@@ -1756,7 +1807,7 @@ static void intel_hdmi_get_config(struct intel_encoder *encoder,
 	if (pipe_config->infoframes.enable)
 		pipe_config->has_infoframe = true;
 
-	if (tmp & SDVO_AUDIO_ENABLE)
+	if (tmp & HDMI_AUDIO_ENABLE)
 		pipe_config->has_audio = true;
 
 	if (!HAS_PCH_SPLIT(dev_priv) &&
@@ -1815,7 +1866,7 @@ static void g4x_enable_hdmi(struct intel_encoder *encoder,
 
 	temp |= SDVO_ENABLE;
 	if (pipe_config->has_audio)
-		temp |= SDVO_AUDIO_ENABLE;
+		temp |= HDMI_AUDIO_ENABLE;
 
 	I915_WRITE(intel_hdmi->hdmi_reg, temp);
 	POSTING_READ(intel_hdmi->hdmi_reg);
@@ -1837,7 +1888,7 @@ static void ibx_enable_hdmi(struct intel_encoder *encoder,
 
 	temp |= SDVO_ENABLE;
 	if (pipe_config->has_audio)
-		temp |= SDVO_AUDIO_ENABLE;
+		temp |= HDMI_AUDIO_ENABLE;
 
 	/*
 	 * HW workaround, need to write this twice for issue
@@ -1889,7 +1940,7 @@ static void cpt_enable_hdmi(struct intel_encoder *encoder,
 
 	temp |= SDVO_ENABLE;
 	if (pipe_config->has_audio)
-		temp |= SDVO_AUDIO_ENABLE;
+		temp |= HDMI_AUDIO_ENABLE;
 
 	/*
 	 * WaEnableHDMI8bpcBefore12bpc:snb,ivb
@@ -1949,7 +2000,7 @@ static void intel_disable_hdmi(struct intel_encoder *encoder,
 
 	temp = I915_READ(intel_hdmi->hdmi_reg);
 
-	temp &= ~(SDVO_ENABLE | SDVO_AUDIO_ENABLE);
+	temp &= ~(SDVO_ENABLE | HDMI_AUDIO_ENABLE);
 	I915_WRITE(intel_hdmi->hdmi_reg, temp);
 	POSTING_READ(intel_hdmi->hdmi_reg);
 
@@ -2376,6 +2427,11 @@ int intel_hdmi_compute_config(struct intel_encoder *encoder,
 		return -EINVAL;
 	}
 
+	if (!intel_hdmi_compute_drm_infoframe(encoder, pipe_config, conn_state)) {
+		DRM_DEBUG_KMS("bad DRM infoframe\n");
+		return -EINVAL;
+	}
+
 	return 0;
 }
 
@@ -2648,6 +2704,36 @@ static void chv_hdmi_pre_enable(struct intel_encoder *encoder,
 	chv_phy_release_cl2_override(encoder);
 }
 
+static struct i2c_adapter *
+intel_hdmi_get_i2c_adapter(struct drm_connector *connector)
+{
+	struct drm_i915_private *dev_priv = to_i915(connector->dev);
+	struct intel_hdmi *intel_hdmi = intel_attached_hdmi(connector);
+
+	return intel_gmbus_get_adapter(dev_priv, intel_hdmi->ddc_bus);
+}
+
+static void intel_hdmi_create_i2c_symlink(struct drm_connector *connector)
+{
+	struct i2c_adapter *adapter = intel_hdmi_get_i2c_adapter(connector);
+	struct kobject *i2c_kobj = &adapter->dev.kobj;
+	struct kobject *connector_kobj = &connector->kdev->kobj;
+	int ret;
+
+	ret = sysfs_create_link(connector_kobj, i2c_kobj, i2c_kobj->name);
+	if (ret)
+		DRM_ERROR("Failed to create i2c symlink (%d)\n", ret);
+}
+
+static void intel_hdmi_remove_i2c_symlink(struct drm_connector *connector)
+{
+	struct i2c_adapter *adapter = intel_hdmi_get_i2c_adapter(connector);
+	struct kobject *i2c_kobj = &adapter->dev.kobj;
+	struct kobject *connector_kobj = &connector->kdev->kobj;
+
+	sysfs_remove_link(connector_kobj, i2c_kobj->name);
+}
+
 static int
 intel_hdmi_connector_register(struct drm_connector *connector)
 {
@@ -2658,6 +2744,8 @@ intel_hdmi_connector_register(struct drm_connector *connector)
 		return ret;
 
 	i915_debugfs_connector_add(connector);
+
+	intel_hdmi_create_i2c_symlink(connector);
 
 	return ret;
 }
@@ -2670,6 +2758,13 @@ static void intel_hdmi_destroy(struct drm_connector *connector)
 	intel_connector_destroy(connector);
 }
 
+static void intel_hdmi_connector_unregister(struct drm_connector *connector)
+{
+	intel_hdmi_remove_i2c_symlink(connector);
+
+	intel_connector_unregister(connector);
+}
+
 static const struct drm_connector_funcs intel_hdmi_connector_funcs = {
 	.detect = intel_hdmi_detect,
 	.force = intel_hdmi_force,
@@ -2677,7 +2772,7 @@ static const struct drm_connector_funcs intel_hdmi_connector_funcs = {
 	.atomic_get_property = intel_digital_connector_atomic_get_property,
 	.atomic_set_property = intel_digital_connector_atomic_set_property,
 	.late_register = intel_hdmi_connector_register,
-	.early_unregister = intel_connector_unregister,
+	.early_unregister = intel_hdmi_connector_unregister,
 	.destroy = intel_hdmi_destroy,
 	.atomic_destroy_state = drm_atomic_helper_connector_destroy_state,
 	.atomic_duplicate_state = intel_digital_connector_duplicate_state,
@@ -2714,6 +2809,10 @@ intel_hdmi_add_properties(struct intel_hdmi *intel_hdmi, struct drm_connector *c
 
 	drm_connector_attach_content_type_property(connector);
 	connector->state->picture_aspect_ratio = HDMI_PICTURE_ASPECT_NONE;
+
+	if (INTEL_GEN(dev_priv) >= 10 || IS_GEMINILAKE(dev_priv))
+		drm_object_attach_property(&connector->base,
+			connector->dev->mode_config.hdr_output_metadata_property, 0);
 
 	if (!HAS_GMCH(dev_priv))
 		drm_connector_attach_max_bpc_property(connector, 8, 12);

@@ -1,30 +1,12 @@
-drm drm-fixes 671e2ee5ee2127179ca884b439ab6001a623edd6
-	Merge branch 'linux-5.2' of git://github.com/skeggsb/linux into drm-fixes
-drm-misc drm-misc-fixes de060de333eff20c1c2dad0139983f19150f776b
-	drm/panfrost: Require the simple_ondemand governor
-drm-intel drm-intel-fixes d1fdb6d8f6a4109a4263176c84b899076a5f8008
-	Linux 5.2-rc4
-drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
-	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
-drm drm-next 561564bea3248293398dc32ec36da40fb71faed0
-	Merge tag 'omapdrm-5.3' of git://git.kernel.org/pub/scm/linux/kernel/git/tomba/linux into drm-next
-drm-misc drm-misc-next-fixes 51a0d1a90bff5d90a1a1c58e165928a0dd92268a
-	drm/sun4i: sun6i_mipi_dsi: Fix hsync_porch overflow
-drm-intel drm-intel-next-fixes c36beba6b296b3c05a0f29753b04775e5ae23886
-	drm/i915: Seal races between async GPU cancellation, retirement and signaling
-drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
-	Linux 4.14-rc1
-drm-misc drm-misc-next 27c9130baef5438b6cebdce3014afe8f751b390b
-	drm/rockchip: dw_hdmi: Handle suspend/resume
-drm-intel drm-intel-next-queued 522d47cff1128fa0a1edbdf47eb211633a171ab8
-	drm/i915/skl: use ranges for voltage level lookup
-drm-intel drm-intel-next c0a74c732568ad347f7b3de281922808dab30504
-	drm/i915: Update DRIVER_DATE to 20190524
-drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
-	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
-sound-upstream for-linus 352bcae97f9ba87801f497571cdec20af190efe1
-	ALSA: ice1712: Check correct return value to snd_i2c_sendbytes (EWS/DMX 6Fire)
-sound-upstream for-next c7e68a697c7cd7fd25ee536d02a8dcf81a2e7d1c
-	ALSA: hda: fix a mask for unsolicited event tags
-drm-intel topic/core-for-CI b3058c553658db1ca8cc64b7327a000364eebc54
-	mm: Band aid for 5fd4ca2d84b249f0858ce28cf637cf25b61a398f
+drm-tip/drm-tip c12b829d81452b335fd986b93b2532001b93157e
+	drm-tip: 2019y-06m-11d-21h-35m-36s UTC integration manifest
+vfio-upstream/for-linus 5715c4dd66a315515eedef3fc4cbe1bf4620f009
+	vfio/mdev: Synchronize device create/remove with parent removal
+vfio-upstream/next 15c80c1659f27364734a3938b04d1c67479aa11c
+	vfio: Add Cornelia Huck as reviewer
+origin/gvt-fixes 15e7f52a4596b496ce3da2fa4c1f94c6fb0023f2
+	drm/i915/gvt: save RING_HEAD into vreg when vgpu switched out
+origin/gvt-next 0fbcbfd0aed705c81bc536d7e67dc252d25c0009
+	drm/i915/kvmgt: Use struct_size() helper
+origin/gvt-next-fixes e8f6c88e3d27cb58cacbef8d03025b86989ee50e
+	drm/i915/gvt: Fix an error code in ppgtt_populate_spt_by_guest_entry()

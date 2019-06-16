@@ -198,6 +198,10 @@ static bool icl_combo_phy_verify_state(struct drm_i915_private *dev_priv,
 
 	ret = cnl_verify_procmon_ref_values(dev_priv, port);
 
+	if (port == PORT_A)
+		ret &= check_phy_reg(dev_priv, port, ICL_PORT_COMP_DW8(port),
+				     IREFGEN, IREFGEN);
+
 	ret &= check_phy_reg(dev_priv, port, ICL_PORT_CL_DW5(port),
 			     CL_POWER_DOWN_ENABLE, CL_POWER_DOWN_ENABLE);
 
@@ -274,6 +278,12 @@ static void icl_combo_phys_init(struct drm_i915_private *dev_priv)
 		I915_WRITE(ICL_PHY_MISC(port), val);
 
 		cnl_set_procmon_ref_values(dev_priv, port);
+
+		if (port == PORT_A) {
+			val = I915_READ(ICL_PORT_COMP_DW8(port));
+			val |= IREFGEN;
+			I915_WRITE(ICL_PORT_COMP_DW8(port), val);
+		}
 
 		val = I915_READ(ICL_PORT_COMP_DW0(port));
 		val |= COMP_INIT;

@@ -343,21 +343,12 @@ static void capture_logs_work(struct work_struct *work)
 
 static int guc_log_map(struct intel_guc_log *log)
 {
-	struct intel_guc *guc = log_to_guc(log);
-	struct drm_i915_private *dev_priv = guc_to_i915(guc);
 	void *vaddr;
-	int ret;
 
 	lockdep_assert_held(&log->relay.lock);
 
 	if (!log->vma)
 		return -ENODEV;
-
-	mutex_lock(&dev_priv->drm.struct_mutex);
-	ret = i915_gem_object_set_to_wc_domain(log->vma->obj, true);
-	mutex_unlock(&dev_priv->drm.struct_mutex);
-	if (ret)
-		return ret;
 
 	/*
 	 * Create a WC (Uncached for read) vmalloc mapping of log
@@ -365,10 +356,8 @@ static int guc_log_map(struct intel_guc_log *log)
 	 * (up-to-date) from memory.
 	 */
 	vaddr = i915_gem_object_pin_map(log->vma->obj, I915_MAP_WC);
-	if (IS_ERR(vaddr)) {
-		DRM_ERROR("Couldn't map log buffer pages %d\n", ret);
+	if (IS_ERR(vaddr))
 		return PTR_ERR(vaddr);
-	}
 
 	log->relay.buf_addr = vaddr;
 
@@ -447,7 +436,7 @@ static void guc_log_capture_logs(struct intel_guc_log *log)
 	 * Generally device is expected to be active only at this
 	 * time, so get/put should be really quick.
 	 */
-	with_intel_runtime_pm(dev_priv, wakeref)
+	with_intel_runtime_pm(&dev_priv->runtime_pm, wakeref)
 		guc_action_flush_log_complete(guc);
 }
 
@@ -526,7 +515,7 @@ int intel_guc_log_set_level(struct intel_guc_log *log, u32 level)
 	if (log->level == level)
 		goto out_unlock;
 
-	with_intel_runtime_pm(dev_priv, wakeref)
+	with_intel_runtime_pm(&dev_priv->runtime_pm, wakeref)
 		ret = guc_action_control_log(guc,
 					     GUC_LOG_LEVEL_IS_VERBOSE(level),
 					     GUC_LOG_LEVEL_IS_ENABLED(level),
@@ -611,7 +600,7 @@ void intel_guc_log_relay_flush(struct intel_guc_log *log)
 	 */
 	flush_work(&log->relay.flush_work);
 
-	with_intel_runtime_pm(i915, wakeref)
+	with_intel_runtime_pm(&i915->runtime_pm, wakeref)
 		guc_action_flush_log(guc);
 
 	/* GuC would have updated log buffer by now, so capture it */

@@ -879,6 +879,14 @@ int intel_color_check(struct intel_crtc_state *crtc_state)
 	return dev_priv->display.color_check(crtc_state);
 }
 
+void intel_color_get_config(struct intel_crtc_state *crtc_state)
+{
+	struct drm_i915_private *dev_priv = to_i915(crtc_state->base.crtc->dev);
+
+	if (dev_priv->display.read_luts)
+		dev_priv->display.read_luts(crtc_state);
+}
+
 static bool need_plane_update(struct intel_plane *plane,
 			      const struct intel_crtc_state *crtc_state)
 {
@@ -959,8 +967,10 @@ static int check_luts(const struct intel_crtc_state *crtc_state)
 		return 0;
 
 	/* C8 relies on its palette being stored in the legacy LUT */
-	if (crtc_state->c8_planes)
+	if (crtc_state->c8_planes) {
+		DRM_DEBUG_KMS("C8 pixelformat requires the legacy LUT\n");
 		return -EINVAL;
+	}
 
 	degamma_length = INTEL_INFO(dev_priv)->color.degamma_lut_size;
 	gamma_length = INTEL_INFO(dev_priv)->color.gamma_lut_size;

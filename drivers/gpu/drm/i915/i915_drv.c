@@ -47,6 +47,8 @@
 #include <drm/drm_probe_helper.h>
 #include <drm/i915_drm.h>
 
+#include "gem/i915_gem_context.h"
+#include "gem/i915_gem_ioctls.h"
 #include "gt/intel_gt_pm.h"
 #include "gt/intel_reset.h"
 #include "gt/intel_workarounds.h"
@@ -60,6 +62,7 @@
 #include "i915_vgpu.h"
 #include "intel_acpi.h"
 #include "intel_audio.h"
+#include "intel_bw.h"
 #include "intel_cdclk.h"
 #include "intel_csr.h"
 #include "intel_dp.h"
@@ -329,6 +332,7 @@ static int i915_getparam_ioctl(struct drm_device *dev, void *data,
 {
 	struct drm_i915_private *dev_priv = to_i915(dev);
 	struct pci_dev *pdev = dev_priv->drm.pdev;
+	const struct sseu_dev_info *sseu = &RUNTIME_INFO(dev_priv)->sseu;
 	drm_i915_getparam_t *param = data;
 	int value;
 
@@ -346,7 +350,7 @@ static int i915_getparam_ioctl(struct drm_device *dev, void *data,
 		value = pdev->revision;
 		break;
 	case I915_PARAM_NUM_FENCES_AVAIL:
-		value = dev_priv->num_fence_regs;
+		value = dev_priv->ggtt.num_fences;
 		break;
 	case I915_PARAM_HAS_OVERLAY:
 		value = dev_priv->overlay ? 1 : 0;
@@ -382,12 +386,12 @@ static int i915_getparam_ioctl(struct drm_device *dev, void *data,
 		value = i915_cmd_parser_get_version(dev_priv);
 		break;
 	case I915_PARAM_SUBSLICE_TOTAL:
-		value = sseu_subslice_total(&RUNTIME_INFO(dev_priv)->sseu);
+		value = intel_sseu_subslice_total(sseu);
 		if (!value)
 			return -ENODEV;
 		break;
 	case I915_PARAM_EU_TOTAL:
-		value = RUNTIME_INFO(dev_priv)->sseu.eu_total;
+		value = sseu->eu_total;
 		if (!value)
 			return -ENODEV;
 		break;
@@ -404,7 +408,7 @@ static int i915_getparam_ioctl(struct drm_device *dev, void *data,
 		value = HAS_POOLED_EU(dev_priv);
 		break;
 	case I915_PARAM_MIN_EU_IN_POOL:
-		value = RUNTIME_INFO(dev_priv)->sseu.min_eu_in_pool;
+		value = sseu->min_eu_in_pool;
 		break;
 	case I915_PARAM_HUC_STATUS:
 		value = intel_huc_check_status(&dev_priv->huc);
@@ -455,12 +459,12 @@ static int i915_getparam_ioctl(struct drm_device *dev, void *data,
 		value = intel_engines_has_context_isolation(dev_priv);
 		break;
 	case I915_PARAM_SLICE_MASK:
-		value = RUNTIME_INFO(dev_priv)->sseu.slice_mask;
+		value = sseu->slice_mask;
 		if (!value)
 			return -ENODEV;
 		break;
 	case I915_PARAM_SUBSLICE_MASK:
-		value = RUNTIME_INFO(dev_priv)->sseu.subslice_mask[0];
+		value = sseu->subslice_mask[0];
 		if (!value)
 			return -ENODEV;
 		break;
@@ -738,6 +742,7 @@ static int i915_load_modeset_init(struct drm_device *dev)
 
 cleanup_gem:
 	i915_gem_suspend(dev_priv);
+	i915_gem_fini_hw(dev_priv);
 	i915_gem_fini(dev_priv);
 cleanup_modeset:
 	intel_modeset_cleanup(dev);
@@ -904,7 +909,7 @@ static int i915_driver_init_early(struct drm_i915_private *dev_priv)
 	mutex_init(&dev_priv->hdcp_comp_mutex);
 
 	i915_memcpy_init_early(dev_priv);
-	intel_runtime_pm_init_early(dev_priv);
+	intel_runtime_pm_init_early(&dev_priv->runtime_pm);
 
 	ret = i915_workqueues_init(dev_priv);
 	if (ret < 0)
@@ -1620,7 +1625,6 @@ static int i915_driver_init_hw(struct drm_i915_private *dev_priv)
 	intel_uncore_sanitize(dev_priv);
 
 	intel_gt_init_workarounds(dev_priv);
-	i915_gem_load_init_fences(dev_priv);
 
 	/* On the 945G/GM, the chipset reports the MSI capability on the
 	 * integrated graphics even though the support isn't actually there
@@ -1657,6 +1661,7 @@ static int i915_driver_init_hw(struct drm_i915_private *dev_priv)
 	 */
 	intel_get_dram_info(dev_priv);
 
+	intel_bw_init_hw(dev_priv);
 
 	return 0;
 
@@ -1685,7 +1690,6 @@ static void i915_driver_cleanup_hw(struct drm_i915_private *dev_priv)
 		pci_disable_msi(pdev);
 
 	pm_qos_remove_request(&dev_priv->pm_qos);
-	i915_ggtt_cleanup_hw(dev_priv);
 }
 
 /**
@@ -1747,7 +1751,7 @@ static void i915_driver_register(struct drm_i915_private *dev_priv)
 		drm_kms_helper_poll_init(dev);
 
 	intel_power_domains_enable(dev_priv);
-	intel_runtime_pm_enable(dev_priv);
+	intel_runtime_pm_enable(&dev_priv->runtime_pm);
 }
 
 /**
@@ -1756,7 +1760,7 @@ static void i915_driver_register(struct drm_i915_private *dev_priv)
  */
 static void i915_driver_unregister(struct drm_i915_private *dev_priv)
 {
-	intel_runtime_pm_disable(dev_priv);
+	intel_runtime_pm_disable(&dev_priv->runtime_pm);
 	intel_power_domains_disable(dev_priv);
 
 	intel_fbdev_unregister(dev_priv);
@@ -1885,7 +1889,7 @@ int i915_driver_load(struct pci_dev *pdev, const struct pci_device_id *ent)
 	if (ret < 0)
 		goto out_pci_disable;
 
-	disable_rpm_wakeref_asserts(dev_priv);
+	disable_rpm_wakeref_asserts(&dev_priv->runtime_pm);
 
 	ret = i915_driver_init_mmio(dev_priv);
 	if (ret < 0)
@@ -1901,7 +1905,7 @@ int i915_driver_load(struct pci_dev *pdev, const struct pci_device_id *ent)
 
 	i915_driver_register(dev_priv);
 
-	enable_rpm_wakeref_asserts(dev_priv);
+	enable_rpm_wakeref_asserts(&dev_priv->runtime_pm);
 
 	i915_welcome_messages(dev_priv);
 
@@ -1909,10 +1913,11 @@ int i915_driver_load(struct pci_dev *pdev, const struct pci_device_id *ent)
 
 out_cleanup_hw:
 	i915_driver_cleanup_hw(dev_priv);
+	i915_ggtt_cleanup_hw(dev_priv);
 out_cleanup_mmio:
 	i915_driver_cleanup_mmio(dev_priv);
 out_runtime_pm_put:
-	enable_rpm_wakeref_asserts(dev_priv);
+	enable_rpm_wakeref_asserts(&dev_priv->runtime_pm);
 	i915_driver_cleanup_early(dev_priv);
 out_pci_disable:
 	pci_disable_device(pdev);
@@ -1927,7 +1932,7 @@ void i915_driver_unload(struct drm_device *dev)
 	struct drm_i915_private *dev_priv = to_i915(dev);
 	struct pci_dev *pdev = dev_priv->drm.pdev;
 
-	disable_rpm_wakeref_asserts(dev_priv);
+	disable_rpm_wakeref_asserts(&dev_priv->runtime_pm);
 
 	i915_driver_unregister(dev_priv);
 
@@ -1960,20 +1965,29 @@ void i915_driver_unload(struct drm_device *dev)
 	cancel_delayed_work_sync(&dev_priv->gpu_error.hangcheck_work);
 	i915_reset_error_state(dev_priv);
 
-	i915_gem_fini(dev_priv);
+	i915_gem_fini_hw(dev_priv);
 
 	intel_power_domains_fini_hw(dev_priv);
 
 	i915_driver_cleanup_hw(dev_priv);
-	i915_driver_cleanup_mmio(dev_priv);
 
-	enable_rpm_wakeref_asserts(dev_priv);
-	intel_runtime_pm_cleanup(dev_priv);
+	enable_rpm_wakeref_asserts(&dev_priv->runtime_pm);
 }
 
 static void i915_driver_release(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv = to_i915(dev);
+	struct intel_runtime_pm *rpm = &dev_priv->runtime_pm;
+
+	disable_rpm_wakeref_asserts(rpm);
+
+	i915_gem_fini(dev_priv);
+
+	i915_ggtt_cleanup_hw(dev_priv);
+	i915_driver_cleanup_mmio(dev_priv);
+
+	enable_rpm_wakeref_asserts(rpm);
+	intel_runtime_pm_cleanup(rpm);
 
 	i915_driver_cleanup_early(dev_priv);
 	i915_driver_destroy(dev_priv);
@@ -2067,7 +2081,7 @@ static int i915_drm_suspend(struct drm_device *dev)
 	struct pci_dev *pdev = dev_priv->drm.pdev;
 	pci_power_t opregion_target_state;
 
-	disable_rpm_wakeref_asserts(dev_priv);
+	disable_rpm_wakeref_asserts(&dev_priv->runtime_pm);
 
 	/* We do a lot of poking in a lot of registers, make sure they work
 	 * properly. */
@@ -2101,7 +2115,7 @@ static int i915_drm_suspend(struct drm_device *dev)
 
 	intel_csr_ucode_suspend(dev_priv);
 
-	enable_rpm_wakeref_asserts(dev_priv);
+	enable_rpm_wakeref_asserts(&dev_priv->runtime_pm);
 
 	return 0;
 }
@@ -2122,9 +2136,10 @@ static int i915_drm_suspend_late(struct drm_device *dev, bool hibernation)
 {
 	struct drm_i915_private *dev_priv = to_i915(dev);
 	struct pci_dev *pdev = dev_priv->drm.pdev;
+	struct intel_runtime_pm *rpm = &dev_priv->runtime_pm;
 	int ret;
 
-	disable_rpm_wakeref_asserts(dev_priv);
+	disable_rpm_wakeref_asserts(rpm);
 
 	i915_gem_suspend_late(dev_priv);
 
@@ -2165,9 +2180,9 @@ static int i915_drm_suspend_late(struct drm_device *dev, bool hibernation)
 		pci_set_power_state(pdev, PCI_D3hot);
 
 out:
-	enable_rpm_wakeref_asserts(dev_priv);
+	enable_rpm_wakeref_asserts(rpm);
 	if (!dev_priv->uncore.user_forcewake.count)
-		intel_runtime_pm_cleanup(dev_priv);
+		intel_runtime_pm_cleanup(rpm);
 
 	return ret;
 }
@@ -2201,7 +2216,7 @@ static int i915_drm_resume(struct drm_device *dev)
 	struct drm_i915_private *dev_priv = to_i915(dev);
 	int ret;
 
-	disable_rpm_wakeref_asserts(dev_priv);
+	disable_rpm_wakeref_asserts(&dev_priv->runtime_pm);
 	intel_sanitize_gt_powersave(dev_priv);
 
 	i915_gem_sanitize(dev_priv);
@@ -2261,7 +2276,7 @@ static int i915_drm_resume(struct drm_device *dev)
 
 	intel_power_domains_enable(dev_priv);
 
-	enable_rpm_wakeref_asserts(dev_priv);
+	enable_rpm_wakeref_asserts(&dev_priv->runtime_pm);
 
 	return 0;
 }
@@ -2316,7 +2331,7 @@ static int i915_drm_resume_early(struct drm_device *dev)
 
 	pci_set_master(pdev);
 
-	disable_rpm_wakeref_asserts(dev_priv);
+	disable_rpm_wakeref_asserts(&dev_priv->runtime_pm);
 
 	if (IS_VALLEYVIEW(dev_priv) || IS_CHERRYVIEW(dev_priv))
 		ret = vlv_resume_prepare(dev_priv, false);
@@ -2341,7 +2356,7 @@ static int i915_drm_resume_early(struct drm_device *dev)
 
 	intel_gt_sanitize(dev_priv, true);
 
-	enable_rpm_wakeref_asserts(dev_priv);
+	enable_rpm_wakeref_asserts(&dev_priv->runtime_pm);
 
 	return ret;
 }
@@ -2694,7 +2709,7 @@ static void vlv_restore_gunit_s0ix_state(struct drm_i915_private *dev_priv)
 	I915_WRITE(VLV_GUNIT_CLOCK_GATE2,	s->clock_gate_dis2);
 }
 
-static int vlv_wait_for_pw_status(struct drm_i915_private *dev_priv,
+static int vlv_wait_for_pw_status(struct drm_i915_private *i915,
 				  u32 mask, u32 val)
 {
 	i915_reg_t reg = VLV_GTLC_PW_STATUS;
@@ -2708,7 +2723,9 @@ static int vlv_wait_for_pw_status(struct drm_i915_private *dev_priv,
 	 * Transitioning between RC6 states should be at most 2ms (see
 	 * valleyview_enable_rps) so use a 3ms timeout.
 	 */
-	ret = wait_for(((reg_value = I915_READ_NOTRACE(reg)) & mask) == val, 3);
+	ret = wait_for(((reg_value =
+			 intel_uncore_read_notrace(&i915->uncore, reg)) & mask)
+		       == val, 3);
 
 	/* just trace the final value */
 	trace_i915_reg_rw(false, reg, reg_value, sizeof(reg_value), true);
@@ -2874,6 +2891,7 @@ static int intel_runtime_suspend(struct device *kdev)
 	struct pci_dev *pdev = to_pci_dev(kdev);
 	struct drm_device *dev = pci_get_drvdata(pdev);
 	struct drm_i915_private *dev_priv = to_i915(dev);
+	struct intel_runtime_pm *rpm = &dev_priv->runtime_pm;
 	int ret;
 
 	if (WARN_ON_ONCE(!(dev_priv->gt_pm.rc6.enabled && HAS_RC6(dev_priv))))
@@ -2884,7 +2902,7 @@ static int intel_runtime_suspend(struct device *kdev)
 
 	DRM_DEBUG_KMS("Suspending device\n");
 
-	disable_rpm_wakeref_asserts(dev_priv);
+	disable_rpm_wakeref_asserts(rpm);
 
 	/*
 	 * We are safe here against re-faults, since the fault handler takes
@@ -2922,18 +2940,18 @@ static int intel_runtime_suspend(struct device *kdev)
 		i915_gem_init_swizzling(dev_priv);
 		i915_gem_restore_fences(dev_priv);
 
-		enable_rpm_wakeref_asserts(dev_priv);
+		enable_rpm_wakeref_asserts(rpm);
 
 		return ret;
 	}
 
-	enable_rpm_wakeref_asserts(dev_priv);
-	intel_runtime_pm_cleanup(dev_priv);
+	enable_rpm_wakeref_asserts(rpm);
+	intel_runtime_pm_cleanup(rpm);
 
 	if (intel_uncore_arm_unclaimed_mmio_detection(&dev_priv->uncore))
 		DRM_ERROR("Unclaimed access detected prior to suspending\n");
 
-	dev_priv->runtime_pm.suspended = true;
+	rpm->suspended = true;
 
 	/*
 	 * FIXME: We really should find a document that references the arguments
@@ -2972,6 +2990,7 @@ static int intel_runtime_resume(struct device *kdev)
 	struct pci_dev *pdev = to_pci_dev(kdev);
 	struct drm_device *dev = pci_get_drvdata(pdev);
 	struct drm_i915_private *dev_priv = to_i915(dev);
+	struct intel_runtime_pm *rpm = &dev_priv->runtime_pm;
 	int ret = 0;
 
 	if (WARN_ON_ONCE(!HAS_RUNTIME_PM(dev_priv)))
@@ -2979,11 +2998,11 @@ static int intel_runtime_resume(struct device *kdev)
 
 	DRM_DEBUG_KMS("Resuming device\n");
 
-	WARN_ON_ONCE(atomic_read(&dev_priv->runtime_pm.wakeref_count));
-	disable_rpm_wakeref_asserts(dev_priv);
+	WARN_ON_ONCE(atomic_read(&rpm->wakeref_count));
+	disable_rpm_wakeref_asserts(rpm);
 
 	intel_opregion_notify_adapter(dev_priv, PCI_D0);
-	dev_priv->runtime_pm.suspended = false;
+	rpm->suspended = false;
 	if (intel_uncore_unclaimed_mmio(&dev_priv->uncore))
 		DRM_DEBUG_DRIVER("Unclaimed access during suspend, bios?\n");
 
@@ -3033,7 +3052,7 @@ static int intel_runtime_resume(struct device *kdev)
 
 	intel_enable_ipc(dev_priv);
 
-	enable_rpm_wakeref_asserts(dev_priv);
+	enable_rpm_wakeref_asserts(rpm);
 
 	if (ret)
 		DRM_ERROR("Runtime resume failed, disabling it (%d)\n", ret);

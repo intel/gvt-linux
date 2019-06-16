@@ -454,7 +454,7 @@ ibx_get_dpll(struct intel_crtc_state *crtc_state,
 }
 
 static void ibx_dump_hw_state(struct drm_i915_private *dev_priv,
-			      struct intel_dpll_hw_state *hw_state)
+			      const struct intel_dpll_hw_state *hw_state)
 {
 	DRM_DEBUG_KMS("dpll_hw_state: dpll: 0x%x, dpll_md: 0x%x, "
 		      "fp0: 0x%x, fp1: 0x%x\n",
@@ -775,7 +775,7 @@ static struct intel_shared_dpll *hsw_ddi_hdmi_get_dpll(struct intel_crtc_state *
 
 	hsw_ddi_calculate_wrpll(crtc_state->port_clock * 1000, &r2, &n2, &p);
 
-	val = WRPLL_PLL_ENABLE | WRPLL_PLL_LCPLL |
+	val = WRPLL_PLL_ENABLE | WRPLL_REF_LCPLL |
 	      WRPLL_DIVIDER_REFERENCE(r2) | WRPLL_DIVIDER_FEEDBACK(n2) |
 	      WRPLL_DIVIDER_POST(p);
 
@@ -839,7 +839,7 @@ hsw_get_dpll(struct intel_crtc_state *crtc_state,
 			return NULL;
 
 		crtc_state->dpll_hw_state.spll =
-			SPLL_PLL_ENABLE | SPLL_PLL_FREQ_1350MHz | SPLL_PLL_SSC;
+			SPLL_PLL_ENABLE | SPLL_FREQ_1350MHz | SPLL_REF_MUXED_SSC;
 
 		pll = intel_find_shared_dpll(crtc_state,
 					     DPLL_ID_SPLL, DPLL_ID_SPLL);
@@ -856,7 +856,7 @@ hsw_get_dpll(struct intel_crtc_state *crtc_state,
 }
 
 static void hsw_dump_hw_state(struct drm_i915_private *dev_priv,
-			      struct intel_dpll_hw_state *hw_state)
+			      const struct intel_dpll_hw_state *hw_state)
 {
 	DRM_DEBUG_KMS("dpll_hw_state: wrpll: 0x%x spll: 0x%x\n",
 		      hw_state->wrpll, hw_state->spll);
@@ -1425,7 +1425,7 @@ skl_get_dpll(struct intel_crtc_state *crtc_state,
 }
 
 static void skl_dump_hw_state(struct drm_i915_private *dev_priv,
-			      struct intel_dpll_hw_state *hw_state)
+			      const struct intel_dpll_hw_state *hw_state)
 {
 	DRM_DEBUG_KMS("dpll_hw_state: "
 		      "ctrl1: 0x%x, cfgcr1: 0x%x, cfgcr2: 0x%x\n",
@@ -1857,7 +1857,7 @@ bxt_get_dpll(struct intel_crtc_state *crtc_state,
 }
 
 static void bxt_dump_hw_state(struct drm_i915_private *dev_priv,
-			      struct intel_dpll_hw_state *hw_state)
+			      const struct intel_dpll_hw_state *hw_state)
 {
 	DRM_DEBUG_KMS("dpll_hw_state: ebb0: 0x%x, ebb4: 0x%x,"
 		      "pll0: 0x%x, pll1: 0x%x, pll2: 0x%x, pll3: 0x%x, "
@@ -1888,7 +1888,7 @@ struct intel_dpll_mgr {
 					      struct intel_encoder *encoder);
 
 	void (*dump_hw_state)(struct drm_i915_private *dev_priv,
-			      struct intel_dpll_hw_state *hw_state);
+			      const struct intel_dpll_hw_state *hw_state);
 };
 
 static const struct dpll_info pch_plls[] = {
@@ -2371,7 +2371,7 @@ cnl_get_dpll(struct intel_crtc_state *crtc_state,
 }
 
 static void cnl_dump_hw_state(struct drm_i915_private *dev_priv,
-			      struct intel_dpll_hw_state *hw_state)
+			      const struct intel_dpll_hw_state *hw_state)
 {
 	DRM_DEBUG_KMS("dpll_hw_state: "
 		      "cfgcr0: 0x%x, cfgcr1: 0x%x\n",
@@ -3171,7 +3171,7 @@ static void mg_pll_disable(struct drm_i915_private *dev_priv,
 }
 
 static void icl_dump_hw_state(struct drm_i915_private *dev_priv,
-			      struct intel_dpll_hw_state *hw_state)
+			      const struct intel_dpll_hw_state *hw_state)
 {
 	DRM_DEBUG_KMS("dpll_hw_state: cfgcr0: 0x%x, cfgcr1: 0x%x, "
 		      "mg_refclkin_ctl: 0x%x, hg_clktop2_coreclkctl1: 0x%x, "
@@ -3341,7 +3341,7 @@ void intel_release_shared_dpll(struct intel_shared_dpll *dpll,
  * Write the relevant values in @hw_state to dmesg using DRM_DEBUG_KMS.
  */
 void intel_dpll_dump_hw_state(struct drm_i915_private *dev_priv,
-			      struct intel_dpll_hw_state *hw_state)
+			      const struct intel_dpll_hw_state *hw_state)
 {
 	if (dev_priv->dpll_mgr) {
 		dev_priv->dpll_mgr->dump_hw_state(dev_priv, hw_state);

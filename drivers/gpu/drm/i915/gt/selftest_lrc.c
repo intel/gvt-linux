@@ -6,15 +6,18 @@
 
 #include <linux/prime_numbers.h>
 
+#include "gem/i915_gem_pm.h"
 #include "gt/intel_reset.h"
+
 #include "i915_selftest.h"
 #include "selftests/i915_random.h"
 #include "selftests/igt_flush_test.h"
-#include "selftests/igt_gem_utils.h"
 #include "selftests/igt_live_test.h"
 #include "selftests/igt_spinner.h"
 #include "selftests/lib_sw_fence.h"
-#include "selftests/mock_context.h"
+
+#include "gem/selftests/igt_gem_utils.h"
+#include "gem/selftests/mock_context.h"
 
 static int live_sanitycheck(void *arg)
 {
@@ -30,7 +33,7 @@ static int live_sanitycheck(void *arg)
 		return 0;
 
 	mutex_lock(&i915->drm.struct_mutex);
-	wakeref = intel_runtime_pm_get(i915);
+	wakeref = intel_runtime_pm_get(&i915->runtime_pm);
 
 	if (igt_spinner_init(&spin, i915))
 		goto err_unlock;
@@ -71,7 +74,7 @@ err_spin:
 	igt_spinner_fini(&spin);
 err_unlock:
 	igt_flush_test(i915, I915_WAIT_LOCKED);
-	intel_runtime_pm_put(i915, wakeref);
+	intel_runtime_pm_put(&i915->runtime_pm, wakeref);
 	mutex_unlock(&i915->drm.struct_mutex);
 	return err;
 }
@@ -94,7 +97,7 @@ static int live_busywait_preempt(void *arg)
 	 */
 
 	mutex_lock(&i915->drm.struct_mutex);
-	wakeref = intel_runtime_pm_get(i915);
+	wakeref = intel_runtime_pm_get(&i915->runtime_pm);
 
 	ctx_hi = kernel_context(i915);
 	if (!ctx_hi)
@@ -252,7 +255,7 @@ err_ctx_hi:
 err_unlock:
 	if (igt_flush_test(i915, I915_WAIT_LOCKED))
 		err = -EIO;
-	intel_runtime_pm_put(i915, wakeref);
+	intel_runtime_pm_put(&i915->runtime_pm, wakeref);
 	mutex_unlock(&i915->drm.struct_mutex);
 	return err;
 }
@@ -274,7 +277,7 @@ static int live_preempt(void *arg)
 		pr_err("Logical preemption supported, but not exposed\n");
 
 	mutex_lock(&i915->drm.struct_mutex);
-	wakeref = intel_runtime_pm_get(i915);
+	wakeref = intel_runtime_pm_get(&i915->runtime_pm);
 
 	if (igt_spinner_init(&spin_hi, i915))
 		goto err_unlock;
@@ -359,7 +362,7 @@ err_spin_hi:
 	igt_spinner_fini(&spin_hi);
 err_unlock:
 	igt_flush_test(i915, I915_WAIT_LOCKED);
-	intel_runtime_pm_put(i915, wakeref);
+	intel_runtime_pm_put(&i915->runtime_pm, wakeref);
 	mutex_unlock(&i915->drm.struct_mutex);
 	return err;
 }
@@ -379,7 +382,7 @@ static int live_late_preempt(void *arg)
 		return 0;
 
 	mutex_lock(&i915->drm.struct_mutex);
-	wakeref = intel_runtime_pm_get(i915);
+	wakeref = intel_runtime_pm_get(&i915->runtime_pm);
 
 	if (igt_spinner_init(&spin_hi, i915))
 		goto err_unlock;
@@ -463,7 +466,7 @@ err_spin_hi:
 	igt_spinner_fini(&spin_hi);
 err_unlock:
 	igt_flush_test(i915, I915_WAIT_LOCKED);
-	intel_runtime_pm_put(i915, wakeref);
+	intel_runtime_pm_put(&i915->runtime_pm, wakeref);
 	mutex_unlock(&i915->drm.struct_mutex);
 	return err;
 
@@ -529,7 +532,7 @@ static int live_suppress_self_preempt(void *arg)
 		return 0; /* presume black blox */
 
 	mutex_lock(&i915->drm.struct_mutex);
-	wakeref = intel_runtime_pm_get(i915);
+	wakeref = intel_runtime_pm_get(&i915->runtime_pm);
 
 	if (preempt_client_init(i915, &a))
 		goto err_unlock;
@@ -603,7 +606,7 @@ err_client_a:
 err_unlock:
 	if (igt_flush_test(i915, I915_WAIT_LOCKED))
 		err = -EIO;
-	intel_runtime_pm_put(i915, wakeref);
+	intel_runtime_pm_put(&i915->runtime_pm, wakeref);
 	mutex_unlock(&i915->drm.struct_mutex);
 	return err;
 
@@ -680,7 +683,7 @@ static int live_suppress_wait_preempt(void *arg)
 		return 0;
 
 	mutex_lock(&i915->drm.struct_mutex);
-	wakeref = intel_runtime_pm_get(i915);
+	wakeref = intel_runtime_pm_get(&i915->runtime_pm);
 
 	if (preempt_client_init(i915, &client[0])) /* ELSP[0] */
 		goto err_unlock;
@@ -773,7 +776,7 @@ err_client_0:
 err_unlock:
 	if (igt_flush_test(i915, I915_WAIT_LOCKED))
 		err = -EIO;
-	intel_runtime_pm_put(i915, wakeref);
+	intel_runtime_pm_put(&i915->runtime_pm, wakeref);
 	mutex_unlock(&i915->drm.struct_mutex);
 	return err;
 
@@ -804,7 +807,7 @@ static int live_chain_preempt(void *arg)
 		return 0;
 
 	mutex_lock(&i915->drm.struct_mutex);
-	wakeref = intel_runtime_pm_get(i915);
+	wakeref = intel_runtime_pm_get(&i915->runtime_pm);
 
 	if (preempt_client_init(i915, &hi))
 		goto err_unlock;
@@ -921,7 +924,7 @@ err_client_hi:
 err_unlock:
 	if (igt_flush_test(i915, I915_WAIT_LOCKED))
 		err = -EIO;
-	intel_runtime_pm_put(i915, wakeref);
+	intel_runtime_pm_put(&i915->runtime_pm, wakeref);
 	mutex_unlock(&i915->drm.struct_mutex);
 	return err;
 
@@ -950,7 +953,7 @@ static int live_preempt_hang(void *arg)
 		return 0;
 
 	mutex_lock(&i915->drm.struct_mutex);
-	wakeref = intel_runtime_pm_get(i915);
+	wakeref = intel_runtime_pm_get(&i915->runtime_pm);
 
 	if (igt_spinner_init(&spin_hi, i915))
 		goto err_unlock;
@@ -1047,7 +1050,7 @@ err_spin_hi:
 	igt_spinner_fini(&spin_hi);
 err_unlock:
 	igt_flush_test(i915, I915_WAIT_LOCKED);
-	intel_runtime_pm_put(i915, wakeref);
+	intel_runtime_pm_put(&i915->runtime_pm, wakeref);
 	mutex_unlock(&i915->drm.struct_mutex);
 	return err;
 }
@@ -1087,7 +1090,7 @@ static int smoke_submit(struct preempt_smoke *smoke,
 	int err = 0;
 
 	if (batch) {
-		vma = i915_vma_instance(batch, &ctx->ppgtt->vm, NULL);
+		vma = i915_vma_instance(batch, ctx->vm, NULL);
 		if (IS_ERR(vma))
 			return PTR_ERR(vma);
 
@@ -1105,11 +1108,13 @@ static int smoke_submit(struct preempt_smoke *smoke,
 	}
 
 	if (vma) {
+		i915_vma_lock(vma);
 		err = rq->engine->emit_bb_start(rq,
 						vma->node.start,
 						PAGE_SIZE, 0);
 		if (!err)
 			err = i915_vma_move_to_active(vma, rq, 0);
+		i915_vma_unlock(vma);
 	}
 
 	i915_request_add(rq);
@@ -1251,7 +1256,7 @@ static int live_preempt_smoke(void *arg)
 		return -ENOMEM;
 
 	mutex_lock(&smoke.i915->drm.struct_mutex);
-	wakeref = intel_runtime_pm_get(smoke.i915);
+	wakeref = intel_runtime_pm_get(&smoke.i915->runtime_pm);
 
 	smoke.batch = i915_gem_object_create_internal(smoke.i915, PAGE_SIZE);
 	if (IS_ERR(smoke.batch)) {
@@ -1304,7 +1309,7 @@ err_ctx:
 err_batch:
 	i915_gem_object_put(smoke.batch);
 err_unlock:
-	intel_runtime_pm_put(smoke.i915, wakeref);
+	intel_runtime_pm_put(&smoke.i915->runtime_pm, wakeref);
 	mutex_unlock(&smoke.i915->drm.struct_mutex);
 	kfree(smoke.contexts);
 
@@ -1526,8 +1531,8 @@ static int mask_virtual_engine(struct drm_i915_private *i915,
 
 	for (n = 0; n < nsibling; n++) {
 		request[n] = i915_request_create(ve);
-		if (IS_ERR(request)) {
-			err = PTR_ERR(request);
+		if (IS_ERR(request[n])) {
+			err = PTR_ERR(request[n]);
 			nsibling = n;
 			goto out;
 		}

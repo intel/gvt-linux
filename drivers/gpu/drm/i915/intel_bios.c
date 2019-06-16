@@ -76,13 +76,13 @@ static u32 get_blocksize(const void *block_data)
 }
 
 static const void *
-find_section(const void *_bdb, int section_id)
+find_section(const void *_bdb, enum bdb_block_id section_id)
 {
 	const struct bdb_header *bdb = _bdb;
 	const u8 *base = _bdb;
 	int index = 0;
 	u32 total, current_size;
-	u8 current_id;
+	enum bdb_block_id current_id;
 
 	/* skip to first section */
 	index += bdb->header_size;
@@ -302,7 +302,7 @@ parse_lfp_backlight(struct drm_i915_private *dev_priv,
 		    const struct bdb_header *bdb)
 {
 	const struct bdb_lfp_backlight_data *backlight_data;
-	const struct bdb_lfp_backlight_data_entry *entry;
+	const struct lfp_backlight_data_entry *entry;
 	int panel_type = dev_priv->vbt.panel_type;
 
 	backlight_data = find_section(bdb, BDB_LVDS_BACKLIGHT);
@@ -327,7 +327,7 @@ parse_lfp_backlight(struct drm_i915_private *dev_priv,
 	dev_priv->vbt.backlight.type = INTEL_BACKLIGHT_DISPLAY_DDI;
 	if (bdb->version >= 191 &&
 	    get_blocksize(backlight_data) >= sizeof(*backlight_data)) {
-		const struct bdb_lfp_backlight_control_method *method;
+		const struct lfp_backlight_control_method *method;
 
 		method = &backlight_data->backlight_control[panel_type];
 		dev_priv->vbt.backlight.type = method->type;
@@ -351,7 +351,7 @@ static void
 parse_sdvo_panel_data(struct drm_i915_private *dev_priv,
 		      const struct bdb_header *bdb)
 {
-	const struct lvds_dvo_timing *dvo_timing;
+	const struct bdb_sdvo_panel_dtds *dtds;
 	struct drm_display_mode *panel_fixed_mode;
 	int index;
 
@@ -371,15 +371,15 @@ parse_sdvo_panel_data(struct drm_i915_private *dev_priv,
 		index = sdvo_lvds_options->panel_type;
 	}
 
-	dvo_timing = find_section(bdb, BDB_SDVO_PANEL_DTDS);
-	if (!dvo_timing)
+	dtds = find_section(bdb, BDB_SDVO_PANEL_DTDS);
+	if (!dtds)
 		return;
 
 	panel_fixed_mode = kzalloc(sizeof(*panel_fixed_mode), GFP_KERNEL);
 	if (!panel_fixed_mode)
 		return;
 
-	fill_detail_timing_data(panel_fixed_mode, dvo_timing + index);
+	fill_detail_timing_data(panel_fixed_mode, &dtds->dtds[index]);
 
 	dev_priv->vbt.sdvo_lvds_vbt_mode = panel_fixed_mode;
 
@@ -1239,27 +1239,36 @@ static u8 translate_iboost(u8 val)
 	return mapping[val];
 }
 
+static enum port get_port_by_ddc_pin(struct drm_i915_private *i915, u8 ddc_pin)
+{
+	const struct ddi_vbt_port_info *info;
+	enum port port;
+
+	for (port = PORT_A; port < I915_MAX_PORTS; port++) {
+		info = &i915->vbt.ddi_port_info[port];
+
+		if (info->child && ddc_pin == info->alternate_ddc_pin)
+			return port;
+	}
+
+	return PORT_NONE;
+}
+
 static void sanitize_ddc_pin(struct drm_i915_private *dev_priv,
 			     enum port port)
 {
-	const struct ddi_vbt_port_info *info =
-		&dev_priv->vbt.ddi_port_info[port];
+	struct ddi_vbt_port_info *info = &dev_priv->vbt.ddi_port_info[port];
 	enum port p;
 
 	if (!info->alternate_ddc_pin)
 		return;
 
-	for (p = PORT_A; p < I915_MAX_PORTS; p++) {
-		struct ddi_vbt_port_info *i = &dev_priv->vbt.ddi_port_info[p];
-
-		if (p == port || !i->present ||
-		    info->alternate_ddc_pin != i->alternate_ddc_pin)
-			continue;
-
+	p = get_port_by_ddc_pin(dev_priv, info->alternate_ddc_pin);
+	if (p != PORT_NONE) {
 		DRM_DEBUG_KMS("port %c trying to use the same DDC pin (0x%x) as port %c, "
 			      "disabling port %c DVI/HDMI support\n",
-			      port_name(p), i->alternate_ddc_pin,
-			      port_name(port), port_name(p));
+			      port_name(port), info->alternate_ddc_pin,
+			      port_name(p), port_name(port));
 
 		/*
 		 * If we have multiple ports supposedly sharing the
@@ -1267,36 +1276,45 @@ static void sanitize_ddc_pin(struct drm_i915_private *dev_priv,
 		 * port. Otherwise they share the same ddc bin and
 		 * system couldn't communicate with them separately.
 		 *
-		 * Due to parsing the ports in child device order,
-		 * a later device will always clobber an earlier one.
+		 * Give child device order the priority, first come first
+		 * served.
 		 */
-		i->supports_dvi = false;
-		i->supports_hdmi = false;
-		i->alternate_ddc_pin = 0;
+		info->supports_dvi = false;
+		info->supports_hdmi = false;
+		info->alternate_ddc_pin = 0;
 	}
+}
+
+static enum port get_port_by_aux_ch(struct drm_i915_private *i915, u8 aux_ch)
+{
+	const struct ddi_vbt_port_info *info;
+	enum port port;
+
+	for (port = PORT_A; port < I915_MAX_PORTS; port++) {
+		info = &i915->vbt.ddi_port_info[port];
+
+		if (info->child && aux_ch == info->alternate_aux_channel)
+			return port;
+	}
+
+	return PORT_NONE;
 }
 
 static void sanitize_aux_ch(struct drm_i915_private *dev_priv,
 			    enum port port)
 {
-	const struct ddi_vbt_port_info *info =
-		&dev_priv->vbt.ddi_port_info[port];
+	struct ddi_vbt_port_info *info = &dev_priv->vbt.ddi_port_info[port];
 	enum port p;
 
 	if (!info->alternate_aux_channel)
 		return;
 
-	for (p = PORT_A; p < I915_MAX_PORTS; p++) {
-		struct ddi_vbt_port_info *i = &dev_priv->vbt.ddi_port_info[p];
-
-		if (p == port || !i->present ||
-		    info->alternate_aux_channel != i->alternate_aux_channel)
-			continue;
-
+	p = get_port_by_aux_ch(dev_priv, info->alternate_aux_channel);
+	if (p != PORT_NONE) {
 		DRM_DEBUG_KMS("port %c trying to use the same AUX CH (0x%x) as port %c, "
 			      "disabling port %c DP support\n",
-			      port_name(p), i->alternate_aux_channel,
-			      port_name(port), port_name(p));
+			      port_name(port), info->alternate_aux_channel,
+			      port_name(p), port_name(port));
 
 		/*
 		 * If we have multiple ports supposedlt sharing the
@@ -1304,11 +1322,11 @@ static void sanitize_aux_ch(struct drm_i915_private *dev_priv,
 		 * port. Otherwise they share the same aux channel
 		 * and system couldn't communicate with them separately.
 		 *
-		 * Due to parsing the ports in child device order,
-		 * a later device will always clobber an earlier one.
+		 * Give child device order the priority, first come first
+		 * served.
 		 */
-		i->supports_dp = false;
-		i->alternate_aux_channel = 0;
+		info->supports_dp = false;
+		info->alternate_aux_channel = 0;
 	}
 }
 
@@ -1397,13 +1415,11 @@ static void parse_ddi_port(struct drm_i915_private *dev_priv,
 
 	info = &dev_priv->vbt.ddi_port_info[port];
 
-	if (info->present) {
+	if (info->child) {
 		DRM_DEBUG_KMS("More than one child device for port %c in VBT, using the first.\n",
 			      port_name(port));
 		return;
 	}
-
-	info->present = true;
 
 	is_dvi = child->device_type & DEVICE_TYPE_TMDS_DVI_SIGNALING;
 	is_dp = child->device_type & DEVICE_TYPE_DISPLAYPORT_OUTPUT;
@@ -1429,8 +1445,9 @@ static void parse_ddi_port(struct drm_i915_private *dev_priv,
 	if (bdb_version >= 209)
 		info->supports_tbt = child->tbt;
 
-	DRM_DEBUG_KMS("Port %c VBT info: DP:%d HDMI:%d DVI:%d EDP:%d CRT:%d TCUSB:%d TBT:%d\n",
-		      port_name(port), is_dp, is_hdmi, is_dvi, is_edp, is_crt,
+	DRM_DEBUG_KMS("Port %c VBT info: CRT:%d DVI:%d HDMI:%d DP:%d eDP:%d LSPCON:%d USB-Type-C:%d TBT:%d\n",
+		      port_name(port), is_crt, is_dvi, is_hdmi, is_dp, is_edp,
+		      HAS_LSPCON(dev_priv) && child->lspcon,
 		      info->supports_typec_usb, info->supports_tbt);
 
 	if (is_edp && is_dvi)
@@ -1532,6 +1549,8 @@ static void parse_ddi_port(struct drm_i915_private *dev_priv,
 		DRM_DEBUG_KMS("VBT DP max link rate for port %c: %d\n",
 			      port_name(port), info->dp_max_link_rate);
 	}
+
+	info->child = child;
 }
 
 static void parse_ddi_ports(struct drm_i915_private *dev_priv, u8 bdb_version)
@@ -2151,106 +2170,39 @@ bool intel_bios_is_dsi_present(struct drm_i915_private *dev_priv,
 
 /**
  * intel_bios_is_port_hpd_inverted - is HPD inverted for %port
- * @dev_priv:	i915 device instance
+ * @i915:	i915 device instance
  * @port:	port to check
  *
  * Return true if HPD should be inverted for %port.
  */
 bool
-intel_bios_is_port_hpd_inverted(struct drm_i915_private *dev_priv,
+intel_bios_is_port_hpd_inverted(const struct drm_i915_private *i915,
 				enum port port)
 {
-	const struct child_device_config *child;
-	int i;
+	const struct child_device_config *child =
+		i915->vbt.ddi_port_info[port].child;
 
-	if (WARN_ON_ONCE(!IS_GEN9_LP(dev_priv)))
+	if (WARN_ON_ONCE(!IS_GEN9_LP(i915)))
 		return false;
 
-	for (i = 0; i < dev_priv->vbt.child_dev_num; i++) {
-		child = dev_priv->vbt.child_dev + i;
-
-		if (!child->hpd_invert)
-			continue;
-
-		switch (child->dvo_port) {
-		case DVO_PORT_DPA:
-		case DVO_PORT_HDMIA:
-			if (port == PORT_A)
-				return true;
-			break;
-		case DVO_PORT_DPB:
-		case DVO_PORT_HDMIB:
-			if (port == PORT_B)
-				return true;
-			break;
-		case DVO_PORT_DPC:
-		case DVO_PORT_HDMIC:
-			if (port == PORT_C)
-				return true;
-			break;
-		default:
-			break;
-		}
-	}
-
-	return false;
+	return child && child->hpd_invert;
 }
 
 /**
  * intel_bios_is_lspcon_present - if LSPCON is attached on %port
- * @dev_priv:	i915 device instance
+ * @i915:	i915 device instance
  * @port:	port to check
  *
  * Return true if LSPCON is present on this port
  */
 bool
-intel_bios_is_lspcon_present(struct drm_i915_private *dev_priv,
-				enum port port)
+intel_bios_is_lspcon_present(const struct drm_i915_private *i915,
+			     enum port port)
 {
-	const struct child_device_config *child;
-	int i;
+	const struct child_device_config *child =
+		i915->vbt.ddi_port_info[port].child;
 
-	if (!HAS_LSPCON(dev_priv))
-		return false;
-
-	for (i = 0; i < dev_priv->vbt.child_dev_num; i++) {
-		child = dev_priv->vbt.child_dev + i;
-
-		if (!child->lspcon)
-			continue;
-
-		switch (child->dvo_port) {
-		case DVO_PORT_DPA:
-		case DVO_PORT_HDMIA:
-			if (port == PORT_A)
-				return true;
-			break;
-		case DVO_PORT_DPB:
-		case DVO_PORT_HDMIB:
-			if (port == PORT_B)
-				return true;
-			break;
-		case DVO_PORT_DPC:
-		case DVO_PORT_HDMIC:
-			if (port == PORT_C)
-				return true;
-			break;
-		case DVO_PORT_DPD:
-		case DVO_PORT_HDMID:
-			if (port == PORT_D)
-				return true;
-			break;
-		case DVO_PORT_DPF:
-		case DVO_PORT_HDMIF:
-			if (port == PORT_F)
-				return true;
-			break;
-		default:
-			break;
-		}
-	}
-
-	return false;
+	return HAS_LSPCON(i915) && child && child->lspcon;
 }
 
 enum aux_ch intel_bios_port_aux_ch(struct drm_i915_private *dev_priv,

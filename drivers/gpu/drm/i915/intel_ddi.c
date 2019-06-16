@@ -615,7 +615,7 @@ skl_get_buf_trans_dp(struct drm_i915_private *dev_priv, int *n_entries)
 static const struct ddi_buf_trans *
 kbl_get_buf_trans_dp(struct drm_i915_private *dev_priv, int *n_entries)
 {
-	if (IS_KBL_ULX(dev_priv) || IS_AML_ULX(dev_priv)) {
+	if (IS_KBL_ULX(dev_priv) || IS_CFL_ULX(dev_priv)) {
 		*n_entries = ARRAY_SIZE(kbl_y_ddi_translations_dp);
 		return kbl_y_ddi_translations_dp;
 	} else if (IS_KBL_ULT(dev_priv) || IS_CFL_ULT(dev_priv)) {
@@ -631,7 +631,8 @@ static const struct ddi_buf_trans *
 skl_get_buf_trans_edp(struct drm_i915_private *dev_priv, int *n_entries)
 {
 	if (dev_priv->vbt.edp.low_vswing) {
-		if (IS_SKL_ULX(dev_priv) || IS_KBL_ULX(dev_priv) || IS_AML_ULX(dev_priv)) {
+		if (IS_SKL_ULX(dev_priv) || IS_KBL_ULX(dev_priv) ||
+		    IS_CFL_ULX(dev_priv)) {
 			*n_entries = ARRAY_SIZE(skl_y_ddi_translations_edp);
 			return skl_y_ddi_translations_edp;
 		} else if (IS_SKL_ULT(dev_priv) || IS_KBL_ULT(dev_priv) ||
@@ -653,7 +654,8 @@ skl_get_buf_trans_edp(struct drm_i915_private *dev_priv, int *n_entries)
 static const struct ddi_buf_trans *
 skl_get_buf_trans_hdmi(struct drm_i915_private *dev_priv, int *n_entries)
 {
-	if (IS_SKL_ULX(dev_priv) || IS_KBL_ULX(dev_priv) || IS_AML_ULX(dev_priv)) {
+	if (IS_SKL_ULX(dev_priv) || IS_KBL_ULX(dev_priv) ||
+	    IS_CFL_ULX(dev_priv)) {
 		*n_entries = ARRAY_SIZE(skl_y_ddi_translations_hdmi);
 		return skl_y_ddi_translations_hdmi;
 	} else {
@@ -1221,19 +1223,30 @@ intel_ddi_get_crtc_encoder(struct intel_crtc *crtc)
 	return ret;
 }
 
-#define LC_FREQ 2700
-
 static int hsw_ddi_calc_wrpll_link(struct drm_i915_private *dev_priv,
 				   i915_reg_t reg)
 {
-	int refclk = LC_FREQ;
+	int refclk;
 	int n, p, r;
 	u32 wrpll;
 
 	wrpll = I915_READ(reg);
-	switch (wrpll & WRPLL_PLL_REF_MASK) {
-	case WRPLL_PLL_SSC:
-	case WRPLL_PLL_NON_SSC:
+	switch (wrpll & WRPLL_REF_MASK) {
+	case WRPLL_REF_SPECIAL_HSW:
+		/*
+		 * muxed-SSC for BDW.
+		 * non-SSC for non-ULT HSW. Check FUSE_STRAP3
+		 * for the non-SSC reference frequency.
+		 */
+		if (IS_HASWELL(dev_priv) && !IS_HSW_ULT(dev_priv)) {
+			if (I915_READ(FUSE_STRAP3) & HSW_REF_CLK_SELECT)
+				refclk = 24;
+			else
+				refclk = 135;
+			break;
+		}
+		/* fall through */
+	case WRPLL_REF_PCH_SSC:
 		/*
 		 * We could calculate spread here, but our checking
 		 * code only cares about 5% accuracy, and spread is a max of
@@ -1241,11 +1254,11 @@ static int hsw_ddi_calc_wrpll_link(struct drm_i915_private *dev_priv,
 		 */
 		refclk = 135;
 		break;
-	case WRPLL_PLL_LCPLL:
-		refclk = LC_FREQ;
+	case WRPLL_REF_LCPLL:
+		refclk = 2700;
 		break;
 	default:
-		WARN(1, "bad wrpll refclk\n");
+		MISSING_CASE(wrpll);
 		return 0;
 	}
 
@@ -1613,12 +1626,12 @@ static void hsw_ddi_clock_get(struct intel_encoder *encoder,
 		link_clock = hsw_ddi_calc_wrpll_link(dev_priv, WRPLL_CTL(1));
 		break;
 	case PORT_CLK_SEL_SPLL:
-		pll = I915_READ(SPLL_CTL) & SPLL_PLL_FREQ_MASK;
-		if (pll == SPLL_PLL_FREQ_810MHz)
+		pll = I915_READ(SPLL_CTL) & SPLL_FREQ_MASK;
+		if (pll == SPLL_FREQ_810MHz)
 			link_clock = 81000;
-		else if (pll == SPLL_PLL_FREQ_1350MHz)
+		else if (pll == SPLL_FREQ_1350MHz)
 			link_clock = 135000;
-		else if (pll == SPLL_PLL_FREQ_2700MHz)
+		else if (pll == SPLL_FREQ_2700MHz)
 			link_clock = 270000;
 		else {
 			WARN(1, "bad spll freq\n");
@@ -3650,7 +3663,7 @@ intel_ddi_post_pll_disable(struct intel_encoder *encoder,
 						  intel_ddi_main_link_aux_domain(dig_port));
 }
 
-void intel_ddi_prepare_link_retrain(struct intel_dp *intel_dp)
+static void intel_ddi_prepare_link_retrain(struct intel_dp *intel_dp)
 {
 	struct intel_digital_port *intel_dig_port = dp_to_dig_port(intel_dp);
 	struct drm_i915_private *dev_priv =
@@ -3844,6 +3857,9 @@ void intel_ddi_get_config(struct intel_encoder *encoder,
 	intel_read_infoframe(encoder, pipe_config,
 			     HDMI_INFOFRAME_TYPE_VENDOR,
 			     &pipe_config->infoframes.hdmi);
+	intel_read_infoframe(encoder, pipe_config,
+			     HDMI_INFOFRAME_TYPE_DRM,
+			     &pipe_config->infoframes.drm);
 }
 
 static enum intel_output_type
@@ -3955,6 +3971,9 @@ intel_ddi_init_dp_connector(struct intel_digital_port *intel_dig_port)
 		return NULL;
 
 	intel_dig_port->dp.output_reg = DDI_BUF_CTL(port);
+	intel_dig_port->dp.prepare_link_retrain =
+		intel_ddi_prepare_link_retrain;
+
 	if (!intel_dp_init_connector(intel_dig_port, connector)) {
 		kfree(connector);
 		return NULL;

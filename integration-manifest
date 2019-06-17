@@ -1,32 +1,12 @@
-drm drm-fixes e14c5873d2a311e1fb78572b3aefa3880100bc9c
-	Merge branch 'drm-fixes-5.2' of git://people.freedesktop.org/~agd5f/linux into drm-fixes
-drm-misc drm-misc-fixes 48eaeb7664c76139438724d520a1ea4a84a3ed92
-	drm: add fallback override/firmware EDID modes workaround
-drm-intel drm-intel-fixes c5cc0bf870cfb80b27899e916b4397ce11c61d96
-	drm/i915/perf: fix whitelist on Gen10+
-drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
-	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
-drm drm-next 2454fcea338ad821a39d471bc7db5a58ba41b742
-	Merge tag 'drm-misc-next-2019-06-14' of git://anongit.freedesktop.org/drm/drm-misc into drm-next
-drm-misc drm-misc-next-fixes b1622cb3be4557fd086831ca7426eafe5f1acc2e
-	drm/bridge: tfp410: fix use of cancel_delayed_work_sync
-drm-intel drm-intel-next-fixes c36beba6b296b3c05a0f29753b04775e5ae23886
-	drm/i915: Seal races between async GPU cancellation, retirement and signaling
-drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
-	Linux 4.14-rc1
-drm-misc drm-misc-next 527e4ca3b6d13c62340d7a8e2ac3d24800f72f4b
-	drm/rockchip: Base adjustments of the mode based on prev adjustments
-drm-intel drm-intel-next-queued f4071997f1de016780ec6b79c63d90cd5886ee83
-	drm/i915/ehl: Update MOCS table for EHL
-drm-intel drm-intel-next c0a74c732568ad347f7b3de281922808dab30504
-	drm/i915: Update DRIVER_DATE to 20190524
-drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
-	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
-sound-upstream for-linus 17d304604a88cf20c8dfd2c95d3decb9c4f8bca4
-	Revert "ALSA: hda/realtek - Improve the headset mic for Acer Aspire laptops"
-sound-upstream for-next 9aa892d2c1a0aa4f4287aa1d922602ca0e9db990
-	ALSA: pci: echoaudio: remove variable which is a constant
-drm-intel topic/core-for-CI b3058c553658db1ca8cc64b7327a000364eebc54
-	mm: Band aid for 5fd4ca2d84b249f0858ce28cf637cf25b61a398f
-drm-misc topic/remove-fbcon-notifiers 1dcff4ae65185e8c0300972f6d8d39d9a9db2bda
-	backlight: simplify lcd notifier
+drm-tip/drm-tip 1114993d8fcd085c9e5125cd1b96aa164be6946e
+	drm-tip: 2019y-06m-16d-13h-37m-52s UTC integration manifest
+vfio-upstream/for-linus 5715c4dd66a315515eedef3fc4cbe1bf4620f009
+	vfio/mdev: Synchronize device create/remove with parent removal
+vfio-upstream/next 15c80c1659f27364734a3938b04d1c67479aa11c
+	vfio: Add Cornelia Huck as reviewer
+origin/gvt-fixes 971afec3a5373f96684ad899579f6a4d51462410
+	drm/i915/gvt: ignore unexpected pvinfo write
+origin/gvt-next fff73e2ef35365803f25990908f921f43afd825c
+	drm/i915/gvt: remove duplicate include of trace.h
+origin/gvt-next-fixes e8f6c88e3d27cb58cacbef8d03025b86989ee50e
+	drm/i915/gvt: Fix an error code in ppgtt_populate_spt_by_guest_entry()

@@ -970,6 +970,8 @@ static int workload_thread(void *priv)
 				workload->ring_id, workload,
 				workload->vgpu->id);
 
+		intel_runtime_pm_get(gvt->dev_priv);
+
 		gvt_dbg_sched("ring id %d will dispatch workload %p\n",
 				workload->ring_id, workload);
 
@@ -999,6 +1001,7 @@ complete:
 			intel_uncore_forcewake_put(&gvt->dev_priv->uncore,
 					FORCEWAKE_ALL);
 
+		intel_runtime_pm_put_unchecked(gvt->dev_priv);
 		if (ret && (vgpu_is_vm_unhealthy(ret)))
 			enter_failsafe_mode(vgpu, GVT_FAILSAFE_GUEST_ERR);
 	}

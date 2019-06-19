@@ -28,10 +28,13 @@
 #include <drm/drm_probe_helper.h>
 
 #include "i915_drv.h"
+#include "intel_atomic.h"
 #include "intel_audio.h"
 #include "intel_connector.h"
 #include "intel_ddi.h"
 #include "intel_dp.h"
+#include "intel_dp_mst.h"
+#include "intel_dpio_phy.h"
 #include "intel_drv.h"
 
 static int intel_dp_mst_compute_link_config(struct intel_encoder *encoder,
@@ -148,9 +151,10 @@ static int intel_dp_mst_compute_config(struct intel_encoder *encoder,
 
 static int
 intel_dp_mst_atomic_check(struct drm_connector *connector,
-			  struct drm_connector_state *new_conn_state)
+			  struct drm_atomic_state *state)
 {
-	struct drm_atomic_state *state = new_conn_state->state;
+	struct drm_connector_state *new_conn_state =
+		drm_atomic_get_new_connector_state(state, connector);
 	struct drm_connector_state *old_conn_state =
 		drm_atomic_get_old_connector_state(state, connector);
 	struct intel_connector *intel_connector =
@@ -160,7 +164,7 @@ intel_dp_mst_atomic_check(struct drm_connector *connector,
 	struct drm_dp_mst_topology_mgr *mgr;
 	int ret;
 
-	ret = intel_digital_connector_atomic_check(connector, new_conn_state);
+	ret = intel_digital_connector_atomic_check(connector, state);
 	if (ret)
 		return ret;
 

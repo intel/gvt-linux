@@ -24,7 +24,7 @@
  */
 
 #include <linux/firmware.h>
-#include <drm/drmP.h>
+
 #include "amdgpu.h"
 #include "amdgpu_psp.h"
 #include "amdgpu_ucode.h"
@@ -286,6 +286,34 @@ static int psp_asd_load(struct psp_context *psp)
 
 	kfree(cmd);
 
+	return ret;
+}
+
+static void psp_prep_reg_prog_cmd_buf(struct psp_gfx_cmd_resp *cmd,
+		uint32_t id, uint32_t value)
+{
+	cmd->cmd_id = GFX_CMD_ID_PROG_REG;
+	cmd->cmd.cmd_setup_reg_prog.reg_value = value;
+	cmd->cmd.cmd_setup_reg_prog.reg_id = id;
+}
+
+int psp_reg_program(struct psp_context *psp, enum psp_reg_prog_id reg,
+		uint32_t value)
+{
+	struct psp_gfx_cmd_resp *cmd = NULL;
+	int ret = 0;
+
+	if (reg >= PSP_REG_LAST)
+		return -EINVAL;
+
+	cmd = kzalloc(sizeof(struct psp_gfx_cmd_resp), GFP_KERNEL);
+	if (!cmd)
+		return -ENOMEM;
+
+	psp_prep_reg_prog_cmd_buf(cmd, reg, value);
+	ret = psp_cmd_submit_buf(psp, NULL, cmd, psp->fence_buf_mc_addr);
+
+	kfree(cmd);
 	return ret;
 }
 

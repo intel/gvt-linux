@@ -1,0 +1,32 @@
+drm drm-fixes e14c5873d2a311e1fb78572b3aefa3880100bc9c
+	Merge branch 'drm-fixes-5.2' of git://people.freedesktop.org/~agd5f/linux into drm-fixes
+drm-misc drm-misc-fixes 74b67efa8d7b4f90137f0ab9a80dd319da050350
+	drm: return -EFAULT if copy_to_user() fails
+drm-intel drm-intel-fixes 9e0babf2c06c73cda2c0cd37a1653d823adb40ec
+	Linux 5.2-rc5
+drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
+	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
+drm drm-next 2454fcea338ad821a39d471bc7db5a58ba41b742
+	Merge tag 'drm-misc-next-2019-06-14' of git://anongit.freedesktop.org/drm/drm-misc into drm-next
+drm-misc drm-misc-next-fixes b1622cb3be4557fd086831ca7426eafe5f1acc2e
+	drm/bridge: tfp410: fix use of cancel_delayed_work_sync
+drm-intel drm-intel-next-fixes c36beba6b296b3c05a0f29753b04775e5ae23886
+	drm/i915: Seal races between async GPU cancellation, retirement and signaling
+drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
+	Linux 4.14-rc1
+drm-misc drm-misc-next c936843f06ee4acfe91c2ef2909a2b46eb63c14a
+	drm/vkms: add crc sources list
+drm-intel drm-intel-next-queued 381f8a20d2f6770ee39f3280a35e19c0c9b2af1b
+	drm/i915/psr: Force manual PSR exit in older gens
+drm-intel drm-intel-next c0a74c732568ad347f7b3de281922808dab30504
+	drm/i915: Update DRIVER_DATE to 20190524
+drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
+	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
+sound-upstream for-linus 17d304604a88cf20c8dfd2c95d3decb9c4f8bca4
+	Revert "ALSA: hda/realtek - Improve the headset mic for Acer Aspire laptops"
+sound-upstream for-next 15d472ecc510e20e42337c8205fa3987329e488d
+	ALSA: firewire-motu: code refactoring for pcm.hw_params/hw_free callbacks
+drm-intel topic/core-for-CI bafa159ec71c0f4091807992727aa48434eb095c
+	mm: Band aid for 5fd4ca2d84b249f0858ce28cf637cf25b61a398f
+drm-misc topic/remove-fbcon-notifiers 1dcff4ae65185e8c0300972f6d8d39d9a9db2bda
+	backlight: simplify lcd notifier

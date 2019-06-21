@@ -900,7 +900,7 @@ static int i915_driver_init_early(struct drm_i915_private *dev_priv)
 
 	intel_device_info_subplatform_init(dev_priv);
 
-	intel_uncore_init_early(&dev_priv->uncore);
+	intel_uncore_init_early(&dev_priv->uncore, dev_priv);
 
 	spin_lock_init(&dev_priv->irq_lock);
 	spin_lock_init(&dev_priv->gpu_error.lock);
@@ -1629,7 +1629,8 @@ static int i915_driver_init_hw(struct drm_i915_private *dev_priv)
 	pm_qos_add_request(&dev_priv->pm_qos, PM_QOS_CPU_DMA_LATENCY,
 			   PM_QOS_DEFAULT_VALUE);
 
-	intel_uncore_sanitize(dev_priv);
+	/* BIOS often leaves RC6 enabled, but disable it for hw init */
+	intel_sanitize_gt_powersave(dev_priv);
 
 	intel_gt_init_workarounds(dev_priv);
 
@@ -1898,6 +1899,8 @@ int i915_driver_load(struct pci_dev *pdev, const struct pci_device_id *ent)
 
 	disable_rpm_wakeref_asserts(&dev_priv->runtime_pm);
 
+	i915_detect_vgpu(dev_priv);
+
 	ret = i915_driver_init_mmio(dev_priv);
 	if (ret < 0)
 		goto out_runtime_pm_put;
@@ -1921,6 +1924,9 @@ int i915_driver_load(struct pci_dev *pdev, const struct pci_device_id *ent)
 out_cleanup_hw:
 	i915_driver_cleanup_hw(dev_priv);
 	i915_ggtt_cleanup_hw(dev_priv);
+
+	/* Paranoia: make sure we have disabled everything before we exit. */
+	intel_sanitize_gt_powersave(dev_priv);
 out_cleanup_mmio:
 	i915_driver_cleanup_mmio(dev_priv);
 out_runtime_pm_put:
@@ -1991,6 +1997,10 @@ static void i915_driver_release(struct drm_device *dev)
 	i915_gem_fini(dev_priv);
 
 	i915_ggtt_cleanup_hw(dev_priv);
+
+	/* Paranoia: make sure we have disabled everything before we exit. */
+	intel_sanitize_gt_powersave(dev_priv);
+
 	i915_driver_cleanup_mmio(dev_priv);
 
 	enable_rpm_wakeref_asserts(rpm);
@@ -2357,7 +2367,7 @@ static int i915_drm_resume_early(struct drm_device *dev)
 		hsw_disable_pc8(dev_priv);
 	}
 
-	intel_uncore_sanitize(dev_priv);
+	intel_sanitize_gt_powersave(dev_priv);
 
 	intel_power_domains_resume(dev_priv);
 

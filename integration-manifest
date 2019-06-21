@@ -1,32 +1,12 @@
-drm drm-fixes 5eab9cf87b6c261f4e2f6c7623171cc2f5ea1a9c
-	Merge tag 'imx-drm-fixes-2019-06-20' of git://git.pengutronix.de/git/pza/linux into drm-fixes
-drm-misc drm-misc-fixes 74b67efa8d7b4f90137f0ab9a80dd319da050350
-	drm: return -EFAULT if copy_to_user() fails
-drm-intel drm-intel-fixes 475df5d0f3eb2d031e4505f84d8fba75baaf2e80
-	drm/i915: Don't clobber M/N values during fastset check
-drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
-	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
-drm drm-next 417f2544f48c19f5958790658c4aa30b0986647f
-	Merge tag 'drm-intel-next-2019-06-19' of git://anongit.freedesktop.org/drm/drm-intel into drm-next
-drm-misc drm-misc-next-fixes b1622cb3be4557fd086831ca7426eafe5f1acc2e
-	drm/bridge: tfp410: fix use of cancel_delayed_work_sync
-drm-intel drm-intel-next-fixes c36beba6b296b3c05a0f29753b04775e5ae23886
-	drm/i915: Seal races between async GPU cancellation, retirement and signaling
-drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
-	Linux 4.14-rc1
-drm-misc drm-misc-next 836334fd747595331dcdc7709b447ad8134db693
-	drm/todo: Update drm_gem_object_funcs todo even more
-drm-intel drm-intel-next-queued b32fa811156328aea5a3c2ff05cc096490382456
-	drm/i915/gtt: Defer address space cleanup to an RCU worker
-drm-intel drm-intel-next 1ee008f240ad5401f683ec3b79a2e3b044a82a89
-	drm/i915: Update DRIVER_DATE to 20190619
-drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
-	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
-sound-upstream for-linus 17d304604a88cf20c8dfd2c95d3decb9c4f8bca4
-	Revert "ALSA: hda/realtek - Improve the headset mic for Acer Aspire laptops"
-sound-upstream for-next 15d472ecc510e20e42337c8205fa3987329e488d
-	ALSA: firewire-motu: code refactoring for pcm.hw_params/hw_free callbacks
-drm-intel topic/core-for-CI bafa159ec71c0f4091807992727aa48434eb095c
-	mm: Band aid for 5fd4ca2d84b249f0858ce28cf637cf25b61a398f
-drm-misc topic/remove-fbcon-notifiers 2443091408c267f84b40025183490486b79ee2cd
-	fbcon: Export fbcon_update_vcs
+drm-tip/drm-tip 6c42b26a62077226edcc8014ee5bca0366ae133b
+	drm-tip: 2019y-06m-21d-04h-22m-53s UTC integration manifest
+vfio-upstream/for-linus 5715c4dd66a315515eedef3fc4cbe1bf4620f009
+	vfio/mdev: Synchronize device create/remove with parent removal
+vfio-upstream/next 15c80c1659f27364734a3938b04d1c67479aa11c
+	vfio: Add Cornelia Huck as reviewer
+origin/gvt-fixes 971afec3a5373f96684ad899579f6a4d51462410
+	drm/i915/gvt: ignore unexpected pvinfo write
+origin/gvt-next 273606207adcdcd6511b923ba3dc24bc6ab805e8
+	drm/i915/gvt: grab runtime pm first for forcewake use
+origin/gvt-next-fixes e8f6c88e3d27cb58cacbef8d03025b86989ee50e
+	drm/i915/gvt: Fix an error code in ppgtt_populate_spt_by_guest_entry()

@@ -412,6 +412,10 @@ static void emulate_vblank_on_pipe(struct intel_vgpu *vgpu, int pipe)
 
 	if (pipe_is_enabled(vgpu, pipe)) {
 		vgpu_vreg_t(vgpu, PIPE_FRMCOUNT_G4X(pipe))++;
+		if (vgpu->vdev.vblank_trigger &&
+		    !(vgpu->vdev.display_event_mask & DISPLAY_VBLANK_EVENT))
+			eventfd_signal(vgpu->vdev.vblank_trigger, 1);
+
 		intel_vgpu_trigger_virtual_event(vgpu, vblank_event[pipe]);
 	}
 }

@@ -78,6 +78,13 @@ struct vfio_region {
 	void				*data;
 };
 
+struct vfio_irq {
+	u32	type;
+	u32	subtype;
+	u32	flags;
+	u32	count;
+};
+
 struct vfio_edid_region {
 	struct vfio_region_gfx_edid vfio_edid_regs;
 	void *edid_blob;
@@ -633,6 +640,37 @@ static int kvmgt_set_edid(void *p_vgpu, int port_num)
 			VFIO_REGION_INFO_FLAG_CAPS, base);
 
 	return ret;
+}
+
+static int intel_vgpu_register_irq(struct intel_vgpu *vgpu,
+		unsigned int type, unsigned int subtype, u32 count, u32 flags)
+{
+	struct vfio_irq *irq;
+
+	irq = krealloc(vgpu->vdev.irq,
+			(vgpu->vdev.num_irqs + 1) * sizeof(*irq),
+			GFP_KERNEL);
+	if (!irq)
+		return -ENOMEM;
+
+	vgpu->vdev.irq = irq;
+	vgpu->vdev.irq[vgpu->vdev.num_irqs].type = type;
+	vgpu->vdev.irq[vgpu->vdev.num_irqs].subtype = subtype;
+	vgpu->vdev.irq[vgpu->vdev.num_irqs].count = count;
+	vgpu->vdev.irq[vgpu->vdev.num_irqs].flags = flags;
+	vgpu->vdev.num_irqs++;
+	return 0;
+}
+
+static int kvmgt_register_display_irq(void *p_vgpu)
+{
+	struct intel_vgpu *vgpu = (struct intel_vgpu *)p_vgpu;
+
+	intel_vgpu_register_irq(vgpu, VFIO_IRQ_TYPE_GFX,
+				VFIO_IRQ_SUBTYPE_GFX_DISPLAY_IRQ,
+				2,
+				VFIO_IRQ_INFO_MASKABLE | VFIO_IRQ_INFO_EVENTFD);
+	return 0;
 }
 
 static void kvmgt_put_vfio_device(void *vgpu)
@@ -1838,6 +1876,10 @@ static void kvmgt_detach_vgpu(void *p_vgpu)
 	vgpu->vdev.num_regions = 0;
 	kfree(vgpu->vdev.region);
 	vgpu->vdev.region = NULL;
+
+	vgpu->vdev.num_irqs = 0;
+	kfree(vgpu->vdev.irq);
+	vgpu->vdev.irq = NULL;
 }
 
 static int kvmgt_inject_msi(unsigned long handle, u32 addr, u16 data)
@@ -2039,6 +2081,7 @@ static struct intel_gvt_mpt kvmgt_mpt = {
 	.dma_unmap_guest_page = kvmgt_dma_unmap_guest_page,
 	.set_opregion = kvmgt_set_opregion,
 	.set_edid = kvmgt_set_edid,
+	.register_display_irq = kvmgt_register_display_irq,
 	.get_vfio_device = kvmgt_get_vfio_device,
 	.put_vfio_device = kvmgt_put_vfio_device,
 	.is_valid_gfn = kvmgt_is_valid_gfn,

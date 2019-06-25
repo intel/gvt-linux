@@ -331,6 +331,23 @@ static inline int intel_gvt_hypervisor_set_edid(struct intel_vgpu *vgpu,
 }
 
 /**
+ * intel_gvt_hypervisor_set_irq - register vgpu specific irq
+ * @vgpu: a vGPU
+ * @port_num: display port number
+ *
+ * Returns:
+ * Zero on success, negative error code if failed.
+ */
+static inline int intel_gvt_hypervisor_register_display_irq(
+						struct intel_vgpu *vgpu)
+{
+	if (!intel_gvt_host.mpt->register_display_irq)
+		return 0;
+
+	return intel_gvt_host.mpt->register_display_irq(vgpu);
+}
+
+/**
  * intel_gvt_hypervisor_get_vfio_device - increase vfio device ref count
  * @vgpu: a vGPU
  *

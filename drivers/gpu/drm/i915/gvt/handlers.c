@@ -758,6 +758,10 @@ static int pri_surf_mmio_write(struct intel_vgpu *vgpu, unsigned int offset,
 
 	vgpu_vreg_t(vgpu, PIPE_FLIPCOUNT_G4X(pipe))++;
 
+	if (vgpu->vdev.pri_flip_trigger &&
+	    !(vgpu->vdev.display_event_mask & DISPLAY_PRI_FLIP_EVENT))
+		eventfd_signal(vgpu->vdev.pri_flip_trigger, 1);
+
 	if (vgpu_vreg_t(vgpu, DSPCNTR(pipe)) & PLANE_CTL_ASYNC_FLIP)
 		intel_vgpu_trigger_virtual_event(vgpu, event);
 	else
@@ -765,6 +769,19 @@ static int pri_surf_mmio_write(struct intel_vgpu *vgpu, unsigned int offset,
 
 	return 0;
 }
+
+static int cur_surf_mmio_write(struct intel_vgpu *vgpu, unsigned int offset,
+               void *p_data, unsigned int bytes)
+{
+       write_vreg(vgpu, offset, p_data, bytes);
+
+       if (vgpu->vdev.cur_flip_trigger &&
+	       !(vgpu->vdev.display_event_mask & DISPLAY_CUR_FLIP_EVENT))
+               eventfd_signal(vgpu->vdev.cur_flip_trigger, 1);
+
+       return 0;
+}
+
 
 #define SPRSURF_TO_PIPE(offset) \
 	calc_index(offset, _SPRA_SURF, _SPRB_SURF, 0, SPRSURF(PIPE_C))
@@ -1969,9 +1986,9 @@ static int init_generic_mmio_info(struct intel_gvt *gvt)
 	MMIO_D(CURPOS(PIPE_B), D_ALL);
 	MMIO_D(CURPOS(PIPE_C), D_ALL);
 
-	MMIO_D(CURBASE(PIPE_A), D_ALL);
-	MMIO_D(CURBASE(PIPE_B), D_ALL);
-	MMIO_D(CURBASE(PIPE_C), D_ALL);
+	MMIO_DH(CURBASE(PIPE_A), D_ALL, NULL, cur_surf_mmio_write);
+	MMIO_DH(CURBASE(PIPE_B), D_ALL, NULL, cur_surf_mmio_write);
+	MMIO_DH(CURBASE(PIPE_C), D_ALL, NULL, cur_surf_mmio_write);
 
 	MMIO_D(CUR_FBC_CTL(PIPE_A), D_ALL);
 	MMIO_D(CUR_FBC_CTL(PIPE_B), D_ALL);

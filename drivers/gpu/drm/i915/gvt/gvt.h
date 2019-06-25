@@ -165,6 +165,9 @@ struct intel_vgpu_submission {
 	bool active;
 };
 
+#define DISPLAY_PRI_FLIP_EVENT	(1 << 0)
+#define DISPLAY_CUR_FLIP_EVENT	(1 << 1)
+
 struct intel_vgpu {
 	struct intel_gvt *gvt;
 	struct mutex vgpu_lock;
@@ -205,6 +208,9 @@ struct intel_vgpu {
 		int num_irqs;
 		struct eventfd_ctx *intx_trigger;
 		struct eventfd_ctx *msi_trigger;
+		struct eventfd_ctx *pri_flip_trigger;
+		struct eventfd_ctx *cur_flip_trigger;
+		u32 display_event_mask;
 
 		/*
 		 * Two caches are used to avoid mapping duplicated pages (eg.

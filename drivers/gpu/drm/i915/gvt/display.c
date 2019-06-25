@@ -387,6 +387,8 @@ void intel_gvt_check_vblank_emulation(struct intel_gvt *gvt)
 	mutex_unlock(&gvt->lock);
 }
 
+#define PAGEFLIP_INC_COUNT 5
+
 static void emulate_vblank_on_pipe(struct intel_vgpu *vgpu, int pipe)
 {
 	struct drm_i915_private *dev_priv = vgpu->gvt->dev_priv;
@@ -396,7 +398,10 @@ static void emulate_vblank_on_pipe(struct intel_vgpu *vgpu, int pipe)
 		[PIPE_B] = PIPE_B_VBLANK,
 		[PIPE_C] = PIPE_C_VBLANK,
 	};
+	int pri_flip_event = SKL_FLIP_EVENT(pipe, PLANE_PRIMARY);
 	int event;
+	u64 eventfd_signal_val = 0;
+	static int pageflip_count = 0;
 
 	if (pipe < PIPE_A || pipe > PIPE_C)
 		return;
@@ -407,11 +412,27 @@ static void emulate_vblank_on_pipe(struct intel_vgpu *vgpu, int pipe)
 		if (!pipe_is_enabled(vgpu, pipe))
 			continue;
 
+		if (event == pri_flip_event) {
+			eventfd_signal_val += DISPLAY_CON_REFRESH_EVENT_INC;
+			pageflip_count += PAGEFLIP_INC_COUNT;
+		}
+
 		intel_vgpu_trigger_virtual_event(vgpu, event);
 	}
 
+	if (--pageflip_count < 0) {
+		eventfd_signal_val += DISPLAY_CON_REFRESH_EVENT_INC;
+		pageflip_count = 0;
+	}
+
+	if (vgpu->vdev.vblank_trigger && !(vgpu->vdev.display_event_mask
+		& (DISPLAY_CON_REFRESH_EVENT | DISPLAY_CUR_REFRESH_EVENT)) &&
+		eventfd_signal_val)
+		eventfd_signal(vgpu->vdev.vblank_trigger, eventfd_signal_val);
+
 	if (pipe_is_enabled(vgpu, pipe)) {
 		vgpu_vreg_t(vgpu, PIPE_FRMCOUNT_G4X(pipe))++;
+
 		intel_vgpu_trigger_virtual_event(vgpu, vblank_event[pipe]);
 	}
 }

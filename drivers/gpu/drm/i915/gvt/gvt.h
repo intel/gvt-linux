@@ -165,6 +165,11 @@ struct intel_vgpu_submission {
 	bool active;
 };
 
+#define DISPLAY_CON_REFRESH_EVENT	(1 << 0)
+#define DISPLAY_CON_REFRESH_EVENT_INC	(1UL << 56)
+#define DISPLAY_CUR_REFRESH_EVENT	(1 << 1)
+#define DISPLAY_CUR_REFRESH_EVENT_INC	(1UL << 48)
+
 struct intel_vgpu {
 	struct intel_gvt *gvt;
 	struct mutex vgpu_lock;
@@ -205,6 +210,8 @@ struct intel_vgpu {
 		int num_irqs;
 		struct eventfd_ctx *intx_trigger;
 		struct eventfd_ctx *msi_trigger;
+		struct eventfd_ctx *vblank_trigger;
+		u32 display_event_mask;
 
 		/*
 		 * Two caches are used to avoid mapping duplicated pages (eg.

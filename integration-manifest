@@ -1,0 +1,32 @@
+drm drm-fixes 665d6d4e32313a7952bb3339647f74c3a6b0d78a
+	Merge tag 'drm-misc-fixes-2019-06-26' of git://anongit.freedesktop.org/drm/drm-misc into drm-fixes
+drm-misc drm-misc-fixes 41de4be6f6efa4132b29af51158cd672d93f2543
+	drm/virtio: move drm_connector_update_edid_property() call
+drm-intel drm-intel-fixes 4b972a01a7da614b4796475f933094751a295a2f
+	Linux 5.2-rc6
+drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
+	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
+drm drm-next 14808a12bdbdc21143eba70ea07830197b3a04ff
+	Merge tag 'drm-next-5.3-2019-06-25' of git://people.freedesktop.org/~agd5f/linux into drm-next
+drm-misc drm-misc-next-fixes daed277e4d5ace0883d30b9be245d35c46289f49
+	Merge tag 'topic/remove-fbcon-notifiers-2019-06-26' into drm-misc-next-fixes
+drm-intel drm-intel-next-fixes c36beba6b296b3c05a0f29753b04775e5ae23886
+	drm/i915: Seal races between async GPU cancellation, retirement and signaling
+drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
+	Linux 4.14-rc1
+drm-misc drm-misc-next e5ff5344f4a44cf9f4606c5c2754d913f06aaae1
+	drm/vkms: No need for ->pages_lock in crc work anymore
+drm-intel drm-intel-next-queued 5ed7a0cf339463d29163bdb828913d9a3f8c8c9e
+	drm/i915: Move OA files to separate folder
+drm-intel drm-intel-next 1ee008f240ad5401f683ec3b79a2e3b044a82a89
+	drm/i915: Update DRIVER_DATE to 20190619
+drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
+	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
+sound-upstream for-linus 503d90b30602a3295978e46d844ccc8167400fe6
+	ALSA: hda/realtek: Add quirks for several Clevo notebook barebones
+sound-upstream for-next 801ebf1043ae7b182588554cc9b9ad3c14bc2ab5
+	ALSA: usb-audio: Sanity checks for each pipe and EP types
+drm-intel topic/core-for-CI 55985b989484384900a49d45be6265d6a359a1b4
+	mm: Band aid for 5fd4ca2d84b249f0858ce28cf637cf25b61a398f
+drm-misc topic/remove-fbcon-notifiers 6116b892bd4fd0ddc5f30566a556218bb2e1a9b6
+	vga_switcheroo: Depend upon fbcon being built-in, if enabled

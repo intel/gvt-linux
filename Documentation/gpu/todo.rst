@@ -162,7 +162,7 @@ Clean up mmap forwarding
 
 A lot of drivers forward gem mmap calls to dma-buf mmap for imported buffers.
 And also a lot of them forward dma-buf mmap to the gem mmap implementations.
-Would be great to refactor this all into a set of small common helpers.
+There's drm_gem_prime_mmap() for this now, but still needs to be rolled out.
 
 Contact: Daniel Vetter
 
@@ -214,13 +214,6 @@ is never used. Switching to idr_init_base() for these would make the idr more
 efficient.
 
 Contact: Daniel Vetter
-
-Defaults for .gem_prime_import and export
------------------------------------------
-
-Most drivers don't need to set drm_driver->gem_prime_import and
-->gem_prime_export now that drm_gem_prime_import() and drm_gem_prime_export()
-are the default.
 
 struct drm_gem_object_funcs
 ---------------------------
@@ -393,6 +386,9 @@ There's a bunch of issues with it:
   this (together with the drm_minor->drm_device move) would allow us to remove
   debugfs_init.
 
+- Drop the return code and error checking from all debugfs functions. Greg KH is
+  working on this already.
+
 Contact: Daniel Vetter
 
 KMS cleanups
@@ -440,6 +436,19 @@ fit the available time.
 
 Contact: Daniel Vetter
 
+Backlight Refactoring
+---------------------
+
+Backlight drivers have a triple enable/disable state, which is a bit overkill.
+Plan to fix this:
+
+1. Roll out backlight_enable() and backlight_disable() helpers everywhere. This
+   has started already.
+2. In all, only look at one of the three status bits set by the above helpers.
+3. Remove the other two status bits.
+
+Contact: Daniel Vetter
+
 Driver Specific
 ===============
 
@@ -448,20 +457,6 @@ tinydrm
 
 Tinydrm is the helper driver for really simple fb drivers. The goal is to make
 those drivers as simple as possible, so lots of room for refactoring:
-
-- backlight helpers, probably best to put them into a new drm_backlight.c.
-  This is because drivers/video is de-facto unmaintained. We could also
-  move drivers/video/backlight to drivers/gpu/backlight and take it all
-  over within drm-misc, but that's more work. Backlight helpers require a fair
-  bit of reworking and refactoring. A simple example is the enabling of a backlight.
-  Tinydrm has helpers for this. It would be good if other drivers can also use the
-  helper. However, there are various cases we need to consider i.e different
-  drivers seem to have different ways of enabling/disabling a backlight.
-  We also need to consider the backlight drivers (like gpio_backlight). The situation
-  is further complicated by the fact that the backlight is tied to fbdev
-  via fb_notifier_callback() which has complicated logic. For further details, refer
-  to the following discussion thread:
-  https://groups.google.com/forum/#!topic/outreachy-kernel/8rBe30lwtdA
 
 - spi helpers, probably best put into spi core/helper code. Thierry said
   the spi maintainer is fast&reactive, so shouldn't be a big issue.

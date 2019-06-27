@@ -72,6 +72,7 @@
 
 #include "gt/intel_lrc.h"
 #include "gt/intel_engine.h"
+#include "gt/intel_gt_types.h"
 #include "gt/intel_workarounds.h"
 
 #include "intel_device_info.h"
@@ -88,7 +89,7 @@
 #include "i915_gpu_error.h"
 #include "i915_request.h"
 #include "i915_scheduler.h"
-#include "i915_timeline.h"
+#include "gt/intel_timeline.h"
 #include "i915_vma.h"
 
 #include "intel_gvt.h"
@@ -1824,38 +1825,7 @@ struct drm_i915_private {
 	} perf;
 
 	/* Abstract the submission mechanism (legacy ringbuffer or execlists) away */
-	struct {
-		struct i915_gt_timelines {
-			struct mutex mutex; /* protects list, tainted by GPU */
-			struct list_head active_list;
-
-			/* Pack multiple timelines' seqnos into the same page */
-			spinlock_t hwsp_lock;
-			struct list_head hwsp_free_list;
-		} timelines;
-
-		struct list_head active_rings;
-
-		struct intel_wakeref wakeref;
-
-		struct list_head closed_vma;
-		spinlock_t closed_lock; /* guards the list of closed_vma */
-
-		/**
-		 * Is the GPU currently considered idle, or busy executing
-		 * userspace requests? Whilst idle, we allow runtime power
-		 * management to power down the hardware and display clocks.
-		 * In order to reduce the effect on performance, there
-		 * is a slight delay before we do so.
-		 */
-		intel_wakeref_t awake;
-
-		struct blocking_notifier_head pm_notifications;
-
-		ktime_t last_init_time;
-
-		struct i915_vma *scratch;
-	} gt;
+	struct intel_gt gt;
 
 	struct {
 		struct notifier_block pm_notifier;
@@ -1948,11 +1918,6 @@ static inline struct drm_i915_private *guc_to_i915(struct intel_guc *guc)
 static inline struct drm_i915_private *huc_to_i915(struct intel_huc *huc)
 {
 	return container_of(huc, struct drm_i915_private, huc);
-}
-
-static inline struct drm_i915_private *uncore_to_i915(struct intel_uncore *uncore)
-{
-	return container_of(uncore, struct drm_i915_private, uncore);
 }
 
 /* Simple iterator over all initialised engines */
@@ -2358,6 +2323,7 @@ IS_SUBPLATFORM(const struct drm_i915_private *i915,
 #define INTEL_PCH_CMP_DEVICE_ID_TYPE		0x0280
 #define INTEL_PCH_ICP_DEVICE_ID_TYPE		0x3480
 #define INTEL_PCH_MCC_DEVICE_ID_TYPE		0x4B00
+#define INTEL_PCH_MCC2_DEVICE_ID_TYPE		0x3880
 #define INTEL_PCH_P2X_DEVICE_ID_TYPE		0x7100
 #define INTEL_PCH_P3X_DEVICE_ID_TYPE		0x7000
 #define INTEL_PCH_QEMU_DEVICE_ID_TYPE		0x2900 /* qemu q35 has 2918 */
@@ -2572,7 +2538,6 @@ bool i915_gem_unset_wedged(struct drm_i915_private *dev_priv);
 void i915_gem_init_mmio(struct drm_i915_private *i915);
 int __must_check i915_gem_init(struct drm_i915_private *dev_priv);
 int __must_check i915_gem_init_hw(struct drm_i915_private *dev_priv);
-void i915_gem_init_swizzling(struct drm_i915_private *dev_priv);
 void i915_gem_fini_hw(struct drm_i915_private *dev_priv);
 void i915_gem_fini(struct drm_i915_private *dev_priv);
 int i915_gem_wait_for_idle(struct drm_i915_private *dev_priv,
@@ -2633,16 +2598,6 @@ int __must_check i915_gem_evict_for_node(struct i915_address_space *vm,
 					 struct drm_mm_node *node,
 					 unsigned int flags);
 int i915_gem_evict_vm(struct i915_address_space *vm);
-
-void i915_gem_flush_ggtt_writes(struct drm_i915_private *dev_priv);
-
-/* belongs in i915_gem_gtt.h */
-static inline void i915_gem_chipset_flush(struct drm_i915_private *dev_priv)
-{
-	wmb();
-	if (INTEL_GEN(dev_priv) < 6)
-		intel_gtt_chipset_flush();
-}
 
 /* i915_gem_stolen.c */
 int i915_gem_stolen_insert_node(struct drm_i915_private *dev_priv,
@@ -2826,11 +2781,6 @@ static inline int intel_hws_csb_write_index(struct drm_i915_private *i915)
 		return CNL_HWS_CSB_WRITE_INDEX;
 	else
 		return I915_HWS_CSB_WRITE_INDEX;
-}
-
-static inline u32 i915_scratch_offset(const struct drm_i915_private *i915)
-{
-	return i915_ggtt_offset(i915->gt.scratch);
 }
 
 static inline enum i915_map_type

@@ -23,7 +23,7 @@
  */
 
 #include "display/intel_frontbuffer.h"
-
+#include "gt/intel_gt.h"
 #include "i915_drv.h"
 #include "i915_gem_clflush.h"
 #include "i915_gem_context.h"
@@ -160,7 +160,6 @@ static void __i915_gem_free_objects(struct drm_i915_private *i915,
 
 		mutex_lock(&i915->drm.struct_mutex);
 
-		GEM_BUG_ON(i915_gem_object_is_active(obj));
 		list_for_each_entry_safe(vma, vn, &obj->vma.list, obj_link) {
 			GEM_BUG_ON(i915_vma_is_active(vma));
 			vma->flags &= ~I915_VMA_PIN_MASK;
@@ -319,7 +318,6 @@ void
 i915_gem_object_flush_write_domain(struct drm_i915_gem_object *obj,
 				   unsigned int flush_domains)
 {
-	struct drm_i915_private *dev_priv = to_i915(obj->base.dev);
 	struct i915_vma *vma;
 
 	assert_object_held(obj);
@@ -329,7 +327,8 @@ i915_gem_object_flush_write_domain(struct drm_i915_gem_object *obj,
 
 	switch (obj->write_domain) {
 	case I915_GEM_DOMAIN_GTT:
-		i915_gem_flush_ggtt_writes(dev_priv);
+		for_each_ggtt_vma(vma, obj)
+			intel_gt_flush_ggtt_writes(vma->vm->gt);
 
 		intel_fb_obj_flush(obj,
 				   fb_write_origin(obj, I915_GEM_DOMAIN_GTT));
@@ -340,6 +339,7 @@ i915_gem_object_flush_write_domain(struct drm_i915_gem_object *obj,
 
 			i915_vma_unset_ggtt_write(vma);
 		}
+
 		break;
 
 	case I915_GEM_DOMAIN_WC:

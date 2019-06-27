@@ -25,6 +25,7 @@
 #include <linux/kthread.h>
 
 #include "gem/i915_gem_context.h"
+#include "gt/intel_gt.h"
 #include "intel_engine_pm.h"
 
 #include "i915_selftest.h"
@@ -43,6 +44,7 @@
 
 struct hang {
 	struct drm_i915_private *i915;
+	struct intel_gt *gt;
 	struct drm_i915_gem_object *hws;
 	struct drm_i915_gem_object *obj;
 	struct i915_gem_context *ctx;
@@ -128,34 +130,30 @@ static struct i915_request *
 hang_create_request(struct hang *h, struct intel_engine_cs *engine)
 {
 	struct drm_i915_private *i915 = h->i915;
-	struct i915_address_space *vm = h->ctx->vm ?: &i915->ggtt.vm;
+	struct i915_address_space *vm = h->ctx->vm ?: &engine->gt->ggtt->vm;
+	struct drm_i915_gem_object *obj;
 	struct i915_request *rq = NULL;
 	struct i915_vma *hws, *vma;
 	unsigned int flags;
+	void *vaddr;
 	u32 *batch;
 	int err;
 
-	if (i915_gem_object_is_active(h->obj)) {
-		struct drm_i915_gem_object *obj;
-		void *vaddr;
+	obj = i915_gem_object_create_internal(i915, PAGE_SIZE);
+	if (IS_ERR(obj))
+		return ERR_CAST(obj);
 
-		obj = i915_gem_object_create_internal(h->i915, PAGE_SIZE);
-		if (IS_ERR(obj))
-			return ERR_CAST(obj);
-
-		vaddr = i915_gem_object_pin_map(obj,
-						i915_coherent_map_type(h->i915));
-		if (IS_ERR(vaddr)) {
-			i915_gem_object_put(obj);
-			return ERR_CAST(vaddr);
-		}
-
-		i915_gem_object_unpin_map(h->obj);
-		i915_gem_object_put(h->obj);
-
-		h->obj = obj;
-		h->batch = vaddr;
+	vaddr = i915_gem_object_pin_map(obj, i915_coherent_map_type(i915));
+	if (IS_ERR(vaddr)) {
+		i915_gem_object_put(obj);
+		return ERR_CAST(vaddr);
 	}
+
+	i915_gem_object_unpin_map(h->obj);
+	i915_gem_object_put(h->obj);
+
+	h->obj = obj;
+	h->batch = vaddr;
 
 	vma = i915_vma_instance(h->obj, vm, NULL);
 	if (IS_ERR(vma))
@@ -242,7 +240,7 @@ hang_create_request(struct hang *h, struct intel_engine_cs *engine)
 		*batch++ = lower_32_bits(vma->node.start);
 	}
 	*batch++ = MI_BATCH_BUFFER_END; /* not reached */
-	i915_gem_chipset_flush(h->i915);
+	intel_gt_chipset_flush(engine->gt);
 
 	if (rq->engine->emit_init_breadcrumb) {
 		err = rq->engine->emit_init_breadcrumb(rq);
@@ -251,7 +249,7 @@ hang_create_request(struct hang *h, struct intel_engine_cs *engine)
 	}
 
 	flags = 0;
-	if (INTEL_GEN(vm->i915) <= 5)
+	if (INTEL_GEN(i915) <= 5)
 		flags |= I915_DISPATCH_SECURE;
 
 	err = rq->engine->emit_bb_start(rq, vma->node.start, PAGE_SIZE, flags);
@@ -276,7 +274,9 @@ static u32 hws_seqno(const struct hang *h, const struct i915_request *rq)
 static void hang_fini(struct hang *h)
 {
 	*h->batch = MI_BATCH_BUFFER_END;
-	i915_gem_chipset_flush(h->i915);
+
+	if (h->gt)
+		intel_gt_chipset_flush(h->gt);
 
 	i915_gem_object_unpin_map(h->obj);
 	i915_gem_object_put(h->obj);
@@ -333,7 +333,7 @@ static int igt_hang_sanitycheck(void *arg)
 		i915_request_get(rq);
 
 		*h.batch = MI_BATCH_BUFFER_END;
-		i915_gem_chipset_flush(i915);
+		intel_gt_chipset_flush(engine->gt);
 
 		i915_request_add(rq);
 
@@ -373,7 +373,6 @@ static int igt_reset_nop(void *arg)
 	struct i915_gem_context *ctx;
 	unsigned int reset_count, count;
 	enum intel_engine_id id;
-	intel_wakeref_t wakeref;
 	struct drm_file *file;
 	IGT_TIMEOUT(end_time);
 	int err = 0;
@@ -393,11 +392,11 @@ static int igt_reset_nop(void *arg)
 	}
 
 	i915_gem_context_clear_bannable(ctx);
-	wakeref = intel_runtime_pm_get(&i915->runtime_pm);
 	reset_count = i915_reset_count(&i915->gpu_error);
 	count = 0;
 	do {
 		mutex_lock(&i915->drm.struct_mutex);
+
 		for_each_engine(engine, i915, id) {
 			int i;
 
@@ -413,11 +412,12 @@ static int igt_reset_nop(void *arg)
 				i915_request_add(rq);
 			}
 		}
-		mutex_unlock(&i915->drm.struct_mutex);
 
 		igt_global_reset_lock(i915);
 		i915_reset(i915, ALL_ENGINES, NULL);
 		igt_global_reset_unlock(i915);
+
+		mutex_unlock(&i915->drm.struct_mutex);
 		if (i915_reset_failed(i915)) {
 			err = -EIO;
 			break;
@@ -440,8 +440,6 @@ static int igt_reset_nop(void *arg)
 	err = igt_flush_test(i915, I915_WAIT_LOCKED);
 	mutex_unlock(&i915->drm.struct_mutex);
 
-	intel_runtime_pm_put(&i915->runtime_pm, wakeref);
-
 out:
 	mock_file_free(i915, file);
 	if (i915_reset_failed(i915))
@@ -455,7 +453,6 @@ static int igt_reset_nop_engine(void *arg)
 	struct intel_engine_cs *engine;
 	struct i915_gem_context *ctx;
 	enum intel_engine_id id;
-	intel_wakeref_t wakeref;
 	struct drm_file *file;
 	int err = 0;
 
@@ -477,7 +474,6 @@ static int igt_reset_nop_engine(void *arg)
 	}
 
 	i915_gem_context_clear_bannable(ctx);
-	wakeref = intel_runtime_pm_get(&i915->runtime_pm);
 	for_each_engine(engine, i915, id) {
 		unsigned int reset_count, reset_engine_count;
 		unsigned int count;
@@ -511,9 +507,8 @@ static int igt_reset_nop_engine(void *arg)
 
 				i915_request_add(rq);
 			}
-			mutex_unlock(&i915->drm.struct_mutex);
-
 			err = i915_reset_engine(engine, NULL);
+			mutex_unlock(&i915->drm.struct_mutex);
 			if (err) {
 				pr_err("i915_reset_engine failed\n");
 				break;
@@ -548,7 +543,6 @@ static int igt_reset_nop_engine(void *arg)
 	err = igt_flush_test(i915, I915_WAIT_LOCKED);
 	mutex_unlock(&i915->drm.struct_mutex);
 
-	intel_runtime_pm_put(&i915->runtime_pm, wakeref);
 out:
 	mock_file_free(i915, file);
 	if (i915_reset_failed(i915))
@@ -1509,7 +1503,7 @@ static int igt_reset_queue(void *arg)
 		pr_info("%s: Completed %d resets\n", engine->name, count);
 
 		*h.batch = MI_BATCH_BUFFER_END;
-		i915_gem_chipset_flush(i915);
+		intel_gt_chipset_flush(engine->gt);
 
 		i915_request_put(prev);
 

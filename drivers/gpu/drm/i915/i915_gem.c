@@ -46,7 +46,7 @@
 #include "gem/i915_gem_ioctls.h"
 #include "gem/i915_gem_pm.h"
 #include "gem/i915_gemfs.h"
-#include "gt/intel_engine_pm.h"
+#include "gt/intel_gt.h"
 #include "gt/intel_gt_pm.h"
 #include "gt/intel_mocs.h"
 #include "gt/intel_reset.h"
@@ -142,7 +142,7 @@ i915_gem_phys_pwrite(struct drm_i915_gem_object *obj,
 		return -EFAULT;
 
 	drm_clflush_virt_range(vaddr, args->size);
-	i915_gem_chipset_flush(to_i915(obj->base.dev));
+	intel_gt_chipset_flush(&to_i915(obj->base.dev)->gt);
 
 	intel_fb_obj_flush(obj, ORIGIN_CPU);
 	return 0;
@@ -231,46 +231,6 @@ i915_gem_create_ioctl(struct drm_device *dev, void *data,
 
 	return i915_gem_create(file, dev_priv,
 			       &args->size, &args->handle);
-}
-
-void i915_gem_flush_ggtt_writes(struct drm_i915_private *dev_priv)
-{
-	intel_wakeref_t wakeref;
-
-	/*
-	 * No actual flushing is required for the GTT write domain for reads
-	 * from the GTT domain. Writes to it "immediately" go to main memory
-	 * as far as we know, so there's no chipset flush. It also doesn't
-	 * land in the GPU render cache.
-	 *
-	 * However, we do have to enforce the order so that all writes through
-	 * the GTT land before any writes to the device, such as updates to
-	 * the GATT itself.
-	 *
-	 * We also have to wait a bit for the writes to land from the GTT.
-	 * An uncached read (i.e. mmio) seems to be ideal for the round-trip
-	 * timing. This issue has only been observed when switching quickly
-	 * between GTT writes and CPU reads from inside the kernel on recent hw,
-	 * and it appears to only affect discrete GTT blocks (i.e. on LLC
-	 * system agents we cannot reproduce this behaviour, until Cannonlake
-	 * that was!).
-	 */
-
-	wmb();
-
-	if (INTEL_INFO(dev_priv)->has_coherent_ggtt)
-		return;
-
-	i915_gem_chipset_flush(dev_priv);
-
-	with_intel_runtime_pm(&dev_priv->runtime_pm, wakeref) {
-		struct intel_uncore *uncore = &dev_priv->uncore;
-
-		spin_lock_irq(&uncore->lock);
-		intel_uncore_posting_read_fw(uncore,
-					     RING_HEAD(RENDER_RING_BASE));
-		spin_unlock_irq(&uncore->lock);
-	}
 }
 
 static int
@@ -947,8 +907,8 @@ static long
 wait_for_timelines(struct drm_i915_private *i915,
 		   unsigned int flags, long timeout)
 {
-	struct i915_gt_timelines *gt = &i915->gt.timelines;
-	struct i915_timeline *tl;
+	struct intel_gt_timelines *gt = &i915->gt.timelines;
+	struct intel_timeline *tl;
 
 	mutex_lock(&gt->mutex);
 	list_for_each_entry(tl, &gt->active_list, link) {
@@ -1196,82 +1156,72 @@ void i915_gem_sanitize(struct drm_i915_private *i915)
 	 * it may impact the display and we are uncertain about the stability
 	 * of the reset, so this could be applied to even earlier gen.
 	 */
-	intel_gt_sanitize(i915, false);
+	intel_gt_sanitize(&i915->gt, false);
 
 	intel_uncore_forcewake_put(&i915->uncore, FORCEWAKE_ALL);
 	intel_runtime_pm_put(&i915->runtime_pm, wakeref);
 }
 
-void i915_gem_init_swizzling(struct drm_i915_private *dev_priv)
+static void init_unused_ring(struct intel_gt *gt, u32 base)
 {
-	if (INTEL_GEN(dev_priv) < 5 ||
-	    dev_priv->mm.bit_6_swizzle_x == I915_BIT_6_SWIZZLE_NONE)
-		return;
+	struct intel_uncore *uncore = gt->uncore;
 
-	I915_WRITE(DISP_ARB_CTL, I915_READ(DISP_ARB_CTL) |
-				 DISP_TILE_SURFACE_SWIZZLING);
-
-	if (IS_GEN(dev_priv, 5))
-		return;
-
-	I915_WRITE(TILECTL, I915_READ(TILECTL) | TILECTL_SWZCTL);
-	if (IS_GEN(dev_priv, 6))
-		I915_WRITE(ARB_MODE, _MASKED_BIT_ENABLE(ARB_MODE_SWIZZLE_SNB));
-	else if (IS_GEN(dev_priv, 7))
-		I915_WRITE(ARB_MODE, _MASKED_BIT_ENABLE(ARB_MODE_SWIZZLE_IVB));
-	else if (IS_GEN(dev_priv, 8))
-		I915_WRITE(GAMTARBMODE, _MASKED_BIT_ENABLE(ARB_MODE_SWIZZLE_BDW));
-	else
-		BUG();
+	intel_uncore_write(uncore, RING_CTL(base), 0);
+	intel_uncore_write(uncore, RING_HEAD(base), 0);
+	intel_uncore_write(uncore, RING_TAIL(base), 0);
+	intel_uncore_write(uncore, RING_START(base), 0);
 }
 
-static void init_unused_ring(struct drm_i915_private *dev_priv, u32 base)
+static void init_unused_rings(struct intel_gt *gt)
 {
-	I915_WRITE(RING_CTL(base), 0);
-	I915_WRITE(RING_HEAD(base), 0);
-	I915_WRITE(RING_TAIL(base), 0);
-	I915_WRITE(RING_START(base), 0);
-}
+	struct drm_i915_private *i915 = gt->i915;
 
-static void init_unused_rings(struct drm_i915_private *dev_priv)
-{
-	if (IS_I830(dev_priv)) {
-		init_unused_ring(dev_priv, PRB1_BASE);
-		init_unused_ring(dev_priv, SRB0_BASE);
-		init_unused_ring(dev_priv, SRB1_BASE);
-		init_unused_ring(dev_priv, SRB2_BASE);
-		init_unused_ring(dev_priv, SRB3_BASE);
-	} else if (IS_GEN(dev_priv, 2)) {
-		init_unused_ring(dev_priv, SRB0_BASE);
-		init_unused_ring(dev_priv, SRB1_BASE);
-	} else if (IS_GEN(dev_priv, 3)) {
-		init_unused_ring(dev_priv, PRB1_BASE);
-		init_unused_ring(dev_priv, PRB2_BASE);
+	if (IS_I830(i915)) {
+		init_unused_ring(gt, PRB1_BASE);
+		init_unused_ring(gt, SRB0_BASE);
+		init_unused_ring(gt, SRB1_BASE);
+		init_unused_ring(gt, SRB2_BASE);
+		init_unused_ring(gt, SRB3_BASE);
+	} else if (IS_GEN(i915, 2)) {
+		init_unused_ring(gt, SRB0_BASE);
+		init_unused_ring(gt, SRB1_BASE);
+	} else if (IS_GEN(i915, 3)) {
+		init_unused_ring(gt, PRB1_BASE);
+		init_unused_ring(gt, PRB2_BASE);
 	}
 }
 
-int i915_gem_init_hw(struct drm_i915_private *dev_priv)
+int i915_gem_init_hw(struct drm_i915_private *i915)
 {
+	struct intel_uncore *uncore = &i915->uncore;
+	struct intel_gt *gt = &i915->gt;
 	int ret;
 
-	dev_priv->gt.last_init_time = ktime_get();
+	BUG_ON(!i915->kernel_context);
+	ret = i915_terminally_wedged(i915);
+	if (ret)
+		return ret;
+
+	gt->last_init_time = ktime_get();
 
 	/* Double layer security blanket, see i915_gem_init() */
-	intel_uncore_forcewake_get(&dev_priv->uncore, FORCEWAKE_ALL);
+	intel_uncore_forcewake_get(uncore, FORCEWAKE_ALL);
 
-	if (HAS_EDRAM(dev_priv) && INTEL_GEN(dev_priv) < 9)
-		I915_WRITE(HSW_IDICR, I915_READ(HSW_IDICR) | IDIHASHMSK(0xf));
+	if (HAS_EDRAM(i915) && INTEL_GEN(i915) < 9)
+		intel_uncore_rmw(uncore, HSW_IDICR, 0, IDIHASHMSK(0xf));
 
-	if (IS_HASWELL(dev_priv))
-		I915_WRITE(MI_PREDICATE_RESULT_2, IS_HSW_GT3(dev_priv) ?
-			   LOWER_SLICE_ENABLED : LOWER_SLICE_DISABLED);
+	if (IS_HASWELL(i915))
+		intel_uncore_write(uncore,
+				   MI_PREDICATE_RESULT_2,
+				   IS_HSW_GT3(i915) ?
+				   LOWER_SLICE_ENABLED : LOWER_SLICE_DISABLED);
 
 	/* Apply the GT workarounds... */
-	intel_gt_apply_workarounds(dev_priv);
+	intel_gt_apply_workarounds(gt);
 	/* ...and determine whether they are sticking. */
-	intel_gt_verify_workarounds(dev_priv, "init");
+	intel_gt_verify_workarounds(gt, "init");
 
-	i915_gem_init_swizzling(dev_priv);
+	intel_gt_init_swizzling(gt);
 
 	/*
 	 * At least 830 can leave some of the unused rings
@@ -1279,49 +1229,33 @@ int i915_gem_init_hw(struct drm_i915_private *dev_priv)
 	 * will prevent c3 entry. Makes sure all unused rings
 	 * are totally idle.
 	 */
-	init_unused_rings(dev_priv);
+	init_unused_rings(gt);
 
-	BUG_ON(!dev_priv->kernel_context);
-	ret = i915_terminally_wedged(dev_priv);
-	if (ret)
-		goto out;
-
-	ret = i915_ppgtt_init_hw(dev_priv);
+	ret = i915_ppgtt_init_hw(gt);
 	if (ret) {
 		DRM_ERROR("Enabling PPGTT failed (%d)\n", ret);
 		goto out;
 	}
 
-	ret = intel_wopcm_init_hw(&dev_priv->wopcm);
+	ret = intel_wopcm_init_hw(&i915->wopcm, gt);
 	if (ret) {
 		DRM_ERROR("Enabling WOPCM failed (%d)\n", ret);
 		goto out;
 	}
 
 	/* We can't enable contexts until all firmware is loaded */
-	ret = intel_uc_init_hw(dev_priv);
+	ret = intel_uc_init_hw(i915);
 	if (ret) {
 		DRM_ERROR("Enabling uc failed (%d)\n", ret);
 		goto out;
 	}
 
-	intel_mocs_init_l3cc_table(dev_priv);
+	intel_mocs_init_l3cc_table(gt);
 
-	/* Only when the HW is re-initialised, can we replay the requests */
-	ret = intel_engines_resume(dev_priv);
-	if (ret)
-		goto cleanup_uc;
+	intel_engines_set_scheduler_caps(i915);
 
-	intel_uncore_forcewake_put(&dev_priv->uncore, FORCEWAKE_ALL);
-
-	intel_engines_set_scheduler_caps(dev_priv);
-	return 0;
-
-cleanup_uc:
-	intel_uc_fini_hw(dev_priv);
 out:
-	intel_uncore_forcewake_put(&dev_priv->uncore, FORCEWAKE_ALL);
-
+	intel_uncore_forcewake_put(uncore, FORCEWAKE_ALL);
 	return ret;
 }
 
@@ -1453,39 +1387,12 @@ err_active:
 static int
 i915_gem_init_scratch(struct drm_i915_private *i915, unsigned int size)
 {
-	struct drm_i915_gem_object *obj;
-	struct i915_vma *vma;
-	int ret;
-
-	obj = i915_gem_object_create_stolen(i915, size);
-	if (!obj)
-		obj = i915_gem_object_create_internal(i915, size);
-	if (IS_ERR(obj)) {
-		DRM_ERROR("Failed to allocate scratch page\n");
-		return PTR_ERR(obj);
-	}
-
-	vma = i915_vma_instance(obj, &i915->ggtt.vm, NULL);
-	if (IS_ERR(vma)) {
-		ret = PTR_ERR(vma);
-		goto err_unref;
-	}
-
-	ret = i915_vma_pin(vma, 0, 0, PIN_GLOBAL | PIN_HIGH);
-	if (ret)
-		goto err_unref;
-
-	i915->gt.scratch = vma;
-	return 0;
-
-err_unref:
-	i915_gem_object_put(obj);
-	return ret;
+	return intel_gt_init_scratch(&i915->gt, size);
 }
 
 static void i915_gem_fini_scratch(struct drm_i915_private *i915)
 {
-	i915_vma_unpin_and_release(&i915->gt.scratch, 0);
+	intel_gt_fini_scratch(&i915->gt);
 }
 
 static int intel_engines_verify_workarounds(struct drm_i915_private *i915)
@@ -1516,7 +1423,7 @@ int i915_gem_init(struct drm_i915_private *dev_priv)
 
 	dev_priv->mm.unordered_timeline = dma_fence_context_alloc(1);
 
-	i915_timelines_init(dev_priv);
+	intel_timelines_init(dev_priv);
 
 	ret = i915_gem_init_userptr(dev_priv);
 	if (ret)
@@ -1539,7 +1446,7 @@ int i915_gem_init(struct drm_i915_private *dev_priv)
 	mutex_lock(&dev_priv->drm.struct_mutex);
 	intel_uncore_forcewake_get(&dev_priv->uncore, FORCEWAKE_ALL);
 
-	ret = i915_gem_init_ggtt(dev_priv);
+	ret = i915_init_ggtt(dev_priv);
 	if (ret) {
 		GEM_BUG_ON(ret == -EIO);
 		goto err_unlock;
@@ -1580,6 +1487,11 @@ int i915_gem_init(struct drm_i915_private *dev_priv)
 	if (ret)
 		goto err_uc_init;
 
+	/* Only when the HW is re-initialised, can we replay the requests */
+	ret = intel_gt_resume(&dev_priv->gt);
+	if (ret)
+		goto err_init_hw;
+
 	/*
 	 * Despite its name intel_init_clock_gating applies both display
 	 * clock gating workarounds; GT mmio workarounds and the occasional
@@ -1593,20 +1505,20 @@ int i915_gem_init(struct drm_i915_private *dev_priv)
 
 	ret = intel_engines_verify_workarounds(dev_priv);
 	if (ret)
-		goto err_init_hw;
+		goto err_gt;
 
 	ret = __intel_engines_record_defaults(dev_priv);
 	if (ret)
-		goto err_init_hw;
+		goto err_gt;
 
 	if (i915_inject_load_failure()) {
 		ret = -ENODEV;
-		goto err_init_hw;
+		goto err_gt;
 	}
 
 	if (i915_inject_load_failure()) {
 		ret = -EIO;
-		goto err_init_hw;
+		goto err_gt;
 	}
 
 	intel_uncore_forcewake_put(&dev_priv->uncore, FORCEWAKE_ALL);
@@ -1620,7 +1532,7 @@ int i915_gem_init(struct drm_i915_private *dev_priv)
 	 * HW as irrevisibly wedged, but keep enough state around that the
 	 * driver doesn't explode during runtime.
 	 */
-err_init_hw:
+err_gt:
 	mutex_unlock(&dev_priv->drm.struct_mutex);
 
 	i915_gem_set_wedged(dev_priv);
@@ -1630,6 +1542,7 @@ err_init_hw:
 	i915_gem_drain_workqueue(dev_priv);
 
 	mutex_lock(&dev_priv->drm.struct_mutex);
+err_init_hw:
 	intel_uc_fini_hw(dev_priv);
 err_uc_init:
 	intel_uc_fini(dev_priv);
@@ -1653,7 +1566,7 @@ err_uc_misc:
 
 	if (ret != -EIO) {
 		i915_gem_cleanup_userptr(dev_priv);
-		i915_timelines_fini(dev_priv);
+		intel_timelines_fini(dev_priv);
 	}
 
 	if (ret == -EIO) {
@@ -1717,7 +1630,7 @@ void i915_gem_fini(struct drm_i915_private *dev_priv)
 
 	intel_uc_fini_misc(dev_priv);
 	i915_gem_cleanup_userptr(dev_priv);
-	i915_timelines_fini(dev_priv);
+	intel_timelines_fini(dev_priv);
 
 	i915_gem_drain_freed_objects(dev_priv);
 
@@ -1745,12 +1658,6 @@ static void i915_gem_init__mm(struct drm_i915_private *i915)
 int i915_gem_init_early(struct drm_i915_private *dev_priv)
 {
 	int err;
-
-	intel_gt_pm_init(dev_priv);
-
-	INIT_LIST_HEAD(&dev_priv->gt.active_rings);
-	INIT_LIST_HEAD(&dev_priv->gt.closed_vma);
-	spin_lock_init(&dev_priv->gt.closed_lock);
 
 	i915_gem_init__mm(dev_priv);
 	i915_gem_init__pm(dev_priv);

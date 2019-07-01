@@ -61,6 +61,7 @@
 
 #include "gem/i915_gem_context.h"
 #include "gem/i915_gem_ioctls.h"
+#include "gt/intel_gt.h"
 #include "gt/intel_gt_pm.h"
 #include "gt/intel_reset.h"
 #include "gt/intel_workarounds.h"
@@ -219,6 +220,7 @@ intel_pch_type(const struct drm_i915_private *dev_priv, unsigned short id)
 		WARN_ON(!IS_ICELAKE(dev_priv));
 		return PCH_ICP;
 	case INTEL_PCH_MCC_DEVICE_ID_TYPE:
+	case INTEL_PCH_MCC2_DEVICE_ID_TYPE:
 		DRM_DEBUG_KMS("Found Mule Creek Canyon PCH\n");
 		WARN_ON(!IS_ELKHARTLAKE(dev_priv));
 		return PCH_MCC;
@@ -754,7 +756,7 @@ cleanup_gem:
 cleanup_modeset:
 	intel_modeset_cleanup(dev);
 cleanup_irq:
-	drm_irq_uninstall(dev);
+	intel_irq_uninstall(dev_priv);
 	intel_gmbus_teardown(dev_priv);
 cleanup_csr:
 	intel_csr_ucode_fini(dev_priv);
@@ -900,7 +902,7 @@ static int i915_driver_init_early(struct drm_i915_private *dev_priv)
 
 	intel_device_info_subplatform_init(dev_priv);
 
-	intel_uncore_init_early(&dev_priv->uncore);
+	intel_uncore_init_early(&dev_priv->uncore, dev_priv);
 
 	spin_lock_init(&dev_priv->irq_lock);
 	spin_lock_init(&dev_priv->gpu_error.lock);
@@ -921,6 +923,8 @@ static int i915_driver_init_early(struct drm_i915_private *dev_priv)
 	ret = i915_workqueues_init(dev_priv);
 	if (ret < 0)
 		goto err_engines;
+
+	intel_gt_init_early(&dev_priv->gt, dev_priv);
 
 	ret = i915_gem_init_early(dev_priv);
 	if (ret < 0)
@@ -1590,6 +1594,8 @@ static int i915_driver_init_hw(struct drm_i915_private *dev_priv)
 	if (ret)
 		goto err_ggtt;
 
+	intel_gt_init_hw(dev_priv);
+
 	ret = i915_ggtt_enable_hw(dev_priv);
 	if (ret) {
 		DRM_ERROR("failed to enable GGTT\n");
@@ -1629,7 +1635,8 @@ static int i915_driver_init_hw(struct drm_i915_private *dev_priv)
 	pm_qos_add_request(&dev_priv->pm_qos, PM_QOS_CPU_DMA_LATENCY,
 			   PM_QOS_DEFAULT_VALUE);
 
-	intel_uncore_sanitize(dev_priv);
+	/* BIOS often leaves RC6 enabled, but disable it for hw init */
+	intel_sanitize_gt_powersave(dev_priv);
 
 	intel_gt_init_workarounds(dev_priv);
 
@@ -1898,6 +1905,8 @@ int i915_driver_load(struct pci_dev *pdev, const struct pci_device_id *ent)
 
 	disable_rpm_wakeref_asserts(&dev_priv->runtime_pm);
 
+	i915_detect_vgpu(dev_priv);
+
 	ret = i915_driver_init_mmio(dev_priv);
 	if (ret < 0)
 		goto out_runtime_pm_put;
@@ -1921,6 +1930,9 @@ int i915_driver_load(struct pci_dev *pdev, const struct pci_device_id *ent)
 out_cleanup_hw:
 	i915_driver_cleanup_hw(dev_priv);
 	i915_ggtt_cleanup_hw(dev_priv);
+
+	/* Paranoia: make sure we have disabled everything before we exit. */
+	intel_sanitize_gt_powersave(dev_priv);
 out_cleanup_mmio:
 	i915_driver_cleanup_mmio(dev_priv);
 out_runtime_pm_put:
@@ -1991,6 +2003,10 @@ static void i915_driver_release(struct drm_device *dev)
 	i915_gem_fini(dev_priv);
 
 	i915_ggtt_cleanup_hw(dev_priv);
+
+	/* Paranoia: make sure we have disabled everything before we exit. */
+	intel_sanitize_gt_powersave(dev_priv);
+
 	i915_driver_cleanup_mmio(dev_priv);
 
 	enable_rpm_wakeref_asserts(rpm);
@@ -2348,7 +2364,7 @@ static int i915_drm_resume_early(struct drm_device *dev)
 
 	intel_uncore_resume_early(&dev_priv->uncore);
 
-	i915_check_and_clear_faults(dev_priv);
+	intel_gt_check_and_clear_faults(&dev_priv->gt);
 
 	if (INTEL_GEN(dev_priv) >= 11 || IS_GEN9_LP(dev_priv)) {
 		gen9_sanitize_dc_state(dev_priv);
@@ -2357,11 +2373,11 @@ static int i915_drm_resume_early(struct drm_device *dev)
 		hsw_disable_pc8(dev_priv);
 	}
 
-	intel_uncore_sanitize(dev_priv);
+	intel_sanitize_gt_powersave(dev_priv);
 
 	intel_power_domains_resume(dev_priv);
 
-	intel_gt_sanitize(dev_priv, true);
+	intel_gt_sanitize(&dev_priv->gt, true);
 
 	enable_rpm_wakeref_asserts(&dev_priv->runtime_pm);
 
@@ -2944,7 +2960,7 @@ static int intel_runtime_suspend(struct device *kdev)
 
 		intel_uc_resume(dev_priv);
 
-		i915_gem_init_swizzling(dev_priv);
+		intel_gt_init_swizzling(&dev_priv->gt);
 		i915_gem_restore_fences(dev_priv);
 
 		enable_rpm_wakeref_asserts(rpm);
@@ -3046,7 +3062,7 @@ static int intel_runtime_resume(struct device *kdev)
 	 * No point of rolling back things in case of an error, as the best
 	 * we can do is to hope that things will still work (and disable RPM).
 	 */
-	i915_gem_init_swizzling(dev_priv);
+	intel_gt_init_swizzling(&dev_priv->gt);
 	i915_gem_restore_fences(dev_priv);
 
 	/*
@@ -3215,6 +3231,9 @@ static struct drm_driver driver = {
 	.prime_fd_to_handle = drm_gem_prime_fd_to_handle,
 	.gem_prime_export = i915_gem_prime_export,
 	.gem_prime_import = i915_gem_prime_import,
+
+	.get_vblank_timestamp = drm_calc_vbltimestamp_from_scanoutpos,
+	.get_scanout_position = i915_get_crtc_scanoutpos,
 
 	.dumb_create = i915_gem_dumb_create,
 	.dumb_map_offset = i915_gem_mmap_gtt,

@@ -200,20 +200,20 @@
 #include "gt/intel_lrc_reg.h"
 
 #include "i915_drv.h"
-#include "i915_oa_hsw.h"
-#include "i915_oa_bdw.h"
-#include "i915_oa_chv.h"
-#include "i915_oa_sklgt2.h"
-#include "i915_oa_sklgt3.h"
-#include "i915_oa_sklgt4.h"
-#include "i915_oa_bxt.h"
-#include "i915_oa_kblgt2.h"
-#include "i915_oa_kblgt3.h"
-#include "i915_oa_glk.h"
-#include "i915_oa_cflgt2.h"
-#include "i915_oa_cflgt3.h"
-#include "i915_oa_cnl.h"
-#include "i915_oa_icl.h"
+#include "oa/i915_oa_hsw.h"
+#include "oa/i915_oa_bdw.h"
+#include "oa/i915_oa_chv.h"
+#include "oa/i915_oa_sklgt2.h"
+#include "oa/i915_oa_sklgt3.h"
+#include "oa/i915_oa_sklgt4.h"
+#include "oa/i915_oa_bxt.h"
+#include "oa/i915_oa_kblgt2.h"
+#include "oa/i915_oa_kblgt3.h"
+#include "oa/i915_oa_glk.h"
+#include "oa/i915_oa_cflgt2.h"
+#include "oa/i915_oa_cflgt3.h"
+#include "oa/i915_oa_cnl.h"
+#include "oa/i915_oa_icl.h"
 
 /* HW requires this to be a power of two, between 128k and 16M, though driver
  * is currently generally designed assuming the largest 16M size is used such
@@ -3479,9 +3479,13 @@ void i915_perf_init(struct drm_i915_private *dev_priv)
 			dev_priv->perf.oa.ops.enable_metric_set = gen8_enable_metric_set;
 			dev_priv->perf.oa.ops.disable_metric_set = gen10_disable_metric_set;
 
-			dev_priv->perf.oa.ctx_oactxctrl_offset = 0x128;
-			dev_priv->perf.oa.ctx_flexeu0_offset = 0x3de;
-
+			if (IS_GEN(dev_priv, 10)) {
+				dev_priv->perf.oa.ctx_oactxctrl_offset = 0x128;
+				dev_priv->perf.oa.ctx_flexeu0_offset = 0x3de;
+			} else {
+				dev_priv->perf.oa.ctx_oactxctrl_offset = 0x124;
+				dev_priv->perf.oa.ctx_flexeu0_offset = 0x78e;
+			}
 			dev_priv->perf.oa.gen8_valid_ctx_bit = (1<<16);
 		}
 	}

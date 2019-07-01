@@ -10,6 +10,8 @@
 
 #include "gem/i915_gem_pm.h"
 
+#include "gt/intel_gt.h"
+
 #include "igt_gem_utils.h"
 #include "mock_context.h"
 
@@ -926,7 +928,7 @@ gpu_write_dw(struct i915_vma *vma, u64 offset, u32 val)
 	}
 
 	*cmd = MI_BATCH_BUFFER_END;
-	i915_gem_chipset_flush(i915);
+	intel_gt_chipset_flush(vma->vm->gt);
 
 	i915_gem_object_unpin_map(obj);
 
@@ -1037,8 +1039,7 @@ static int __igt_write_huge(struct i915_gem_context *ctx,
 			    u64 size, u64 offset,
 			    u32 dword, u32 val)
 {
-	struct drm_i915_private *i915 = to_i915(obj->base.dev);
-	struct i915_address_space *vm = ctx->vm ?: &i915->ggtt.vm;
+	struct i915_address_space *vm = ctx->vm ?: &engine->gt->ggtt->vm;
 	unsigned int flags = PIN_USER | PIN_OFFSET_FIXED;
 	struct i915_vma *vma;
 	int err;

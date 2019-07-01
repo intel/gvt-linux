@@ -35,7 +35,7 @@ subdir-ccflags-y += \
 # Extra header tests
 include $(src)/Makefile.header-test
 
-subdir-ccflags-y += -I$(src)
+subdir-ccflags-y += -I$(srctree)/$(src)
 
 # Please keep these build lists sorted!
 
@@ -74,6 +74,7 @@ gt-y += \
 	gt/intel_context.o \
 	gt/intel_engine_cs.o \
 	gt/intel_engine_pm.o \
+	gt/intel_gt.o \
 	gt/intel_gt_pm.o \
 	gt/intel_hangcheck.o \
 	gt/intel_lrc.o \
@@ -81,6 +82,7 @@ gt-y += \
 	gt/intel_ringbuffer.o \
 	gt/intel_mocs.o \
 	gt/intel_sseu.o \
+	gt/intel_timeline.o \
 	gt/intel_workarounds.o
 gt-$(CONFIG_DRM_I915_SELFTEST) += \
 	gt/mock_engine.o
@@ -126,7 +128,6 @@ i915-y += \
 	  i915_query.o \
 	  i915_request.o \
 	  i915_scheduler.o \
-	  i915_timeline.o \
 	  i915_trace_points.o \
 	  i915_vma.o \
 	  intel_wopcm.o
@@ -211,6 +212,25 @@ i915-y += \
 	display/vlv_dsi.o \
 	display/vlv_dsi_pll.o
 
+# perf code
+obj-y += oa/
+i915-y += \
+	oa/i915_oa_hsw.o \
+	oa/i915_oa_bdw.o \
+	oa/i915_oa_chv.o \
+	oa/i915_oa_sklgt2.o \
+	oa/i915_oa_sklgt3.o \
+	oa/i915_oa_sklgt4.o \
+	oa/i915_oa_bxt.o \
+	oa/i915_oa_kblgt2.o \
+	oa/i915_oa_kblgt3.o \
+	oa/i915_oa_glk.o \
+	oa/i915_oa_cflgt2.o \
+	oa/i915_oa_cflgt3.o \
+	oa/i915_oa_cnl.o \
+	oa/i915_oa_icl.o
+i915-y += i915_perf.o
+
 # Post-mortem debug and GPU hang state capture
 i915-$(CONFIG_DRM_I915_CAPTURE_ERROR) += i915_gpu_error.o
 i915-$(CONFIG_DRM_I915_SELFTEST) += \
@@ -224,23 +244,6 @@ i915-$(CONFIG_DRM_I915_SELFTEST) += \
 
 # virtual gpu code
 i915-y += i915_vgpu.o
-
-# perf code
-i915-y += i915_perf.o \
-	  i915_oa_hsw.o \
-	  i915_oa_bdw.o \
-	  i915_oa_chv.o \
-	  i915_oa_sklgt2.o \
-	  i915_oa_sklgt3.o \
-	  i915_oa_sklgt4.o \
-	  i915_oa_bxt.o \
-	  i915_oa_kblgt2.o \
-	  i915_oa_kblgt3.o \
-	  i915_oa_glk.o \
-	  i915_oa_cflgt2.o \
-	  i915_oa_cflgt3.o \
-	  i915_oa_cnl.o \
-	  i915_oa_icl.o
 
 ifeq ($(CONFIG_DRM_I915_GVT),y)
 i915-y += intel_gvt.o

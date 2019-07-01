@@ -316,7 +316,7 @@ static void i915_gem_context_free(struct i915_gem_context *ctx)
 	mutex_destroy(&ctx->engines_mutex);
 
 	if (ctx->timeline)
-		i915_timeline_put(ctx->timeline);
+		intel_timeline_put(ctx->timeline);
 
 	kfree(ctx->name);
 	put_pid(ctx->pid);
@@ -528,9 +528,9 @@ i915_gem_create_context(struct drm_i915_private *dev_priv, unsigned int flags)
 	}
 
 	if (flags & I915_CONTEXT_CREATE_FLAGS_SINGLE_TIMELINE) {
-		struct i915_timeline *timeline;
+		struct intel_timeline *timeline;
 
-		timeline = i915_timeline_create(dev_priv, NULL);
+		timeline = intel_timeline_create(&dev_priv->gt, NULL);
 		if (IS_ERR(timeline)) {
 			context_close(ctx);
 			return ERR_CAST(timeline);
@@ -646,7 +646,7 @@ static void init_contexts(struct drm_i915_private *i915)
 
 static bool needs_preempt_context(struct drm_i915_private *i915)
 {
-	return HAS_EXECLISTS(i915);
+	return USES_GUC_SUBMISSION(i915);
 }
 
 int i915_gem_contexts_init(struct drm_i915_private *dev_priv)
@@ -923,8 +923,12 @@ static int context_barrier_task(struct i915_gem_context *ctx,
 	if (!cb)
 		return -ENOMEM;
 
-	i915_active_init(i915, &cb->base, cb_retire);
-	i915_active_acquire(&cb->base);
+	i915_active_init(i915, &cb->base, NULL, cb_retire);
+	err = i915_active_acquire(&cb->base);
+	if (err) {
+		kfree(cb);
+		return err;
+	}
 
 	for_each_gem_engine(ce, i915_gem_context_lock_engines(ctx), it) {
 		struct i915_request *rq;
@@ -2015,8 +2019,8 @@ static int clone_timeline(struct i915_gem_context *dst,
 		GEM_BUG_ON(src->timeline == dst->timeline);
 
 		if (dst->timeline)
-			i915_timeline_put(dst->timeline);
-		dst->timeline = i915_timeline_get(src->timeline);
+			intel_timeline_put(dst->timeline);
+		dst->timeline = intel_timeline_get(src->timeline);
 	}
 
 	return 0;

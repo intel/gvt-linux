@@ -1,0 +1,32 @@
+drm drm-fixes 665d6d4e32313a7952bb3339647f74c3a6b0d78a
+	Merge tag 'drm-misc-fixes-2019-06-26' of git://anongit.freedesktop.org/drm/drm-misc into drm-fixes
+drm-misc drm-misc-fixes 2f040d27080ddfffecff2be1a77107c494d0e4f4
+	drm/panfrost: Fix a double-free error
+drm-intel drm-intel-fixes 4b972a01a7da614b4796475f933094751a295a2f
+	Linux 5.2-rc6
+drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
+	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
+drm drm-next 53e155f2bbd42df7e8bea87be78f0d60fe9fa122
+	Merge tag 'drm-msm-next-2019-06-25' of https://gitlab.freedesktop.org/drm/msm into drm-next
+drm-misc drm-misc-next-fixes c0898fca3fce00f824e7f5d48e1edd0900378a03
+	drm/selftests: reduce stack usage
+drm-intel drm-intel-next-fixes c36beba6b296b3c05a0f29753b04775e5ae23886
+	drm/i915: Seal races between async GPU cancellation, retirement and signaling
+drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
+	Linux 4.14-rc1
+drm-misc drm-misc-next 99a938889048aa8e92d2a54fadb45498122bf87f
+	drm/stm: drop use of drmP.h
+drm-intel drm-intel-next-queued ec193640819e014385c0ccc87e66909e44b4705e
+	drm/i915: Use intel state as much as possible in wm code
+drm-intel drm-intel-next 1ee008f240ad5401f683ec3b79a2e3b044a82a89
+	drm/i915: Update DRIVER_DATE to 20190619
+drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
+	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
+sound-upstream for-linus c3ea60c231446663afd6ea1054da6b7f830855ca
+	ALSA: seq: fix incorrect order of dest_client/dest_ports arguments
+sound-upstream for-next 973b059ca98054f9400562ae90bea5069b9b9274
+	ALSA: firewire-lib: fix to process MIDI conformant data channel for AM824 format
+drm-intel topic/core-for-CI c67cb8a2e511b1e039d69de91add89548d3839da
+	mm: Band aid for 5fd4ca2d84b249f0858ce28cf637cf25b61a398f
+drm-misc topic/remove-fbcon-notifiers 6116b892bd4fd0ddc5f30566a556218bb2e1a9b6
+	vga_switcheroo: Depend upon fbcon being built-in, if enabled

@@ -254,8 +254,7 @@ drm_gem_object_release_handle(int id, void *ptr, void *data)
 	else if (dev->driver->gem_close_object)
 		dev->driver->gem_close_object(obj, file_priv);
 
-	if (drm_core_check_feature(dev, DRIVER_PRIME))
-		drm_gem_remove_prime_handles(obj, file_priv);
+	drm_gem_remove_prime_handles(obj, file_priv);
 	drm_vma_node_revoke(&obj->vma_node, file_priv);
 
 	drm_gem_object_handle_put_unlocked(obj);
@@ -298,7 +297,7 @@ drm_gem_handle_delete(struct drm_file *filp, u32 handle)
 EXPORT_SYMBOL(drm_gem_handle_delete);
 
 /**
- * drm_gem_dumb_map_offset - return the fake mmap offset for a gem object
+ * drm_gem_map_offset - return the fake mmap offset for a gem object
  * @file: drm file-private structure containing the gem object
  * @dev: corresponding drm_device
  * @handle: gem object handle
@@ -307,10 +306,14 @@ EXPORT_SYMBOL(drm_gem_handle_delete);
  * This implements the &drm_driver.dumb_map_offset kms driver callback for
  * drivers which use gem to manage their backing storage.
  *
+ * It can also be used by drivers using GEM BO implementations which
+ * have same restriction that imported objects cannot be mapped. The
+ * shmem backend is one example.
+ *
  * Returns:
  * 0 on success or a negative error code on failure.
  */
-int drm_gem_dumb_map_offset(struct drm_file *file, struct drm_device *dev,
+int drm_gem_map_offset(struct drm_file *file, struct drm_device *dev,
 			    u32 handle, u64 *offset)
 {
 	struct drm_gem_object *obj;
@@ -336,7 +339,7 @@ out:
 
 	return ret;
 }
-EXPORT_SYMBOL_GPL(drm_gem_dumb_map_offset);
+EXPORT_SYMBOL_GPL(drm_gem_map_offset);
 
 /**
  * drm_gem_dumb_destroy - dumb fb callback helper for gem based drivers

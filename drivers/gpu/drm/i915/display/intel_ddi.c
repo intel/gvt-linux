@@ -45,6 +45,7 @@
 #include "intel_lspcon.h"
 #include "intel_panel.h"
 #include "intel_psr.h"
+#include "intel_tc.h"
 #include "intel_vdsc.h"
 
 struct ddi_buf_trans {
@@ -846,8 +847,8 @@ cnl_get_buf_trans_edp(struct drm_i915_private *dev_priv, int *n_entries)
 }
 
 static const struct cnl_ddi_buf_trans *
-icl_get_combo_buf_trans(struct drm_i915_private *dev_priv, enum port port,
-			int type, int rate, int *n_entries)
+icl_get_combo_buf_trans(struct drm_i915_private *dev_priv, int type, int rate,
+			int *n_entries)
 {
 	if (type == INTEL_OUTPUT_HDMI) {
 		*n_entries = ARRAY_SIZE(icl_combo_phy_ddi_translations_hdmi);
@@ -872,7 +873,7 @@ static int intel_ddi_hdmi_level(struct drm_i915_private *dev_priv, enum port por
 
 	if (INTEL_GEN(dev_priv) >= 11) {
 		if (intel_port_is_combophy(dev_priv, port))
-			icl_get_combo_buf_trans(dev_priv, port, INTEL_OUTPUT_HDMI,
+			icl_get_combo_buf_trans(dev_priv, INTEL_OUTPUT_HDMI,
 						0, &n_entries);
 		else
 			n_entries = ARRAY_SIZE(icl_mg_phy_ddi_translations);
@@ -2231,7 +2232,7 @@ u8 intel_ddi_dp_voltage_max(struct intel_encoder *encoder)
 
 	if (INTEL_GEN(dev_priv) >= 11) {
 		if (intel_port_is_combophy(dev_priv, port))
-			icl_get_combo_buf_trans(dev_priv, port, encoder->type,
+			icl_get_combo_buf_trans(dev_priv, encoder->type,
 						intel_dp->link_rate, &n_entries);
 		else
 			n_entries = ARRAY_SIZE(icl_mg_phy_ddi_translations);
@@ -2420,8 +2421,8 @@ static void icl_ddi_combo_vswing_program(struct drm_i915_private *dev_priv,
 	u32 n_entries, val;
 	int ln;
 
-	ddi_translations = icl_get_combo_buf_trans(dev_priv, port, type,
-						   rate, &n_entries);
+	ddi_translations = icl_get_combo_buf_trans(dev_priv, type, rate,
+						   &n_entries);
 	if (!ddi_translations)
 		return;
 
@@ -2995,25 +2996,22 @@ static void icl_program_mg_dp_mode(struct intel_digital_port *intel_dig_port)
 {
 	struct drm_i915_private *dev_priv = to_i915(intel_dig_port->base.base.dev);
 	enum port port = intel_dig_port->base.port;
-	enum tc_port tc_port = intel_port_to_tc(dev_priv, port);
-	u32 ln0, ln1, lane_info;
+	u32 ln0, ln1, lane_mask;
 
-	if (tc_port == PORT_TC_NONE || intel_dig_port->tc_type == TC_PORT_TBT)
+	if (intel_dig_port->tc_mode == TC_PORT_TBT_ALT)
 		return;
 
 	ln0 = I915_READ(MG_DP_MODE(0, port));
 	ln1 = I915_READ(MG_DP_MODE(1, port));
 
-	switch (intel_dig_port->tc_type) {
-	case TC_PORT_TYPEC:
+	switch (intel_dig_port->tc_mode) {
+	case TC_PORT_DP_ALT:
 		ln0 &= ~(MG_DP_MODE_CFG_DP_X1_MODE | MG_DP_MODE_CFG_DP_X2_MODE);
 		ln1 &= ~(MG_DP_MODE_CFG_DP_X1_MODE | MG_DP_MODE_CFG_DP_X2_MODE);
 
-		lane_info = (I915_READ(PORT_TX_DFLEXDPSP) &
-			     DP_LANE_ASSIGNMENT_MASK(tc_port)) >>
-			    DP_LANE_ASSIGNMENT_SHIFT(tc_port);
+		lane_mask = intel_tc_port_get_lane_mask(intel_dig_port);
 
-		switch (lane_info) {
+		switch (lane_mask) {
 		case 0x1:
 		case 0x4:
 			break;
@@ -3038,7 +3036,7 @@ static void icl_program_mg_dp_mode(struct intel_digital_port *intel_dig_port)
 			       MG_DP_MODE_CFG_DP_X2_MODE;
 			break;
 		default:
-			MISSING_CASE(lane_info);
+			MISSING_CASE(lane_mask);
 		}
 		break;
 
@@ -3048,7 +3046,7 @@ static void icl_program_mg_dp_mode(struct intel_digital_port *intel_dig_port)
 		break;
 
 	default:
-		MISSING_CASE(intel_dig_port->tc_type);
+		MISSING_CASE(intel_dig_port->tc_mode);
 		return;
 	}
 
@@ -3123,7 +3121,10 @@ static void intel_ddi_pre_enable_dp(struct intel_encoder *encoder,
 
 	intel_ddi_clk_select(encoder, crtc_state);
 
-	intel_display_power_get(dev_priv, dig_port->ddi_io_power_domain);
+	if (!intel_port_is_tc(dev_priv, port) ||
+	    dig_port->tc_mode != TC_PORT_TBT_ALT)
+		intel_display_power_get(dev_priv,
+					dig_port->ddi_io_power_domain);
 
 	icl_program_mg_dp_mode(dig_port);
 	icl_disable_phy_clock_gating(dig_port);
@@ -3305,8 +3306,10 @@ static void intel_ddi_post_disable_dp(struct intel_encoder *encoder,
 	intel_edp_panel_vdd_on(intel_dp);
 	intel_edp_panel_off(intel_dp);
 
-	intel_display_power_put_unchecked(dev_priv,
-					  dig_port->ddi_io_power_domain);
+	if (!intel_port_is_tc(dev_priv, encoder->port) ||
+	    dig_port->tc_mode != TC_PORT_TBT_ALT)
+		intel_display_power_put_unchecked(dev_priv,
+						  dig_port->ddi_io_power_domain);
 
 	intel_ddi_clk_disable(encoder);
 }
@@ -3601,6 +3604,8 @@ static void intel_ddi_set_fia_lane_count(struct intel_encoder *encoder,
 	u32 val = I915_READ(PORT_TX_DFLEXDPMLE1);
 	bool lane_reversal = dig_port->saved_port_bits & DDI_BUF_PORT_REVERSAL;
 
+	WARN_ON(lane_reversal && dig_port->tc_mode != TC_PORT_LEGACY);
+
 	val &= ~DFLEXDPMLE1_DPMLETC_MASK(tc_port);
 	switch (pipe_config->lane_count) {
 	case 1:
@@ -3621,16 +3626,43 @@ static void intel_ddi_set_fia_lane_count(struct intel_encoder *encoder,
 }
 
 static void
+intel_ddi_update_prepare(struct intel_atomic_state *state,
+			 struct intel_encoder *encoder,
+			 struct intel_crtc *crtc)
+{
+	struct intel_crtc_state *crtc_state =
+		crtc ? intel_atomic_get_new_crtc_state(state, crtc) : NULL;
+	int required_lanes = crtc_state ? crtc_state->lane_count : 1;
+
+	WARN_ON(crtc && crtc->active);
+
+	intel_tc_port_get_link(enc_to_dig_port(&encoder->base), required_lanes);
+	if (crtc_state && crtc_state->base.active)
+		intel_update_active_dpll(state, crtc, encoder);
+}
+
+static void
+intel_ddi_update_complete(struct intel_atomic_state *state,
+			  struct intel_encoder *encoder,
+			  struct intel_crtc *crtc)
+{
+	intel_tc_port_put_link(enc_to_dig_port(&encoder->base));
+}
+
+static void
 intel_ddi_pre_pll_enable(struct intel_encoder *encoder,
 			 const struct intel_crtc_state *crtc_state,
 			 const struct drm_connector_state *conn_state)
 {
 	struct drm_i915_private *dev_priv = to_i915(encoder->base.dev);
 	struct intel_digital_port *dig_port = enc_to_dig_port(&encoder->base);
+	bool is_tc_port = intel_port_is_tc(dev_priv, encoder->port);
 	enum port port = encoder->port;
 
-	if (intel_crtc_has_dp_encoder(crtc_state) ||
-	    intel_port_is_tc(dev_priv, encoder->port))
+	if (is_tc_port)
+		intel_tc_port_get_link(dig_port, crtc_state->lane_count);
+
+	if (intel_crtc_has_dp_encoder(crtc_state) || is_tc_port)
 		intel_display_power_get(dev_priv,
 					intel_ddi_main_link_aux_domain(dig_port));
 
@@ -3642,8 +3674,7 @@ intel_ddi_pre_pll_enable(struct intel_encoder *encoder,
 	 * Program the lane count for static/dynamic connections on Type-C ports.
 	 * Skip this step for TBT.
 	 */
-	if (dig_port->tc_type == TC_PORT_UNKNOWN ||
-	    dig_port->tc_type == TC_PORT_TBT)
+	if (dig_port->tc_mode == TC_PORT_TBT_ALT)
 		return;
 
 	intel_ddi_set_fia_lane_count(encoder, crtc_state, port);
@@ -3656,11 +3687,14 @@ intel_ddi_post_pll_disable(struct intel_encoder *encoder,
 {
 	struct drm_i915_private *dev_priv = to_i915(encoder->base.dev);
 	struct intel_digital_port *dig_port = enc_to_dig_port(&encoder->base);
+	bool is_tc_port = intel_port_is_tc(dev_priv, encoder->port);
 
-	if (intel_crtc_has_dp_encoder(crtc_state) ||
-	    intel_port_is_tc(dev_priv, encoder->port))
+	if (intel_crtc_has_dp_encoder(crtc_state) || is_tc_port)
 		intel_display_power_put_unchecked(dev_priv,
 						  intel_ddi_main_link_aux_domain(dig_port));
+
+	if (is_tc_port)
+		intel_tc_port_put_link(dig_port);
 }
 
 static void intel_ddi_prepare_link_retrain(struct intel_dp *intel_dp)
@@ -3914,49 +3948,18 @@ static int intel_ddi_compute_config(struct intel_encoder *encoder,
 	return 0;
 }
 
-static void intel_ddi_encoder_suspend(struct intel_encoder *encoder)
-{
-	struct intel_digital_port *dig_port = enc_to_dig_port(&encoder->base);
-	struct drm_i915_private *i915 = to_i915(encoder->base.dev);
-
-	intel_dp_encoder_suspend(encoder);
-
-	/*
-	 * TODO: disconnect also from USB DP alternate mode once we have a
-	 * way to handle the modeset restore in that mode during resume
-	 * even if the sink has disappeared while being suspended.
-	 */
-	if (dig_port->tc_legacy_port)
-		icl_tc_phy_disconnect(i915, dig_port);
-}
-
-static void intel_ddi_encoder_reset(struct drm_encoder *drm_encoder)
-{
-	struct intel_digital_port *dig_port = enc_to_dig_port(drm_encoder);
-	struct drm_i915_private *i915 = to_i915(drm_encoder->dev);
-
-	if (intel_port_is_tc(i915, dig_port->base.port))
-		intel_digital_port_connected(&dig_port->base);
-
-	intel_dp_encoder_reset(drm_encoder);
-}
-
 static void intel_ddi_encoder_destroy(struct drm_encoder *encoder)
 {
 	struct intel_digital_port *dig_port = enc_to_dig_port(encoder);
-	struct drm_i915_private *i915 = to_i915(encoder->dev);
 
 	intel_dp_encoder_flush_work(encoder);
-
-	if (intel_port_is_tc(i915, dig_port->base.port))
-		icl_tc_phy_disconnect(i915, dig_port);
 
 	drm_encoder_cleanup(encoder);
 	kfree(dig_port);
 }
 
 static const struct drm_encoder_funcs intel_ddi_funcs = {
-	.reset = intel_ddi_encoder_reset,
+	.reset = intel_dp_encoder_reset,
 	.destroy = intel_ddi_encoder_destroy,
 };
 
@@ -4242,7 +4245,7 @@ void intel_ddi_init(struct drm_i915_private *dev_priv, enum port port)
 	intel_encoder->update_pipe = intel_ddi_update_pipe;
 	intel_encoder->get_hw_state = intel_ddi_get_hw_state;
 	intel_encoder->get_config = intel_ddi_get_config;
-	intel_encoder->suspend = intel_ddi_encoder_suspend;
+	intel_encoder->suspend = intel_dp_encoder_suspend;
 	intel_encoder->get_power_domains = intel_ddi_get_power_domains;
 	intel_encoder->type = INTEL_OUTPUT_DDI;
 	intel_encoder->power_domain = intel_port_to_power_domain(port);
@@ -4261,9 +4264,15 @@ void intel_ddi_init(struct drm_i915_private *dev_priv, enum port port)
 	intel_dig_port->max_lanes = intel_ddi_max_lanes(intel_dig_port);
 	intel_dig_port->aux_ch = intel_bios_port_aux_ch(dev_priv, port);
 
-	intel_dig_port->tc_legacy_port = intel_port_is_tc(dev_priv, port) &&
-					 !port_info->supports_typec_usb &&
-					 !port_info->supports_tbt;
+	if (intel_port_is_tc(dev_priv, port)) {
+		bool is_legacy = !port_info->supports_typec_usb &&
+				 !port_info->supports_tbt;
+
+		intel_tc_port_init(intel_dig_port, is_legacy);
+
+		intel_encoder->update_prepare = intel_ddi_update_prepare;
+		intel_encoder->update_complete = intel_ddi_update_complete;
+	}
 
 	switch (port) {
 	case PORT_A:
@@ -4323,9 +4332,6 @@ void intel_ddi_init(struct drm_i915_private *dev_priv, enum port port)
 	}
 
 	intel_infoframe_init(intel_dig_port);
-
-	if (intel_port_is_tc(dev_priv, port))
-		intel_digital_port_connected(intel_encoder);
 
 	return;
 

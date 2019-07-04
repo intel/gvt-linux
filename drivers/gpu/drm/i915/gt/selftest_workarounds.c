@@ -5,6 +5,7 @@
  */
 
 #include "gem/i915_gem_pm.h"
+#include "gt/intel_gt.h"
 #include "i915_selftest.h"
 #include "intel_reset.h"
 
@@ -102,7 +103,7 @@ read_nonprivs(struct i915_gem_context *ctx, struct intel_engine_cs *engine)
 	i915_gem_object_flush_map(result);
 	i915_gem_object_unpin_map(result);
 
-	vma = i915_vma_instance(result, &engine->i915->ggtt.vm, NULL);
+	vma = i915_vma_instance(result, &engine->gt->ggtt->vm, NULL);
 	if (IS_ERR(vma)) {
 		err = PTR_ERR(vma);
 		goto err_obj;
@@ -542,7 +543,7 @@ static int check_dirty_whitelist(struct i915_gem_context *ctx,
 
 		i915_gem_object_flush_map(batch->obj);
 		i915_gem_object_unpin_map(batch->obj);
-		i915_gem_chipset_flush(ctx->i915);
+		intel_gt_chipset_flush(engine->gt);
 
 		rq = igt_request_alloc(ctx, engine);
 		if (IS_ERR(rq)) {
@@ -806,7 +807,7 @@ static int scrub_whitelisted_registers(struct i915_gem_context *ctx,
 	*cs++ = MI_BATCH_BUFFER_END;
 
 	i915_gem_object_flush_map(batch->obj);
-	i915_gem_chipset_flush(ctx->i915);
+	intel_gt_chipset_flush(engine->gt);
 
 	rq = igt_request_alloc(ctx, engine);
 	if (IS_ERR(rq)) {
@@ -925,7 +926,12 @@ check_whitelisted_registers(struct intel_engine_cs *engine,
 
 	err = 0;
 	for (i = 0; i < engine->whitelist.count; i++) {
-		if (!fn(engine, a[i], b[i], engine->whitelist.list[i].reg))
+		const struct i915_wa *wa = &engine->whitelist.list[i];
+
+		if (i915_mmio_reg_offset(wa->reg) & RING_FORCE_TO_NONPRIV_RD)
+			continue;
+
+		if (!fn(engine, a[i], b[i], wa->reg))
 			err = -EINVAL;
 	}
 

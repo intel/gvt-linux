@@ -75,11 +75,6 @@ static int i915_capabilities(struct seq_file *m, void *data)
 	return 0;
 }
 
-static char get_active_flag(struct drm_i915_gem_object *obj)
-{
-	return i915_gem_object_is_active(obj) ? '*' : ' ';
-}
-
 static char get_pin_flag(struct drm_i915_gem_object *obj)
 {
 	return obj->pin_global ? 'p' : ' ';
@@ -144,9 +139,8 @@ describe_obj(struct seq_file *m, struct drm_i915_gem_object *obj)
 	unsigned int frontbuffer_bits;
 	int pin_count = 0;
 
-	seq_printf(m, "%pK: %c%c%c%c%c %8zdKiB %02x %02x %s%s%s",
+	seq_printf(m, "%pK: %c%c%c%c %8zdKiB %02x %02x %s%s%s",
 		   &obj->base,
-		   get_active_flag(obj),
 		   get_pin_flag(obj),
 		   get_tiling_flag(obj),
 		   get_global_flag(obj),
@@ -1082,8 +1076,6 @@ static int i915_hangcheck_info(struct seq_file *m, void *unused)
 {
 	struct drm_i915_private *dev_priv = node_to_i915(m->private);
 	struct intel_engine_cs *engine;
-	u64 acthd[I915_NUM_ENGINES];
-	struct intel_instdone instdone;
 	intel_wakeref_t wakeref;
 	enum intel_engine_id id;
 
@@ -1098,13 +1090,6 @@ static int i915_hangcheck_info(struct seq_file *m, void *unused)
 		return 0;
 	}
 
-	with_intel_runtime_pm(&dev_priv->runtime_pm, wakeref) {
-		for_each_engine(engine, dev_priv, id)
-			acthd[id] = intel_engine_get_active_head(engine);
-
-		intel_engine_get_instdone(dev_priv->engine[RCS0], &instdone);
-	}
-
 	if (timer_pending(&dev_priv->gpu_error.hangcheck_work.timer))
 		seq_printf(m, "Hangcheck active, timer fires in %dms\n",
 			   jiffies_to_msecs(dev_priv->gpu_error.hangcheck_work.timer.expires -
@@ -1116,23 +1101,25 @@ static int i915_hangcheck_info(struct seq_file *m, void *unused)
 
 	seq_printf(m, "GT active? %s\n", yesno(dev_priv->gt.awake));
 
-	for_each_engine(engine, dev_priv, id) {
-		seq_printf(m, "%s: %d ms ago\n",
-			   engine->name,
-			   jiffies_to_msecs(jiffies -
-					    engine->hangcheck.action_timestamp));
+	with_intel_runtime_pm(&dev_priv->runtime_pm, wakeref) {
+		for_each_engine(engine, dev_priv, id) {
+			struct intel_instdone instdone;
 
-		seq_printf(m, "\tACTHD = 0x%08llx [current 0x%08llx]\n",
-			   (long long)engine->hangcheck.acthd,
-			   (long long)acthd[id]);
+			seq_printf(m, "%s: %d ms ago\n",
+				   engine->name,
+				   jiffies_to_msecs(jiffies -
+						    engine->hangcheck.action_timestamp));
 
-		if (engine->id == RCS0) {
+			seq_printf(m, "\tACTHD = 0x%08llx [current 0x%08llx]\n",
+				   (long long)engine->hangcheck.acthd,
+				   intel_engine_get_active_head(engine));
+
+			intel_engine_get_instdone(engine, &instdone);
+
 			seq_puts(m, "\tinstdone read =\n");
-
 			i915_instdone_info(dev_priv, m, &instdone);
 
 			seq_puts(m, "\tinstdone accu =\n");
-
 			i915_instdone_info(dev_priv, m,
 					   &engine->hangcheck.instdone);
 		}
@@ -2966,14 +2953,28 @@ static int i915_shared_dplls_info(struct seq_file *m, void *unused)
 static int i915_wa_registers(struct seq_file *m, void *unused)
 {
 	struct drm_i915_private *i915 = node_to_i915(m->private);
-	const struct i915_wa_list *wal = &i915->engine[RCS0]->ctx_wa_list;
-	struct i915_wa *wa;
-	unsigned int i;
+	struct intel_engine_cs *engine;
+	enum intel_engine_id id;
 
-	seq_printf(m, "Workarounds applied: %u\n", wal->count);
-	for (i = 0, wa = wal->list; i < wal->count; i++, wa++)
-		seq_printf(m, "0x%X: 0x%08X, mask: 0x%08X\n",
-			   i915_mmio_reg_offset(wa->reg), wa->val, wa->mask);
+	for_each_engine(engine, i915, id) {
+		const struct i915_wa_list *wal = &engine->ctx_wa_list;
+		const struct i915_wa *wa;
+		unsigned int count;
+
+		count = wal->count;
+		if (!count)
+			continue;
+
+		seq_printf(m, "%s: Workarounds applied: %u\n",
+			   engine->name, count);
+
+		for (wa = wal->list; count--; wa++)
+			seq_printf(m, "0x%X: 0x%08X, mask: 0x%08X\n",
+				   i915_mmio_reg_offset(wa->reg),
+				   wa->val, wa->mask);
+
+		seq_printf(m, "\n");
+	}
 
 	return 0;
 }
@@ -4087,7 +4088,7 @@ static int i915_hpd_storm_ctl_show(struct seq_file *m, void *data)
 	/* Synchronize with everything first in case there's been an HPD
 	 * storm, but we haven't finished handling it in the kernel yet
 	 */
-	synchronize_irq(dev_priv->drm.irq);
+	intel_synchronize_irq(dev_priv);
 	flush_work(&dev_priv->hotplug.dig_port_work);
 	flush_work(&dev_priv->hotplug.hotplug_work);
 

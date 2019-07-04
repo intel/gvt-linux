@@ -23,6 +23,10 @@
 #ifndef _INTEL_GUC_FWIF_H
 #define _INTEL_GUC_FWIF_H
 
+#include <linux/bits.h>
+#include <linux/compiler.h>
+#include <linux/types.h>
+
 #define GUC_CLIENT_PRIORITY_KMD_HIGH	0
 #define GUC_CLIENT_PRIORITY_HIGH	1
 #define GUC_CLIENT_PRIORITY_KMD_NORMAL	2
@@ -39,13 +43,8 @@
 #define GUC_VIDEO_ENGINE2		4
 #define GUC_MAX_ENGINES_NUM		(GUC_VIDEO_ENGINE2 + 1)
 
-/*
- * XXX: Beware that Gen9 firmware 32.x uses wrong definition for
- * GUC_MAX_INSTANCES_PER_CLASS (1) but this is harmless for us now
- * as we are not enabling GuC submission mode where this will be used
- */
 #define GUC_MAX_ENGINE_CLASSES		5
-#define GUC_MAX_INSTANCES_PER_CLASS	4
+#define GUC_MAX_INSTANCES_PER_CLASS	16
 
 #define GUC_DOORBELL_INVALID		256
 

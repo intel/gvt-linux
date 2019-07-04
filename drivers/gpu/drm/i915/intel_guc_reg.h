@@ -24,6 +24,11 @@
 #ifndef _INTEL_GUC_REG_H_
 #define _INTEL_GUC_REG_H_
 
+#include <linux/compiler.h>
+#include <linux/types.h>
+
+#include "i915_reg.h"
+
 /* Definitions of GuC H/W registers, bits, etc */
 
 #define GUC_STATUS			_MMIO(0xc000)
@@ -37,6 +42,7 @@
 #define   GS_UKERNEL_MASK		  (0xFF << GS_UKERNEL_SHIFT)
 #define   GS_UKERNEL_LAPIC_DONE		  (0x30 << GS_UKERNEL_SHIFT)
 #define   GS_UKERNEL_DPC_ERROR		  (0x60 << GS_UKERNEL_SHIFT)
+#define   GS_UKERNEL_EXCEPTION		  (0x70 << GS_UKERNEL_SHIFT)
 #define   GS_UKERNEL_READY		  (0xF0 << GS_UKERNEL_SHIFT)
 #define   GS_MIA_SHIFT			16
 #define   GS_MIA_MASK			  (0x07 << GS_MIA_SHIFT)

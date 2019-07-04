@@ -1793,8 +1793,10 @@ enum i915_power_well_id {
  */
 #define _ICL_COMBOPHY_A			0x162000
 #define _ICL_COMBOPHY_B			0x6C000
+#define _EHL_COMBOPHY_C			0x160000
 #define _ICL_COMBOPHY(port)		_PICK(port, _ICL_COMBOPHY_A, \
-					      _ICL_COMBOPHY_B)
+					      _ICL_COMBOPHY_B, \
+					      _EHL_COMBOPHY_C)
 
 /* CNL/ICL Port CL_DW registers */
 #define _ICL_PORT_CL_DW(dw, port)	(_ICL_COMBOPHY(port) + \
@@ -1896,6 +1898,8 @@ enum i915_power_well_id {
 #define ICL_PORT_PCS_DW1_GRP(port)	_MMIO(_ICL_PORT_PCS_DW_GRP(1, port))
 #define ICL_PORT_PCS_DW1_LN0(port)	_MMIO(_ICL_PORT_PCS_DW_LN(1, 0, port))
 #define   COMMON_KEEPER_EN		(1 << 26)
+#define   LATENCY_OPTIM_MASK		(0x3 << 2)
+#define   LATENCY_OPTIM_VAL(x)		((x) << 2)
 
 /* CNL/ICL Port TX registers */
 #define _CNL_PORT_TX_AE_GRP_OFFSET		0x162340
@@ -1990,6 +1994,10 @@ enum i915_power_well_id {
 #define ICL_PORT_TX_DW7_LN(ln, port)	_MMIO(_ICL_PORT_TX_DW_LN(7, ln, port))
 #define   N_SCALAR(x)			((x) << 24)
 #define   N_SCALAR_MASK			(0x7F << 24)
+
+#define _ICL_DPHY_CHKN_REG			0x194
+#define ICL_DPHY_CHKN(port)			_MMIO(_ICL_COMBOPHY(port) + _ICL_DPHY_CHKN_REG)
+#define   ICL_DPHY_CHKN_AFE_OVER_PPI_STRAP	REG_BIT(7)
 
 #define MG_PHY_PORT_LN(ln, port, ln0p1, ln0p2, ln1p1) \
 	_MMIO(_PORT((port) - PORT_C, ln0p1, ln0p2) + (ln) * ((ln1p1) - (ln0p1)))
@@ -11145,6 +11153,7 @@ enum skl_power_gate {
 #define _ICL_PHY_MISC_B		0x64C04
 #define ICL_PHY_MISC(port)	_MMIO_PORT(port, _ICL_PHY_MISC_A, \
 						 _ICL_PHY_MISC_B)
+#define  ICL_PHY_MISC_MUX_DDID			(1 << 28)
 #define  ICL_PHY_MISC_DE_IO_COMP_PWR_DOWN	(1 << 23)
 
 /* Icelake Display Stream Compression Registers */

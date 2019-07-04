@@ -35,15 +35,19 @@
 #define __I915_GEM_GTT_H__
 
 #include <linux/io-mapping.h>
+#include <linux/kref.h>
 #include <linux/mm.h>
 #include <linux/pagevec.h>
+#include <linux/workqueue.h>
+
+#include <drm/drm_mm.h>
 
 #include "gt/intel_reset.h"
 #include "i915_gem_fence_reg.h"
 #include "i915_request.h"
 #include "i915_scatterlist.h"
 #include "i915_selftest.h"
-#include "i915_timeline.h"
+#include "gt/intel_timeline.h"
 
 #define I915_GTT_PAGE_SIZE_4K	BIT_ULL(12)
 #define I915_GTT_PAGE_SIZE_64K	BIT_ULL(16)
@@ -64,6 +68,7 @@
 struct drm_i915_file_private;
 struct drm_i915_gem_object;
 struct i915_vma;
+struct intel_gt;
 
 typedef u32 gen6_pte_t;
 typedef u64 gen8_pte_t;
@@ -154,11 +159,6 @@ typedef u64 gen8_ppgtt_pml4e_t;
 #define GEN8_PPAT_UC			(0<<0)
 #define GEN8_PPAT_ELLC_OVERRIDE		(0<<2)
 #define GEN8_PPAT(i, x)			((u64)(x) << ((i) * 8))
-
-#define GEN8_PPAT_GET_CA(x) ((x) & 3)
-#define GEN8_PPAT_GET_TC(x) ((x) & (3 << 2))
-#define GEN8_PPAT_GET_AGE(x) ((x) & (3 << 4))
-#define CHV_PPAT_GET_SNOOP(x) ((x) & (1 << 6))
 
 #define GEN8_PDE_IPS_64K BIT(11)
 #define GEN8_PDE_PS_2M   BIT(7)
@@ -280,8 +280,10 @@ struct pagestash {
 
 struct i915_address_space {
 	struct kref ref;
+	struct rcu_work rcu;
 
 	struct drm_mm mm;
+	struct intel_gt *gt;
 	struct drm_i915_private *i915;
 	struct device *dma;
 	/* Every address space belongs to a struct file - except for the global
@@ -386,7 +388,7 @@ struct i915_ggtt {
 
 	/** "Graphics Stolen Memory" holds the global PTEs */
 	void __iomem *gsm;
-	void (*invalidate)(struct drm_i915_private *dev_priv);
+	void (*invalidate)(struct i915_ggtt *ggtt);
 
 	bool do_idle_maps;
 
@@ -425,8 +427,6 @@ struct gen6_ppgtt {
 
 	unsigned int pin_count;
 	bool scan_for_unused_pt;
-
-	struct gen6_ppgtt_cleanup_work *work;
 };
 
 #define __to_gen6_ppgtt(base) container_of(base, struct gen6_ppgtt, base)
@@ -614,46 +614,15 @@ i915_vm_to_ppgtt(struct i915_address_space *vm)
 	return container_of(vm, struct i915_ppgtt, vm);
 }
 
-#define INTEL_MAX_PPAT_ENTRIES 8
-#define INTEL_PPAT_PERFECT_MATCH (~0U)
-
-struct intel_ppat;
-
-struct intel_ppat_entry {
-	struct intel_ppat *ppat;
-	struct kref ref;
-	u8 value;
-};
-
-struct intel_ppat {
-	struct intel_ppat_entry entries[INTEL_MAX_PPAT_ENTRIES];
-	DECLARE_BITMAP(used, INTEL_MAX_PPAT_ENTRIES);
-	DECLARE_BITMAP(dirty, INTEL_MAX_PPAT_ENTRIES);
-	unsigned int max_entries;
-	u8 clear_value;
-	/*
-	 * Return a score to show how two PPAT values match,
-	 * a INTEL_PPAT_PERFECT_MATCH indicates a perfect match
-	 */
-	unsigned int (*match)(u8 src, u8 dst);
-	void (*update_hw)(struct drm_i915_private *i915);
-
-	struct drm_i915_private *i915;
-};
-
-const struct intel_ppat_entry *
-intel_ppat_get(struct drm_i915_private *i915, u8 value);
-void intel_ppat_put(const struct intel_ppat_entry *entry);
-
 int i915_ggtt_probe_hw(struct drm_i915_private *dev_priv);
 int i915_ggtt_init_hw(struct drm_i915_private *dev_priv);
 int i915_ggtt_enable_hw(struct drm_i915_private *dev_priv);
 void i915_ggtt_enable_guc(struct drm_i915_private *i915);
 void i915_ggtt_disable_guc(struct drm_i915_private *i915);
-int i915_gem_init_ggtt(struct drm_i915_private *dev_priv);
+int i915_init_ggtt(struct drm_i915_private *dev_priv);
 void i915_ggtt_cleanup_hw(struct drm_i915_private *dev_priv);
 
-int i915_ppgtt_init_hw(struct drm_i915_private *dev_priv);
+int i915_ppgtt_init_hw(struct intel_gt *gt);
 
 struct i915_ppgtt *i915_ppgtt_create(struct drm_i915_private *dev_priv);
 

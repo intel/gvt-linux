@@ -38,37 +38,37 @@
 	__stringify(KEY##_GUC_FW_PATCH) ".bin"
 
 #define SKL_GUC_FW_PREFIX skl
-#define SKL_GUC_FW_MAJOR 32
+#define SKL_GUC_FW_MAJOR 33
 #define SKL_GUC_FW_MINOR 0
-#define SKL_GUC_FW_PATCH 3
+#define SKL_GUC_FW_PATCH 0
 #define SKL_GUC_FIRMWARE_PATH __MAKE_GUC_FW_PATH(SKL)
 MODULE_FIRMWARE(SKL_GUC_FIRMWARE_PATH);
 
 #define BXT_GUC_FW_PREFIX bxt
-#define BXT_GUC_FW_MAJOR 32
+#define BXT_GUC_FW_MAJOR 33
 #define BXT_GUC_FW_MINOR 0
-#define BXT_GUC_FW_PATCH 3
+#define BXT_GUC_FW_PATCH 0
 #define BXT_GUC_FIRMWARE_PATH __MAKE_GUC_FW_PATH(BXT)
 MODULE_FIRMWARE(BXT_GUC_FIRMWARE_PATH);
 
 #define KBL_GUC_FW_PREFIX kbl
-#define KBL_GUC_FW_MAJOR 32
+#define KBL_GUC_FW_MAJOR 33
 #define KBL_GUC_FW_MINOR 0
-#define KBL_GUC_FW_PATCH 3
+#define KBL_GUC_FW_PATCH 0
 #define KBL_GUC_FIRMWARE_PATH __MAKE_GUC_FW_PATH(KBL)
 MODULE_FIRMWARE(KBL_GUC_FIRMWARE_PATH);
 
 #define GLK_GUC_FW_PREFIX glk
-#define GLK_GUC_FW_MAJOR 32
+#define GLK_GUC_FW_MAJOR 33
 #define GLK_GUC_FW_MINOR 0
-#define GLK_GUC_FW_PATCH 3
+#define GLK_GUC_FW_PATCH 0
 #define GLK_GUC_FIRMWARE_PATH __MAKE_GUC_FW_PATH(GLK)
 MODULE_FIRMWARE(GLK_GUC_FIRMWARE_PATH);
 
 #define ICL_GUC_FW_PREFIX icl
-#define ICL_GUC_FW_MAJOR 32
+#define ICL_GUC_FW_MAJOR 33
 #define ICL_GUC_FW_MINOR 0
-#define ICL_GUC_FW_PATCH 3
+#define ICL_GUC_FW_PATCH 0
 #define ICL_GUC_FIRMWARE_PATH __MAKE_GUC_FW_PATH(ICL)
 MODULE_FIRMWARE(ICL_GUC_FIRMWARE_PATH);
 
@@ -197,6 +197,7 @@ static inline bool guc_ready(struct intel_guc *guc, u32 *status)
 
 static int guc_wait_ucode(struct intel_guc *guc)
 {
+	struct drm_i915_private *i915 = guc_to_i915(guc);
 	u32 status;
 	int ret;
 
@@ -214,6 +215,12 @@ static int guc_wait_ucode(struct intel_guc *guc)
 	if ((status & GS_BOOTROM_MASK) == GS_BOOTROM_RSA_FAILED) {
 		DRM_ERROR("GuC firmware signature verification failed\n");
 		ret = -ENOEXEC;
+	}
+
+	if ((status & GS_UKERNEL_MASK) == GS_UKERNEL_EXCEPTION) {
+		DRM_ERROR("GuC firmware exception. EIP: %#x\n",
+			  intel_uncore_read(&i915->uncore, SOFT_SCRATCH(13)));
+		ret = -ENXIO;
 	}
 
 	if (ret == 0 && !guc_xfer_completed(guc, &status)) {

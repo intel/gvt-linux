@@ -1,32 +1,12 @@
-drm drm-fixes b5252bdf099a465e6b707e7cf11b7ef0b1e4cf09
-	Merge branch 'etnaviv/fixes' of https://git.pengutronix.de/git/lst/linux into drm-fixes
-drm-misc drm-misc-fixes 2f040d27080ddfffecff2be1a77107c494d0e4f4
-	drm/panfrost: Fix a double-free error
-drm-intel drm-intel-fixes 4b972a01a7da614b4796475f933094751a295a2f
-	Linux 5.2-rc6
-drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
-	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
-drm drm-next 4cf643a39221af24a151ad2cff4e3f95f12f368e
-	Merge tag 'drm-next-5.3-2019-06-27' of git://people.freedesktop.org/~agd5f/linux into drm-next
-drm-misc drm-misc-next-fixes e5704b3fe9d5ffa810abd8ce00215f52f3fd675b
-	drm: connector: remove bogus NULL check
-drm-intel drm-intel-next-fixes c36beba6b296b3c05a0f29753b04775e5ae23886
-	drm/i915: Seal races between async GPU cancellation, retirement and signaling
-drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
-	Linux 4.14-rc1
-drm-misc drm-misc-next 67b587934c23c6e286486a0a724d486c8e037fd6
-	drm/bridge: ti-sn65dsi86: correct dsi mode_flags
-drm-intel drm-intel-next-queued b8cade5959acd712b03b0cecca8299e9292c47a6
-	drm/i915: Show instdone for each engine in debugfs
-drm-intel drm-intel-next 1ee008f240ad5401f683ec3b79a2e3b044a82a89
-	drm/i915: Update DRIVER_DATE to 20190619
-drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
-	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
-sound-upstream for-linus 3450121997ce872eb7f1248417225827ea249710
-	ALSA: line6: Fix write on zero-sized buffer
-sound-upstream for-next 335399362a6edeec5a365ed0fbb0b6902cacc4e4
-	ALSA: hda/ca0132 - remove redundant assignment to variable 'changed'
-drm-intel topic/core-for-CI 3e03b51fcdedb947fdaaff36252f4daf3caf20be
-	mm: Show slab debug as offsets from section base not hashed pointers
-drm-misc topic/remove-fbcon-notifiers 6116b892bd4fd0ddc5f30566a556218bb2e1a9b6
-	vga_switcheroo: Depend upon fbcon being built-in, if enabled
+drm-tip/drm-tip ad5a0afdd20635e644d13406e1d1a7ec44398e0e
+	drm-tip: 2019y-07m-04d-23h-00m-25s UTC integration manifest
+vfio-upstream/for-linus 5715c4dd66a315515eedef3fc4cbe1bf4620f009
+	vfio/mdev: Synchronize device create/remove with parent removal
+vfio-upstream/next b46c820f8f5a03619f21fc4ed2e42848017aefcd
+	sample/mdev/mbochs: remove set but not used variable 'mdev_state'
+origin/gvt-fixes 971afec3a5373f96684ad899579f6a4d51462410
+	drm/i915/gvt: ignore unexpected pvinfo write
+origin/gvt-next 4d6281f637866aa7f31d09a27afab466af1b17d9
+	drm/i915/gvt: Adding ppgtt to GVT GEM context after shadow pdps settled.
+origin/gvt-next-fixes e8f6c88e3d27cb58cacbef8d03025b86989ee50e
+	drm/i915/gvt: Fix an error code in ppgtt_populate_spt_by_guest_entry()

@@ -97,16 +97,10 @@ static void compose_cursor(struct vkms_crc_data *cursor_crc,
 	cursor_obj = drm_gem_fb_get_obj(&cursor_crc->fb, 0);
 	cursor_vkms_obj = drm_gem_to_vkms_gem(cursor_obj);
 
-	mutex_lock(&cursor_vkms_obj->pages_lock);
-	if (!cursor_vkms_obj->vaddr) {
-		DRM_WARN("cursor plane vaddr is NULL");
-		goto out;
-	}
+	if (WARN_ON(!cursor_vkms_obj->vaddr))
+		return;
 
 	blend(vaddr_out, cursor_vkms_obj->vaddr, primary_crc, cursor_crc);
-
-out:
-	mutex_unlock(&cursor_vkms_obj->pages_lock);
 }
 
 static uint32_t _vkms_get_crc(struct vkms_crc_data *primary_crc,
@@ -123,15 +117,12 @@ static uint32_t _vkms_get_crc(struct vkms_crc_data *primary_crc,
 		return 0;
 	}
 
-	mutex_lock(&vkms_obj->pages_lock);
 	if (WARN_ON(!vkms_obj->vaddr)) {
-		mutex_unlock(&vkms_obj->pages_lock);
 		kfree(vaddr_out);
 		return crc;
 	}
 
 	memcpy(vaddr_out, vkms_obj->vaddr, vkms_obj->gem.size);
-	mutex_unlock(&vkms_obj->pages_lock);
 
 	if (cursor_crc)
 		compose_cursor(cursor_crc, primary_crc, vaddr_out);
@@ -159,57 +150,42 @@ void vkms_crc_work_handle(struct work_struct *work)
 						crc_work);
 	struct drm_crtc *crtc = crtc_state->base.crtc;
 	struct vkms_output *out = drm_crtc_to_vkms_output(crtc);
-	struct vkms_device *vdev = container_of(out, struct vkms_device,
-						output);
 	struct vkms_crc_data *primary_crc = NULL;
 	struct vkms_crc_data *cursor_crc = NULL;
-	struct drm_plane *plane;
 	u32 crc32 = 0;
 	u64 frame_start, frame_end;
-	unsigned long flags;
+	bool crc_pending;
 
-	spin_lock_irqsave(&out->state_lock, flags);
+	spin_lock_irq(&out->crc_lock);
 	frame_start = crtc_state->frame_start;
 	frame_end = crtc_state->frame_end;
-	spin_unlock_irqrestore(&out->state_lock, flags);
+	crc_pending = crtc_state->crc_pending;
+	crtc_state->frame_start = 0;
+	crtc_state->frame_end = 0;
+	crtc_state->crc_pending = false;
+	spin_unlock_irq(&out->crc_lock);
 
-	/* _vblank_handle() hasn't updated frame_start yet */
-	if (!frame_start || frame_start == frame_end)
-		goto out;
+	/*
+	 * We raced with the vblank hrtimer and previous work already computed
+	 * the crc, nothing to do.
+	 */
+	if (!crc_pending)
+		return;
 
-	drm_for_each_plane(plane, &vdev->drm) {
-		struct vkms_plane_state *vplane_state;
-		struct vkms_crc_data *crc_data;
+	if (crtc_state->num_active_planes >= 1)
+		primary_crc = crtc_state->active_planes[0]->crc_data;
 
-		vplane_state = to_vkms_plane_state(plane->state);
-		crc_data = vplane_state->crc_data;
-
-		if (drm_framebuffer_read_refcount(&crc_data->fb) == 0)
-			continue;
-
-		if (plane->type == DRM_PLANE_TYPE_PRIMARY)
-			primary_crc = crc_data;
-		else
-			cursor_crc = crc_data;
-	}
+	if (crtc_state->num_active_planes == 2)
+		cursor_crc = crtc_state->active_planes[1]->crc_data;
 
 	if (primary_crc)
 		crc32 = _vkms_get_crc(primary_crc, cursor_crc);
 
-	frame_end = drm_crtc_accurate_vblank_count(crtc);
-
-	/* queue_work can fail to schedule crc_work; add crc for
-	 * missing frames
+	/*
+	 * The worker can fall behind the vblank hrtimer, make sure we catch up.
 	 */
 	while (frame_start <= frame_end)
 		drm_crtc_add_crc_entry(crtc, true, frame_start++, &crc32);
-
-out:
-	/* to avoid using the same value for frame number again */
-	spin_lock_irqsave(&out->state_lock, flags);
-	crtc_state->frame_end = frame_end;
-	crtc_state->frame_start = 0;
-	spin_unlock_irqrestore(&out->state_lock, flags);
 }
 
 static const char * const pipe_crc_sources[] = {"auto"};
@@ -256,17 +232,13 @@ int vkms_set_crc_source(struct drm_crtc *crtc, const char *src_name)
 {
 	struct vkms_output *out = drm_crtc_to_vkms_output(crtc);
 	bool enabled = false;
-	unsigned long flags;
 	int ret = 0;
 
 	ret = vkms_crc_parse_source(src_name, &enabled);
 
-	/* make sure nothing is scheduled on crtc workq */
-	flush_workqueue(out->crc_workq);
-
-	spin_lock_irqsave(&out->lock, flags);
+	spin_lock_irq(&out->lock);
 	out->crc_enabled = enabled;
-	spin_unlock_irqrestore(&out->lock, flags);
+	spin_unlock_irq(&out->lock);
 
 	return ret;
 }

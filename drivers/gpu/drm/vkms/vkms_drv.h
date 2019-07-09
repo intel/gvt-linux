@@ -48,6 +48,13 @@ struct vkms_plane_state {
 struct vkms_crtc_state {
 	struct drm_crtc_state base;
 	struct work_struct crc_work;
+
+	int num_active_planes;
+	/* stack of active planes for crc computation, should be in z order */
+	struct vkms_plane_state **active_planes;
+
+	/* below three are protected by vkms_output.crc_lock */
+	bool crc_pending;
 	u64 frame_start;
 	u64 frame_end;
 };
@@ -59,13 +66,16 @@ struct vkms_output {
 	struct hrtimer vblank_hrtimer;
 	ktime_t period_ns;
 	struct drm_pending_vblank_event *event;
-	bool crc_enabled;
 	/* ordered wq for crc_work */
 	struct workqueue_struct *crc_workq;
 	/* protects concurrent access to crc_data */
 	spinlock_t lock;
-	/* protects concurrent access to crtc_state */
-	spinlock_t state_lock;
+
+	/* protected by @lock */
+	bool crc_enabled;
+	struct vkms_crtc_state *crc_state;
+
+	spinlock_t crc_lock;
 };
 
 struct vkms_device {

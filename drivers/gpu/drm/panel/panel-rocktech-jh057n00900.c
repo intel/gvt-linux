@@ -15,6 +15,7 @@
 #include <linux/gpio/consumer.h>
 #include <linux/media-bus-format.h>
 #include <linux/module.h>
+#include <linux/regulator/consumer.h>
 #include <video/display_timing.h>
 #include <video/mipi_display.h>
 
@@ -33,6 +34,7 @@
 #define ST7703_CMD_SETEXTC	 0xB9
 #define ST7703_CMD_SETMIPI	 0xBA
 #define ST7703_CMD_SETVDC	 0xBC
+#define ST7703_CMD_UNKNOWN0	 0xBF
 #define ST7703_CMD_SETSCR	 0xC0
 #define ST7703_CMD_SETPOWER	 0xC1
 #define ST7703_CMD_SETPANEL	 0xCC
@@ -46,6 +48,8 @@ struct jh057n {
 	struct drm_panel panel;
 	struct gpio_desc *reset_gpio;
 	struct backlight_device *backlight;
+	struct regulator *vcc;
+	struct regulator *iovcc;
 	bool prepared;
 
 	struct dentry *debugfs;
@@ -94,7 +98,7 @@ static int jh057n_init_sequence(struct jh057n *ctx)
 	msleep(20);
 
 	dsi_generic_write_seq(dsi, ST7703_CMD_SETVCOM, 0x3F, 0x3F);
-	dsi_generic_write_seq(dsi, 0xBF, 0x02, 0x11, 0x00);
+	dsi_generic_write_seq(dsi, ST7703_CMD_UNKNOWN0, 0x02, 0x11, 0x00);
 	dsi_generic_write_seq(dsi, ST7703_CMD_SETGIP1,
 			      0x82, 0x10, 0x06, 0x05, 0x9E, 0x0A, 0xA5, 0x12,
 			      0x31, 0x23, 0x37, 0x83, 0x04, 0xBC, 0x27, 0x38,
@@ -159,6 +163,8 @@ static int jh057n_unprepare(struct drm_panel *panel)
 		return 0;
 
 	mipi_dsi_dcs_set_display_off(dsi);
+	regulator_disable(ctx->iovcc);
+	regulator_disable(ctx->vcc);
 	ctx->prepared = false;
 
 	return 0;
@@ -173,6 +179,19 @@ static int jh057n_prepare(struct drm_panel *panel)
 		return 0;
 
 	DRM_DEV_DEBUG_DRIVER(ctx->dev, "Resetting the panel\n");
+	ret = regulator_enable(ctx->vcc);
+	if (ret < 0) {
+		DRM_DEV_ERROR(ctx->dev,
+			      "Failed to enable vcc supply: %d\n", ret);
+		return ret;
+	}
+	ret = regulator_enable(ctx->iovcc);
+	if (ret < 0) {
+		DRM_DEV_ERROR(ctx->dev,
+			      "Failed to enable iovcc supply: %d\n", ret);
+		goto disable_vcc;
+	}
+
 	gpiod_set_value_cansleep(ctx->reset_gpio, 1);
 	usleep_range(20, 40);
 	gpiod_set_value_cansleep(ctx->reset_gpio, 0);
@@ -188,6 +207,10 @@ static int jh057n_prepare(struct drm_panel *panel)
 	ctx->prepared = true;
 
 	return 0;
+
+disable_vcc:
+	regulator_disable(ctx->vcc);
+	return ret;
 }
 
 static const struct drm_display_mode default_mode = {
@@ -299,6 +322,25 @@ static int jh057n_probe(struct mipi_dsi_device *dsi)
 	ctx->backlight = devm_of_find_backlight(dev);
 	if (IS_ERR(ctx->backlight))
 		return PTR_ERR(ctx->backlight);
+
+	ctx->vcc = devm_regulator_get(dev, "vcc");
+	if (IS_ERR(ctx->vcc)) {
+		ret = PTR_ERR(ctx->vcc);
+		if (ret != -EPROBE_DEFER)
+			DRM_DEV_ERROR(dev,
+				      "Failed to request vcc regulator: %d\n",
+				      ret);
+		return ret;
+	}
+	ctx->iovcc = devm_regulator_get(dev, "iovcc");
+	if (IS_ERR(ctx->iovcc)) {
+		ret = PTR_ERR(ctx->iovcc);
+		if (ret != -EPROBE_DEFER)
+			DRM_DEV_ERROR(dev,
+				      "Failed to request iovcc regulator: %d\n",
+				      ret);
+		return ret;
+	}
 
 	drm_panel_init(&ctx->panel);
 	ctx->panel.dev = dev;

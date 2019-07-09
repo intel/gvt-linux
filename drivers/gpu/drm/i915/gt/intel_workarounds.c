@@ -6,6 +6,7 @@
 
 #include "i915_drv.h"
 #include "intel_context.h"
+#include "intel_gt.h"
 #include "intel_workarounds.h"
 
 /**
@@ -536,12 +537,6 @@ static void icl_ctx_workarounds_init(struct intel_engine_cs *engine,
 		 intel_uncore_read(engine->uncore, GEN8_L3CNTLREG) |
 		 GEN8_ERRDETBCTRL);
 
-	/* WaDisableBankHangMode:icl */
-	wa_write(wal,
-		 GEN8_L3CNTLREG,
-		 intel_uncore_read(engine->uncore, GEN8_L3CNTLREG) |
-		 GEN8_ERRDETBCTRL);
-
 	/* Wa_1604370585:icl (pre-prod)
 	 * Formerly known as WaPushConstantDereferenceHoldDisable
 	 */
@@ -990,9 +985,9 @@ wa_list_apply(struct intel_uncore *uncore, const struct i915_wa_list *wal)
 	spin_unlock_irqrestore(&uncore->lock, flags);
 }
 
-void intel_gt_apply_workarounds(struct drm_i915_private *i915)
+void intel_gt_apply_workarounds(struct intel_gt *gt)
 {
-	wa_list_apply(&i915->uncore, &i915->gt_wa_list);
+	wa_list_apply(gt->uncore, &gt->i915->gt_wa_list);
 }
 
 static bool wa_list_verify(struct intel_uncore *uncore,
@@ -1011,10 +1006,9 @@ static bool wa_list_verify(struct intel_uncore *uncore,
 	return ok;
 }
 
-bool intel_gt_verify_workarounds(struct drm_i915_private *i915,
-				 const char *from)
+bool intel_gt_verify_workarounds(struct intel_gt *gt, const char *from)
 {
-	return wa_list_verify(&i915->uncore, &i915->gt_wa_list, from);
+	return wa_list_verify(gt->uncore, &gt->i915->gt_wa_list, from);
 }
 
 static void
@@ -1360,7 +1354,7 @@ engine_init_workarounds(struct intel_engine_cs *engine, struct i915_wa_list *wal
 	if (I915_SELFTEST_ONLY(INTEL_GEN(engine->i915) < 8))
 		return;
 
-	if (engine->id == RCS0)
+	if (engine->class == RENDER_CLASS)
 		rcs_engine_wa_init(engine, wal);
 	else
 		xcs_engine_wa_init(engine, wal);
@@ -1370,7 +1364,7 @@ void intel_engine_init_workarounds(struct intel_engine_cs *engine)
 {
 	struct i915_wa_list *wal = &engine->wa_list;
 
-	if (GEM_WARN_ON(INTEL_GEN(engine->i915) < 8))
+	if (INTEL_GEN(engine->i915) < 8)
 		return;
 
 	wa_init_start(wal, engine->name);
@@ -1458,7 +1452,7 @@ static int engine_wa_list_verify(struct intel_context *ce,
 	if (!wal->count)
 		return 0;
 
-	vma = create_scratch(&ce->engine->i915->ggtt.vm, wal->count);
+	vma = create_scratch(&ce->engine->gt->ggtt->vm, wal->count);
 	if (IS_ERR(vma))
 		return PTR_ERR(vma);
 

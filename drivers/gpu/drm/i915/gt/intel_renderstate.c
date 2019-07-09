@@ -26,10 +26,9 @@
  */
 
 #include "i915_drv.h"
-#include "i915_gem_render_state.h"
 #include "intel_renderstate.h"
 
-struct intel_render_state {
+struct intel_renderstate {
 	const struct intel_renderstate_rodata *rodata;
 	struct drm_i915_gem_object *obj;
 	struct i915_vma *vma;
@@ -75,7 +74,7 @@ render_state_get_rodata(const struct intel_engine_cs *engine)
 		(batch)[(i)++] = (val);				\
 	} while(0)
 
-static int render_state_setup(struct intel_render_state *so,
+static int render_state_setup(struct intel_renderstate *so,
 			      struct drm_i915_private *i915)
 {
 	const struct intel_renderstate_rodata *rodata = so->rodata;
@@ -177,10 +176,10 @@ err:
 
 #undef OUT_BATCH
 
-int i915_gem_render_state_emit(struct i915_request *rq)
+int intel_renderstate_emit(struct i915_request *rq)
 {
 	struct intel_engine_cs *engine = rq->engine;
-	struct intel_render_state so = {}; /* keep the compiler happy */
+	struct intel_renderstate so = {}; /* keep the compiler happy */
 	int err;
 
 	so.rodata = render_state_get_rodata(engine);
@@ -194,7 +193,7 @@ int i915_gem_render_state_emit(struct i915_request *rq)
 	if (IS_ERR(so.obj))
 		return PTR_ERR(so.obj);
 
-	so.vma = i915_vma_instance(so.obj, &engine->i915->ggtt.vm, NULL);
+	so.vma = i915_vma_instance(so.obj, &engine->gt->ggtt->vm, NULL);
 	if (IS_ERR(so.vma)) {
 		err = PTR_ERR(so.vma);
 		goto err_obj;

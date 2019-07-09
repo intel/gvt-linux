@@ -403,6 +403,19 @@ static void gen11_dsi_config_phy_lanes_sequence(struct intel_encoder *encoder)
 		tmp &= ~FRC_LATENCY_OPTIM_MASK;
 		tmp |= FRC_LATENCY_OPTIM_VAL(0x5);
 		I915_WRITE(ICL_PORT_TX_DW2_GRP(port), tmp);
+
+		/* For EHL set latency optimization for PCS_DW1 lanes */
+		if (IS_ELKHARTLAKE(dev_priv)) {
+			tmp = I915_READ(ICL_PORT_PCS_DW1_AUX(port));
+			tmp &= ~LATENCY_OPTIM_MASK;
+			tmp |= LATENCY_OPTIM_VAL(0);
+			I915_WRITE(ICL_PORT_PCS_DW1_AUX(port), tmp);
+
+			tmp = I915_READ(ICL_PORT_PCS_DW1_LN0(port));
+			tmp &= ~LATENCY_OPTIM_MASK;
+			tmp |= LATENCY_OPTIM_VAL(0x1);
+			I915_WRITE(ICL_PORT_PCS_DW1_GRP(port), tmp);
+		}
 	}
 
 }
@@ -529,6 +542,14 @@ static void gen11_dsi_setup_dphy_timings(struct intel_encoder *encoder)
 			tmp &= ~TA_SURE_MASK;
 			tmp |= TA_SURE_OVERRIDE | TA_SURE(0);
 			I915_WRITE(DSI_TA_TIMING_PARAM(port), tmp);
+		}
+	}
+
+	if (IS_ELKHARTLAKE(dev_priv)) {
+		for_each_dsi_port(port, intel_dsi->ports) {
+			tmp = I915_READ(ICL_DPHY_CHKN(port));
+			tmp |= ICL_DPHY_CHKN_AFE_OVER_PPI_STRAP;
+			I915_WRITE(ICL_DPHY_CHKN(port), tmp);
 		}
 	}
 }
@@ -1487,6 +1508,26 @@ static void icl_dphy_param_init(struct intel_dsi *intel_dsi)
 	intel_dsi_log_params(intel_dsi);
 }
 
+static void icl_dsi_add_properties(struct intel_connector *connector)
+{
+	u32 allowed_scalers;
+
+	allowed_scalers = BIT(DRM_MODE_SCALE_ASPECT) |
+			   BIT(DRM_MODE_SCALE_FULLSCREEN) |
+			   BIT(DRM_MODE_SCALE_CENTER);
+
+	drm_connector_attach_scaling_mode_property(&connector->base,
+						   allowed_scalers);
+
+	connector->base.state->scaling_mode = DRM_MODE_SCALE_ASPECT;
+
+	connector->base.display_info.panel_orientation =
+			intel_dsi_get_panel_orientation(connector);
+	drm_connector_init_panel_orientation_property(&connector->base,
+				connector->panel.fixed_mode->hdisplay,
+				connector->panel.fixed_mode->vdisplay);
+}
+
 void icl_dsi_init(struct drm_i915_private *dev_priv)
 {
 	struct drm_device *dev = &dev_priv->drm;
@@ -1580,6 +1621,8 @@ void icl_dsi_init(struct drm_i915_private *dev_priv)
 	}
 
 	icl_dphy_param_init(intel_dsi);
+
+	icl_dsi_add_properties(intel_connector);
 	return;
 
 err:

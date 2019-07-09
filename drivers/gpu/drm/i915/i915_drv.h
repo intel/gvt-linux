@@ -72,6 +72,7 @@
 
 #include "gt/intel_lrc.h"
 #include "gt/intel_engine.h"
+#include "gt/intel_gt_types.h"
 #include "gt/intel_workarounds.h"
 
 #include "intel_device_info.h"
@@ -88,7 +89,7 @@
 #include "i915_gpu_error.h"
 #include "i915_request.h"
 #include "i915_scheduler.h"
-#include "i915_timeline.h"
+#include "gt/intel_timeline.h"
 #include "i915_vma.h"
 
 #include "intel_gvt.h"
@@ -98,8 +99,8 @@
 
 #define DRIVER_NAME		"i915"
 #define DRIVER_DESC		"Intel Graphics"
-#define DRIVER_DATE		"20190619"
-#define DRIVER_TIMESTAMP	1560947544
+#define DRIVER_DATE		"20190708"
+#define DRIVER_TIMESTAMP	1562616546
 
 /* Use I915_STATE_WARN(x) and I915_STATE_WARN_ON() (rather than WARN() and
  * WARN_ON()) for hw state sanity checks to check for unexpected conditions
@@ -286,14 +287,14 @@ struct drm_i915_display_funcs {
 			  enum pipe pipe);
 	int (*get_fifo_size)(struct drm_i915_private *dev_priv,
 			     enum i9xx_plane_id i9xx_plane);
-	int (*compute_pipe_wm)(struct intel_crtc_state *cstate);
-	int (*compute_intermediate_wm)(struct intel_crtc_state *newstate);
+	int (*compute_pipe_wm)(struct intel_crtc_state *crtc_state);
+	int (*compute_intermediate_wm)(struct intel_crtc_state *crtc_state);
 	void (*initial_watermarks)(struct intel_atomic_state *state,
-				   struct intel_crtc_state *cstate);
+				   struct intel_crtc_state *crtc_state);
 	void (*atomic_update_watermarks)(struct intel_atomic_state *state,
-					 struct intel_crtc_state *cstate);
+					 struct intel_crtc_state *crtc_state);
 	void (*optimize_watermarks)(struct intel_atomic_state *state,
-				    struct intel_crtc_state *cstate);
+				    struct intel_crtc_state *crtc_state);
 	int (*compute_global_watermarks)(struct intel_atomic_state *state);
 	void (*update_wm)(struct intel_crtc *crtc);
 	int (*modeset_calc_cdclk)(struct intel_atomic_state *state);
@@ -306,10 +307,10 @@ struct drm_i915_display_funcs {
 	int (*crtc_compute_clock)(struct intel_crtc *crtc,
 				  struct intel_crtc_state *crtc_state);
 	void (*crtc_enable)(struct intel_crtc_state *pipe_config,
-			    struct drm_atomic_state *old_state);
+			    struct intel_atomic_state *old_state);
 	void (*crtc_disable)(struct intel_crtc_state *old_crtc_state,
-			     struct drm_atomic_state *old_state);
-	void (*update_crtcs)(struct drm_atomic_state *state);
+			     struct intel_atomic_state *old_state);
+	void (*update_crtcs)(struct intel_atomic_state *state);
 	void (*audio_codec_enable)(struct intel_encoder *encoder,
 				   const struct intel_crtc_state *crtc_state,
 				   const struct drm_connector_state *conn_state);
@@ -1402,8 +1403,6 @@ struct drm_i915_private {
 		u32 de_irq_mask[I915_MAX_PIPES];
 	};
 	u32 gt_irq_mask;
-	u32 pm_imr;
-	u32 pm_ier;
 	u32 pm_rps_events;
 	u32 pm_guc_events;
 	u32 pipestat_irq_mask[I915_MAX_PIPES];
@@ -1487,8 +1486,6 @@ struct drm_i915_private {
 	struct i915_gem_mm mm;
 	DECLARE_HASHTABLE(mm_structs, 7);
 	struct mutex mm_lock;
-
-	struct intel_ppat ppat;
 
 	/* Kernel Modesetting */
 
@@ -1645,7 +1642,7 @@ struct drm_i915_private {
 		/*
 		 * Should be held around atomic WM register writing; also
 		 * protects * intel_crtc->wm.active and
-		 * cstate->wm.need_postvbl_update.
+		 * crtc_state->wm.need_postvbl_update.
 		 */
 		struct mutex wm_mutex;
 
@@ -1674,8 +1671,9 @@ struct drm_i915_private {
 	} dram_info;
 
 	struct intel_bw_info {
-		int num_planes;
-		int deratedbw[3];
+		unsigned int deratedbw[3]; /* for each QGV point */
+		u8 num_qgv_points;
+		u8 num_planes;
 	} max_bw[6];
 
 	struct drm_private_obj bw_obj;
@@ -1824,38 +1822,7 @@ struct drm_i915_private {
 	} perf;
 
 	/* Abstract the submission mechanism (legacy ringbuffer or execlists) away */
-	struct {
-		struct i915_gt_timelines {
-			struct mutex mutex; /* protects list, tainted by GPU */
-			struct list_head active_list;
-
-			/* Pack multiple timelines' seqnos into the same page */
-			spinlock_t hwsp_lock;
-			struct list_head hwsp_free_list;
-		} timelines;
-
-		struct list_head active_rings;
-
-		struct intel_wakeref wakeref;
-
-		struct list_head closed_vma;
-		spinlock_t closed_lock; /* guards the list of closed_vma */
-
-		/**
-		 * Is the GPU currently considered idle, or busy executing
-		 * userspace requests? Whilst idle, we allow runtime power
-		 * management to power down the hardware and display clocks.
-		 * In order to reduce the effect on performance, there
-		 * is a slight delay before we do so.
-		 */
-		intel_wakeref_t awake;
-
-		struct blocking_notifier_head pm_notifications;
-
-		ktime_t last_init_time;
-
-		struct i915_vma *scratch;
-	} gt;
+	struct intel_gt gt;
 
 	struct {
 		struct notifier_block pm_notifier;
@@ -1948,11 +1915,6 @@ static inline struct drm_i915_private *guc_to_i915(struct intel_guc *guc)
 static inline struct drm_i915_private *huc_to_i915(struct intel_huc *huc)
 {
 	return container_of(huc, struct drm_i915_private, huc);
-}
-
-static inline struct drm_i915_private *uncore_to_i915(struct intel_uncore *uncore)
-{
-	return container_of(uncore, struct drm_i915_private, uncore);
 }
 
 /* Simple iterator over all initialised engines */
@@ -2358,6 +2320,7 @@ IS_SUBPLATFORM(const struct drm_i915_private *i915,
 #define INTEL_PCH_CMP_DEVICE_ID_TYPE		0x0280
 #define INTEL_PCH_ICP_DEVICE_ID_TYPE		0x3480
 #define INTEL_PCH_MCC_DEVICE_ID_TYPE		0x4B00
+#define INTEL_PCH_MCC2_DEVICE_ID_TYPE		0x3880
 #define INTEL_PCH_P2X_DEVICE_ID_TYPE		0x7100
 #define INTEL_PCH_P3X_DEVICE_ID_TYPE		0x7000
 #define INTEL_PCH_QEMU_DEVICE_ID_TYPE		0x2900 /* qemu q35 has 2918 */
@@ -2480,18 +2443,17 @@ int i915_gem_freeze_late(struct drm_i915_private *dev_priv);
 
 static inline void i915_gem_drain_freed_objects(struct drm_i915_private *i915)
 {
-	if (!atomic_read(&i915->mm.free_count))
-		return;
-
-	/* A single pass should suffice to release all the freed objects (along
+	/*
+	 * A single pass should suffice to release all the freed objects (along
 	 * most call paths) , but be a little more paranoid in that freeing
 	 * the objects does take a little amount of time, during which the rcu
 	 * callbacks could have added new objects into the freed list, and
 	 * armed the work again.
 	 */
-	do {
+	while (atomic_read(&i915->mm.free_count)) {
+		flush_work(&i915->mm.free_work);
 		rcu_barrier();
-	} while (flush_work(&i915->mm.free_work));
+	}
 }
 
 static inline void i915_gem_drain_workqueue(struct drm_i915_private *i915)
@@ -2509,6 +2471,7 @@ static inline void i915_gem_drain_workqueue(struct drm_i915_private *i915)
 	 */
 	int pass = 3;
 	do {
+		flush_workqueue(i915->wq);
 		rcu_barrier();
 		i915_gem_drain_freed_objects(i915);
 	} while (--pass);
@@ -2522,7 +2485,9 @@ i915_gem_object_ggtt_pin(struct drm_i915_gem_object *obj,
 			 u64 alignment,
 			 u64 flags);
 
-int i915_gem_object_unbind(struct drm_i915_gem_object *obj);
+int i915_gem_object_unbind(struct drm_i915_gem_object *obj,
+			   unsigned long flags);
+#define I915_GEM_OBJECT_UNBIND_ACTIVE BIT(0)
 
 void i915_gem_runtime_suspend(struct drm_i915_private *dev_priv);
 
@@ -2572,7 +2537,6 @@ bool i915_gem_unset_wedged(struct drm_i915_private *dev_priv);
 void i915_gem_init_mmio(struct drm_i915_private *i915);
 int __must_check i915_gem_init(struct drm_i915_private *dev_priv);
 int __must_check i915_gem_init_hw(struct drm_i915_private *dev_priv);
-void i915_gem_init_swizzling(struct drm_i915_private *dev_priv);
 void i915_gem_fini_hw(struct drm_i915_private *dev_priv);
 void i915_gem_fini(struct drm_i915_private *dev_priv);
 int i915_gem_wait_for_idle(struct drm_i915_private *dev_priv,
@@ -2633,16 +2597,6 @@ int __must_check i915_gem_evict_for_node(struct i915_address_space *vm,
 					 struct drm_mm_node *node,
 					 unsigned int flags);
 int i915_gem_evict_vm(struct i915_address_space *vm);
-
-void i915_gem_flush_ggtt_writes(struct drm_i915_private *dev_priv);
-
-/* belongs in i915_gem_gtt.h */
-static inline void i915_gem_chipset_flush(struct drm_i915_private *dev_priv)
-{
-	wmb();
-	if (INTEL_GEN(dev_priv) < 6)
-		intel_gtt_chipset_flush();
-}
 
 /* i915_gem_stolen.c */
 int i915_gem_stolen_insert_node(struct drm_i915_private *dev_priv,
@@ -2826,11 +2780,6 @@ static inline int intel_hws_csb_write_index(struct drm_i915_private *i915)
 		return CNL_HWS_CSB_WRITE_INDEX;
 	else
 		return I915_HWS_CSB_WRITE_INDEX;
-}
-
-static inline u32 i915_scratch_offset(const struct drm_i915_private *i915)
-{
-	return i915_ggtt_offset(i915->gt.scratch);
 }
 
 static inline enum i915_map_type

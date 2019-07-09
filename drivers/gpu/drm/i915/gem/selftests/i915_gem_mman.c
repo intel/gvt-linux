@@ -6,6 +6,7 @@
 
 #include <linux/prime_numbers.h>
 
+#include "gt/intel_gt.h"
 #include "gt/intel_gt_pm.h"
 #include "huge_gem_object.h"
 #include "i915_selftest.h"
@@ -143,7 +144,7 @@ static int check_partial_mapping(struct drm_i915_gem_object *obj,
 		if (offset >= obj->base.size)
 			continue;
 
-		i915_gem_flush_ggtt_writes(to_i915(obj->base.dev));
+		intel_gt_flush_ggtt_writes(&to_i915(obj->base.dev)->gt);
 
 		p = i915_gem_object_get_page(obj, offset >> PAGE_SHIFT);
 		cpu = kmap(p) + offset_in_page(offset);
@@ -327,7 +328,8 @@ out:
 static int make_obj_busy(struct drm_i915_gem_object *obj)
 {
 	struct drm_i915_private *i915 = to_i915(obj->base.dev);
-	struct i915_request *rq;
+	struct intel_engine_cs *engine;
+	enum intel_engine_id id;
 	struct i915_vma *vma;
 	int err;
 
@@ -339,17 +341,21 @@ static int make_obj_busy(struct drm_i915_gem_object *obj)
 	if (err)
 		return err;
 
-	rq = i915_request_create(i915->engine[RCS0]->kernel_context);
-	if (IS_ERR(rq)) {
-		i915_vma_unpin(vma);
-		return PTR_ERR(rq);
+	for_each_engine(engine, i915, id) {
+		struct i915_request *rq;
+
+		rq = i915_request_create(engine->kernel_context);
+		if (IS_ERR(rq)) {
+			i915_vma_unpin(vma);
+			return PTR_ERR(rq);
+		}
+
+		i915_vma_lock(vma);
+		err = i915_vma_move_to_active(vma, rq, EXEC_OBJECT_WRITE);
+		i915_vma_unlock(vma);
+
+		i915_request_add(rq);
 	}
-
-	i915_vma_lock(vma);
-	err = i915_vma_move_to_active(vma, rq, EXEC_OBJECT_WRITE);
-	i915_vma_unlock(vma);
-
-	i915_request_add(rq);
 
 	i915_vma_unpin(vma);
 	i915_gem_object_put(obj); /* leave it only alive via its active ref */
@@ -378,7 +384,7 @@ static void disable_retire_worker(struct drm_i915_private *i915)
 {
 	i915_gem_shrinker_unregister(i915);
 
-	intel_gt_pm_get(i915);
+	intel_gt_pm_get(&i915->gt);
 
 	cancel_delayed_work_sync(&i915->gem.retire_work);
 	flush_work(&i915->gem.idle_work);
@@ -386,7 +392,7 @@ static void disable_retire_worker(struct drm_i915_private *i915)
 
 static void restore_retire_worker(struct drm_i915_private *i915)
 {
-	intel_gt_pm_put(i915);
+	intel_gt_pm_put(&i915->gt);
 
 	mutex_lock(&i915->drm.struct_mutex);
 	igt_flush_test(i915, I915_WAIT_LOCKED);
@@ -413,7 +419,9 @@ static int igt_mmap_offset_exhaustion(void *arg)
 	drm_mm_for_each_hole(hole, mm, hole_start, hole_end) {
 		resv.start = hole_start;
 		resv.size = hole_end - hole_start - 1; /* PAGE_SIZE units */
+		mutex_lock(&i915->drm.struct_mutex);
 		err = drm_mm_reserve_node(mm, &resv);
+		mutex_unlock(&i915->drm.struct_mutex);
 		if (err) {
 			pr_err("Failed to trim VMA manager, err=%d\n", err);
 			goto out_park;
@@ -474,19 +482,12 @@ static int igt_mmap_offset_exhaustion(void *arg)
 			pr_err("[loop %d] Failed to busy the object\n", loop);
 			goto err_obj;
 		}
-
-		/* NB we rely on the _active_ reference to access obj now */
-		GEM_BUG_ON(!i915_gem_object_is_active(obj));
-		err = create_mmap_offset(obj);
-		if (err) {
-			pr_err("[loop %d] create_mmap_offset failed with err=%d\n",
-			       loop, err);
-			goto out;
-		}
 	}
 
 out:
+	mutex_lock(&i915->drm.struct_mutex);
 	drm_mm_remove_node(&resv);
+	mutex_unlock(&i915->drm.struct_mutex);
 out_park:
 	restore_retire_worker(i915);
 	return err;

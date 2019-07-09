@@ -200,20 +200,20 @@
 #include "gt/intel_lrc_reg.h"
 
 #include "i915_drv.h"
-#include "i915_oa_hsw.h"
-#include "i915_oa_bdw.h"
-#include "i915_oa_chv.h"
-#include "i915_oa_sklgt2.h"
-#include "i915_oa_sklgt3.h"
-#include "i915_oa_sklgt4.h"
-#include "i915_oa_bxt.h"
-#include "i915_oa_kblgt2.h"
-#include "i915_oa_kblgt3.h"
-#include "i915_oa_glk.h"
-#include "i915_oa_cflgt2.h"
-#include "i915_oa_cflgt3.h"
-#include "i915_oa_cnl.h"
-#include "i915_oa_icl.h"
+#include "oa/i915_oa_hsw.h"
+#include "oa/i915_oa_bdw.h"
+#include "oa/i915_oa_chv.h"
+#include "oa/i915_oa_sklgt2.h"
+#include "oa/i915_oa_sklgt3.h"
+#include "oa/i915_oa_sklgt4.h"
+#include "oa/i915_oa_bxt.h"
+#include "oa/i915_oa_kblgt2.h"
+#include "oa/i915_oa_kblgt3.h"
+#include "oa/i915_oa_glk.h"
+#include "oa/i915_oa_cflgt2.h"
+#include "oa/i915_oa_cflgt3.h"
+#include "oa/i915_oa_cnl.h"
+#include "oa/i915_oa_icl.h"
 
 /* HW requires this to be a power of two, between 128k and 16M, though driver
  * is currently generally designed assuming the largest 16M size is used such
@@ -2517,6 +2517,9 @@ static int i915_perf_release(struct inode *inode, struct file *file)
 	i915_perf_destroy_locked(stream);
 	mutex_unlock(&dev_priv->perf.lock);
 
+	/* Release the reference the perf stream kept on the driver. */
+	drm_dev_put(&dev_priv->drm);
+
 	return 0;
 }
 
@@ -2651,6 +2654,11 @@ i915_perf_open_ioctl_locked(struct drm_i915_private *dev_priv,
 
 	if (!(param->flags & I915_PERF_FLAG_DISABLED))
 		i915_perf_enable_locked(stream);
+
+	/* Take a reference on the driver that will be kept with stream_fd
+	 * until its release.
+	 */
+	drm_dev_get(&dev_priv->drm);
 
 	return stream_fd;
 

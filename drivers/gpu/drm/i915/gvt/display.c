@@ -399,6 +399,7 @@ static void emulate_vblank_on_pipe(struct intel_vgpu *vgpu, int pipe)
 		[PIPE_C] = PIPE_C_VBLANK,
 	};
 	int pri_flip_event = SKL_FLIP_EVENT(pipe, PLANE_PRIMARY);
+	int cur_flip_event = CURSOR_A_FLIP_DONE + pipe;
 	int event;
 	u64 eventfd_signal_val = 0;
 	static int pageflip_count = 0;
@@ -414,6 +415,11 @@ static void emulate_vblank_on_pipe(struct intel_vgpu *vgpu, int pipe)
 
 		if (event == pri_flip_event) {
 			eventfd_signal_val += DISPLAY_CON_REFRESH_EVENT_INC;
+			pageflip_count += PAGEFLIP_INC_COUNT;
+		}
+
+		if (event == cur_flip_event) {
+			eventfd_signal_val += DISPLAY_CUR_REFRESH_EVENT_INC;
 			pageflip_count += PAGEFLIP_INC_COUNT;
 		}
 

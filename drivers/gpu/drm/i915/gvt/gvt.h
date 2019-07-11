@@ -128,6 +128,8 @@ struct intel_vgpu_display {
 	struct intel_vgpu_i2c_edid i2c_edid;
 	struct intel_vgpu_port ports[I915_MAX_PORTS];
 	struct intel_vgpu_sbi sbi;
+	DECLARE_BITMAP(async_flip_event[I915_MAX_PIPES],
+		       I915_MAX_PLANES);
 };
 
 struct vgpu_sched_ctl {

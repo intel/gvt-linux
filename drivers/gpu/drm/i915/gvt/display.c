@@ -426,6 +426,23 @@ static void emulate_vblank_on_pipe(struct intel_vgpu *vgpu, int pipe)
 		intel_vgpu_trigger_virtual_event(vgpu, event);
 	}
 
+	for_each_set_bit(event, vgpu->display.async_flip_event[pipe],
+			I915_MAX_PLANES) {
+		clear_bit(event, vgpu->display.async_flip_event[pipe]);
+		if (!pipe_is_enabled(vgpu, pipe))
+			continue;
+
+		if (event == PLANE_PRIMARY) {
+			eventfd_signal_val += DISPLAY_CON_REFRESH_EVENT_INC;
+			pageflip_count += PAGEFLIP_INC_COUNT;
+		}
+
+		if (event == PLANE_CURSOR) {
+			eventfd_signal_val += DISPLAY_CUR_REFRESH_EVENT_INC;
+			pageflip_count += PAGEFLIP_INC_COUNT;
+		}
+	}
+
 	if (--pageflip_count < 0) {
 		eventfd_signal_val += DISPLAY_CON_REFRESH_EVENT_INC;
 		pageflip_count = 0;

@@ -1,0 +1,30 @@
+drm drm-fixes a0b2cf792ac9db7bb73e599e516adfb9dca8e60b
+	Merge tag 'imx-drm-fixes-2019-07-04' of git://git.pengutronix.de/git/pza/linux into drm-fixes
+drm-misc drm-misc-fixes 2f040d27080ddfffecff2be1a77107c494d0e4f4
+	drm/panfrost: Fix a double-free error
+drm-intel drm-intel-fixes d7e8a19b38c8ac1a32b6b03af049e2c88d4155db
+	drm/i915: Don't dereference request if it may have been retired when printing
+drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
+	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
+drm drm-next 6dfc43d3a19174faead54575c204aee106225f43
+	mm: adjust apply_to_pfn_range interface for dropped token.
+drm-misc drm-misc-next-fixes 7f3bbc0b817b51206948b743331c7441bf918c7f
+	drm/modes: Skip invalid cmdline mode
+drm-intel drm-intel-next-fixes c36beba6b296b3c05a0f29753b04775e5ae23886
+	drm/i915: Seal races between async GPU cancellation, retirement and signaling
+drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
+	Linux 4.14-rc1
+drm-misc drm-misc-next 913cafbb250f146654ea979186d8615e0c54d6a7
+	drm/vgem: Reclassify buffer creation debug message
+drm-intel drm-intel-next-queued 506927ec8bbbdd99261cec4cd28cd0fd54e02218
+	drm/i915/selftests: Ignore self-preemption suppression under gvt
+drm-intel drm-intel-next a17ce803dffa8e34fda39f8af721a4005c451fef
+	drm/i915: Update DRIVER_DATE to 20190708
+drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
+	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
+sound-upstream for-linus 2f235d92ac225361a9c653cb76c7ca8ef99621de
+	ALSA: rme9652: Unneeded variable: "result".
+sound-upstream for-next 2f235d92ac225361a9c653cb76c7ca8ef99621de
+	ALSA: rme9652: Unneeded variable: "result".
+drm-intel topic/core-for-CI 3acdd1462f96ab5d3d65f0da146805c1bdd4c881
+	mm: Show slab debug as offsets from section base not hashed pointers

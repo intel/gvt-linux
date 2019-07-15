@@ -59,6 +59,10 @@ int __intel_context_do_pin(struct intel_context *ce)
 		if (err)
 			goto err;
 
+		GEM_TRACE("%s context:%llx pin ring:{head:%04x, tail:%04x}\n",
+			  ce->engine->name, ce->ring->timeline->fence_context,
+			  ce->ring->head, ce->ring->tail);
+
 		i915_gem_context_get(ce->gem_context); /* for ctx->ppgtt */
 
 		smp_mb__before_atomic(); /* flush pin before it is visible */
@@ -85,6 +89,9 @@ void intel_context_unpin(struct intel_context *ce)
 	mutex_lock_nested(&ce->pin_mutex, SINGLE_DEPTH_NESTING);
 
 	if (likely(atomic_dec_and_test(&ce->pin_count))) {
+		GEM_TRACE("%s context:%llx retire\n",
+			  ce->engine->name, ce->ring->timeline->fence_context);
+
 		ce->ops->unpin(ce);
 
 		i915_gem_context_put(ce->gem_context);
@@ -95,11 +102,15 @@ void intel_context_unpin(struct intel_context *ce)
 	intel_context_put(ce);
 }
 
-static int __context_pin_state(struct i915_vma *vma, unsigned long flags)
+static int __context_pin_state(struct i915_vma *vma)
 {
+	u64 flags;
 	int err;
 
-	err = i915_vma_pin(vma, 0, 0, flags | PIN_GLOBAL);
+	flags = i915_ggtt_pin_bias(vma) | PIN_OFFSET_BIAS;
+	flags |= PIN_HIGH | PIN_GLOBAL;
+
+	err = i915_vma_pin(vma, 0, 0, flags);
 	if (err)
 		return err;
 
@@ -119,14 +130,55 @@ static void __context_unpin_state(struct i915_vma *vma)
 	__i915_vma_unpin(vma);
 }
 
-static void intel_context_retire(struct i915_active *active)
+static void __intel_context_retire(struct i915_active *active)
 {
 	struct intel_context *ce = container_of(active, typeof(*ce), active);
+
+	GEM_TRACE("%s context:%llx retire\n",
+		  ce->engine->name, ce->ring->timeline->fence_context);
 
 	if (ce->state)
 		__context_unpin_state(ce->state);
 
+	intel_ring_unpin(ce->ring);
 	intel_context_put(ce);
+}
+
+static int __intel_context_active(struct i915_active *active)
+{
+	struct intel_context *ce = container_of(active, typeof(*ce), active);
+	int err;
+
+	intel_context_get(ce);
+
+	err = intel_ring_pin(ce->ring);
+	if (err)
+		goto err_put;
+
+	if (!ce->state)
+		return 0;
+
+	err = __context_pin_state(ce->state);
+	if (err)
+		goto err_ring;
+
+	/* Preallocate tracking nodes */
+	if (!i915_gem_context_is_kernel(ce->gem_context)) {
+		err = i915_active_acquire_preallocate_barrier(&ce->active,
+							      ce->engine);
+		if (err)
+			goto err_state;
+	}
+
+	return 0;
+
+err_state:
+	__context_unpin_state(ce->state);
+err_ring:
+	intel_ring_unpin(ce->ring);
+err_put:
+	intel_context_put(ce);
+	return err;
 }
 
 void
@@ -148,46 +200,8 @@ intel_context_init(struct intel_context *ce,
 
 	mutex_init(&ce->pin_mutex);
 
-	i915_active_init(ctx->i915, &ce->active, intel_context_retire);
-}
-
-int intel_context_active_acquire(struct intel_context *ce, unsigned long flags)
-{
-	int err;
-
-	if (!i915_active_acquire(&ce->active))
-		return 0;
-
-	intel_context_get(ce);
-
-	if (!ce->state)
-		return 0;
-
-	err = __context_pin_state(ce->state, flags);
-	if (err) {
-		i915_active_cancel(&ce->active);
-		intel_context_put(ce);
-		return err;
-	}
-
-	/* Preallocate tracking nodes */
-	if (!i915_gem_context_is_kernel(ce->gem_context)) {
-		err = i915_active_acquire_preallocate_barrier(&ce->active,
-							      ce->engine);
-		if (err) {
-			i915_active_release(&ce->active);
-			return err;
-		}
-	}
-
-	return 0;
-}
-
-void intel_context_active_release(struct intel_context *ce)
-{
-	/* Nodes preallocated in intel_context_active() */
-	i915_active_acquire_barrier(&ce->active);
-	i915_active_release(&ce->active);
+	i915_active_init(ctx->i915, &ce->active,
+			 __intel_context_active, __intel_context_retire);
 }
 
 static void i915_global_context_shrink(void)

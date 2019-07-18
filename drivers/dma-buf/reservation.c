@@ -56,6 +56,51 @@ const char reservation_seqcount_string[] = "reservation_seqcount";
 EXPORT_SYMBOL(reservation_seqcount_string);
 
 /**
+ * reservation_object_init - initialize a reservation object
+ * @obj: the reservation object
+ */
+void reservation_object_init(struct reservation_object *obj)
+{
+	ww_mutex_init(&obj->lock, &reservation_ww_class);
+
+	__seqcount_init(&obj->seq, reservation_seqcount_string,
+			&reservation_seqcount_class);
+	RCU_INIT_POINTER(obj->fence, NULL);
+	RCU_INIT_POINTER(obj->fence_excl, NULL);
+}
+EXPORT_SYMBOL(reservation_object_init);
+
+/**
+ * reservation_object_fini - destroys a reservation object
+ * @obj: the reservation object
+ */
+void reservation_object_fini(struct reservation_object *obj)
+{
+	int i;
+	struct reservation_object_list *fobj;
+	struct dma_fence *excl;
+
+	/*
+	 * This object should be dead and all references must have
+	 * been released to it, so no need to be protected with rcu.
+	 */
+	excl = rcu_dereference_protected(obj->fence_excl, 1);
+	if (excl)
+		dma_fence_put(excl);
+
+	fobj = rcu_dereference_protected(obj->fence, 1);
+	if (fobj) {
+		for (i = 0; i < fobj->shared_count; ++i)
+			dma_fence_put(rcu_dereference_protected(fobj->shared[i], 1));
+
+		kfree(fobj);
+	}
+
+	ww_mutex_destroy(&obj->lock);
+}
+EXPORT_SYMBOL(reservation_object_fini);
+
+/**
  * reservation_object_reserve_shared - Reserve space to add shared fences to
  * a reservation_object.
  * @obj: reservation object
@@ -108,23 +153,25 @@ int reservation_object_reserve_shared(struct reservation_object *obj,
 			RCU_INIT_POINTER(new->shared[j++], fence);
 	}
 	new->shared_count = j;
-	new->shared_max = max;
+	new->shared_max =
+		(ksize(new) - offsetof(typeof(*new), shared)) /
+		sizeof(*new->shared);
 
-	preempt_disable();
-	write_seqcount_begin(&obj->seq);
 	/*
-	 * RCU_INIT_POINTER can be used here,
-	 * seqcount provides the necessary barriers
+	 * We are not changing the effective set of fences here so can
+	 * merely update the pointer to the new array; both existing
+	 * readers and new readers will see exactly the same set of
+	 * active (unsignaled) shared fences. Individual fences and the
+	 * old array are protected by RCU and so will not vanish under
+	 * the gaze of the rcu_read_lock() readers.
 	 */
-	RCU_INIT_POINTER(obj->fence, new);
-	write_seqcount_end(&obj->seq);
-	preempt_enable();
+	rcu_assign_pointer(obj->fence, new);
 
 	if (!old)
 		return 0;
 
 	/* Drop the references to the signaled fences */
-	for (i = k; i < new->shared_max; ++i) {
+	for (i = k; i < max; ++i) {
 		struct dma_fence *fence;
 
 		fence = rcu_dereference_protected(new->shared[i],

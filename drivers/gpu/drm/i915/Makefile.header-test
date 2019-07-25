@@ -6,15 +6,20 @@ header-test-$(CONFIG_DRM_I915_WERROR) := \
 	i915_active_types.h \
 	i915_debugfs.h \
 	i915_drv.h \
+	i915_fixed.h \
+	i915_gem_gtt.h \
+	i915_globals.h \
 	i915_irq.h \
 	i915_params.h \
 	i915_priolist_types.h \
+	i915_pvinfo.h \
 	i915_reg.h \
 	i915_scheduler_types.h \
-	i915_timeline_types.h \
 	i915_utils.h \
+	i915_vgpu.h \
 	intel_csr.h \
 	intel_drv.h \
+	intel_gvt.h \
 	intel_pm.h \
 	intel_runtime_pm.h \
 	intel_sideband.h \

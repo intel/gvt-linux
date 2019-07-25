@@ -1,0 +1,30 @@
+drm drm-fixes 5f9e832c137075045d15cd6899ab0505cfb2ca4b
+	Linus 5.3-rc1
+drm-misc drm-misc-fixes bbb6fc43f131f77fcb7ae8081f6d7c51396a2120
+	drm: silence variable 'conn' set but not used
+drm-intel drm-intel-fixes d7e8a19b38c8ac1a32b6b03af049e2c88d4155db
+	drm/i915: Don't dereference request if it may have been retired when printing
+drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
+	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
+drm drm-next 5f9e832c137075045d15cd6899ab0505cfb2ca4b
+	Linus 5.3-rc1
+drm-misc drm-misc-next-fixes 7aaddd96d5febcf5b24357a326b3038d49a20532
+	drm/modes: Don't apply cmdline's rotation if it wasn't specified
+drm-intel drm-intel-next-fixes c36beba6b296b3c05a0f29753b04775e5ae23886
+	drm/i915: Seal races between async GPU cancellation, retirement and signaling
+drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
+	Linux 4.14-rc1
+drm-misc drm-misc-next a9c342ab77ab6e8ab662105335ae1e44e01271d4
+	drm/mgag200: Don't unpin the current cursor image's buffer.
+drm-intel drm-intel-next-queued 2bf8fb39eb70b6cf1d0f7efbe9fa9fb27d55fdf4
+	drm/i915/guc: Set GuC init params only once
+drm-intel drm-intel-next a17ce803dffa8e34fda39f8af721a4005c451fef
+	drm/i915: Update DRIVER_DATE to 20190708
+drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
+	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
+sound-upstream for-linus 2756d9143aa517b97961e85412882b8ce31371a6
+	ALSA: hda - Fix intermittent CORB/RIRB stall on Intel chips
+sound-upstream for-next a30f1743e4f57b359903fd679476b2903e7e5dac
+	ALSA: line6: sizeof (byte) is always 1, use that fact.
+drm-intel topic/core-for-CI 08141c520b31cb7c97f387e7d8c89f420067143c
+	snd/hda: Flush interrupts on disabling

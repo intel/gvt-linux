@@ -23,7 +23,6 @@
 #include <drm/drm_gem_framebuffer_helper.h>
 #include <drm/drm_modeset_helper.h>
 #include <drm/tinydrm/mipi-dbi.h>
-#include <drm/tinydrm/tinydrm-helpers.h>
 #include <video/mipi_display.h>
 
 #define HX8357D_SETOSC 0xb0
@@ -193,7 +192,7 @@ static const struct drm_display_mode yx350hv15_mode = {
 DEFINE_DRM_GEM_CMA_FOPS(hx8357d_fops);
 
 static struct drm_driver hx8357d_driver = {
-	.driver_features	= DRIVER_GEM | DRIVER_MODESET | DRIVER_PRIME | DRIVER_ATOMIC,
+	.driver_features	= DRIVER_GEM | DRIVER_MODESET | DRIVER_ATOMIC,
 	.fops			= &hx8357d_fops,
 	.release		= mipi_dbi_release,
 	DRM_GEM_CMA_VMAP_DRIVER_OPS,

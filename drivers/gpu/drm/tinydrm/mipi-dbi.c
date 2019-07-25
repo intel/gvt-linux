@@ -13,6 +13,7 @@
 #include <linux/regulator/consumer.h>
 #include <linux/spi/spi.h>
 
+#include <drm/drm_connector.h>
 #include <drm/drm_damage_helper.h>
 #include <drm/drm_drv.h>
 #include <drm/drm_fb_cma_helper.h>
@@ -20,10 +21,11 @@
 #include <drm/drm_format_helper.h>
 #include <drm/drm_fourcc.h>
 #include <drm/drm_gem_framebuffer_helper.h>
-#include <drm/drm_vblank.h>
+#include <drm/drm_modes.h>
+#include <drm/drm_probe_helper.h>
 #include <drm/drm_rect.h>
+#include <drm/drm_vblank.h>
 #include <drm/tinydrm/mipi-dbi.h>
-#include <drm/tinydrm/tinydrm-helpers.h>
 #include <video/mipi_display.h>
 
 #define MIPI_DBI_MAX_SPI_READ_SPEED 2000000 /* 2MHz */
@@ -400,6 +402,60 @@ void mipi_dbi_pipe_disable(struct drm_simple_display_pipe *pipe)
 }
 EXPORT_SYMBOL(mipi_dbi_pipe_disable);
 
+static int mipi_dbi_connector_get_modes(struct drm_connector *connector)
+{
+	struct mipi_dbi *mipi = drm_to_mipi_dbi(connector->dev);
+	struct drm_display_mode *mode;
+
+	mode = drm_mode_duplicate(connector->dev, &mipi->mode);
+	if (!mode) {
+		DRM_ERROR("Failed to duplicate mode\n");
+		return 0;
+	}
+
+	if (mode->name[0] == '\0')
+		drm_mode_set_name(mode);
+
+	mode->type |= DRM_MODE_TYPE_PREFERRED;
+	drm_mode_probed_add(connector, mode);
+
+	if (mode->width_mm) {
+		connector->display_info.width_mm = mode->width_mm;
+		connector->display_info.height_mm = mode->height_mm;
+	}
+
+	return 1;
+}
+
+static const struct drm_connector_helper_funcs mipi_dbi_connector_hfuncs = {
+	.get_modes = mipi_dbi_connector_get_modes,
+};
+
+static const struct drm_connector_funcs mipi_dbi_connector_funcs = {
+	.reset = drm_atomic_helper_connector_reset,
+	.fill_modes = drm_helper_probe_single_connector_modes,
+	.destroy = drm_connector_cleanup,
+	.atomic_duplicate_state = drm_atomic_helper_connector_duplicate_state,
+	.atomic_destroy_state = drm_atomic_helper_connector_destroy_state,
+};
+
+static int mipi_dbi_rotate_mode(struct drm_display_mode *mode,
+				unsigned int rotation)
+{
+	if (rotation == 0 || rotation == 180) {
+		return 0;
+	} else if (rotation == 90 || rotation == 270) {
+		swap(mode->hdisplay, mode->vdisplay);
+		swap(mode->hsync_start, mode->vsync_start);
+		swap(mode->hsync_end, mode->vsync_end);
+		swap(mode->htotal, mode->vtotal);
+		swap(mode->width_mm, mode->height_mm);
+		return 0;
+	} else {
+		return -EINVAL;
+	}
+}
+
 static const struct drm_mode_config_funcs mipi_dbi_mode_config_funcs = {
 	.fb_create = drm_gem_fb_create_with_dirty,
 	.atomic_check = drm_atomic_helper_check,
@@ -410,6 +466,84 @@ static const uint32_t mipi_dbi_formats[] = {
 	DRM_FORMAT_RGB565,
 	DRM_FORMAT_XRGB8888,
 };
+
+/**
+ * mipi_dbi_init_with_formats - MIPI DBI initialization with custom formats
+ * @mipi: &mipi_dbi structure to initialize
+ * @funcs: Display pipe functions
+ * @formats: Array of supported formats (DRM_FORMAT\_\*).
+ * @format_count: Number of elements in @formats
+ * @mode: Display mode
+ * @rotation: Initial rotation in degrees Counter Clock Wise
+ * @tx_buf_size: Allocate a transmit buffer of this size.
+ *
+ * This function sets up a &drm_simple_display_pipe with a &drm_connector that
+ * has one fixed &drm_display_mode which is rotated according to @rotation.
+ * This mode is used to set the mode config min/max width/height properties.
+ *
+ * Use mipi_dbi_init() if you don't need custom formats.
+ *
+ * Note:
+ * Some of the helper functions expects RGB565 to be the default format and the
+ * transmit buffer sized to fit that.
+ *
+ * Returns:
+ * Zero on success, negative error code on failure.
+ */
+int mipi_dbi_init_with_formats(struct mipi_dbi *mipi,
+			       const struct drm_simple_display_pipe_funcs *funcs,
+			       const uint32_t *formats, unsigned int format_count,
+			       const struct drm_display_mode *mode,
+			       unsigned int rotation, size_t tx_buf_size)
+{
+	static const uint64_t modifiers[] = {
+		DRM_FORMAT_MOD_LINEAR,
+		DRM_FORMAT_MOD_INVALID
+	};
+	struct drm_device *drm = &mipi->drm;
+	int ret;
+
+	if (!mipi->command)
+		return -EINVAL;
+
+	mutex_init(&mipi->cmdlock);
+
+	mipi->tx_buf = devm_kmalloc(drm->dev, tx_buf_size, GFP_KERNEL);
+	if (!mipi->tx_buf)
+		return -ENOMEM;
+
+	drm_mode_copy(&mipi->mode, mode);
+	ret = mipi_dbi_rotate_mode(&mipi->mode, rotation);
+	if (ret) {
+		DRM_ERROR("Illegal rotation value %u\n", rotation);
+		return -EINVAL;
+	}
+
+	drm_connector_helper_add(&mipi->connector, &mipi_dbi_connector_hfuncs);
+	ret = drm_connector_init(drm, &mipi->connector, &mipi_dbi_connector_funcs,
+				 DRM_MODE_CONNECTOR_SPI);
+	if (ret)
+		return ret;
+
+	ret = drm_simple_display_pipe_init(drm, &mipi->pipe, funcs, formats, format_count,
+					   modifiers, &mipi->connector);
+	if (ret)
+		return ret;
+
+	drm_plane_enable_fb_damage_clips(&mipi->pipe.plane);
+
+	drm->mode_config.funcs = &mipi_dbi_mode_config_funcs;
+	drm->mode_config.min_width = mipi->mode.hdisplay;
+	drm->mode_config.max_width = mipi->mode.hdisplay;
+	drm->mode_config.min_height = mipi->mode.vdisplay;
+	drm->mode_config.max_height = mipi->mode.vdisplay;
+	mipi->rotation = rotation;
+
+	DRM_DEBUG_KMS("rotation = %u\n", rotation);
+
+	return 0;
+}
+EXPORT_SYMBOL(mipi_dbi_init_with_formats);
 
 /**
  * mipi_dbi_init - MIPI DBI initialization
@@ -433,37 +567,12 @@ int mipi_dbi_init(struct mipi_dbi *mipi,
 		  const struct drm_display_mode *mode, unsigned int rotation)
 {
 	size_t bufsize = mode->vdisplay * mode->hdisplay * sizeof(u16);
-	struct drm_device *drm = &mipi->drm;
-	int ret;
 
-	if (!mipi->command)
-		return -EINVAL;
+	mipi->drm.mode_config.preferred_depth = 16;
 
-	mutex_init(&mipi->cmdlock);
-
-	mipi->tx_buf = devm_kmalloc(drm->dev, bufsize, GFP_KERNEL);
-	if (!mipi->tx_buf)
-		return -ENOMEM;
-
-	/* TODO: Maybe add DRM_MODE_CONNECTOR_SPI */
-	ret = tinydrm_display_pipe_init(drm, &mipi->pipe, funcs,
-					DRM_MODE_CONNECTOR_VIRTUAL,
-					mipi_dbi_formats,
-					ARRAY_SIZE(mipi_dbi_formats), mode,
-					rotation);
-	if (ret)
-		return ret;
-
-	drm_plane_enable_fb_damage_clips(&mipi->pipe.plane);
-
-	drm->mode_config.funcs = &mipi_dbi_mode_config_funcs;
-	drm->mode_config.preferred_depth = 16;
-	mipi->rotation = rotation;
-
-	DRM_DEBUG_KMS("preferred_depth=%u, rotation = %u\n",
-		      drm->mode_config.preferred_depth, rotation);
-
-	return 0;
+	return mipi_dbi_init_with_formats(mipi, funcs, mipi_dbi_formats,
+					  ARRAY_SIZE(mipi_dbi_formats), mode,
+					  rotation, bufsize);
 }
 EXPORT_SYMBOL(mipi_dbi_init);
 
@@ -629,6 +738,15 @@ u32 mipi_dbi_spi_cmd_max_speed(struct spi_device *spi, size_t len)
 }
 EXPORT_SYMBOL(mipi_dbi_spi_cmd_max_speed);
 
+static bool mipi_dbi_machine_little_endian(void)
+{
+#if defined(__LITTLE_ENDIAN)
+	return true;
+#else
+	return false;
+#endif
+}
+
 /*
  * MIPI DBI Type C Option 1
  *
@@ -651,7 +769,7 @@ static int mipi_dbi_spi1e_transfer(struct mipi_dbi *mipi, int dc,
 				   const void *buf, size_t len,
 				   unsigned int bpw)
 {
-	bool swap_bytes = (bpw == 16 && tinydrm_machine_little_endian());
+	bool swap_bytes = (bpw == 16 && mipi_dbi_machine_little_endian());
 	size_t chunk, max_chunk = mipi->tx_buf9_len;
 	struct spi_device *spi = mipi->spi;
 	struct spi_transfer tr = {
@@ -679,8 +797,6 @@ static int mipi_dbi_spi1e_transfer(struct mipi_dbi *mipi, int dc,
 		memset(dst, 0, 9);
 		dst[8] = *src;
 		tr.len = 9;
-
-		tinydrm_dbg_spi_message(spi, &m);
 
 		return spi_sync(spi, &m);
 	}
@@ -759,7 +875,6 @@ static int mipi_dbi_spi1e_transfer(struct mipi_dbi *mipi, int dc,
 
 		tr.len = chunk + added;
 
-		tinydrm_dbg_spi_message(spi, &m);
 		ret = spi_sync(spi, &m);
 		if (ret)
 			return ret;
@@ -783,7 +898,7 @@ static int mipi_dbi_spi1_transfer(struct mipi_dbi *mipi, int dc,
 	u16 *dst16;
 	int ret;
 
-	if (!tinydrm_spi_bpw_supported(spi, 9))
+	if (!spi_is_bpw_supported(spi, 9))
 		return mipi_dbi_spi1e_transfer(mipi, dc, buf, len, bpw);
 
 	tr.speed_hz = mipi_dbi_spi_cmd_max_speed(spi, len);
@@ -803,7 +918,7 @@ static int mipi_dbi_spi1_transfer(struct mipi_dbi *mipi, int dc,
 		size_t chunk = min(len, max_chunk);
 		unsigned int i;
 
-		if (bpw == 16 && tinydrm_machine_little_endian()) {
+		if (bpw == 16 && mipi_dbi_machine_little_endian()) {
 			for (i = 0; i < (chunk * 2); i += 2) {
 				dst16[i]     = *src16 >> 8;
 				dst16[i + 1] = *src16++ & 0xFF;
@@ -823,7 +938,6 @@ static int mipi_dbi_spi1_transfer(struct mipi_dbi *mipi, int dc,
 		tr.len = chunk;
 		len -= chunk;
 
-		tinydrm_dbg_spi_message(spi, &m);
 		ret = spi_sync(spi, &m);
 		if (ret)
 			return ret;
@@ -899,8 +1013,6 @@ static int mipi_dbi_typec3_command_read(struct mipi_dbi *mipi, u8 *cmd,
 	if (ret)
 		goto err_free;
 
-	tinydrm_dbg_spi_message(spi, &m);
-
 	if (tr[1].len == len) {
 		memcpy(data, buf, len);
 	} else {
@@ -933,7 +1045,7 @@ static int mipi_dbi_typec3_command(struct mipi_dbi *mipi, u8 *cmd,
 
 	gpiod_set_value_cansleep(mipi->dc, 0);
 	speed_hz = mipi_dbi_spi_cmd_max_speed(spi, 1);
-	ret = tinydrm_spi_transfer(spi, speed_hz, NULL, 8, cmd, 1);
+	ret = mipi_dbi_spi_transfer(spi, speed_hz, 8, cmd, 1);
 	if (ret || !num)
 		return ret;
 
@@ -943,7 +1055,7 @@ static int mipi_dbi_typec3_command(struct mipi_dbi *mipi, u8 *cmd,
 	gpiod_set_value_cansleep(mipi->dc, 1);
 	speed_hz = mipi_dbi_spi_cmd_max_speed(spi, num);
 
-	return tinydrm_spi_transfer(spi, speed_hz, NULL, bpw, par, num);
+	return mipi_dbi_spi_transfer(spi, speed_hz, bpw, par, num);
 }
 
 /**
@@ -971,14 +1083,8 @@ static int mipi_dbi_typec3_command(struct mipi_dbi *mipi, u8 *cmd,
 int mipi_dbi_spi_init(struct spi_device *spi, struct mipi_dbi *mipi,
 		      struct gpio_desc *dc)
 {
-	size_t tx_size = tinydrm_spi_max_transfer_size(spi, 0);
 	struct device *dev = &spi->dev;
 	int ret;
-
-	if (tx_size < 16) {
-		DRM_ERROR("SPI transmit buffer too small: %zu\n", tx_size);
-		return -EINVAL;
-	}
 
 	/*
 	 * Even though it's not the SPI device that does DMA (the master does),
@@ -1004,13 +1110,12 @@ int mipi_dbi_spi_init(struct spi_device *spi, struct mipi_dbi *mipi,
 	if (dc) {
 		mipi->command = mipi_dbi_typec3_command;
 		mipi->dc = dc;
-		if (tinydrm_machine_little_endian() &&
-		    !tinydrm_spi_bpw_supported(spi, 16))
+		if (mipi_dbi_machine_little_endian() && !spi_is_bpw_supported(spi, 16))
 			mipi->swap_bytes = true;
 	} else {
 		mipi->command = mipi_dbi_typec1_command;
-		mipi->tx_buf9_len = tx_size;
-		mipi->tx_buf9 = devm_kmalloc(dev, tx_size, GFP_KERNEL);
+		mipi->tx_buf9_len = SZ_16K;
+		mipi->tx_buf9 = devm_kmalloc(dev, mipi->tx_buf9_len, GFP_KERNEL);
 		if (!mipi->tx_buf9)
 			return -ENOMEM;
 	}
@@ -1020,6 +1125,51 @@ int mipi_dbi_spi_init(struct spi_device *spi, struct mipi_dbi *mipi,
 	return 0;
 }
 EXPORT_SYMBOL(mipi_dbi_spi_init);
+
+/**
+ * mipi_dbi_spi_transfer - SPI transfer helper
+ * @spi: SPI device
+ * @speed_hz: Override speed (optional)
+ * @bpw: Bits per word
+ * @buf: Buffer to transfer
+ * @len: Buffer length
+ *
+ * This SPI transfer helper breaks up the transfer of @buf into chunks which
+ * the SPI controller driver can handle.
+ *
+ * Returns:
+ * Zero on success, negative error code on failure.
+ */
+int mipi_dbi_spi_transfer(struct spi_device *spi, u32 speed_hz,
+			  u8 bpw, const void *buf, size_t len)
+{
+	size_t max_chunk = spi_max_transfer_size(spi);
+	struct spi_transfer tr = {
+		.bits_per_word = bpw,
+		.speed_hz = speed_hz,
+	};
+	struct spi_message m;
+	size_t chunk;
+	int ret;
+
+	spi_message_init_with_transfers(&m, &tr, 1);
+
+	while (len) {
+		chunk = min(len, max_chunk);
+
+		tr.tx_buf = buf;
+		tr.len = chunk;
+		buf += chunk;
+		len -= chunk;
+
+		ret = spi_sync(spi, &m);
+		if (ret)
+			return ret;
+	}
+
+	return 0;
+}
+EXPORT_SYMBOL(mipi_dbi_spi_transfer);
 
 #endif /* CONFIG_SPI */
 

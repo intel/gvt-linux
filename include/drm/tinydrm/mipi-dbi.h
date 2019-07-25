@@ -46,6 +46,16 @@ struct mipi_dbi {
 	 */
 	struct drm_simple_display_pipe pipe;
 
+	/**
+	 * @connector: Connector
+	 */
+	struct drm_connector connector;
+
+	/**
+	 * @mode: Fixed display mode
+	 */
+	struct drm_display_mode mode;
+
 	struct spi_device *spi;
 	bool enabled;
 	struct mutex cmdlock;
@@ -69,6 +79,11 @@ static inline struct mipi_dbi *drm_to_mipi_dbi(struct drm_device *drm)
 
 int mipi_dbi_spi_init(struct spi_device *spi, struct mipi_dbi *mipi,
 		      struct gpio_desc *dc);
+int mipi_dbi_init_with_formats(struct mipi_dbi *mipi,
+			       const struct drm_simple_display_pipe_funcs *funcs,
+			       const uint32_t *formats, unsigned int format_count,
+			       const struct drm_display_mode *mode,
+			       unsigned int rotation, size_t tx_buf_size);
 int mipi_dbi_init(struct mipi_dbi *mipi,
 		  const struct drm_simple_display_pipe_funcs *funcs,
 		  const struct drm_display_mode *mode, unsigned int rotation);
@@ -83,7 +98,10 @@ void mipi_dbi_hw_reset(struct mipi_dbi *mipi);
 bool mipi_dbi_display_is_on(struct mipi_dbi *mipi);
 int mipi_dbi_poweron_reset(struct mipi_dbi *mipi);
 int mipi_dbi_poweron_conditional_reset(struct mipi_dbi *mipi);
+
 u32 mipi_dbi_spi_cmd_max_speed(struct spi_device *spi, size_t len);
+int mipi_dbi_spi_transfer(struct spi_device *spi, u32 speed_hz,
+			  u8 bpw, const void *buf, size_t len);
 
 int mipi_dbi_command_read(struct mipi_dbi *mipi, u8 cmd, u8 *val);
 int mipi_dbi_command_buf(struct mipi_dbi *mipi, u8 cmd, u8 *data, size_t len);

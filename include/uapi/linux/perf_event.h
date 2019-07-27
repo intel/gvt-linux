@@ -147,9 +147,9 @@ enum perf_event_sample_format {
 	PERF_SAMPLE_CODE_PAGE_SIZE		= 1U << 23,
 
 	PERF_SAMPLE_MAX = 1U << 24,		/* non-ABI */
-
-	__PERF_SAMPLE_CALLCHAIN_EARLY		= 1ULL << 63, /* non-ABI; internal use */
 };
+
+#define __PERF_SAMPLE_CALLCHAIN_EARLY	(1ULL << 63) /* non-ABI; internal use */
 
 /*
  * values to program into branch_sample_type when PERF_SAMPLE_BRANCH is set

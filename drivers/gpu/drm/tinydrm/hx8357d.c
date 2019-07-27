@@ -21,9 +21,8 @@
 #include <drm/drm_fb_helper.h>
 #include <drm/drm_gem_cma_helper.h>
 #include <drm/drm_gem_framebuffer_helper.h>
+#include <drm/drm_mipi_dbi.h>
 #include <drm/drm_modeset_helper.h>
-#include <drm/tinydrm/mipi-dbi.h>
-#include <drm/tinydrm/tinydrm-helpers.h>
 #include <video/mipi_display.h>
 
 #define HX8357D_SETOSC 0xb0
@@ -48,7 +47,8 @@ static void yx240qv29_enable(struct drm_simple_display_pipe *pipe,
 			     struct drm_crtc_state *crtc_state,
 			     struct drm_plane_state *plane_state)
 {
-	struct mipi_dbi *mipi = drm_to_mipi_dbi(pipe->crtc.dev);
+	struct mipi_dbi_dev *dbidev = drm_to_mipi_dbi_dev(pipe->crtc.dev);
+	struct mipi_dbi *dbi = &dbidev->dbi;
 	u8 addr_mode;
 	int ret, idx;
 
@@ -57,29 +57,29 @@ static void yx240qv29_enable(struct drm_simple_display_pipe *pipe,
 
 	DRM_DEBUG_KMS("\n");
 
-	ret = mipi_dbi_poweron_conditional_reset(mipi);
+	ret = mipi_dbi_poweron_conditional_reset(dbidev);
 	if (ret < 0)
 		goto out_exit;
 	if (ret == 1)
 		goto out_enable;
 
 	/* setextc */
-	mipi_dbi_command(mipi, HX8357D_SETEXTC, 0xFF, 0x83, 0x57);
+	mipi_dbi_command(dbi, HX8357D_SETEXTC, 0xFF, 0x83, 0x57);
 	msleep(150);
 
 	/* setRGB which also enables SDO */
-	mipi_dbi_command(mipi, HX8357D_SETRGB, 0x00, 0x00, 0x06, 0x06);
+	mipi_dbi_command(dbi, HX8357D_SETRGB, 0x00, 0x00, 0x06, 0x06);
 
 	/* -1.52V */
-	mipi_dbi_command(mipi, HX8357D_SETCOM, 0x25);
+	mipi_dbi_command(dbi, HX8357D_SETCOM, 0x25);
 
 	/* Normal mode 70Hz, Idle mode 55 Hz */
-	mipi_dbi_command(mipi, HX8357D_SETOSC, 0x68);
+	mipi_dbi_command(dbi, HX8357D_SETOSC, 0x68);
 
 	/* Set Panel - BGR, Gate direction swapped */
-	mipi_dbi_command(mipi, HX8357D_SETPANEL, 0x05);
+	mipi_dbi_command(dbi, HX8357D_SETPANEL, 0x05);
 
-	mipi_dbi_command(mipi, HX8357D_SETPOWER,
+	mipi_dbi_command(dbi, HX8357D_SETPOWER,
 			 0x00,  /* Not deep standby */
 			 0x15,  /* BT */
 			 0x1C,  /* VSPR */
@@ -87,7 +87,7 @@ static void yx240qv29_enable(struct drm_simple_display_pipe *pipe,
 			 0x83,  /* AP */
 			 0xAA);  /* FS */
 
-	mipi_dbi_command(mipi, HX8357D_SETSTBA,
+	mipi_dbi_command(dbi, HX8357D_SETSTBA,
 			 0x50,  /* OPON normal */
 			 0x50,  /* OPON idle */
 			 0x01,  /* STBA */
@@ -95,7 +95,7 @@ static void yx240qv29_enable(struct drm_simple_display_pipe *pipe,
 			 0x1E,  /* STBA */
 			 0x08);  /* GEN */
 
-	mipi_dbi_command(mipi, HX8357D_SETCYC,
+	mipi_dbi_command(dbi, HX8357D_SETCYC,
 			 0x02,  /* NW 0x02 */
 			 0x40,  /* RTN */
 			 0x00,  /* DIV */
@@ -104,7 +104,7 @@ static void yx240qv29_enable(struct drm_simple_display_pipe *pipe,
 			 0x0D,  /* GDON */
 			 0x78);  /* GDOFF */
 
-	mipi_dbi_command(mipi, HX8357D_SETGAMMA,
+	mipi_dbi_command(dbi, HX8357D_SETGAMMA,
 			 0x02,
 			 0x0A,
 			 0x11,
@@ -141,25 +141,25 @@ static void yx240qv29_enable(struct drm_simple_display_pipe *pipe,
 			 0x01);
 
 	/* 16 bit */
-	mipi_dbi_command(mipi, MIPI_DCS_SET_PIXEL_FORMAT,
+	mipi_dbi_command(dbi, MIPI_DCS_SET_PIXEL_FORMAT,
 			 MIPI_DCS_PIXEL_FMT_16BIT);
 
 	/* TE off */
-	mipi_dbi_command(mipi, MIPI_DCS_SET_TEAR_ON, 0x00);
+	mipi_dbi_command(dbi, MIPI_DCS_SET_TEAR_ON, 0x00);
 
 	/* tear line */
-	mipi_dbi_command(mipi, MIPI_DCS_SET_TEAR_SCANLINE, 0x00, 0x02);
+	mipi_dbi_command(dbi, MIPI_DCS_SET_TEAR_SCANLINE, 0x00, 0x02);
 
 	/* Exit Sleep */
-	mipi_dbi_command(mipi, MIPI_DCS_EXIT_SLEEP_MODE);
+	mipi_dbi_command(dbi, MIPI_DCS_EXIT_SLEEP_MODE);
 	msleep(150);
 
 	/* display on */
-	mipi_dbi_command(mipi, MIPI_DCS_SET_DISPLAY_ON);
+	mipi_dbi_command(dbi, MIPI_DCS_SET_DISPLAY_ON);
 	usleep_range(5000, 7000);
 
 out_enable:
-	switch (mipi->rotation) {
+	switch (dbidev->rotation) {
 	default:
 		addr_mode = HX8357D_MADCTL_MX | HX8357D_MADCTL_MY;
 		break;
@@ -173,8 +173,8 @@ out_enable:
 		addr_mode = HX8357D_MADCTL_MV | HX8357D_MADCTL_MX;
 		break;
 	}
-	mipi_dbi_command(mipi, MIPI_DCS_SET_ADDRESS_MODE, addr_mode);
-	mipi_dbi_enable_flush(mipi, crtc_state, plane_state);
+	mipi_dbi_command(dbi, MIPI_DCS_SET_ADDRESS_MODE, addr_mode);
+	mipi_dbi_enable_flush(dbidev, crtc_state, plane_state);
 out_exit:
 	drm_dev_exit(idx);
 }
@@ -193,7 +193,7 @@ static const struct drm_display_mode yx350hv15_mode = {
 DEFINE_DRM_GEM_CMA_FOPS(hx8357d_fops);
 
 static struct drm_driver hx8357d_driver = {
-	.driver_features	= DRIVER_GEM | DRIVER_MODESET | DRIVER_PRIME | DRIVER_ATOMIC,
+	.driver_features	= DRIVER_GEM | DRIVER_MODESET | DRIVER_ATOMIC,
 	.fops			= &hx8357d_fops,
 	.release		= mipi_dbi_release,
 	DRM_GEM_CMA_VMAP_DRIVER_OPS,
@@ -220,20 +220,20 @@ MODULE_DEVICE_TABLE(spi, hx8357d_id);
 static int hx8357d_probe(struct spi_device *spi)
 {
 	struct device *dev = &spi->dev;
+	struct mipi_dbi_dev *dbidev;
 	struct drm_device *drm;
-	struct mipi_dbi *mipi;
 	struct gpio_desc *dc;
 	u32 rotation = 0;
 	int ret;
 
-	mipi = kzalloc(sizeof(*mipi), GFP_KERNEL);
-	if (!mipi)
+	dbidev = kzalloc(sizeof(*dbidev), GFP_KERNEL);
+	if (!dbidev)
 		return -ENOMEM;
 
-	drm = &mipi->drm;
+	drm = &dbidev->drm;
 	ret = devm_drm_dev_init(dev, drm, &hx8357d_driver);
 	if (ret) {
-		kfree(mipi);
+		kfree(dbidev);
 		return ret;
 	}
 
@@ -245,17 +245,17 @@ static int hx8357d_probe(struct spi_device *spi)
 		return PTR_ERR(dc);
 	}
 
-	mipi->backlight = devm_of_find_backlight(dev);
-	if (IS_ERR(mipi->backlight))
-		return PTR_ERR(mipi->backlight);
+	dbidev->backlight = devm_of_find_backlight(dev);
+	if (IS_ERR(dbidev->backlight))
+		return PTR_ERR(dbidev->backlight);
 
 	device_property_read_u32(dev, "rotation", &rotation);
 
-	ret = mipi_dbi_spi_init(spi, mipi, dc);
+	ret = mipi_dbi_spi_init(spi, &dbidev->dbi, dc);
 	if (ret)
 		return ret;
 
-	ret = mipi_dbi_init(mipi, &hx8357d_pipe_funcs, &yx350hv15_mode, rotation);
+	ret = mipi_dbi_dev_init(dbidev, &hx8357d_pipe_funcs, &yx350hv15_mode, rotation);
 	if (ret)
 		return ret;
 

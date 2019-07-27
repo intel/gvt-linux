@@ -20,9 +20,8 @@
 #include <drm/drm_fb_helper.h>
 #include <drm/drm_gem_cma_helper.h>
 #include <drm/drm_gem_framebuffer_helper.h>
+#include <drm/drm_mipi_dbi.h>
 #include <drm/drm_modeset_helper.h>
-#include <drm/tinydrm/mipi-dbi.h>
-#include <drm/tinydrm/tinydrm-helpers.h>
 #include <video/mipi_display.h>
 
 #define ILI9341_FRMCTR1		0xb1
@@ -54,7 +53,8 @@ static void yx240qv29_enable(struct drm_simple_display_pipe *pipe,
 			     struct drm_crtc_state *crtc_state,
 			     struct drm_plane_state *plane_state)
 {
-	struct mipi_dbi *mipi = drm_to_mipi_dbi(pipe->crtc.dev);
+	struct mipi_dbi_dev *dbidev = drm_to_mipi_dbi_dev(pipe->crtc.dev);
+	struct mipi_dbi *dbi = &dbidev->dbi;
 	u8 addr_mode;
 	int ret, idx;
 
@@ -63,57 +63,57 @@ static void yx240qv29_enable(struct drm_simple_display_pipe *pipe,
 
 	DRM_DEBUG_KMS("\n");
 
-	ret = mipi_dbi_poweron_conditional_reset(mipi);
+	ret = mipi_dbi_poweron_conditional_reset(dbidev);
 	if (ret < 0)
 		goto out_exit;
 	if (ret == 1)
 		goto out_enable;
 
-	mipi_dbi_command(mipi, MIPI_DCS_SET_DISPLAY_OFF);
+	mipi_dbi_command(dbi, MIPI_DCS_SET_DISPLAY_OFF);
 
-	mipi_dbi_command(mipi, ILI9341_PWCTRLB, 0x00, 0xc1, 0x30);
-	mipi_dbi_command(mipi, ILI9341_PWRSEQ, 0x64, 0x03, 0x12, 0x81);
-	mipi_dbi_command(mipi, ILI9341_DTCTRLA, 0x85, 0x00, 0x78);
-	mipi_dbi_command(mipi, ILI9341_PWCTRLA, 0x39, 0x2c, 0x00, 0x34, 0x02);
-	mipi_dbi_command(mipi, ILI9341_PUMPCTRL, 0x20);
-	mipi_dbi_command(mipi, ILI9341_DTCTRLB, 0x00, 0x00);
+	mipi_dbi_command(dbi, ILI9341_PWCTRLB, 0x00, 0xc1, 0x30);
+	mipi_dbi_command(dbi, ILI9341_PWRSEQ, 0x64, 0x03, 0x12, 0x81);
+	mipi_dbi_command(dbi, ILI9341_DTCTRLA, 0x85, 0x00, 0x78);
+	mipi_dbi_command(dbi, ILI9341_PWCTRLA, 0x39, 0x2c, 0x00, 0x34, 0x02);
+	mipi_dbi_command(dbi, ILI9341_PUMPCTRL, 0x20);
+	mipi_dbi_command(dbi, ILI9341_DTCTRLB, 0x00, 0x00);
 
 	/* Power Control */
-	mipi_dbi_command(mipi, ILI9341_PWCTRL1, 0x23);
-	mipi_dbi_command(mipi, ILI9341_PWCTRL2, 0x10);
+	mipi_dbi_command(dbi, ILI9341_PWCTRL1, 0x23);
+	mipi_dbi_command(dbi, ILI9341_PWCTRL2, 0x10);
 	/* VCOM */
-	mipi_dbi_command(mipi, ILI9341_VMCTRL1, 0x3e, 0x28);
-	mipi_dbi_command(mipi, ILI9341_VMCTRL2, 0x86);
+	mipi_dbi_command(dbi, ILI9341_VMCTRL1, 0x3e, 0x28);
+	mipi_dbi_command(dbi, ILI9341_VMCTRL2, 0x86);
 
 	/* Memory Access Control */
-	mipi_dbi_command(mipi, MIPI_DCS_SET_PIXEL_FORMAT, MIPI_DCS_PIXEL_FMT_16BIT);
+	mipi_dbi_command(dbi, MIPI_DCS_SET_PIXEL_FORMAT, MIPI_DCS_PIXEL_FMT_16BIT);
 
 	/* Frame Rate */
-	mipi_dbi_command(mipi, ILI9341_FRMCTR1, 0x00, 0x1b);
+	mipi_dbi_command(dbi, ILI9341_FRMCTR1, 0x00, 0x1b);
 
 	/* Gamma */
-	mipi_dbi_command(mipi, ILI9341_EN3GAM, 0x00);
-	mipi_dbi_command(mipi, MIPI_DCS_SET_GAMMA_CURVE, 0x01);
-	mipi_dbi_command(mipi, ILI9341_PGAMCTRL,
+	mipi_dbi_command(dbi, ILI9341_EN3GAM, 0x00);
+	mipi_dbi_command(dbi, MIPI_DCS_SET_GAMMA_CURVE, 0x01);
+	mipi_dbi_command(dbi, ILI9341_PGAMCTRL,
 			 0x0f, 0x31, 0x2b, 0x0c, 0x0e, 0x08, 0x4e, 0xf1,
 			 0x37, 0x07, 0x10, 0x03, 0x0e, 0x09, 0x00);
-	mipi_dbi_command(mipi, ILI9341_NGAMCTRL,
+	mipi_dbi_command(dbi, ILI9341_NGAMCTRL,
 			 0x00, 0x0e, 0x14, 0x03, 0x11, 0x07, 0x31, 0xc1,
 			 0x48, 0x08, 0x0f, 0x0c, 0x31, 0x36, 0x0f);
 
 	/* DDRAM */
-	mipi_dbi_command(mipi, ILI9341_ETMOD, 0x07);
+	mipi_dbi_command(dbi, ILI9341_ETMOD, 0x07);
 
 	/* Display */
-	mipi_dbi_command(mipi, ILI9341_DISCTRL, 0x08, 0x82, 0x27, 0x00);
-	mipi_dbi_command(mipi, MIPI_DCS_EXIT_SLEEP_MODE);
+	mipi_dbi_command(dbi, ILI9341_DISCTRL, 0x08, 0x82, 0x27, 0x00);
+	mipi_dbi_command(dbi, MIPI_DCS_EXIT_SLEEP_MODE);
 	msleep(100);
 
-	mipi_dbi_command(mipi, MIPI_DCS_SET_DISPLAY_ON);
+	mipi_dbi_command(dbi, MIPI_DCS_SET_DISPLAY_ON);
 	msleep(100);
 
 out_enable:
-	switch (mipi->rotation) {
+	switch (dbidev->rotation) {
 	default:
 		addr_mode = ILI9341_MADCTL_MX;
 		break;
@@ -129,8 +129,8 @@ out_enable:
 		break;
 	}
 	addr_mode |= ILI9341_MADCTL_BGR;
-	mipi_dbi_command(mipi, MIPI_DCS_SET_ADDRESS_MODE, addr_mode);
-	mipi_dbi_enable_flush(mipi, crtc_state, plane_state);
+	mipi_dbi_command(dbi, MIPI_DCS_SET_ADDRESS_MODE, addr_mode);
+	mipi_dbi_enable_flush(dbidev, crtc_state, plane_state);
 out_exit:
 	drm_dev_exit(idx);
 }
@@ -149,7 +149,7 @@ static const struct drm_display_mode yx240qv29_mode = {
 DEFINE_DRM_GEM_CMA_FOPS(ili9341_fops);
 
 static struct drm_driver ili9341_driver = {
-	.driver_features	= DRIVER_GEM | DRIVER_MODESET | DRIVER_PRIME | DRIVER_ATOMIC,
+	.driver_features	= DRIVER_GEM | DRIVER_MODESET | DRIVER_ATOMIC,
 	.fops			= &ili9341_fops,
 	.release		= mipi_dbi_release,
 	DRM_GEM_CMA_VMAP_DRIVER_OPS,
@@ -176,29 +176,31 @@ MODULE_DEVICE_TABLE(spi, ili9341_id);
 static int ili9341_probe(struct spi_device *spi)
 {
 	struct device *dev = &spi->dev;
+	struct mipi_dbi_dev *dbidev;
 	struct drm_device *drm;
-	struct mipi_dbi *mipi;
+	struct mipi_dbi *dbi;
 	struct gpio_desc *dc;
 	u32 rotation = 0;
 	int ret;
 
-	mipi = kzalloc(sizeof(*mipi), GFP_KERNEL);
-	if (!mipi)
+	dbidev = kzalloc(sizeof(*dbidev), GFP_KERNEL);
+	if (!dbidev)
 		return -ENOMEM;
 
-	drm = &mipi->drm;
+	dbi = &dbidev->dbi;
+	drm = &dbidev->drm;
 	ret = devm_drm_dev_init(dev, drm, &ili9341_driver);
 	if (ret) {
-		kfree(mipi);
+		kfree(dbidev);
 		return ret;
 	}
 
 	drm_mode_config_init(drm);
 
-	mipi->reset = devm_gpiod_get_optional(dev, "reset", GPIOD_OUT_HIGH);
-	if (IS_ERR(mipi->reset)) {
+	dbi->reset = devm_gpiod_get_optional(dev, "reset", GPIOD_OUT_HIGH);
+	if (IS_ERR(dbi->reset)) {
 		DRM_DEV_ERROR(dev, "Failed to get gpio 'reset'\n");
-		return PTR_ERR(mipi->reset);
+		return PTR_ERR(dbi->reset);
 	}
 
 	dc = devm_gpiod_get_optional(dev, "dc", GPIOD_OUT_LOW);
@@ -207,17 +209,17 @@ static int ili9341_probe(struct spi_device *spi)
 		return PTR_ERR(dc);
 	}
 
-	mipi->backlight = devm_of_find_backlight(dev);
-	if (IS_ERR(mipi->backlight))
-		return PTR_ERR(mipi->backlight);
+	dbidev->backlight = devm_of_find_backlight(dev);
+	if (IS_ERR(dbidev->backlight))
+		return PTR_ERR(dbidev->backlight);
 
 	device_property_read_u32(dev, "rotation", &rotation);
 
-	ret = mipi_dbi_spi_init(spi, mipi, dc);
+	ret = mipi_dbi_spi_init(spi, dbi, dc);
 	if (ret)
 		return ret;
 
-	ret = mipi_dbi_init(mipi, &ili9341_pipe_funcs, &yx240qv29_mode, rotation);
+	ret = mipi_dbi_dev_init(dbidev, &ili9341_pipe_funcs, &yx240qv29_mode, rotation);
 	if (ret)
 		return ret;
 

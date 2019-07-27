@@ -16,6 +16,7 @@
 
 #include "gem/i915_gem_ioctls.h"
 #include "gt/intel_context.h"
+#include "gt/intel_gt.h"
 #include "gt/intel_gt_pm.h"
 
 #include "i915_gem_ioctls.h"
@@ -994,7 +995,7 @@ static void reloc_gpu_flush(struct reloc_cache *cache)
 	__i915_gem_object_flush_map(cache->rq->batch->obj, 0, cache->rq_size);
 	i915_gem_object_unpin_map(cache->rq->batch->obj);
 
-	i915_gem_chipset_flush(cache->rq->i915);
+	intel_gt_chipset_flush(cache->rq->engine->gt);
 
 	i915_request_add(cache->rq);
 	cache->rq = NULL;
@@ -1954,7 +1955,7 @@ static int eb_move_to_gpu(struct i915_execbuffer *eb)
 	eb->exec = NULL;
 
 	/* Unconditionally flush any chipset caches (for streaming writes). */
-	i915_gem_chipset_flush(eb->i915);
+	intel_gt_chipset_flush(eb->engine->gt);
 	return 0;
 
 err_skip:
@@ -2129,7 +2130,7 @@ static int eb_pin_context(struct i915_execbuffer *eb, struct intel_context *ce)
 	 * ABI: Before userspace accesses the GPU (e.g. execbuffer), report
 	 * EIO if the GPU is already wedged.
 	 */
-	err = i915_terminally_wedged(eb->i915);
+	err = intel_gt_terminally_wedged(ce->engine->gt);
 	if (err)
 		return err;
 
@@ -2436,7 +2437,7 @@ i915_gem_do_execbuffer(struct drm_device *dev,
 	 * wakeref that we hold until the GPU has been idle for at least
 	 * 100ms.
 	 */
-	intel_gt_pm_get(eb.i915);
+	intel_gt_pm_get(&eb.i915->gt);
 
 	err = i915_mutex_lock_interruptible(dev);
 	if (err)
@@ -2606,7 +2607,7 @@ err_engine:
 err_unlock:
 	mutex_unlock(&dev->struct_mutex);
 err_rpm:
-	intel_gt_pm_put(eb.i915);
+	intel_gt_pm_put(&eb.i915->gt);
 	i915_gem_context_put(eb.gem_context);
 err_destroy:
 	eb_destroy(&eb);

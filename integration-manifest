@@ -1,30 +1,12 @@
-drm drm-fixes 4d5308e7852741318e4d40fb8d43d9311b3984ae
-	Merge tag 'drm-fixes-5.3-2019-07-24' of git://people.freedesktop.org/~agd5f/linux into drm-fixes
-drm-misc drm-misc-fixes bbb6fc43f131f77fcb7ae8081f6d7c51396a2120
-	drm: silence variable 'conn' set but not used
-drm-intel drm-intel-fixes d7e8a19b38c8ac1a32b6b03af049e2c88d4155db
-	drm/i915: Don't dereference request if it may have been retired when printing
-drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
-	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
-drm drm-next 5f9e832c137075045d15cd6899ab0505cfb2ca4b
-	Linus 5.3-rc1
-drm-misc drm-misc-next-fixes 7aaddd96d5febcf5b24357a326b3038d49a20532
-	drm/modes: Don't apply cmdline's rotation if it wasn't specified
-drm-intel drm-intel-next-fixes c36beba6b296b3c05a0f29753b04775e5ae23886
-	drm/i915: Seal races between async GPU cancellation, retirement and signaling
-drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
-	Linux 4.14-rc1
-drm-misc drm-misc-next 63b87c310a8326c2d0721ab6c981493d590aa542
-	drm/mst: Fix sphinx warnings in drm_dp_msg_connector register functions
-drm-intel drm-intel-next-queued 62336cc666b0e0f1f2bebd682c1741b9a439095a
-	drm/i915/uc: Fixup kerneldoc after params were flipped and renamed
-drm-intel drm-intel-next a17ce803dffa8e34fda39f8af721a4005c451fef
-	drm/i915: Update DRIVER_DATE to 20190708
-drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
-	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
-sound-upstream for-linus 74bf71ed792ab0f64631cc65ccdb54c356c36d45
-	ALSA: hda: Fix 1-minute detection delay when i915 module is not available
-sound-upstream for-next 2127c01b7f63b06a21559f56a8c81a3c6535bd1a
-	ALSA: i2c: ak4xxx-adda: Fix a possible null pointer dereference in build_adc_controls()
-drm-intel topic/core-for-CI 221ee28eb0411efc0f8ff734dfd7c36d4c1113cf
-	uapi/perf: Squelch compiler warning
+drm-tip/drm-tip 3590ed702f7cdc6d06cfd9f4b5363b31cca0430a
+	drm-tip: 2019y-07m-27d-13h-17m-50s UTC integration manifest
+vfio-upstream/for-linus 5715c4dd66a315515eedef3fc4cbe1bf4620f009
+	vfio/mdev: Synchronize device create/remove with parent removal
+vfio-upstream/next 1e4d09d2212d9e230b967f57bc8df463527dbd75
+	mdev: Send uevents around parent device registration
+origin/gvt-fixes 8642656299cf86cfeceb1a48b0e1874de6874a2b
+	drm/i915/gvt: fix incorrect cache entry for guest page mapping
+origin/gvt-next 3ceddfc9ad668f0616f9a460cedcd69302609466
+	drm/i915/gvt: Add valid length check for MI variable commands
+origin/gvt-next-fixes e8f6c88e3d27cb58cacbef8d03025b86989ee50e
+	drm/i915/gvt: Fix an error code in ppgtt_populate_spt_by_guest_entry()

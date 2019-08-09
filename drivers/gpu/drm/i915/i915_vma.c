@@ -32,6 +32,7 @@
 
 #include "i915_drv.h"
 #include "i915_globals.h"
+#include "i915_trace.h"
 #include "i915_vma.h"
 
 static struct i915_global_vma {
@@ -886,23 +887,6 @@ void i915_vma_revoke_mmap(struct i915_vma *vma)
 		list_del(&vma->obj->userfault_link);
 }
 
-static void export_fence(struct i915_vma *vma,
-			 struct i915_request *rq,
-			 unsigned int flags)
-{
-	struct reservation_object *resv = vma->resv;
-
-	/*
-	 * Ignore errors from failing to allocate the new fence, we can't
-	 * handle an error right now. Worst case should be missed
-	 * synchronisation leading to rendering corruption.
-	 */
-	if (flags & EXEC_OBJECT_WRITE)
-		reservation_object_add_excl_fence(resv, &rq->fence);
-	else if (reservation_object_reserve_shared(resv, 1) == 0)
-		reservation_object_add_shared_fence(resv, &rq->fence);
-}
-
 int i915_vma_move_to_active(struct i915_vma *vma,
 			    struct i915_request *rq,
 			    unsigned int flags)
@@ -926,22 +910,26 @@ int i915_vma_move_to_active(struct i915_vma *vma,
 	if (unlikely(err))
 		return err;
 
-	obj->write_domain = 0;
 	if (flags & EXEC_OBJECT_WRITE) {
-		obj->write_domain = I915_GEM_DOMAIN_RENDER;
-
 		if (intel_fb_obj_invalidate(obj, ORIGIN_CS))
 			__i915_active_request_set(&obj->frontbuffer_write, rq);
 
+		reservation_object_add_excl_fence(vma->resv, &rq->fence);
+		obj->write_domain = I915_GEM_DOMAIN_RENDER;
 		obj->read_domains = 0;
+	} else {
+		err = reservation_object_reserve_shared(vma->resv, 1);
+		if (unlikely(err))
+			return err;
+
+		reservation_object_add_shared_fence(vma->resv, &rq->fence);
+		obj->write_domain = 0;
 	}
 	obj->read_domains |= I915_GEM_GPU_DOMAINS;
 	obj->mm.dirty = true;
 
 	if (flags & EXEC_OBJECT_NEEDS_FENCE)
 		__i915_active_request_set(&vma->last_fence, rq);
-
-	export_fence(vma, rq, flags);
 
 	GEM_BUG_ON(!i915_vma_is_active(vma));
 	return 0;
@@ -1028,6 +1016,22 @@ unpin:
 	i915_vma_remove(vma);
 
 	return 0;
+}
+
+struct i915_vma *i915_vma_make_unshrinkable(struct i915_vma *vma)
+{
+	i915_gem_object_make_unshrinkable(vma->obj);
+	return vma;
+}
+
+void i915_vma_make_shrinkable(struct i915_vma *vma)
+{
+	i915_gem_object_make_shrinkable(vma->obj);
+}
+
+void i915_vma_make_purgeable(struct i915_vma *vma)
+{
+	i915_gem_object_make_purgeable(vma->obj);
 }
 
 #if IS_ENABLED(CONFIG_DRM_I915_SELFTEST)

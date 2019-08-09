@@ -62,9 +62,9 @@
 #include "intel_atomic.h"
 #include "intel_atomic_plane.h"
 #include "intel_bw.h"
-#include "intel_color.h"
 #include "intel_cdclk.h"
-#include "intel_drv.h"
+#include "intel_color.h"
+#include "intel_display_types.h"
 #include "intel_fbc.h"
 #include "intel_fbdev.h"
 #include "intel_fifo_underrun.h"
@@ -10354,10 +10354,9 @@ static void haswell_get_ddi_port_state(struct intel_crtc *crtc,
 	tmp = I915_READ(TRANS_DDI_FUNC_CTL(pipe_config->cpu_transcoder));
 
 	if (INTEL_GEN(dev_priv) >= 12)
-		port = (tmp & TGL_TRANS_DDI_PORT_MASK) >>
-			TGL_TRANS_DDI_PORT_SHIFT;
+		port = TGL_TRANS_DDI_FUNC_CTL_VAL_TO_PORT(tmp);
 	else
-		port = (tmp & TRANS_DDI_PORT_MASK) >> TRANS_DDI_PORT_SHIFT;
+		port = TRANS_DDI_FUNC_CTL_VAL_TO_PORT(tmp);
 
 	if (INTEL_GEN(dev_priv) >= 11)
 		icelake_get_ddi_pll(dev_priv, port, pipe_config);
@@ -15319,6 +15318,7 @@ static void intel_setup_outputs(struct drm_i915_private *dev_priv)
 		intel_ddi_init(dev_priv, PORT_A);
 		intel_ddi_init(dev_priv, PORT_B);
 		intel_ddi_init(dev_priv, PORT_C);
+		icl_dsi_init(dev_priv);
 	} else if (IS_ELKHARTLAKE(dev_priv)) {
 		intel_ddi_init(dev_priv, PORT_A);
 		intel_ddi_init(dev_priv, PORT_B);

@@ -32,10 +32,10 @@
 #include "intel_audio.h"
 #include "intel_connector.h"
 #include "intel_ddi.h"
+#include "intel_display_types.h"
 #include "intel_dp.h"
 #include "intel_dp_mst.h"
 #include "intel_dpio_phy.h"
-#include "intel_drv.h"
 
 static int intel_dp_mst_compute_link_config(struct intel_encoder *encoder,
 					    struct intel_crtc_state *crtc_state,
@@ -629,6 +629,12 @@ intel_dp_create_fake_mst_encoders(struct intel_digital_port *intel_dig_port)
 	for_each_pipe(dev_priv, pipe)
 		intel_dp->mst_encoders[pipe] = intel_dp_create_fake_mst_encoder(intel_dig_port, pipe);
 	return true;
+}
+
+int
+intel_dp_mst_encoder_active_links(struct intel_digital_port *intel_dig_port)
+{
+	return intel_dig_port->dp.active_mst_links;
 }
 
 int

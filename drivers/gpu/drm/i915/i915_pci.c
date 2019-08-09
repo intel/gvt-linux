@@ -783,7 +783,8 @@ static const struct intel_device_info intel_elkhartlake_info = {
 		[TRANSCODER_D] = TRANSCODER_D_OFFSET, \
 		[TRANSCODER_DSI_0] = TRANSCODER_DSI0_OFFSET, \
 		[TRANSCODER_DSI_1] = TRANSCODER_DSI1_OFFSET, \
-	}
+	}, \
+	.has_global_mocs = 1
 
 static const struct intel_device_info intel_tigerlake_12_info = {
 	GEN12_FEATURES,
@@ -873,16 +874,16 @@ MODULE_DEVICE_TABLE(pci, pciidlist);
 
 static void i915_pci_remove(struct pci_dev *pdev)
 {
-	struct drm_device *dev;
+	struct drm_i915_private *i915;
 
-	dev = pci_get_drvdata(pdev);
-	if (!dev) /* driver load aborted, nothing to cleanup */
+	i915 = pci_get_drvdata(pdev);
+	if (!i915) /* driver load aborted, nothing to cleanup */
 		return;
 
-	i915_driver_remove(dev);
-	drm_dev_put(dev);
-
+	i915_driver_remove(i915);
 	pci_set_drvdata(pdev, NULL);
+
+	drm_dev_put(&i915->drm);
 }
 
 /* is device_id present in comma separated list of ids */
@@ -958,7 +959,7 @@ static int i915_pci_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 	if (err)
 		return err;
 
-	if (i915_inject_probe_failure()) {
+	if (i915_inject_probe_failure(pci_get_drvdata(pdev))) {
 		i915_pci_remove(pdev);
 		return -ENODEV;
 	}

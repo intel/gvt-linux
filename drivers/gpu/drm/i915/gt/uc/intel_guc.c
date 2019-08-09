@@ -82,6 +82,7 @@ void intel_guc_init_early(struct intel_guc *guc)
 	intel_guc_fw_init_early(guc);
 	intel_guc_ct_init_early(&guc->ct);
 	intel_guc_log_init_early(&guc->log);
+	intel_guc_submission_init_early(guc);
 
 	mutex_init(&guc->send_mutex);
 	spin_lock_init(&guc->irq_lock);
@@ -144,7 +145,7 @@ static u32 guc_ctl_feature_flags(struct intel_guc *guc)
 {
 	u32 flags = 0;
 
-	if (!intel_uc_is_using_guc_submission(&guc_to_gt(guc)->uc))
+	if (!intel_guc_is_submission_supported(guc))
 		flags |= GUC_CTL_DISABLE_SCHEDULER;
 
 	return flags;
@@ -154,7 +155,7 @@ static u32 guc_ctl_ctxinfo_flags(struct intel_guc *guc)
 {
 	u32 flags = 0;
 
-	if (intel_uc_is_using_guc_submission(&guc_to_gt(guc)->uc)) {
+	if (intel_guc_is_submission_supported(guc)) {
 		u32 ctxnum, base;
 
 		base = intel_guc_ggtt_offset(guc, guc->stage_desc_pool);
@@ -290,7 +291,7 @@ int intel_guc_init(struct intel_guc *guc)
 	if (ret)
 		goto err_ads;
 
-	if (intel_uc_is_using_guc_submission(&gt->uc)) {
+	if (intel_guc_is_submission_supported(guc)) {
 		/*
 		 * This is stuff we need to have available at fw load time
 		 * if we are planning to enable submission later
@@ -329,7 +330,7 @@ void intel_guc_fini(struct intel_guc *guc)
 
 	i915_ggtt_disable_guc(gt->ggtt);
 
-	if (intel_uc_is_using_guc_submission(&gt->uc))
+	if (intel_guc_is_submission_supported(guc))
 		intel_guc_submission_fini(guc);
 
 	intel_guc_ct_fini(&guc->ct);
@@ -625,7 +626,7 @@ struct i915_vma *intel_guc_allocate_vma(struct intel_guc *guc, u32 size)
 		goto err;
 	}
 
-	return vma;
+	return i915_vma_make_unshrinkable(vma);
 
 err:
 	i915_gem_object_put(obj);

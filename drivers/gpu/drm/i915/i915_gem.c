@@ -46,6 +46,7 @@
 #include "gem/i915_gem_ioctls.h"
 #include "gem/i915_gem_pm.h"
 #include "gem/i915_gemfs.h"
+#include "gt/intel_engine_user.h"
 #include "gt/intel_gt.h"
 #include "gt/intel_gt_pm.h"
 #include "gt/intel_mocs.h"
@@ -58,7 +59,6 @@
 #include "i915_trace.h"
 #include "i915_vgpu.h"
 
-#include "intel_drv.h"
 #include "intel_pm.h"
 
 static int
@@ -893,19 +893,6 @@ void i915_gem_runtime_suspend(struct drm_i915_private *i915)
 	}
 }
 
-static int wait_for_engines(struct intel_gt *gt)
-{
-	if (wait_for(intel_engines_are_idle(gt), I915_IDLE_ENGINES_TIMEOUT)) {
-		dev_err(gt->i915->drm.dev,
-			"Failed to idle engines, declaring wedged!\n");
-		GEM_TRACE_DUMP();
-		intel_gt_set_wedged(gt);
-		return -EIO;
-	}
-
-	return 0;
-}
-
 static long
 wait_for_timelines(struct drm_i915_private *i915,
 		   unsigned int flags, long timeout)
@@ -953,26 +940,19 @@ int i915_gem_wait_for_idle(struct drm_i915_private *i915,
 			   unsigned int flags, long timeout)
 {
 	/* If the device is asleep, we have no requests outstanding */
-	if (!READ_ONCE(i915->gt.awake))
+	if (!intel_gt_pm_is_awake(&i915->gt))
 		return 0;
 
-	GEM_TRACE("flags=%x (%s), timeout=%ld%s, awake?=%s\n",
+	GEM_TRACE("flags=%x (%s), timeout=%ld%s\n",
 		  flags, flags & I915_WAIT_LOCKED ? "locked" : "unlocked",
-		  timeout, timeout == MAX_SCHEDULE_TIMEOUT ? " (forever)" : "",
-		  yesno(i915->gt.awake));
+		  timeout, timeout == MAX_SCHEDULE_TIMEOUT ? " (forever)" : "");
 
 	timeout = wait_for_timelines(i915, flags, timeout);
 	if (timeout < 0)
 		return timeout;
 
 	if (flags & I915_WAIT_LOCKED) {
-		int err;
-
 		lockdep_assert_held(&i915->drm.struct_mutex);
-
-		err = wait_for_engines(&i915->gt);
-		if (err)
-			return err;
 
 		i915_retire_requests(i915);
 	}
@@ -1240,22 +1220,14 @@ int i915_gem_init_hw(struct drm_i915_private *i915)
 		goto out;
 	}
 
-	ret = intel_wopcm_init_hw(&i915->wopcm, gt);
-	if (ret) {
-		DRM_ERROR("Enabling WOPCM failed (%d)\n", ret);
-		goto out;
-	}
-
 	/* We can't enable contexts until all firmware is loaded */
-	ret = intel_uc_init_hw(&i915->gt.uc);
+	ret = intel_uc_init_hw(&gt->uc);
 	if (ret) {
-		DRM_ERROR("Enabling uc failed (%d)\n", ret);
+		i915_probe_error(i915, "Enabling uc failed (%d)\n", ret);
 		goto out;
 	}
 
-	intel_mocs_init_l3cc_table(gt);
-
-	intel_engines_set_scheduler_caps(i915);
+	intel_mocs_init(gt);
 
 out:
 	intel_uncore_forcewake_put(uncore, FORCEWAKE_ALL);
@@ -1264,9 +1236,8 @@ out:
 
 static int __intel_engines_record_defaults(struct drm_i915_private *i915)
 {
+	struct i915_request *requests[I915_NUM_ENGINES] = {};
 	struct intel_engine_cs *engine;
-	struct i915_gem_context *ctx;
-	struct i915_gem_engines *e;
 	enum intel_engine_id id;
 	int err = 0;
 
@@ -1279,20 +1250,25 @@ static int __intel_engines_record_defaults(struct drm_i915_private *i915)
 	 * from the same default HW values.
 	 */
 
-	ctx = i915_gem_context_create_kernel(i915, 0);
-	if (IS_ERR(ctx))
-		return PTR_ERR(ctx);
-
-	e = i915_gem_context_lock_engines(ctx);
-
 	for_each_engine(engine, i915, id) {
-		struct intel_context *ce = e->engines[id];
+		struct intel_context *ce;
 		struct i915_request *rq;
+
+		/* We must be able to switch to something! */
+		GEM_BUG_ON(!engine->kernel_context);
+		engine->serial++; /* force the kernel context switch */
+
+		ce = intel_context_create(i915->kernel_context, engine);
+		if (IS_ERR(ce)) {
+			err = PTR_ERR(ce);
+			goto out;
+		}
 
 		rq = intel_context_create_request(ce);
 		if (IS_ERR(rq)) {
 			err = PTR_ERR(rq);
-			goto err_active;
+			intel_context_put(ce);
+			goto out;
 		}
 
 		err = intel_engine_emit_ctx_wa(rq);
@@ -1313,26 +1289,33 @@ static int __intel_engines_record_defaults(struct drm_i915_private *i915)
 			goto err_rq;
 
 err_rq:
+		requests[id] = i915_request_get(rq);
 		i915_request_add(rq);
 		if (err)
-			goto err_active;
+			goto out;
 	}
 
 	/* Flush the default context image to memory, and enable powersaving. */
 	if (!i915_gem_load_power_context(i915)) {
 		err = -EIO;
-		goto err_active;
+		goto out;
 	}
 
-	for_each_engine(engine, i915, id) {
-		struct intel_context *ce = e->engines[id];
-		struct i915_vma *state = ce->state;
+	for (id = 0; id < ARRAY_SIZE(requests); id++) {
+		struct i915_request *rq;
+		struct i915_vma *state;
 		void *vaddr;
 
-		if (!state)
+		rq = requests[id];
+		if (!rq)
 			continue;
 
-		GEM_BUG_ON(intel_context_is_pinned(ce));
+		/* We want to be able to unbind the state from the GGTT */
+		GEM_BUG_ON(intel_context_is_pinned(rq->hw_context));
+
+		state = rq->hw_context->state;
+		if (!state)
+			continue;
 
 		/*
 		 * As we will hold a reference to the logical state, it will
@@ -1344,61 +1327,49 @@ err_rq:
 		 */
 		err = i915_vma_unbind(state);
 		if (err)
-			goto err_active;
+			goto out;
 
 		i915_gem_object_lock(state->obj);
 		err = i915_gem_object_set_to_cpu_domain(state->obj, false);
 		i915_gem_object_unlock(state->obj);
 		if (err)
-			goto err_active;
+			goto out;
 
-		engine->default_state = i915_gem_object_get(state->obj);
-		i915_gem_object_set_cache_coherency(engine->default_state,
-						    I915_CACHE_LLC);
+		i915_gem_object_set_cache_coherency(state->obj, I915_CACHE_LLC);
 
 		/* Check we can acquire the image of the context state */
-		vaddr = i915_gem_object_pin_map(engine->default_state,
-						I915_MAP_FORCE_WB);
+		vaddr = i915_gem_object_pin_map(state->obj, I915_MAP_FORCE_WB);
 		if (IS_ERR(vaddr)) {
 			err = PTR_ERR(vaddr);
-			goto err_active;
+			goto out;
 		}
 
-		i915_gem_object_unpin_map(engine->default_state);
+		rq->engine->default_state = i915_gem_object_get(state->obj);
+		i915_gem_object_unpin_map(state->obj);
 	}
 
-	if (IS_ENABLED(CONFIG_DRM_I915_DEBUG_GEM)) {
-		unsigned int found = intel_engines_has_context_isolation(i915);
-
-		/*
-		 * Make sure that classes with multiple engine instances all
-		 * share the same basic configuration.
-		 */
-		for_each_engine(engine, i915, id) {
-			unsigned int bit = BIT(engine->uabi_class);
-			unsigned int expected = engine->default_state ? bit : 0;
-
-			if ((found & bit) != expected) {
-				DRM_ERROR("mismatching default context state for class %d on engine %s\n",
-					  engine->uabi_class, engine->name);
-			}
-		}
-	}
-
-out_ctx:
-	i915_gem_context_unlock_engines(ctx);
-	i915_gem_context_set_closed(ctx);
-	i915_gem_context_put(ctx);
-	return err;
-
-err_active:
+out:
 	/*
 	 * If we have to abandon now, we expect the engines to be idle
 	 * and ready to be torn-down. The quickest way we can accomplish
 	 * this is by declaring ourselves wedged.
 	 */
-	intel_gt_set_wedged(&i915->gt);
-	goto out_ctx;
+	if (err)
+		intel_gt_set_wedged(&i915->gt);
+
+	for (id = 0; id < ARRAY_SIZE(requests); id++) {
+		struct intel_context *ce;
+		struct i915_request *rq;
+
+		rq = requests[id];
+		if (!rq)
+			continue;
+
+		ce = rq->hw_context;
+		i915_request_put(rq);
+		intel_context_put(ce);
+	}
+	return err;
 }
 
 static int
@@ -1447,10 +1418,7 @@ int i915_gem_init(struct drm_i915_private *dev_priv)
 		return ret;
 
 	intel_uc_fetch_firmwares(&dev_priv->gt.uc);
-
-	ret = intel_wopcm_init(&dev_priv->wopcm);
-	if (ret)
-		goto err_uc_fw;
+	intel_wopcm_init(&dev_priv->wopcm);
 
 	/* This is just a security blanket to placate dragons.
 	 * On some systems, we very sporadically observe that the first TLBs
@@ -1526,15 +1494,13 @@ int i915_gem_init(struct drm_i915_private *dev_priv)
 	if (ret)
 		goto err_gt;
 
-	if (i915_inject_probe_failure()) {
-		ret = -ENODEV;
+	ret = i915_inject_load_error(dev_priv, -ENODEV);
+	if (ret)
 		goto err_gt;
-	}
 
-	if (i915_inject_probe_failure()) {
-		ret = -EIO;
+	ret = i915_inject_load_error(dev_priv, -EIO);
+	if (ret)
 		goto err_gt;
-	}
 
 	intel_uncore_forcewake_put(&dev_priv->uncore, FORCEWAKE_ALL);
 	mutex_unlock(&dev_priv->drm.struct_mutex);
@@ -1576,7 +1542,6 @@ err_unlock:
 	intel_uncore_forcewake_put(&dev_priv->uncore, FORCEWAKE_ALL);
 	mutex_unlock(&dev_priv->drm.struct_mutex);
 
-err_uc_fw:
 	intel_uc_cleanup_firmwares(&dev_priv->gt.uc);
 
 	if (ret != -EIO) {
@@ -1609,6 +1574,18 @@ err_uc_fw:
 
 	i915_gem_drain_freed_objects(dev_priv);
 	return ret;
+}
+
+void i915_gem_driver_register(struct drm_i915_private *i915)
+{
+	i915_gem_driver_register__shrinker(i915);
+
+	intel_engines_driver_register(i915);
+}
+
+void i915_gem_driver_unregister(struct drm_i915_private *i915)
+{
+	i915_gem_driver_unregister__shrinker(i915);
 }
 
 void i915_gem_driver_remove(struct drm_i915_private *dev_priv)
@@ -1660,7 +1637,6 @@ void i915_gem_init_mmio(struct drm_i915_private *i915)
 static void i915_gem_init__mm(struct drm_i915_private *i915)
 {
 	spin_lock_init(&i915->mm.obj_lock);
-	spin_lock_init(&i915->mm.free_lock);
 
 	init_llist_head(&i915->mm.free_list);
 
@@ -1694,8 +1670,6 @@ void i915_gem_cleanup_early(struct drm_i915_private *dev_priv)
 	GEM_BUG_ON(!llist_empty(&dev_priv->mm.free_list));
 	GEM_BUG_ON(atomic_read(&dev_priv->mm.free_count));
 	WARN_ON(dev_priv->mm.shrink_count);
-
-	intel_gt_cleanup_early(&dev_priv->gt);
 
 	i915_gemfs_fini(dev_priv);
 }

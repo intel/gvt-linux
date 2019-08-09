@@ -29,6 +29,7 @@
 #include "i915_gem_context.h"
 #include "i915_gem_object.h"
 #include "i915_globals.h"
+#include "i915_trace.h"
 
 static struct i915_global_object {
 	struct i915_global base;
@@ -63,8 +64,9 @@ void i915_gem_object_init(struct drm_i915_gem_object *obj,
 	spin_lock_init(&obj->vma.lock);
 	INIT_LIST_HEAD(&obj->vma.list);
 
+	INIT_LIST_HEAD(&obj->mm.link);
+
 	INIT_LIST_HEAD(&obj->lut_list);
-	INIT_LIST_HEAD(&obj->batch_pool_link);
 
 	init_rcu_head(&obj->rcu);
 
@@ -209,48 +211,18 @@ static void __i915_gem_free_objects(struct drm_i915_private *i915,
 
 void i915_gem_flush_free_objects(struct drm_i915_private *i915)
 {
-	struct llist_node *freed;
+	struct llist_node *freed = llist_del_all(&i915->mm.free_list);
 
-	/* Free the oldest, most stale object to keep the free_list short */
-	freed = NULL;
-	if (!llist_empty(&i915->mm.free_list)) { /* quick test for hotpath */
-		/* Only one consumer of llist_del_first() allowed */
-		spin_lock(&i915->mm.free_lock);
-		freed = llist_del_first(&i915->mm.free_list);
-		spin_unlock(&i915->mm.free_lock);
-	}
-	if (unlikely(freed)) {
-		freed->next = NULL;
+	if (unlikely(freed))
 		__i915_gem_free_objects(i915, freed);
-	}
 }
 
 static void __i915_gem_free_work(struct work_struct *work)
 {
 	struct drm_i915_private *i915 =
 		container_of(work, struct drm_i915_private, mm.free_work);
-	struct llist_node *freed;
 
-	/*
-	 * All file-owned VMA should have been released by this point through
-	 * i915_gem_close_object(), or earlier by i915_gem_context_close().
-	 * However, the object may also be bound into the global GTT (e.g.
-	 * older GPUs without per-process support, or for direct access through
-	 * the GTT either for the user or for scanout). Those VMA still need to
-	 * unbound now.
-	 */
-
-	spin_lock(&i915->mm.free_lock);
-	while ((freed = llist_del_all(&i915->mm.free_list))) {
-		spin_unlock(&i915->mm.free_lock);
-
-		__i915_gem_free_objects(i915, freed);
-		if (need_resched())
-			return;
-
-		spin_lock(&i915->mm.free_lock);
-	}
-	spin_unlock(&i915->mm.free_lock);
+	i915_gem_flush_free_objects(i915);
 }
 
 void i915_gem_free_object(struct drm_gem_object *gem_obj)
@@ -273,14 +245,7 @@ void i915_gem_free_object(struct drm_gem_object *gem_obj)
 	 * or else we may oom whilst there are plenty of deferred
 	 * freed objects.
 	 */
-	if (i915_gem_object_has_pages(obj) &&
-	    i915_gem_object_is_shrinkable(obj)) {
-		unsigned long flags;
-
-		spin_lock_irqsave(&i915->mm.obj_lock, flags);
-		list_del_init(&obj->mm.link);
-		spin_unlock_irqrestore(&i915->mm.obj_lock, flags);
-	}
+	i915_gem_object_make_unshrinkable(obj);
 
 	/*
 	 * Since we require blocking on struct_mutex to unbind the freed

@@ -64,6 +64,11 @@
 #define GEN9_GUC_FW_RESERVED	SZ_128K
 #define GEN9_GUC_WOPCM_OFFSET	(GUC_WOPCM_RESERVED + GEN9_GUC_FW_RESERVED)
 
+static inline struct drm_i915_private *wopcm_to_i915(struct intel_wopcm *wopcm)
+{
+	return container_of(wopcm, struct drm_i915_private, wopcm);
+}
+
 /**
  * intel_wopcm_init_early() - Early initialization of the WOPCM.
  * @wopcm: pointer to intel_wopcm.
@@ -156,12 +161,10 @@ static inline int check_hw_restriction(struct drm_i915_private *i915,
  * This function will partition WOPCM space based on GuC and HuC firmware sizes
  * and will allocate max remaining for use by GuC. This function will also
  * enforce platform dependent hardware restrictions on GuC WOPCM offset and
- * size. It will fail the WOPCM init if any of these checks were failed, so that
- * the following GuC firmware uploading would be aborted.
- *
- * Return: 0 on success, non-zero error code on failure.
+ * size. It will fail the WOPCM init if any of these checks fail, so that the
+ * following WOPCM registers setup and GuC firmware uploading would be aborted.
  */
-int intel_wopcm_init(struct intel_wopcm *wopcm)
+void intel_wopcm_init(struct intel_wopcm *wopcm)
 {
 	struct drm_i915_private *i915 = wopcm_to_i915(wopcm);
 	u32 guc_fw_size = intel_uc_fw_get_upload_size(&i915->gt.uc.guc.fw);
@@ -172,24 +175,26 @@ int intel_wopcm_init(struct intel_wopcm *wopcm)
 	u32 guc_wopcm_rsvd;
 	int err;
 
-	if (!USES_GUC(i915))
-		return 0;
+	if (!guc_fw_size)
+		return;
 
 	GEM_BUG_ON(!wopcm->size);
+	GEM_BUG_ON(wopcm->guc.base);
+	GEM_BUG_ON(wopcm->guc.size);
 
-	if (i915_inject_probe_failure())
-		return -E2BIG;
+	if (i915_inject_probe_failure(i915))
+		return;
 
 	if (guc_fw_size >= wopcm->size) {
 		DRM_ERROR("GuC FW (%uKiB) is too big to fit in WOPCM.",
 			  guc_fw_size / 1024);
-		return -E2BIG;
+		return;
 	}
 
 	if (huc_fw_size >= wopcm->size) {
 		DRM_ERROR("HuC FW (%uKiB) is too big to fit in WOPCM.",
 			  huc_fw_size / 1024);
-		return -E2BIG;
+		return;
 	}
 
 	guc_wopcm_base = ALIGN(huc_fw_size + WOPCM_RESERVED_SIZE,
@@ -197,7 +202,7 @@ int intel_wopcm_init(struct intel_wopcm *wopcm)
 	if ((guc_wopcm_base + ctx_rsvd) >= wopcm->size) {
 		DRM_ERROR("GuC WOPCM base (%uKiB) is too big.\n",
 			  guc_wopcm_base / 1024);
-		return -E2BIG;
+		return;
 	}
 
 	guc_wopcm_size = wopcm->size - guc_wopcm_base - ctx_rsvd;
@@ -211,84 +216,16 @@ int intel_wopcm_init(struct intel_wopcm *wopcm)
 		DRM_ERROR("Need %uKiB WOPCM for GuC, %uKiB available.\n",
 			  (guc_fw_size + guc_wopcm_rsvd) / 1024,
 			  guc_wopcm_size / 1024);
-		return -E2BIG;
+		return;
 	}
 
 	err = check_hw_restriction(i915, guc_wopcm_base, guc_wopcm_size,
 				   huc_fw_size);
 	if (err)
-		return err;
+		return;
 
 	wopcm->guc.base = guc_wopcm_base;
 	wopcm->guc.size = guc_wopcm_size;
-
-	return 0;
-}
-
-static int
-write_and_verify(struct intel_gt *gt,
-		 i915_reg_t reg, u32 val, u32 mask, u32 locked_bit)
-{
-	struct intel_uncore *uncore = gt->uncore;
-	u32 reg_val;
-
-	GEM_BUG_ON(val & ~mask);
-
-	intel_uncore_write(uncore, reg, val);
-
-	reg_val = intel_uncore_read(uncore, reg);
-
-	return (reg_val & mask) != (val | locked_bit) ? -EIO : 0;
-}
-
-/**
- * intel_wopcm_init_hw() - Setup GuC WOPCM registers.
- * @wopcm: pointer to intel_wopcm.
- * @gt: pointer to the containing GT
- *
- * Setup the GuC WOPCM size and offset registers with the calculated values. It
- * will verify the register values to make sure the registers are locked with
- * correct values.
- *
- * Return: 0 on success. -EIO if registers were locked with incorrect values.
- */
-int intel_wopcm_init_hw(struct intel_wopcm *wopcm, struct intel_gt *gt)
-{
-	struct drm_i915_private *i915 = wopcm_to_i915(wopcm);
-	struct intel_uncore *uncore = gt->uncore;
-	u32 huc_agent;
-	u32 mask;
-	int err;
-
-	if (!USES_GUC(i915))
-		return 0;
-
-	GEM_BUG_ON(!HAS_GT_UC(i915));
-	GEM_BUG_ON(!wopcm->guc.size);
 	GEM_BUG_ON(!wopcm->guc.base);
-
-	err = write_and_verify(gt, GUC_WOPCM_SIZE, wopcm->guc.size,
-			       GUC_WOPCM_SIZE_MASK | GUC_WOPCM_SIZE_LOCKED,
-			       GUC_WOPCM_SIZE_LOCKED);
-	if (err)
-		goto err_out;
-
-	huc_agent = USES_HUC(i915) ? HUC_LOADING_AGENT_GUC : 0;
-	mask = GUC_WOPCM_OFFSET_MASK | GUC_WOPCM_OFFSET_VALID | huc_agent;
-	err = write_and_verify(gt, DMA_GUC_WOPCM_OFFSET,
-			       wopcm->guc.base | huc_agent, mask,
-			       GUC_WOPCM_OFFSET_VALID);
-	if (err)
-		goto err_out;
-
-	return 0;
-
-err_out:
-	DRM_ERROR("Failed to init WOPCM registers:\n");
-	DRM_ERROR("DMA_GUC_WOPCM_OFFSET=%#x\n",
-		  intel_uncore_read(uncore, DMA_GUC_WOPCM_OFFSET));
-	DRM_ERROR("GUC_WOPCM_SIZE=%#x\n",
-		  intel_uncore_read(uncore, GUC_WOPCM_SIZE));
-
-	return err;
+	GEM_BUG_ON(!wopcm->guc.size);
 }

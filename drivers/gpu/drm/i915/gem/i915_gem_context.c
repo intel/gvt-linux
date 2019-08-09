@@ -70,6 +70,7 @@
 #include <drm/i915_drm.h>
 
 #include "gt/intel_lrc_reg.h"
+#include "gt/intel_engine_user.h"
 
 #include "i915_gem_context.h"
 #include "i915_globals.h"
@@ -158,7 +159,7 @@ lookup_user_engine(struct i915_gem_context *ctx,
 		if (!engine)
 			return ERR_PTR(-EINVAL);
 
-		idx = engine->id;
+		idx = engine->legacy_idx;
 	} else {
 		idx = ci->engine_instance;
 	}
@@ -278,6 +279,7 @@ static void free_engines_rcu(struct rcu_head *rcu)
 
 static struct i915_gem_engines *default_engines(struct i915_gem_context *ctx)
 {
+	const struct intel_gt *gt = &ctx->i915->gt;
 	struct intel_engine_cs *engine;
 	struct i915_gem_engines *e;
 	enum intel_engine_id id;
@@ -287,7 +289,7 @@ static struct i915_gem_engines *default_engines(struct i915_gem_context *ctx)
 		return ERR_PTR(-ENOMEM);
 
 	init_rcu_head(&e->rcu);
-	for_each_engine(engine, ctx->i915, id) {
+	for_each_engine(engine, gt, id) {
 		struct intel_context *ce;
 
 		ce = intel_context_create(ctx, engine);
@@ -297,8 +299,8 @@ static struct i915_gem_engines *default_engines(struct i915_gem_context *ctx)
 		}
 
 		e->engines[id] = ce;
+		e->num_engines = id + 1;
 	}
-	e->num_engines = id;
 
 	return e;
 }
@@ -397,30 +399,6 @@ static void context_close(struct i915_gem_context *ctx)
 	i915_gem_context_put(ctx);
 }
 
-static u32 default_desc_template(const struct drm_i915_private *i915,
-				 const struct i915_address_space *vm)
-{
-	u32 address_mode;
-	u32 desc;
-
-	desc = GEN8_CTX_VALID | GEN8_CTX_PRIVILEGE;
-
-	address_mode = INTEL_LEGACY_32B_CONTEXT;
-	if (vm && i915_vm_is_4lvl(vm))
-		address_mode = INTEL_LEGACY_64B_CONTEXT;
-	desc |= address_mode << GEN8_CTX_ADDRESSING_MODE_SHIFT;
-
-	if (IS_GEN(i915, 8))
-		desc |= GEN8_CTX_L3LLC_COHERENT;
-
-	/* TODO: WaDisableLiteRestore when we start using semaphore
-	 * signalling between Command Streamers
-	 * ring->ctx_desc_template |= GEN8_CTX_FORCE_RESTORE;
-	 */
-
-	return desc;
-}
-
 static struct i915_gem_context *
 __create_context(struct drm_i915_private *i915)
 {
@@ -459,7 +437,6 @@ __create_context(struct drm_i915_private *i915)
 	i915_gem_context_set_recoverable(ctx);
 
 	ctx->ring_size = 4 * PAGE_SIZE;
-	ctx->desc_template = default_desc_template(i915, NULL);
 
 	for (i = 0; i < ARRAY_SIZE(ctx->hang_timestamp); i++)
 		ctx->hang_timestamp[i] = jiffies - CONTEXT_FAST_HANG_JIFFIES;
@@ -478,8 +455,9 @@ __set_ppgtt(struct i915_gem_context *ctx, struct i915_address_space *vm)
 	struct i915_gem_engines_iter it;
 	struct intel_context *ce;
 
+	GEM_BUG_ON(old && i915_vm_is_4lvl(vm) != i915_vm_is_4lvl(old));
+
 	ctx->vm = i915_vm_get(vm);
-	ctx->desc_template = default_desc_template(ctx->i915, vm);
 
 	for_each_gem_engine(ce, i915_gem_context_lock_engines(ctx), it) {
 		i915_vm_put(ce->vm);
@@ -1194,7 +1172,7 @@ __intel_context_reconfigure_sseu(struct intel_context *ce,
 {
 	int ret;
 
-	GEM_BUG_ON(INTEL_GEN(ce->gem_context->i915) < 8);
+	GEM_BUG_ON(INTEL_GEN(ce->engine->i915) < 8);
 
 	ret = intel_context_lock_pinned(ce);
 	if (ret)
@@ -1216,7 +1194,7 @@ unlock:
 static int
 intel_context_reconfigure_sseu(struct intel_context *ce, struct intel_sseu sseu)
 {
-	struct drm_i915_private *i915 = ce->gem_context->i915;
+	struct drm_i915_private *i915 = ce->engine->i915;
 	int ret;
 
 	ret = mutex_lock_interruptible(&i915->drm.struct_mutex);
@@ -1753,7 +1731,7 @@ get_engines(struct i915_gem_context *ctx,
 
 		if (e->engines[n]) {
 			ci.engine_class = e->engines[n]->engine->uabi_class;
-			ci.engine_instance = e->engines[n]->engine->instance;
+			ci.engine_instance = e->engines[n]->engine->uabi_instance;
 		}
 
 		if (copy_to_user(&user->engines[n], &ci, sizeof(ci))) {

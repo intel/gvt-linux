@@ -25,8 +25,8 @@
 #include <asm/iosf_mbi.h>
 
 #include "i915_drv.h"
+#include "i915_trace.h"
 #include "i915_vgpu.h"
-#include "intel_drv.h"
 #include "intel_pm.h"
 
 #define FORCEWAKE_ACK_TIMEOUT_MS 50
@@ -1331,7 +1331,7 @@ static int __fw_domain_init(struct intel_uncore *uncore,
 	GEM_BUG_ON(domain_id >= FW_DOMAIN_ID_COUNT);
 	GEM_BUG_ON(uncore->fw_domain[domain_id]);
 
-	if (i915_inject_probe_failure())
+	if (i915_inject_probe_failure(uncore->i915))
 		return -ENOMEM;
 
 	d = kzalloc(sizeof(*d), GFP_KERNEL);
@@ -1776,7 +1776,7 @@ static const struct reg_whitelist {
 } reg_read_whitelist[] = { {
 	.offset_ldw = RING_TIMESTAMP(RENDER_RING_BASE),
 	.offset_udw = RING_TIMESTAMP_UDW(RENDER_RING_BASE),
-	.gen_mask = INTEL_GEN_MASK(4, 11),
+	.gen_mask = INTEL_GEN_MASK(4, 12),
 	.size = 8
 } };
 
@@ -1860,7 +1860,7 @@ int i915_reg_read_ioctl(struct drm_device *dev,
  * wish to wait without holding forcewake for the duration (i.e. you expect
  * the wait to be slow).
  *
- * Returns 0 if the register matches the desired condition, or -ETIMEOUT.
+ * Return: 0 if the register matches the desired condition, or -ETIMEDOUT.
  */
 int __intel_wait_for_register_fw(struct intel_uncore *uncore,
 				 i915_reg_t reg,
@@ -1908,7 +1908,7 @@ int __intel_wait_for_register_fw(struct intel_uncore *uncore,
  *
  * Otherwise, the wait will timeout after @timeout_ms milliseconds.
  *
- * Returns 0 if the register matches the desired condition, or -ETIMEOUT.
+ * Return: 0 if the register matches the desired condition, or -ETIMEDOUT.
  */
 int __intel_wait_for_register(struct intel_uncore *uncore,
 			      i915_reg_t reg,

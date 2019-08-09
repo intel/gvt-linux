@@ -136,9 +136,11 @@
 #include "gem/i915_gem_context.h"
 
 #include "i915_drv.h"
+#include "i915_trace.h"
 #include "i915_vgpu.h"
 #include "intel_engine_pm.h"
 #include "intel_gt.h"
+#include "intel_gt_pm.h"
 #include "intel_lrc_reg.h"
 #include "intel_mocs.h"
 #include "intel_reset.h"
@@ -417,13 +419,17 @@ lrc_descriptor(struct intel_context *ce, struct intel_engine_cs *engine)
 	BUILD_BUG_ON(MAX_CONTEXT_HW_ID > (BIT(GEN8_CTX_ID_WIDTH)));
 	BUILD_BUG_ON(GEN11_MAX_CONTEXT_HW_ID > (BIT(GEN11_SW_CTX_ID_WIDTH)));
 
-	desc = ctx->desc_template;				/* bits  0-11 */
-	GEM_BUG_ON(desc & GENMASK_ULL(63, 12));
+	desc = INTEL_LEGACY_32B_CONTEXT;
+	if (i915_vm_is_4lvl(ce->vm))
+		desc = INTEL_LEGACY_64B_CONTEXT;
+	desc <<= GEN8_CTX_ADDRESSING_MODE_SHIFT;
+
+	desc |= GEN8_CTX_VALID | GEN8_CTX_PRIVILEGE;
+	if (IS_GEN(engine->i915, 8))
+		desc |= GEN8_CTX_L3LLC_COHERENT;
 
 	desc |= i915_ggtt_offset(ce->state) + LRC_HEADER_PAGES * PAGE_SIZE;
 								/* bits 12-31 */
-	GEM_BUG_ON(desc & GENMASK_ULL(63, 32));
-
 	/*
 	 * The following 32bits are copied into the OA reports (dword 2).
 	 * Consider updating oa_get_render_ctx_id in i915_perf.c when changing
@@ -552,6 +558,7 @@ execlists_schedule_in(struct i915_request *rq, int idx)
 		intel_context_get(ce);
 		ce->inflight = rq->engine;
 
+		intel_gt_pm_get(ce->inflight->gt);
 		execlists_context_status_change(rq, INTEL_CONTEXT_SCHEDULE_IN);
 		intel_engine_context_in(ce->inflight);
 	}
@@ -584,6 +591,7 @@ execlists_schedule_out(struct i915_request *rq)
 	if (!intel_context_inflight_count(ce)) {
 		intel_engine_context_out(ce->inflight);
 		execlists_context_status_change(rq, INTEL_CONTEXT_SCHEDULE_OUT);
+		intel_gt_pm_put(ce->inflight->gt);
 
 		/*
 		 * If this is part of a virtual engine, its next request may
@@ -2280,18 +2288,6 @@ static void __execlists_reset(struct intel_engine_cs *engine, bool stalled)
 	GEM_BUG_ON(i915_active_is_idle(&ce->active));
 	GEM_BUG_ON(!i915_vma_is_pinned(ce->state));
 	rq = active_request(rq);
-
-	/*
-	 * Catch up with any missed context-switch interrupts.
-	 *
-	 * Ideally we would just read the remaining CSB entries now that we
-	 * know the gpu is idle. However, the CSB registers are sometimes^W
-	 * often trashed across a GPU reset! Instead we have to rely on
-	 * guessing the missed context-switch events by looking at what
-	 * requests were completed.
-	 */
-	execlists_cancel_port_requests(execlists);
-
 	if (!rq) {
 		ce->ring->head = ce->ring->tail;
 		goto out_replay;
@@ -2353,6 +2349,7 @@ out_replay:
 
 unwind:
 	/* Push back any incomplete requests for replay after the reset. */
+	execlists_cancel_port_requests(execlists);
 	__unwind_incomplete_requests(engine);
 }
 
@@ -2726,7 +2723,6 @@ static u32 *gen8_emit_fini_breadcrumb_rcs(struct i915_request *request, u32 *cs)
 static void execlists_park(struct intel_engine_cs *engine)
 {
 	del_timer_sync(&engine->execlists.timer);
-	intel_engine_park(engine);
 }
 
 void intel_execlists_set_default_submission(struct intel_engine_cs *engine)

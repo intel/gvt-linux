@@ -41,6 +41,7 @@ subdir-ccflags-y += -I$(srctree)/$(src)
 # core driver code
 i915-y += i915_drv.o \
 	  i915_irq.o \
+	  i915_getparam.o \
 	  i915_params.o \
 	  i915_pci.o \
 	  i915_scatterlist.o \
@@ -48,6 +49,7 @@ i915-y += i915_drv.o \
 	  i915_sysfs.o \
 	  intel_csr.o \
 	  intel_device_info.o \
+	  intel_pch.o \
 	  intel_pm.o \
 	  intel_runtime_pm.o \
 	  intel_sideband.o \
@@ -72,7 +74,9 @@ gt-y += \
 	gt/intel_breadcrumbs.o \
 	gt/intel_context.o \
 	gt/intel_engine_cs.o \
+	gt/intel_engine_pool.o \
 	gt/intel_engine_pm.o \
+	gt/intel_engine_user.o \
 	gt/intel_gt.o \
 	gt/intel_gt_pm.o \
 	gt/intel_hangcheck.o \
@@ -90,8 +94,6 @@ gt-y += \
 	gt/gen7_renderstate.o \
 	gt/gen8_renderstate.o \
 	gt/gen9_renderstate.o
-gt-$(CONFIG_DRM_I915_SELFTEST) += \
-	gt/mock_engine.o
 i915-y += $(gt-y)
 
 # GEM (Graphics Execution Management) code
@@ -124,7 +126,6 @@ i915-y += \
 	  $(gem-y) \
 	  i915_active.o \
 	  i915_cmd_parser.o \
-	  i915_gem_batch_pool.o \
 	  i915_gem_evict.o \
 	  i915_gem_fence_reg.o \
 	  i915_gem_gtt.o \

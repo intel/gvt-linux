@@ -35,6 +35,7 @@
 #include "i915_active.h"
 #include "i915_drv.h"
 #include "i915_globals.h"
+#include "i915_trace.h"
 #include "intel_pm.h"
 
 struct execute_cb {
@@ -1198,7 +1199,6 @@ struct i915_request *__i915_request_commit(struct i915_request *rq)
 	 */
 	local_bh_disable();
 	i915_sw_fence_commit(&rq->semaphore);
-	rcu_read_lock(); /* RCU serialisation for set-wedged protection */
 	if (engine->schedule) {
 		struct i915_sched_attr attr = rq->gem_context->sched;
 
@@ -1228,7 +1228,6 @@ struct i915_request *__i915_request_commit(struct i915_request *rq)
 
 		engine->schedule(rq, &attr);
 	}
-	rcu_read_unlock();
 	i915_sw_fence_commit(&rq->submit);
 	local_bh_enable(); /* Kick the execlists tasklet if just scheduled */
 

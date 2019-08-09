@@ -52,6 +52,11 @@ static int intel_huc_rsa_data_create(struct intel_huc *huc)
 	struct i915_vma *vma;
 	size_t copied;
 	void *vaddr;
+	int err;
+
+	err = i915_inject_load_error(gt->i915, -ENXIO);
+	if (err)
+		return err;
 
 	/*
 	 * HuC firmware will sit above GUC_GGTT_TOP and will not map
@@ -115,8 +120,8 @@ out_fini:
 
 void intel_huc_fini(struct intel_huc *huc)
 {
-	intel_uc_fw_fini(&huc->fw);
 	intel_huc_rsa_data_destroy(huc);
+	intel_uc_fw_fini(&huc->fw);
 }
 
 /**
@@ -139,6 +144,10 @@ int intel_huc_auth(struct intel_huc *huc)
 	GEM_BUG_ON(!intel_uc_fw_is_loaded(&huc->fw));
 	GEM_BUG_ON(intel_huc_is_authenticated(huc));
 
+	ret = i915_inject_load_error(gt->i915, -ENXIO);
+	if (ret)
+		goto fail;
+
 	ret = intel_guc_auth_huc(guc,
 				 intel_guc_ggtt_offset(guc, huc->rsa_data));
 	if (ret) {
@@ -158,13 +167,11 @@ int intel_huc_auth(struct intel_huc *huc)
 	}
 
 	huc->fw.status = INTEL_UC_FIRMWARE_RUNNING;
-
 	return 0;
 
 fail:
+	i915_probe_error(gt->i915, "HuC: Authentication failed %d\n", ret);
 	huc->fw.status = INTEL_UC_FIRMWARE_FAIL;
-
-	DRM_ERROR("HuC: Authentication failed %d\n", ret);
 	return ret;
 }
 
@@ -185,7 +192,7 @@ int intel_huc_check_status(struct intel_huc *huc)
 	intel_wakeref_t wakeref;
 	u32 status = 0;
 
-	if (!intel_uc_is_using_huc(&gt->uc))
+	if (!intel_huc_is_supported(huc))
 		return -ENODEV;
 
 	with_intel_runtime_pm(&gt->i915->runtime_pm, wakeref)

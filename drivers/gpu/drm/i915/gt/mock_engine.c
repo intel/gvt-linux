@@ -27,6 +27,7 @@
 #include "i915_drv.h"
 #include "intel_context.h"
 #include "intel_engine_pm.h"
+#include "intel_engine_pool.h"
 
 #include "mock_engine.h"
 #include "selftests/mock_request.h"
@@ -262,6 +263,7 @@ struct intel_engine_cs *mock_engine(struct drm_i915_private *i915,
 	snprintf(engine->base.name, sizeof(engine->base.name), "%s", name);
 	engine->base.id = id;
 	engine->base.mask = BIT(id);
+	engine->base.instance = id;
 	engine->base.status_page.addr = (void *)(engine + 1);
 
 	engine->base.cops = &mock_context_ops;
@@ -280,29 +282,26 @@ struct intel_engine_cs *mock_engine(struct drm_i915_private *i915,
 	timer_setup(&engine->hw_delay, hw_delay_complete, 0);
 	INIT_LIST_HEAD(&engine->hw_queue);
 
+	intel_engine_add_user(&engine->base);
+
 	return &engine->base;
 }
 
 int mock_engine_init(struct intel_engine_cs *engine)
 {
-	struct drm_i915_private *i915 = engine->i915;
-	int err;
+	struct intel_context *ce;
 
 	intel_engine_init_active(engine, ENGINE_MOCK);
 	intel_engine_init_breadcrumbs(engine);
 	intel_engine_init_execlists(engine);
 	intel_engine_init__pm(engine);
+	intel_engine_pool_init(&engine->pool);
 
-	engine->kernel_context =
-		i915_gem_context_get_engine(i915->kernel_context, engine->id);
-	if (IS_ERR(engine->kernel_context))
+	ce = create_kernel_context(engine);
+	if (IS_ERR(ce))
 		goto err_breadcrumbs;
 
-	err = intel_context_pin(engine->kernel_context);
-	intel_context_put(engine->kernel_context);
-	if (err)
-		goto err_breadcrumbs;
-
+	engine->kernel_context = ce;
 	return 0;
 
 err_breadcrumbs:
@@ -336,6 +335,7 @@ void mock_engine_free(struct intel_engine_cs *engine)
 	GEM_BUG_ON(timer_pending(&mock->hw_delay));
 
 	intel_context_unpin(engine->kernel_context);
+	intel_context_put(engine->kernel_context);
 
 	intel_engine_fini_breadcrumbs(engine);
 

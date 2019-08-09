@@ -12,16 +12,17 @@
 #include <linux/kref.h>
 #include <linux/list.h>
 #include <linux/llist.h>
+#include <linux/rbtree.h>
 #include <linux/timer.h>
 #include <linux/types.h>
 
 #include "i915_gem.h"
-#include "i915_gem_batch_pool.h"
 #include "i915_pmu.h"
 #include "i915_priolist_types.h"
 #include "i915_selftest.h"
-#include "gt/intel_timeline_types.h"
+#include "intel_engine_pool_types.h"
 #include "intel_sseu.h"
+#include "intel_timeline_types.h"
 #include "intel_wakeref.h"
 #include "intel_workarounds_types.h"
 
@@ -263,18 +264,25 @@ struct intel_engine_cs {
 	char name[INTEL_ENGINE_CS_MAX_NAME];
 
 	enum intel_engine_id id;
+	enum intel_engine_id legacy_idx;
+
 	unsigned int hw_id;
 	unsigned int guc_id;
-	intel_engine_mask_t mask;
 
-	u8 uabi_class;
+	intel_engine_mask_t mask;
 
 	u8 class;
 	u8 instance;
+
+	u8 uabi_class;
+	u8 uabi_instance;
+
 	u32 context_size;
 	u32 mmio_base;
 
 	u32 uabi_capabilities;
+
+	struct rb_node uabi_node;
 
 	struct intel_sseu sseu;
 
@@ -354,7 +362,7 @@ struct intel_engine_cs {
 	 * when the command parser is enabled. Prevents the client from
 	 * modifying the batch contents after software parsing.
 	 */
-	struct i915_gem_batch_pool batch_pool;
+	struct intel_engine_pool pool;
 
 	struct intel_hw_status_page status_page;
 	struct i915_ctx_workarounds wa_ctx;

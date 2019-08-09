@@ -31,7 +31,6 @@
 #include <linux/sysfs.h>
 
 #include "i915_drv.h"
-#include "intel_drv.h"
 #include "intel_pm.h"
 #include "intel_sideband.h"
 

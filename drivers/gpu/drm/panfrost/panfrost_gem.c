@@ -26,6 +26,11 @@ static void panfrost_gem_free_object(struct drm_gem_object *obj)
 	drm_mm_remove_node(&bo->node);
 	spin_unlock(&pfdev->mm_lock);
 
+	mutex_lock(&pfdev->shrinker_lock);
+	if (!list_empty(&bo->base.madv_list))
+		list_del(&bo->base.madv_list);
+	mutex_unlock(&pfdev->shrinker_lock);
+
 	drm_gem_shmem_free_object(obj);
 }
 
@@ -91,8 +96,6 @@ panfrost_gem_prime_import_sg_table(struct drm_device *dev,
 		return ERR_CAST(obj);
 
 	pobj = to_panfrost_bo(obj);
-
-	obj->resv = attach->dmabuf->resv;
 
 	panfrost_mmu_map(pobj);
 

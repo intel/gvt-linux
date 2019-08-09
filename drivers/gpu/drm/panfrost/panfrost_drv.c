@@ -32,10 +32,42 @@ static int panfrost_ioctl_get_param(struct drm_device *ddev, void *data, struct 
 	if (param->pad != 0)
 		return -EINVAL;
 
+#define PANFROST_FEATURE(name, member)			\
+	case DRM_PANFROST_PARAM_ ## name:		\
+		param->value = pfdev->features.member;	\
+		break
+#define PANFROST_FEATURE_ARRAY(name, member, max)			\
+	case DRM_PANFROST_PARAM_ ## name ## 0 ...			\
+		DRM_PANFROST_PARAM_ ## name ## max:			\
+		param->value = pfdev->features.member[param->param -	\
+			DRM_PANFROST_PARAM_ ## name ## 0];		\
+		break
+
 	switch (param->param) {
-	case DRM_PANFROST_PARAM_GPU_PROD_ID:
-		param->value = pfdev->features.id;
-		break;
+		PANFROST_FEATURE(GPU_PROD_ID, id);
+		PANFROST_FEATURE(GPU_REVISION, revision);
+		PANFROST_FEATURE(SHADER_PRESENT, shader_present);
+		PANFROST_FEATURE(TILER_PRESENT, tiler_present);
+		PANFROST_FEATURE(L2_PRESENT, l2_present);
+		PANFROST_FEATURE(STACK_PRESENT, stack_present);
+		PANFROST_FEATURE(AS_PRESENT, as_present);
+		PANFROST_FEATURE(JS_PRESENT, js_present);
+		PANFROST_FEATURE(L2_FEATURES, l2_features);
+		PANFROST_FEATURE(CORE_FEATURES, core_features);
+		PANFROST_FEATURE(TILER_FEATURES, tiler_features);
+		PANFROST_FEATURE(MEM_FEATURES, mem_features);
+		PANFROST_FEATURE(MMU_FEATURES, mmu_features);
+		PANFROST_FEATURE(THREAD_FEATURES, thread_features);
+		PANFROST_FEATURE(MAX_THREADS, max_threads);
+		PANFROST_FEATURE(THREAD_MAX_WORKGROUP_SZ,
+				thread_max_workgroup_sz);
+		PANFROST_FEATURE(THREAD_MAX_BARRIER_SZ,
+				thread_max_barrier_sz);
+		PANFROST_FEATURE(COHERENCY_FEATURES, coherency_features);
+		PANFROST_FEATURE_ARRAY(TEXTURE_FEATURES, texture_features, 3);
+		PANFROST_FEATURE_ARRAY(JS_FEATURES, js_features, 15);
+		PANFROST_FEATURE(NR_CORE_GROUPS, nr_core_groups);
+		PANFROST_FEATURE(THREAD_TLS_ALLOC, thread_tls_alloc);
 	default:
 		return -EINVAL;
 	}
@@ -301,6 +333,38 @@ static int panfrost_ioctl_get_bo_offset(struct drm_device *dev, void *data,
 	return 0;
 }
 
+static int panfrost_ioctl_madvise(struct drm_device *dev, void *data,
+				  struct drm_file *file_priv)
+{
+	struct drm_panfrost_madvise *args = data;
+	struct panfrost_device *pfdev = dev->dev_private;
+	struct drm_gem_object *gem_obj;
+
+	gem_obj = drm_gem_object_lookup(file_priv, args->handle);
+	if (!gem_obj) {
+		DRM_DEBUG("Failed to look up GEM BO %d\n", args->handle);
+		return -ENOENT;
+	}
+
+	args->retained = drm_gem_shmem_madvise(gem_obj, args->madv);
+
+	if (args->retained) {
+		struct panfrost_gem_object *bo = to_panfrost_bo(gem_obj);
+
+		mutex_lock(&pfdev->shrinker_lock);
+
+		if (args->madv == PANFROST_MADV_DONTNEED)
+			list_add_tail(&bo->base.madv_list, &pfdev->shrinker_list);
+		else if (args->madv == PANFROST_MADV_WILLNEED)
+			list_del_init(&bo->base.madv_list);
+
+		mutex_unlock(&pfdev->shrinker_lock);
+	}
+
+	drm_gem_object_put_unlocked(gem_obj);
+	return 0;
+}
+
 int panfrost_unstable_ioctl_check(void)
 {
 	if (!unstable_ioctls)
@@ -352,13 +416,13 @@ static const struct drm_ioctl_desc panfrost_drm_driver_ioctls[] = {
 	PANFROST_IOCTL(GET_BO_OFFSET,	get_bo_offset,	DRM_RENDER_ALLOW),
 	PANFROST_IOCTL(PERFCNT_ENABLE,	perfcnt_enable,	DRM_RENDER_ALLOW),
 	PANFROST_IOCTL(PERFCNT_DUMP,	perfcnt_dump,	DRM_RENDER_ALLOW),
+	PANFROST_IOCTL(MADVISE,		madvise,	DRM_RENDER_ALLOW),
 };
 
 DEFINE_DRM_GEM_SHMEM_FOPS(panfrost_drm_driver_fops);
 
 static struct drm_driver panfrost_drm_driver = {
-	.driver_features	= DRIVER_RENDER | DRIVER_GEM | DRIVER_PRIME |
-				  DRIVER_SYNCOBJ,
+	.driver_features	= DRIVER_RENDER | DRIVER_GEM | DRIVER_SYNCOBJ,
 	.open			= panfrost_open,
 	.postclose		= panfrost_postclose,
 	.ioctls			= panfrost_drm_driver_ioctls,
@@ -401,6 +465,8 @@ static int panfrost_probe(struct platform_device *pdev)
 	pfdev->ddev = ddev;
 
 	spin_lock_init(&pfdev->mm_lock);
+	mutex_init(&pfdev->shrinker_lock);
+	INIT_LIST_HEAD(&pfdev->shrinker_list);
 
 	/* 4G enough for now. can be 48-bit */
 	drm_mm_init(&pfdev->mm, SZ_32M >> PAGE_SHIFT, (SZ_4G - SZ_32M) >> PAGE_SHIFT);
@@ -431,6 +497,8 @@ static int panfrost_probe(struct platform_device *pdev)
 	if (err < 0)
 		goto err_out1;
 
+	panfrost_gem_shrinker_init(ddev);
+
 	return 0;
 
 err_out1:
@@ -447,6 +515,7 @@ static int panfrost_remove(struct platform_device *pdev)
 	struct drm_device *ddev = pfdev->ddev;
 
 	drm_dev_unregister(ddev);
+	panfrost_gem_shrinker_cleanup(ddev);
 	pm_runtime_get_sync(pfdev->dev);
 	pm_runtime_put_sync_autosuspend(pfdev->dev);
 	pm_runtime_disable(pfdev->dev);

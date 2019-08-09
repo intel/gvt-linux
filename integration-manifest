@@ -1,0 +1,30 @@
+drm drm-fixes a111ef6b082270f6cbeea5556caf1cbb0143b812
+	Merge tag 'drm-intel-fixes-2019-08-08' of git://anongit.freedesktop.org/drm/drm-intel into drm-fixes
+drm-misc drm-misc-fixes 1109635b292c82e7a2aa15e38edb7c389e34b693
+	drm/komeda: Initialize and enable output polling on Komeda
+drm-intel drm-intel-fixes 73a0ff0b30af79bf0303d557eb82f1d1945bb6ee
+	drm/i915: Fix wrong escape clock divisor init for GLK
+drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
+	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
+drm drm-next dce14e36aea23183ccd315fbc6b0fca027bf73f5
+	Merge tag 'drm-intel-next-2019-07-30' of git://anongit.freedesktop.org/drm/drm-intel into drm-next
+drm-misc drm-misc-next-fixes 7aaddd96d5febcf5b24357a326b3038d49a20532
+	drm/modes: Don't apply cmdline's rotation if it wasn't specified
+drm-intel drm-intel-next-fixes c36beba6b296b3c05a0f29753b04775e5ae23886
+	drm/i915: Seal races between async GPU cancellation, retirement and signaling
+drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
+	Linux 4.14-rc1
+drm-misc drm-misc-next d8a0d6a3b7810fe3de723505c75f7f34ee6891df
+	drm/panel: simple: Support TI nspire panels
+drm-intel drm-intel-next-queued 5b5efdf79abffb959cfbdf1dad063358d23069aa
+	drm/i915: Make debugfs/per_file_stats scale better
+drm-intel drm-intel-next e0e712fe42ef67bdf45fc348767d1d0a4eeba77f
+	drm/i915: Update DRIVER_DATE to 20190730
+drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
+	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
+sound-upstream for-linus 1be3c1fae6c1e1f5bb982b255d2034034454527a
+	ALSA: firewire: fix a memory leak bug
+sound-upstream for-next 2ba2101fd6f45875b83000d2a1eb290b9eda19de
+	Merge branch 'topic/hda-bus-ops-cleanup' into for-next
+drm-intel topic/core-for-CI 221ee28eb0411efc0f8ff734dfd7c36d4c1113cf
+	uapi/perf: Squelch compiler warning

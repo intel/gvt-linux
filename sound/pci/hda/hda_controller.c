@@ -869,10 +869,13 @@ static int azx_rirb_get_response(struct hdac_bus *bus, unsigned int addr,
 	 */
 	if (hbus->allow_bus_reset && !hbus->response_reset && !hbus->in_reset) {
 		hbus->response_reset = 1;
+		dev_err(chip->card->dev,
+			"No response from codec, resetting bus: last cmd=0x%08x\n",
+			bus->last_cmd[addr]);
 		return -EAGAIN; /* give a chance to retry */
 	}
 
-	dev_err(chip->card->dev,
+	dev_WARN(chip->card->dev,
 		"azx_get_response timeout, switching to single_cmd mode: last cmd=0x%08x\n",
 		bus->last_cmd[addr]);
 	chip->single_cmd = 1;
@@ -1207,14 +1210,12 @@ void snd_hda_bus_reset(struct hda_bus *bus)
 }
 
 /* HD-audio bus initialization */
-int azx_bus_init(struct azx *chip, const char *model,
-		 const struct hdac_io_ops *io_ops)
+int azx_bus_init(struct azx *chip, const char *model)
 {
 	struct hda_bus *bus = &chip->bus;
 	int err;
 
-	err = snd_hdac_bus_init(&bus->core, chip->card->dev, &bus_core_ops,
-				io_ops);
+	err = snd_hdac_bus_init(&bus->core, chip->card->dev, &bus_core_ops);
 	if (err < 0)
 		return err;
 

@@ -1,30 +1,12 @@
-drm drm-fixes d45331b00ddb179e291766617259261c112db872
-	Linux 5.3-rc4
-drm-misc drm-misc-fixes 1109635b292c82e7a2aa15e38edb7c389e34b693
-	drm/komeda: Initialize and enable output polling on Komeda
-drm-intel drm-intel-fixes 73a0ff0b30af79bf0303d557eb82f1d1945bb6ee
-	drm/i915: Fix wrong escape clock divisor init for GLK
-drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
-	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
-drm drm-next e7f7287bf5f746d29f3607178851246a005dd398
-	Merge tag 'drm-next-5.4-2019-08-09' of git://people.freedesktop.org/~agd5f/linux into drm-next
-drm-misc drm-misc-next-fixes 7aaddd96d5febcf5b24357a326b3038d49a20532
-	drm/modes: Don't apply cmdline's rotation if it wasn't specified
-drm-intel drm-intel-next-fixes c36beba6b296b3c05a0f29753b04775e5ae23886
-	drm/i915: Seal races between async GPU cancellation, retirement and signaling
-drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
-	Linux 4.14-rc1
-drm-misc drm-misc-next e0d409ff16201e76e07ebb5ec942abfbaf21c661
-	drm/panel: drop return code from drm_panel_detach()
-drm-intel drm-intel-next-queued 9f4dd137b20e4e09ada4087b03eb7cb347c35a75
-	drm/i915: Remove unused debugfs/i915_emon_status
-drm-intel drm-intel-next e0e712fe42ef67bdf45fc348767d1d0a4eeba77f
-	drm/i915: Update DRIVER_DATE to 20190730
-drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
-	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
-sound-upstream for-linus cfef67f016e4c00a2f423256fc678a6967a9fc09
-	ALSA: hda - Fix a memory leak bug
-sound-upstream for-next a2ef03fe617a8365fb7794531b11ba587509a9b9
-	ALSA: hda - Add a quirk model for fixing Huawei Matebook X right speaker
-drm-intel topic/core-for-CI 221ee28eb0411efc0f8ff734dfd7c36d4c1113cf
-	uapi/perf: Squelch compiler warning
+drm-tip/drm-tip 1a9d9eba28276a29833c89097de11e559f1aacf7
+	drm-tip: 2019y-08m-12d-06h-44m-00s UTC integration manifest
+vfio-upstream/for-linus 5715c4dd66a315515eedef3fc4cbe1bf4620f009
+	vfio/mdev: Synchronize device create/remove with parent removal
+vfio-upstream/next 1e4d09d2212d9e230b967f57bc8df463527dbd75
+	mdev: Send uevents around parent device registration
+origin/gvt-fixes eac4471d0882da14be652ef0a55b914145fab15a
+	drm/i915: Use after free in error path in intel_vgpu_create_workload()
+origin/gvt-next a3387d710710c08de7164ca4caa0551b3b0a99c1
+	drm/i915/gvt: Double check batch buffer size after copy
+origin/gvt-next-fixes e8f6c88e3d27cb58cacbef8d03025b86989ee50e
+	drm/i915/gvt: Fix an error code in ppgtt_populate_spt_by_guest_entry()

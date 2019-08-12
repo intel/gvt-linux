@@ -27,6 +27,7 @@
 
 #include <linux/types.h>
 #include "intel_uc_fw_abi.h"
+#include "intel_device_info.h"
 #include "i915_gem.h"
 
 struct drm_printer;
@@ -37,12 +38,13 @@ struct intel_gt;
 #define INTEL_UC_FIRMWARE_URL "https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/tree/i915"
 
 enum intel_uc_fw_status {
-	INTEL_UC_FIRMWARE_FAIL = -3, /* failed to xfer or init/auth the fw */
-	INTEL_UC_FIRMWARE_MISSING = -2, /* blob not found on the system */
-	INTEL_UC_FIRMWARE_NOT_SUPPORTED = -1, /* no uc HW */
+	INTEL_UC_FIRMWARE_NOT_SUPPORTED = -1, /* no uc HW or disabled */
 	INTEL_UC_FIRMWARE_UNINITIALIZED = 0, /* used to catch checks done too early */
 	INTEL_UC_FIRMWARE_SELECTED, /* selected the blob we want to load */
+	INTEL_UC_FIRMWARE_MISSING, /* blob not found on the system */
+	INTEL_UC_FIRMWARE_ERROR, /* invalid format or version */
 	INTEL_UC_FIRMWARE_AVAILABLE, /* blob found and copied in mem */
+	INTEL_UC_FIRMWARE_FAIL, /* failed to xfer or init/auth the fw */
 	INTEL_UC_FIRMWARE_TRANSFERRED, /* dma xfer done */
 	INTEL_UC_FIRMWARE_RUNNING /* init/auth done */
 };
@@ -83,18 +85,20 @@ static inline
 const char *intel_uc_fw_status_repr(enum intel_uc_fw_status status)
 {
 	switch (status) {
-	case INTEL_UC_FIRMWARE_FAIL:
-		return "FAIL";
-	case INTEL_UC_FIRMWARE_MISSING:
-		return "MISSING";
 	case INTEL_UC_FIRMWARE_NOT_SUPPORTED:
 		return "N/A";
 	case INTEL_UC_FIRMWARE_UNINITIALIZED:
 		return "UNINITIALIZED";
 	case INTEL_UC_FIRMWARE_SELECTED:
 		return "SELECTED";
+	case INTEL_UC_FIRMWARE_MISSING:
+		return "MISSING";
+	case INTEL_UC_FIRMWARE_ERROR:
+		return "ERROR";
 	case INTEL_UC_FIRMWARE_AVAILABLE:
 		return "AVAILABLE";
+	case INTEL_UC_FIRMWARE_FAIL:
+		return "FAIL";
 	case INTEL_UC_FIRMWARE_TRANSFERRED:
 		return "TRANSFERRED";
 	case INTEL_UC_FIRMWARE_RUNNING:
@@ -170,10 +174,9 @@ static inline u32 intel_uc_fw_get_upload_size(struct intel_uc_fw *uc_fw)
 }
 
 void intel_uc_fw_init_early(struct intel_uc_fw *uc_fw,
-			    enum intel_uc_fw_type type,
-			    struct drm_i915_private *i915);
-void intel_uc_fw_fetch(struct intel_uc_fw *uc_fw,
-		       struct drm_i915_private *i915);
+			    enum intel_uc_fw_type type, bool supported,
+			    enum intel_platform platform, u8 rev);
+int intel_uc_fw_fetch(struct intel_uc_fw *uc_fw, struct drm_i915_private *i915);
 void intel_uc_fw_cleanup_fetch(struct intel_uc_fw *uc_fw);
 int intel_uc_fw_upload(struct intel_uc_fw *uc_fw, struct intel_gt *gt,
 		       u32 wopcm_offset, u32 dma_flags);

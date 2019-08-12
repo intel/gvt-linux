@@ -8,6 +8,7 @@
 
 #include "intel_engine.h"
 #include "intel_engine_pm.h"
+#include "intel_engine_pool.h"
 #include "intel_gt.h"
 #include "intel_gt_pm.h"
 
@@ -34,28 +35,6 @@ static int __engine_unpark(struct intel_wakeref *wf)
 
 	intel_engine_init_hangcheck(engine);
 	return 0;
-}
-
-void intel_engine_pm_get(struct intel_engine_cs *engine)
-{
-	intel_wakeref_get(&engine->i915->runtime_pm, &engine->wakeref, __engine_unpark);
-}
-
-void intel_engine_park(struct intel_engine_cs *engine)
-{
-	/*
-	 * We are committed now to parking this engine, make sure there
-	 * will be no more interrupts arriving later and the engine
-	 * is truly idle.
-	 */
-	if (wait_for(intel_engine_is_idle(engine), 10)) {
-		struct drm_printer p = drm_debug_printer(__func__);
-
-		dev_err(engine->i915->drm.dev,
-			"%s is not idle before parking\n",
-			engine->name);
-		intel_engine_dump(engine, &p, NULL);
-	}
 }
 
 static bool switch_to_kernel_context(struct intel_engine_cs *engine)
@@ -90,7 +69,7 @@ static bool switch_to_kernel_context(struct intel_engine_cs *engine)
 	/* Check again on the next retirement. */
 	engine->wakeref_serial = engine->serial + 1;
 
-	i915_request_add_barriers(rq);
+	i915_request_add_active_barriers(rq);
 	__i915_request_commit(rq);
 
 	return false;
@@ -116,6 +95,7 @@ static int __engine_park(struct intel_wakeref *wf)
 	GEM_TRACE("%s\n", engine->name);
 
 	intel_engine_disarm_breadcrumbs(engine);
+	intel_engine_pool_park(&engine->pool);
 
 	/* Must be reset upon idling, or we may miss the busy wakeup. */
 	GEM_BUG_ON(engine->execlists.queue_priority_hint != INT_MIN);
@@ -134,12 +114,18 @@ static int __engine_park(struct intel_wakeref *wf)
 	return 0;
 }
 
-void intel_engine_pm_put(struct intel_engine_cs *engine)
-{
-	intel_wakeref_put(&engine->i915->runtime_pm, &engine->wakeref, __engine_park);
-}
+static const struct intel_wakeref_ops wf_ops = {
+	.get = __engine_unpark,
+	.put = __engine_park,
+};
 
 void intel_engine_init__pm(struct intel_engine_cs *engine)
 {
-	intel_wakeref_init(&engine->wakeref);
+	struct intel_runtime_pm *rpm = &engine->i915->runtime_pm;
+
+	intel_wakeref_init(&engine->wakeref, rpm, &wf_ops);
 }
+
+#if IS_ENABLED(CONFIG_DRM_I915_SELFTEST)
+#include "selftest_engine_pm.c"
+#endif

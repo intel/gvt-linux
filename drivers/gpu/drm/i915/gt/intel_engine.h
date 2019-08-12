@@ -9,7 +9,6 @@
 #include <linux/random.h>
 #include <linux/seqlock.h>
 
-#include "i915_gem_batch_pool.h"
 #include "i915_pmu.h"
 #include "i915_reg.h"
 #include "i915_request.h"
@@ -123,8 +122,6 @@ hangcheck_action_to_str(const enum intel_engine_hangcheck_action a)
 	return "unknown";
 }
 
-void intel_engines_set_scheduler_caps(struct drm_i915_private *i915);
-
 static inline unsigned int
 execlists_num_ports(const struct intel_engine_execlists * const execlists)
 {
@@ -199,9 +196,7 @@ intel_write_status_page(struct intel_engine_cs *engine, int reg, u32 value)
 #define CNL_HWS_CSB_WRITE_INDEX		0x2f
 
 struct intel_ring *
-intel_engine_create_ring(struct intel_engine_cs *engine,
-			 struct intel_timeline *timeline,
-			 int size);
+intel_engine_create_ring(struct intel_engine_cs *engine, int size);
 int intel_ring_pin(struct intel_ring *ring);
 void intel_ring_reset(struct intel_ring *ring, u32 tail);
 unsigned int intel_ring_update_space(struct intel_ring *ring);
@@ -423,7 +418,6 @@ bool intel_engine_is_idle(struct intel_engine_cs *engine);
 bool intel_engines_are_idle(struct intel_gt *gt);
 
 void intel_engines_reset_default_submission(struct intel_gt *gt);
-unsigned int intel_engines_has_context_isolation(struct drm_i915_private *i915);
 
 bool intel_engine_can_store_dword(struct intel_engine_cs *engine);
 
@@ -431,9 +425,6 @@ __printf(3, 4)
 void intel_engine_dump(struct intel_engine_cs *engine,
 		       struct drm_printer *m,
 		       const char *header, ...);
-
-struct intel_engine_cs *
-intel_engine_lookup_user(struct drm_i915_private *i915, u8 class, u8 instance);
 
 static inline void intel_engine_context_in(struct intel_engine_cs *engine)
 {

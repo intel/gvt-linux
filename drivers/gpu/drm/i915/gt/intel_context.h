@@ -104,17 +104,8 @@ static inline void intel_context_exit(struct intel_context *ce)
 		ce->ops->exit(ce);
 }
 
-static inline int intel_context_active_acquire(struct intel_context *ce)
-{
-	return i915_active_acquire(&ce->active);
-}
-
-static inline void intel_context_active_release(struct intel_context *ce)
-{
-	/* Nodes preallocated in intel_context_active() */
-	i915_active_acquire_barrier(&ce->active);
-	i915_active_release(&ce->active);
-}
+int intel_context_active_acquire(struct intel_context *ce);
+void intel_context_active_release(struct intel_context *ce);
 
 static inline struct intel_context *intel_context_get(struct intel_context *ce)
 {
@@ -129,20 +120,25 @@ static inline void intel_context_put(struct intel_context *ce)
 
 static inline int __must_check
 intel_context_timeline_lock(struct intel_context *ce)
-	__acquires(&ce->ring->timeline->mutex)
+	__acquires(&ce->timeline->mutex)
 {
-	return mutex_lock_interruptible(&ce->ring->timeline->mutex);
+	return mutex_lock_interruptible(&ce->timeline->mutex);
 }
 
 static inline void intel_context_timeline_unlock(struct intel_context *ce)
-	__releases(&ce->ring->timeline->mutex)
+	__releases(&ce->timeline->mutex)
 {
-	mutex_unlock(&ce->ring->timeline->mutex);
+	mutex_unlock(&ce->timeline->mutex);
 }
 
 int intel_context_prepare_remote_request(struct intel_context *ce,
 					 struct i915_request *rq);
 
 struct i915_request *intel_context_create_request(struct intel_context *ce);
+
+static inline struct intel_ring *__intel_context_ring_size(u64 sz)
+{
+	return u64_to_ptr(struct intel_ring, sz);
+}
 
 #endif /* __INTEL_CONTEXT_H__ */

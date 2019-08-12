@@ -2,10 +2,13 @@
 /*
  * Copyright © 2019 Intel Corporation
  */
-#include "i915_gem_client_blt.h"
 
+#include "i915_drv.h"
+#include "gt/intel_context.h"
+#include "gt/intel_engine_pm.h"
+#include "gt/intel_engine_pool.h"
+#include "i915_gem_client_blt.h"
 #include "i915_gem_object_blt.h"
-#include "intel_drv.h"
 
 struct i915_sleeve {
 	struct i915_vma *vma;
@@ -152,10 +155,11 @@ static void clear_pages_dma_fence_cb(struct dma_fence *fence,
 static void clear_pages_worker(struct work_struct *work)
 {
 	struct clear_pages_work *w = container_of(work, typeof(*w), work);
-	struct drm_i915_private *i915 = w->ce->gem_context->i915;
+	struct drm_i915_private *i915 = w->ce->engine->i915;
 	struct drm_i915_gem_object *obj = w->sleeve->vma->obj;
 	struct i915_vma *vma = w->sleeve->vma;
 	struct i915_request *rq;
+	struct i915_vma *batch;
 	int err = w->dma.error;
 
 	if (unlikely(err))
@@ -175,16 +179,26 @@ static void clear_pages_worker(struct work_struct *work)
 	if (unlikely(err))
 		goto out_unlock;
 
-	rq = i915_request_create(w->ce);
+	batch = intel_emit_vma_fill_blt(w->ce, vma, w->value);
+	if (IS_ERR(batch)) {
+		err = PTR_ERR(batch);
+		goto out_unpin;
+	}
+
+	rq = intel_context_create_request(w->ce);
 	if (IS_ERR(rq)) {
 		err = PTR_ERR(rq);
-		goto out_unpin;
+		goto out_batch;
 	}
 
 	/* There's no way the fence has signalled */
 	if (dma_fence_add_callback(&rq->fence, &w->cb,
 				   clear_pages_dma_fence_cb))
 		GEM_BUG_ON(1);
+
+	err = intel_emit_vma_mark_active(batch, rq);
+	if (unlikely(err))
+		goto out_request;
 
 	if (w->ce->engine->emit_init_breadcrumb) {
 		err = w->ce->engine->emit_init_breadcrumb(rq);
@@ -201,7 +215,9 @@ static void clear_pages_worker(struct work_struct *work)
 	if (err)
 		goto out_request;
 
-	err = intel_emit_vma_fill_blt(rq, vma, w->value);
+	err = w->ce->engine->emit_bb_start(rq,
+					   batch->node.start, batch->node.size,
+					   0);
 out_request:
 	if (unlikely(err)) {
 		i915_request_skip(rq, err);
@@ -209,6 +225,8 @@ out_request:
 	}
 
 	i915_request_add(rq);
+out_batch:
+	intel_emit_vma_release(w->ce, batch);
 out_unpin:
 	i915_vma_unpin(vma);
 out_unlock:

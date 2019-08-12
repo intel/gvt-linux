@@ -29,10 +29,12 @@
 #include "gt/intel_context.h"
 #include "gt/intel_engine_pm.h"
 #include "gt/intel_gt.h"
+#include "gt/intel_gt_pm.h"
 #include "gt/intel_lrc_reg.h"
 #include "intel_guc_submission.h"
 
 #include "i915_drv.h"
+#include "i915_trace.h"
 
 enum {
 	GUC_PREEMPT_NONE = 0,
@@ -488,7 +490,7 @@ static void guc_add_request(struct intel_guc *guc, struct i915_request *rq)
 			   ring_tail, rq->fence.seqno);
 	guc_ring_doorbell(client);
 
-	client->submissions[engine->id] += 1;
+	client->submissions[engine->guc_id] += 1;
 }
 
 /*
@@ -537,6 +539,7 @@ static struct i915_request *schedule_in(struct i915_request *rq, int idx)
 	if (!rq->hw_context->inflight)
 		rq->hw_context->inflight = rq->engine;
 	intel_context_inflight_inc(rq->hw_context);
+	intel_gt_pm_get(rq->engine->gt);
 
 	return i915_request_get(rq);
 }
@@ -549,6 +552,7 @@ static void schedule_out(struct i915_request *rq)
 	if (!intel_context_inflight_count(rq->hw_context))
 		rq->hw_context->inflight = NULL;
 
+	intel_gt_pm_put(rq->engine->gt);
 	i915_request_put(rq);
 }
 
@@ -1076,7 +1080,6 @@ static void guc_interrupts_release(struct intel_gt *gt)
 
 static void guc_submission_park(struct intel_engine_cs *engine)
 {
-	intel_engine_park(engine);
 	intel_engine_unpin_breadcrumbs_irq(engine);
 	engine->flags &= ~I915_ENGINE_NEEDS_BREADCRUMB_TASKLET;
 }
@@ -1123,6 +1126,10 @@ int intel_guc_submission_enable(struct intel_guc *guc)
 	enum intel_engine_id id;
 	int err;
 
+	err = i915_inject_load_error(gt->i915, -ENXIO);
+	if (err)
+		return err;
+
 	/*
 	 * We're using GuC work items for submitting work through GuC. Since
 	 * we're coalescing multiple requests from a single context into a
@@ -1161,6 +1168,22 @@ void intel_guc_submission_disable(struct intel_guc *guc)
 
 	guc_interrupts_release(gt);
 	guc_clients_disable(guc);
+}
+
+static bool __guc_submission_support(struct intel_guc *guc)
+{
+	/* XXX: GuC submission is unavailable for now */
+	return false;
+
+	if (!intel_guc_is_supported(guc))
+		return false;
+
+	return i915_modparams.enable_guc & ENABLE_GUC_SUBMISSION;
+}
+
+void intel_guc_submission_init_early(struct intel_guc *guc)
+{
+	guc->submission_supported = __guc_submission_support(guc);
 }
 
 #if IS_ENABLED(CONFIG_DRM_I915_SELFTEST)

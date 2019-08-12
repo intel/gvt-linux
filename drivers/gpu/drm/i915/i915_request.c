@@ -35,6 +35,7 @@
 #include "i915_active.h"
 #include "i915_drv.h"
 #include "i915_globals.h"
+#include "i915_trace.h"
 #include "intel_pm.h"
 
 struct execute_cb {
@@ -305,11 +306,11 @@ static bool i915_request_retire(struct i915_request *rq)
 
 	local_irq_enable();
 
-	intel_context_exit(rq->hw_context);
-	intel_context_unpin(rq->hw_context);
-
 	i915_request_remove_from_client(rq);
 	list_del(&rq->link);
+
+	intel_context_exit(rq->hw_context);
+	intel_context_unpin(rq->hw_context);
 
 	free_capture_list(rq);
 	i915_sched_node_fini(&rq->sched);
@@ -607,7 +608,7 @@ out:
 struct i915_request *
 __i915_request_create(struct intel_context *ce, gfp_t gfp)
 {
-	struct intel_timeline *tl = ce->ring->timeline;
+	struct intel_timeline *tl = ce->timeline;
 	struct i915_request *rq;
 	u32 seqno;
 	int ret;
@@ -759,7 +760,7 @@ i915_request_create(struct intel_context *ce)
 		goto err_unlock;
 
 	/* Check that we do not interrupt ourselves with a new request */
-	rq->cookie = lockdep_pin_lock(&ce->ring->timeline->mutex);
+	rq->cookie = lockdep_pin_lock(&ce->timeline->mutex);
 
 	return rq;
 
@@ -1198,7 +1199,6 @@ struct i915_request *__i915_request_commit(struct i915_request *rq)
 	 */
 	local_bh_disable();
 	i915_sw_fence_commit(&rq->semaphore);
-	rcu_read_lock(); /* RCU serialisation for set-wedged protection */
 	if (engine->schedule) {
 		struct i915_sched_attr attr = rq->gem_context->sched;
 
@@ -1228,7 +1228,6 @@ struct i915_request *__i915_request_commit(struct i915_request *rq)
 
 		engine->schedule(rq, &attr);
 	}
-	rcu_read_unlock();
 	i915_sw_fence_commit(&rq->submit);
 	local_bh_enable(); /* Kick the execlists tasklet if just scheduled */
 

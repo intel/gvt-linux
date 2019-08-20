@@ -31,7 +31,6 @@
 #include "gem/i915_gem_context.h"
 
 #include "i915_drv.h"
-#include "intel_drv.h"
 #include "i915_trace.h"
 
 I915_SELFTEST_DECLARE(static struct igt_evict_ctl {

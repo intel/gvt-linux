@@ -44,15 +44,16 @@
 
 #include "i915_debugfs.h"
 #include "i915_drv.h"
+#include "i915_trace.h"
 #include "intel_atomic.h"
 #include "intel_audio.h"
 #include "intel_connector.h"
 #include "intel_ddi.h"
+#include "intel_display_types.h"
 #include "intel_dp.h"
 #include "intel_dp_link_training.h"
 #include "intel_dp_mst.h"
 #include "intel_dpio_phy.h"
-#include "intel_drv.h"
 #include "intel_fifo_underrun.h"
 #include "intel_hdcp.h"
 #include "intel_hdmi.h"
@@ -2370,9 +2371,8 @@ static void wait_panel_status(struct intel_dp *intel_dp,
 			I915_READ(pp_stat_reg),
 			I915_READ(pp_ctrl_reg));
 
-	if (intel_wait_for_register(&dev_priv->uncore,
-				    pp_stat_reg, mask, value,
-				    5000))
+	if (intel_de_wait_for_register(dev_priv, pp_stat_reg,
+				       mask, value, 5000))
 		DRM_ERROR("Panel status timeout: status %08x control %08x\n",
 				I915_READ(pp_stat_reg),
 				I915_READ(pp_ctrl_reg));
@@ -3959,10 +3959,8 @@ void intel_dp_set_idle_link_train(struct intel_dp *intel_dp)
 	if (port == PORT_A)
 		return;
 
-	if (intel_wait_for_register(&dev_priv->uncore, DP_TP_STATUS(port),
-				    DP_TP_STATUS_IDLE_DONE,
-				    DP_TP_STATUS_IDLE_DONE,
-				    1))
+	if (intel_de_wait_for_set(dev_priv, DP_TP_STATUS(port),
+				  DP_TP_STATUS_IDLE_DONE, 1))
 		DRM_ERROR("Timed out waiting for DP idle patterns\n");
 }
 
@@ -4145,10 +4143,6 @@ intel_edp_init_dpcd(struct intel_dp *intel_dp)
 
 	drm_dp_read_desc(&intel_dp->aux, &intel_dp->desc,
 			 drm_dp_is_branch(intel_dp->dpcd));
-
-	if (intel_dp->dpcd[DP_DPCD_REV] >= 0x11)
-		dev_priv->no_aux_handshake = intel_dp->dpcd[DP_MAX_DOWNSPREAD] &
-			DP_NO_AUX_HANDSHAKE_LINK_TRAINING;
 
 	/*
 	 * Read the eDP display control registers.

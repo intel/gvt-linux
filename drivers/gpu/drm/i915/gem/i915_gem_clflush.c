@@ -8,6 +8,7 @@
 
 #include "i915_drv.h"
 #include "i915_gem_clflush.h"
+#include "i915_trace.h"
 
 static DEFINE_SPINLOCK(clflush_lock);
 
@@ -48,7 +49,7 @@ static void __i915_do_clflush(struct drm_i915_gem_object *obj)
 {
 	GEM_BUG_ON(!i915_gem_object_has_pages(obj));
 	drm_clflush_sg(obj->mm.pages);
-	intel_fb_obj_flush(obj, ORIGIN_CPU);
+	intel_frontbuffer_flush(obj->frontbuffer, ORIGIN_CPU);
 }
 
 static void i915_clflush_work(struct work_struct *work)
@@ -133,8 +134,7 @@ bool i915_gem_clflush_object(struct drm_i915_gem_object *obj,
 		dma_fence_init(&clflush->dma,
 			       &i915_clflush_ops,
 			       &clflush_lock,
-			       to_i915(obj->base.dev)->mm.unordered_timeline,
-			       0);
+			       0, 0);
 		i915_sw_fence_init(&clflush->wait, i915_clflush_notify);
 
 		clflush->obj = i915_gem_object_get(obj);

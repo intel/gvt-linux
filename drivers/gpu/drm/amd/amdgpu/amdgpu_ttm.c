@@ -227,7 +227,7 @@ static int amdgpu_verify_access(struct ttm_buffer_object *bo, struct file *filp)
 
 	if (amdgpu_ttm_tt_get_usermm(bo->ttm))
 		return -EPERM;
-	return drm_vma_node_verify_access(&abo->gem_base.vma_node,
+	return drm_vma_node_verify_access(&abo->tbo.base.vma_node,
 					  filp->private_data);
 }
 
@@ -440,9 +440,25 @@ static int amdgpu_move_blit(struct ttm_buffer_object *bo,
 
 	r = amdgpu_ttm_copy_mem_to_mem(adev, &src, &dst,
 				       new_mem->num_pages << PAGE_SHIFT,
-				       bo->resv, &fence);
+				       bo->base.resv, &fence);
 	if (r)
 		goto error;
+
+	/* clear the space being freed */
+	if (old_mem->mem_type == TTM_PL_VRAM &&
+	    (ttm_to_amdgpu_bo(bo)->flags &
+	     AMDGPU_GEM_CREATE_VRAM_WIPE_ON_RELEASE)) {
+		struct dma_fence *wipe_fence = NULL;
+
+		r = amdgpu_fill_buffer(ttm_to_amdgpu_bo(bo), AMDGPU_POISON,
+				       NULL, &wipe_fence);
+		if (r) {
+			goto error;
+		} else if (wipe_fence) {
+			dma_fence_put(fence);
+			fence = wipe_fence;
+		}
+	}
 
 	/* Always block for VM page tables before committing the new location */
 	if (bo->type == ttm_bo_type_kernel)
@@ -1478,18 +1494,18 @@ static bool amdgpu_ttm_bo_eviction_valuable(struct ttm_buffer_object *bo,
 	 * cleanly handle page faults.
 	 */
 	if (bo->type == ttm_bo_type_kernel &&
-	    !reservation_object_test_signaled_rcu(bo->resv, true))
+	    !reservation_object_test_signaled_rcu(bo->base.resv, true))
 		return false;
 
 	/* If bo is a KFD BO, check if the bo belongs to the current process.
 	 * If true, then return false as any KFD process needs all its BOs to
 	 * be resident to run successfully
 	 */
-	flist = reservation_object_get_list(bo->resv);
+	flist = reservation_object_get_list(bo->base.resv);
 	if (flist) {
 		for (i = 0; i < flist->shared_count; ++i) {
 			f = rcu_dereference_protected(flist->shared[i],
-				reservation_object_held(bo->resv));
+				reservation_object_held(bo->base.resv));
 			if (amdkfd_fence_check_mm(f, current->mm))
 				return false;
 		}
@@ -1599,6 +1615,7 @@ static struct ttm_bo_driver amdgpu_bo_driver = {
 	.move = &amdgpu_bo_move,
 	.verify_access = &amdgpu_verify_access,
 	.move_notify = &amdgpu_bo_move_notify,
+	.release_notify = &amdgpu_bo_release_notify,
 	.fault_reserve_notify = &amdgpu_bo_fault_reserve_notify,
 	.io_mem_reserve = &amdgpu_ttm_io_mem_reserve,
 	.io_mem_free = &amdgpu_ttm_io_mem_free,

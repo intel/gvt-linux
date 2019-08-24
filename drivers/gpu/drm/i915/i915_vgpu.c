@@ -21,7 +21,6 @@
  * SOFTWARE.
  */
 
-#include "intel_drv.h"
 #include "i915_vgpu.h"
 
 /**
@@ -95,6 +94,7 @@ void i915_detect_vgpu(struct drm_i915_private *dev_priv)
 	dev_priv->vgpu.caps = readl(shared_area + vgtif_offset(vgt_caps));
 
 	dev_priv->vgpu.active = true;
+	mutex_init(&dev_priv->vgpu.lock);
 	DRM_INFO("Virtual GPU for Intel GVT-g detected.\n");
 
 out:
@@ -120,6 +120,9 @@ static struct _balloon_info_ bl_info;
 static void vgt_deballoon_space(struct i915_ggtt *ggtt,
 				struct drm_mm_node *node)
 {
+	if (!drm_mm_node_allocated(node))
+		return;
+
 	DRM_DEBUG_DRIVER("deballoon space: range [0x%llx - 0x%llx] %llu KiB.\n",
 			 node->start,
 			 node->start + node->size,

@@ -34,7 +34,7 @@
 
 #include "i915_drv.h"
 #include "intel_connector.h"
-#include "intel_drv.h"
+#include "intel_display_types.h"
 #include "intel_dvo.h"
 #include "intel_dvo_dev.h"
 #include "intel_gmbus.h"
@@ -280,7 +280,7 @@ static void intel_dvo_pre_enable(struct intel_encoder *encoder,
 	struct intel_crtc *crtc = to_intel_crtc(pipe_config->base.crtc);
 	const struct drm_display_mode *adjusted_mode = &pipe_config->base.adjusted_mode;
 	struct intel_dvo *intel_dvo = enc_to_dvo(encoder);
-	int pipe = crtc->pipe;
+	enum pipe pipe = crtc->pipe;
 	u32 dvo_val;
 	i915_reg_t dvo_reg = intel_dvo->dev.dvo_reg;
 	i915_reg_t dvo_srcdim_reg = intel_dvo->dev.dvo_srcdim_reg;

@@ -879,126 +879,21 @@ out_object_put:
 	return err;
 }
 
-static struct i915_vma *
-gpu_write_dw(struct i915_vma *vma, u64 offset, u32 val)
+static int gpu_write(struct intel_context *ce,
+		     struct i915_vma *vma,
+		     u32 dw,
+		     u32 val)
 {
-	struct drm_i915_private *i915 = vma->vm->i915;
-	const int gen = INTEL_GEN(i915);
-	unsigned int count = vma->size >> PAGE_SHIFT;
-	struct drm_i915_gem_object *obj;
-	struct i915_vma *batch;
-	unsigned int size;
-	u32 *cmd;
-	int n;
 	int err;
 
-	size = (1 + 4 * count) * sizeof(u32);
-	size = round_up(size, PAGE_SIZE);
-	obj = i915_gem_object_create_internal(i915, size);
-	if (IS_ERR(obj))
-		return ERR_CAST(obj);
-
-	cmd = i915_gem_object_pin_map(obj, I915_MAP_WC);
-	if (IS_ERR(cmd)) {
-		err = PTR_ERR(cmd);
-		goto err;
-	}
-
-	offset += vma->node.start;
-
-	for (n = 0; n < count; n++) {
-		if (gen >= 8) {
-			*cmd++ = MI_STORE_DWORD_IMM_GEN4;
-			*cmd++ = lower_32_bits(offset);
-			*cmd++ = upper_32_bits(offset);
-			*cmd++ = val;
-		} else if (gen >= 4) {
-			*cmd++ = MI_STORE_DWORD_IMM_GEN4 |
-				(gen < 6 ? MI_USE_GGTT : 0);
-			*cmd++ = 0;
-			*cmd++ = offset;
-			*cmd++ = val;
-		} else {
-			*cmd++ = MI_STORE_DWORD_IMM | MI_MEM_VIRTUAL;
-			*cmd++ = offset;
-			*cmd++ = val;
-		}
-
-		offset += PAGE_SIZE;
-	}
-
-	*cmd = MI_BATCH_BUFFER_END;
-	intel_gt_chipset_flush(vma->vm->gt);
-
-	i915_gem_object_unpin_map(obj);
-
-	batch = i915_vma_instance(obj, vma->vm, NULL);
-	if (IS_ERR(batch)) {
-		err = PTR_ERR(batch);
-		goto err;
-	}
-
-	err = i915_vma_pin(batch, 0, 0, PIN_USER);
+	i915_gem_object_lock(vma->obj);
+	err = i915_gem_object_set_to_gtt_domain(vma->obj, true);
+	i915_gem_object_unlock(vma->obj);
 	if (err)
-		goto err;
+		return err;
 
-	return batch;
-
-err:
-	i915_gem_object_put(obj);
-
-	return ERR_PTR(err);
-}
-
-static int gpu_write(struct i915_vma *vma,
-		     struct i915_gem_context *ctx,
-		     struct intel_engine_cs *engine,
-		     u32 dword,
-		     u32 value)
-{
-	struct i915_request *rq;
-	struct i915_vma *batch;
-	int err;
-
-	GEM_BUG_ON(!intel_engine_can_store_dword(engine));
-
-	batch = gpu_write_dw(vma, dword * sizeof(u32), value);
-	if (IS_ERR(batch))
-		return PTR_ERR(batch);
-
-	rq = igt_request_alloc(ctx, engine);
-	if (IS_ERR(rq)) {
-		err = PTR_ERR(rq);
-		goto err_batch;
-	}
-
-	i915_vma_lock(batch);
-	err = i915_vma_move_to_active(batch, rq, 0);
-	i915_vma_unlock(batch);
-	if (err)
-		goto err_request;
-
-	i915_vma_lock(vma);
-	err = i915_gem_object_set_to_gtt_domain(vma->obj, false);
-	if (err == 0)
-		err = i915_vma_move_to_active(vma, rq, EXEC_OBJECT_WRITE);
-	i915_vma_unlock(vma);
-	if (err)
-		goto err_request;
-
-	err = engine->emit_bb_start(rq,
-				    batch->node.start, batch->node.size,
-				    0);
-err_request:
-	if (err)
-		i915_request_skip(rq, err);
-	i915_request_add(rq);
-err_batch:
-	i915_vma_unpin(batch);
-	i915_vma_close(batch);
-	i915_vma_put(batch);
-
-	return err;
+	return igt_gpu_fill_dw(ce, vma, dw * sizeof(u32),
+			       vma->size >> PAGE_SHIFT, val);
 }
 
 static int cpu_check(struct drm_i915_gem_object *obj, u32 dword, u32 val)
@@ -1033,18 +928,16 @@ static int cpu_check(struct drm_i915_gem_object *obj, u32 dword, u32 val)
 	return err;
 }
 
-static int __igt_write_huge(struct i915_gem_context *ctx,
-			    struct intel_engine_cs *engine,
+static int __igt_write_huge(struct intel_context *ce,
 			    struct drm_i915_gem_object *obj,
 			    u64 size, u64 offset,
 			    u32 dword, u32 val)
 {
-	struct i915_address_space *vm = ctx->vm ?: &engine->gt->ggtt->vm;
 	unsigned int flags = PIN_USER | PIN_OFFSET_FIXED;
 	struct i915_vma *vma;
 	int err;
 
-	vma = i915_vma_instance(obj, vm, NULL);
+	vma = i915_vma_instance(obj, ce->vm, NULL);
 	if (IS_ERR(vma))
 		return PTR_ERR(vma);
 
@@ -1058,7 +951,7 @@ static int __igt_write_huge(struct i915_gem_context *ctx,
 		 * The ggtt may have some pages reserved so
 		 * refrain from erroring out.
 		 */
-		if (err == -ENOSPC && i915_is_ggtt(vm))
+		if (err == -ENOSPC && i915_is_ggtt(ce->vm))
 			err = 0;
 
 		goto out_vma_close;
@@ -1068,7 +961,7 @@ static int __igt_write_huge(struct i915_gem_context *ctx,
 	if (err)
 		goto out_vma_unpin;
 
-	err = gpu_write(vma, ctx, engine, dword, val);
+	err = gpu_write(ce, vma, dword, val);
 	if (err) {
 		pr_err("gpu-write failed at offset=%llx\n", offset);
 		goto out_vma_unpin;
@@ -1091,14 +984,13 @@ out_vma_close:
 static int igt_write_huge(struct i915_gem_context *ctx,
 			  struct drm_i915_gem_object *obj)
 {
-	struct drm_i915_private *i915 = to_i915(obj->base.dev);
-	struct i915_address_space *vm = ctx->vm ?: &i915->ggtt.vm;
-	static struct intel_engine_cs *engines[I915_NUM_ENGINES];
-	struct intel_engine_cs *engine;
+	struct i915_gem_engines *engines;
+	struct i915_gem_engines_iter it;
+	struct intel_context *ce;
 	I915_RND_STATE(prng);
 	IGT_TIMEOUT(end_time);
 	unsigned int max_page_size;
-	unsigned int id;
+	unsigned int count;
 	u64 max;
 	u64 num;
 	u64 size;
@@ -1112,19 +1004,18 @@ static int igt_write_huge(struct i915_gem_context *ctx,
 	if (obj->mm.page_sizes.sg & I915_GTT_PAGE_SIZE_64K)
 		size = round_up(size, I915_GTT_PAGE_SIZE_2M);
 
-	max_page_size = rounddown_pow_of_two(obj->mm.page_sizes.sg);
-	max = div_u64((vm->total - size), max_page_size);
-
 	n = 0;
-	for_each_engine(engine, i915, id) {
-		if (!intel_engine_can_store_dword(engine)) {
-			pr_info("store-dword-imm not supported on engine=%u\n",
-				id);
+	count = 0;
+	max = U64_MAX;
+	for_each_gem_engine(ce, i915_gem_context_lock_engines(ctx), it) {
+		count++;
+		if (!intel_engine_can_store_dword(ce->engine))
 			continue;
-		}
-		engines[n++] = engine;
-	}
 
+		max = min(max, ce->vm->total);
+		n++;
+	}
+	i915_gem_context_unlock_engines(ctx);
 	if (!n)
 		return 0;
 
@@ -1133,9 +1024,12 @@ static int igt_write_huge(struct i915_gem_context *ctx,
 	 * randomized order, lets also make feeding to the same engine a few
 	 * times in succession a possibility by enlarging the permutation array.
 	 */
-	order = i915_random_order(n * I915_NUM_ENGINES, &prng);
+	order = i915_random_order(count * count, &prng);
 	if (!order)
 		return -ENOMEM;
+
+	max_page_size = rounddown_pow_of_two(obj->mm.page_sizes.sg);
+	max = div_u64(max - size, max_page_size);
 
 	/*
 	 * Try various offsets in an ascending/descending fashion until we
@@ -1143,13 +1037,17 @@ static int igt_write_huge(struct i915_gem_context *ctx,
 	 * offset = 0.
 	 */
 	i = 0;
+	engines = i915_gem_context_lock_engines(ctx);
 	for_each_prime_number_from(num, 0, max) {
 		u64 offset_low = num * max_page_size;
 		u64 offset_high = (max - num) * max_page_size;
 		u32 dword = offset_in_page(num) / 4;
+		struct intel_context *ce;
 
-		engine = engines[order[i] % n];
-		i = (i + 1) % (n * I915_NUM_ENGINES);
+		ce = engines->engines[order[i] % engines->num_engines];
+		i = (i + 1) % (count * count);
+		if (!ce || !intel_engine_can_store_dword(ce->engine))
+			continue;
 
 		/*
 		 * In order to utilize 64K pages we need to both pad the vma
@@ -1161,22 +1059,23 @@ static int igt_write_huge(struct i915_gem_context *ctx,
 			offset_low = round_down(offset_low,
 						I915_GTT_PAGE_SIZE_2M);
 
-		err = __igt_write_huge(ctx, engine, obj, size, offset_low,
+		err = __igt_write_huge(ce, obj, size, offset_low,
 				       dword, num + 1);
 		if (err)
 			break;
 
-		err = __igt_write_huge(ctx, engine, obj, size, offset_high,
+		err = __igt_write_huge(ce, obj, size, offset_high,
 				       dword, num + 1);
 		if (err)
 			break;
 
 		if (igt_timeout(end_time,
-				"%s timed out on engine=%u, offset_low=%llx offset_high=%llx, max_page_size=%x\n",
-				__func__, engine->id, offset_low, offset_high,
+				"%s timed out on %s, offset_low=%llx offset_high=%llx, max_page_size=%x\n",
+				__func__, ce->engine->name, offset_low, offset_high,
 				max_page_size))
 			break;
 	}
+	i915_gem_context_unlock_engines(ctx);
 
 	kfree(order);
 
@@ -1420,10 +1319,10 @@ static int igt_ppgtt_pin_update(void *arg)
 	unsigned long supported = INTEL_INFO(dev_priv)->page_sizes;
 	struct i915_address_space *vm = ctx->vm;
 	struct drm_i915_gem_object *obj;
+	struct i915_gem_engines_iter it;
+	struct intel_context *ce;
 	struct i915_vma *vma;
 	unsigned int flags = PIN_USER | PIN_OFFSET_FIXED;
-	struct intel_engine_cs *engine;
-	enum intel_engine_id id;
 	unsigned int n;
 	int first, last;
 	int err;
@@ -1523,14 +1422,18 @@ static int igt_ppgtt_pin_update(void *arg)
 	 */
 
 	n = 0;
-	for_each_engine(engine, dev_priv, id) {
-		if (!intel_engine_can_store_dword(engine))
+	for_each_gem_engine(ce, i915_gem_context_lock_engines(ctx), it) {
+		if (!intel_engine_can_store_dword(ce->engine))
 			continue;
 
-		err = gpu_write(vma, ctx, engine, n++, 0xdeadbeaf);
+		err = gpu_write(ce, vma, n++, 0xdeadbeaf);
 		if (err)
-			goto out_unpin;
+			break;
 	}
+	i915_gem_context_unlock_engines(ctx);
+	if (err)
+		goto out_unpin;
+
 	while (n--) {
 		err = cpu_check(obj, n, 0xdeadbeaf);
 		if (err)
@@ -1611,8 +1514,8 @@ static int igt_shrink_thp(void *arg)
 	struct drm_i915_private *i915 = ctx->i915;
 	struct i915_address_space *vm = ctx->vm ?: &i915->ggtt.vm;
 	struct drm_i915_gem_object *obj;
-	struct intel_engine_cs *engine;
-	enum intel_engine_id id;
+	struct i915_gem_engines_iter it;
+	struct intel_context *ce;
 	struct i915_vma *vma;
 	unsigned int flags = PIN_USER;
 	unsigned int n;
@@ -1652,16 +1555,19 @@ static int igt_shrink_thp(void *arg)
 		goto out_unpin;
 
 	n = 0;
-	for_each_engine(engine, i915, id) {
-		if (!intel_engine_can_store_dword(engine))
+
+	for_each_gem_engine(ce, i915_gem_context_lock_engines(ctx), it) {
+		if (!intel_engine_can_store_dword(ce->engine))
 			continue;
 
-		err = gpu_write(vma, ctx, engine, n++, 0xdeadbeaf);
+		err = gpu_write(ce, vma, n++, 0xdeadbeaf);
 		if (err)
-			goto out_unpin;
+			break;
 	}
-
+	i915_gem_context_unlock_engines(ctx);
 	i915_vma_unpin(vma);
+	if (err)
+		goto out_close;
 
 	/*
 	 * Now that the pages are *unpinned* shrink-all should invoke
@@ -1687,9 +1593,8 @@ static int igt_shrink_thp(void *arg)
 	while (n--) {
 		err = cpu_check(obj, n, 0xdeadbeaf);
 		if (err)
-			goto out_unpin;
+			break;
 	}
-
 
 out_unpin:
 	i915_vma_unpin(vma);

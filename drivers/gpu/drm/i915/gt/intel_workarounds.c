@@ -569,6 +569,11 @@ static void icl_ctx_workarounds_init(struct intel_engine_cs *engine,
 			  GEN11_SAMPLER_ENABLE_HEADLESS_MSG);
 }
 
+static void tgl_ctx_workarounds_init(struct intel_engine_cs *engine,
+				     struct i915_wa_list *wal)
+{
+}
+
 static void
 __intel_engine_init_ctx_wa(struct intel_engine_cs *engine,
 			   struct i915_wa_list *wal,
@@ -581,7 +586,9 @@ __intel_engine_init_ctx_wa(struct intel_engine_cs *engine,
 
 	wa_init_start(wal, name, engine->name);
 
-	if (IS_GEN(i915, 11))
+	if (IS_GEN(i915, 12))
+		tgl_ctx_workarounds_init(engine, wal);
+	else if (IS_GEN(i915, 11))
 		icl_ctx_workarounds_init(engine, wal);
 	else if (IS_CANNONLAKE(i915))
 		cnl_ctx_workarounds_init(engine, wal);
@@ -794,11 +801,10 @@ wa_init_mcr(struct drm_i915_private *i915, struct i915_wa_list *wal)
 	}
 
 	slice = fls(sseu->slice_mask) - 1;
-	GEM_BUG_ON(slice >= ARRAY_SIZE(sseu->subslice_mask));
-	subslice = fls(l3_en & sseu->subslice_mask[slice]);
+	subslice = fls(l3_en & intel_sseu_get_subslices(sseu, slice));
 	if (!subslice) {
 		DRM_WARN("No common index found between subslice mask %x and L3 bank mask %x!\n",
-			 sseu->subslice_mask[slice], l3_en);
+			 intel_sseu_get_subslices(sseu, slice), l3_en);
 		subslice = fls(l3_en);
 		WARN_ON(!subslice);
 	}
@@ -891,9 +897,16 @@ icl_gt_workarounds_init(struct drm_i915_private *i915, struct i915_wa_list *wal)
 }
 
 static void
+tgl_gt_workarounds_init(struct drm_i915_private *i915, struct i915_wa_list *wal)
+{
+}
+
+static void
 gt_init_workarounds(struct drm_i915_private *i915, struct i915_wa_list *wal)
 {
-	if (IS_GEN(i915, 11))
+	if (IS_GEN(i915, 12))
+		tgl_gt_workarounds_init(i915, wal);
+	else if (IS_GEN(i915, 11))
 		icl_gt_workarounds_init(i915, wal);
 	else if (IS_CANNONLAKE(i915))
 		cnl_gt_workarounds_init(i915, wal);
@@ -1183,6 +1196,10 @@ static void icl_whitelist_build(struct intel_engine_cs *engine)
 	}
 }
 
+static void tgl_whitelist_build(struct intel_engine_cs *engine)
+{
+}
+
 void intel_engine_init_whitelist(struct intel_engine_cs *engine)
 {
 	struct drm_i915_private *i915 = engine->i915;
@@ -1190,7 +1207,9 @@ void intel_engine_init_whitelist(struct intel_engine_cs *engine)
 
 	wa_init_start(w, "whitelist", engine->name);
 
-	if (IS_GEN(i915, 11))
+	if (IS_GEN(i915, 12))
+		tgl_whitelist_build(engine);
+	else if (IS_GEN(i915, 11))
 		icl_whitelist_build(engine);
 	else if (IS_CANNONLAKE(i915))
 		cnl_whitelist_build(engine);

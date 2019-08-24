@@ -4,22 +4,25 @@
  * Author: YT SHEN <yt.shen@mediatek.com>
  */
 
-#include <drm/drmP.h>
+#include <linux/component.h>
+#include <linux/iommu.h>
+#include <linux/module.h>
+#include <linux/of_address.h>
+#include <linux/of_platform.h>
+#include <linux/pm_runtime.h>
+
 #include <drm/drm_atomic.h>
 #include <drm/drm_atomic_helper.h>
+#include <drm/drm_drv.h>
 #include <drm/drm_fb_helper.h>
 #include <drm/drm_gem.h>
 #include <drm/drm_gem_cma_helper.h>
 #include <drm/drm_of.h>
 #include <drm/drm_probe_helper.h>
-#include <linux/component.h>
-#include <linux/iommu.h>
-#include <linux/of_address.h>
-#include <linux/of_platform.h>
-#include <linux/pm_runtime.h>
-#include <linux/dma-mapping.h>
+#include <drm/drm_vblank.h>
 
 #include "mtk_drm_crtc.h"
+#include "mtk_drm_ddp.h"
 #include "mtk_drm_ddp.h"
 #include "mtk_drm_ddp_comp.h"
 #include "mtk_drm_drv.h"
@@ -39,22 +42,12 @@ static void mtk_atomic_schedule(struct mtk_drm_private *private,
 	schedule_work(&private->commit.work);
 }
 
-static void mtk_atomic_wait_for_fences(struct drm_atomic_state *state)
-{
-	struct drm_plane *plane;
-	struct drm_plane_state *new_plane_state;
-	int i;
-
-	for_each_new_plane_in_state(state, plane, new_plane_state, i)
-		mtk_fb_wait(new_plane_state->fb);
-}
-
 static void mtk_atomic_complete(struct mtk_drm_private *private,
 				struct drm_atomic_state *state)
 {
 	struct drm_device *drm = private->drm;
 
-	mtk_atomic_wait_for_fences(state);
+	drm_atomic_helper_wait_for_fences(drm, state, false);
 
 	/*
 	 * Mediatek drm supports runtime PM, so plane registers cannot be
@@ -365,8 +358,7 @@ struct drm_gem_object *mtk_drm_gem_prime_import(struct drm_device *dev,
 }
 
 static struct drm_driver mtk_drm_driver = {
-	.driver_features = DRIVER_MODESET | DRIVER_GEM | DRIVER_PRIME |
-			   DRIVER_ATOMIC,
+	.driver_features = DRIVER_MODESET | DRIVER_GEM | DRIVER_ATOMIC,
 
 	.gem_free_object_unlocked = mtk_drm_gem_free_object,
 	.gem_vm_ops = &drm_gem_cma_vm_ops,

@@ -942,14 +942,14 @@ static int __intel_get_crtc_scanline(struct intel_crtc *crtc)
 	return (position + crtc->scanline_offset) % vtotal;
 }
 
-bool i915_get_crtc_scanoutpos(struct drm_device *dev, unsigned int pipe,
+bool i915_get_crtc_scanoutpos(struct drm_device *dev, unsigned int index,
 			      bool in_vblank_irq, int *vpos, int *hpos,
 			      ktime_t *stime, ktime_t *etime,
 			      const struct drm_display_mode *mode)
 {
 	struct drm_i915_private *dev_priv = to_i915(dev);
-	struct intel_crtc *intel_crtc = intel_get_crtc_for_pipe(dev_priv,
-								pipe);
+	struct intel_crtc *crtc = to_intel_crtc(drm_crtc_from_index(dev, index));
+	enum pipe pipe = crtc->pipe;
 	int position;
 	int vbl_start, vbl_end, hsync_start, htotal, vtotal;
 	unsigned long irqflags;
@@ -992,7 +992,7 @@ bool i915_get_crtc_scanoutpos(struct drm_device *dev, unsigned int pipe,
 		/* No obvious pixelcount register. Only query vertical
 		 * scanout position from Display scan line register.
 		 */
-		position = __intel_get_crtc_scanline(intel_crtc);
+		position = __intel_get_crtc_scanline(crtc);
 	} else {
 		/* Have access to pixelcount since start of frame.
 		 * We can split this into vertical and horizontal
@@ -1716,7 +1716,7 @@ static void i9xx_pipestat_irq_reset(struct drm_i915_private *dev_priv)
 static void i9xx_pipestat_irq_ack(struct drm_i915_private *dev_priv,
 				  u32 iir, u32 pipe_stats[I915_MAX_PIPES])
 {
-	int pipe;
+	enum pipe pipe;
 
 	spin_lock(&dev_priv->irq_lock);
 
@@ -1741,6 +1741,7 @@ static void i9xx_pipestat_irq_ack(struct drm_i915_private *dev_priv,
 		status_mask = PIPE_FIFO_UNDERRUN_STATUS;
 
 		switch (pipe) {
+		default:
 		case PIPE_A:
 			iir_bit = I915_DISPLAY_PIPE_A_EVENT_INTERRUPT;
 			break;
@@ -2136,7 +2137,7 @@ static void ibx_hpd_irq_handler(struct drm_i915_private *dev_priv,
 
 static void ibx_irq_handler(struct drm_i915_private *dev_priv, u32 pch_iir)
 {
-	int pipe;
+	enum pipe pipe;
 	u32 hotplug_trigger = pch_iir & SDE_HOTPLUG_MASK;
 
 	ibx_hpd_irq_handler(dev_priv, hotplug_trigger, hpd_ibx);
@@ -2222,7 +2223,7 @@ static void cpt_serr_int_handler(struct drm_i915_private *dev_priv)
 
 static void cpt_irq_handler(struct drm_i915_private *dev_priv, u32 pch_iir)
 {
-	int pipe;
+	enum pipe pipe;
 	u32 hotplug_trigger = pch_iir & SDE_HOTPLUG_MASK_CPT;
 
 	ibx_hpd_irq_handler(dev_priv, hotplug_trigger, hpd_cpt);
@@ -3246,7 +3247,7 @@ static void valleyview_irq_reset(struct drm_i915_private *dev_priv)
 static void gen8_irq_reset(struct drm_i915_private *dev_priv)
 {
 	struct intel_uncore *uncore = &dev_priv->uncore;
-	int pipe;
+	enum pipe pipe;
 
 	gen8_master_intr_disable(dev_priv->uncore.regs);
 
@@ -3271,7 +3272,7 @@ static void gen8_irq_reset(struct drm_i915_private *dev_priv)
 static void gen11_irq_reset(struct drm_i915_private *dev_priv)
 {
 	struct intel_uncore *uncore = &dev_priv->uncore;
-	int pipe;
+	enum pipe pipe;
 
 	gen11_master_intr_disable(dev_priv->uncore.regs);
 
@@ -3684,7 +3685,6 @@ static void ironlake_irq_postinstall(struct drm_i915_private *dev_priv)
 
 	if (IS_HASWELL(dev_priv)) {
 		gen3_assert_iir_is_zero(uncore, EDP_PSR_IIR);
-		intel_psr_irq_control(dev_priv, dev_priv->psr.debug);
 		display_mask |= DE_EDP_PSR_INT_HSW;
 	}
 
@@ -3795,7 +3795,6 @@ static void gen8_de_irq_postinstall(struct drm_i915_private *dev_priv)
 		de_port_enables |= GEN8_PORT_DP_A_HOTPLUG;
 
 	gen3_assert_iir_is_zero(uncore, EDP_PSR_IIR);
-	intel_psr_irq_control(dev_priv, dev_priv->psr.debug);
 
 	for_each_pipe(dev_priv, pipe) {
 		dev_priv->de_irq_mask[pipe] = ~de_pipe_masked;

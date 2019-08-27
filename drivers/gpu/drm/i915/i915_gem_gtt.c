@@ -132,9 +132,15 @@ static void gen6_ggtt_invalidate(struct i915_ggtt *ggtt)
 static void guc_ggtt_invalidate(struct i915_ggtt *ggtt)
 {
 	struct intel_uncore *uncore = ggtt->vm.gt->uncore;
+	struct drm_i915_private *i915 = ggtt->vm.i915;
 
 	gen6_ggtt_invalidate(ggtt);
-	intel_uncore_write_fw(uncore, GEN8_GTCR, GEN8_GTCR_INVALIDATE);
+
+	if (INTEL_GEN(i915) >= 12)
+		intel_uncore_write_fw(uncore, GEN12_GUC_TLB_INV_CR,
+				      GEN12_GUC_TLB_INV_CR_INVALIDATE);
+	else
+		intel_uncore_write_fw(uncore, GEN8_GTCR, GEN8_GTCR_INVALIDATE);
 }
 
 static void gmch_ggtt_invalidate(struct i915_ggtt *ggtt)
@@ -162,6 +168,7 @@ static int ppgtt_bind_vma(struct i915_vma *vma,
 		pte_flags |= PTE_READ_ONLY;
 
 	vma->vm->insert_entries(vma->vm, vma, cache_level, pte_flags);
+	wmb();
 
 	return 0;
 }
@@ -827,10 +834,9 @@ static void mark_tlbs_dirty(struct i915_ppgtt *ppgtt)
 	ppgtt->pd_dirty_engines = ALL_ENGINES;
 }
 
-static int gen8_ppgtt_notify_vgt(struct i915_ppgtt *ppgtt, bool create)
+static void gen8_ppgtt_notify_vgt(struct i915_ppgtt *ppgtt, bool create)
 {
-	struct i915_address_space *vm = &ppgtt->vm;
-	struct drm_i915_private *dev_priv = vm->i915;
+	struct drm_i915_private *dev_priv = ppgtt->vm.i915;
 	enum vgt_g2v_type msg;
 	int i;
 
@@ -839,7 +845,9 @@ static int gen8_ppgtt_notify_vgt(struct i915_ppgtt *ppgtt, bool create)
 	else
 		atomic_dec(px_used(ppgtt->pd));
 
-	if (i915_vm_is_4lvl(vm)) {
+	mutex_lock(&dev_priv->vgpu.lock);
+
+	if (i915_vm_is_4lvl(&ppgtt->vm)) {
 		const u64 daddr = px_dma(ppgtt->pd);
 
 		I915_WRITE(vgtif_reg(pdp[0].lo), lower_32_bits(daddr));
@@ -859,9 +867,10 @@ static int gen8_ppgtt_notify_vgt(struct i915_ppgtt *ppgtt, bool create)
 				VGT_G2V_PPGTT_L3_PAGE_TABLE_DESTROY);
 	}
 
+	/* g2v_notify atomically (via hv trap) consumes the message packet. */
 	I915_WRITE(vgtif_reg(g2v_notify), msg);
 
-	return 0;
+	mutex_unlock(&dev_priv->vgpu.lock);
 }
 
 /* Index shifts into the pagetable are offset by GEN8_PTE_SHIFT [12] */
@@ -1420,6 +1429,7 @@ static int gen8_preallocate_top_level_pdp(struct i915_ppgtt *ppgtt)
 		set_pd_entry(pd, idx, pde);
 		atomic_inc(px_used(pde)); /* keep pinned */
 	}
+	wmb();
 
 	return 0;
 }
@@ -1507,11 +1517,9 @@ static struct i915_ppgtt *gen8_ppgtt_create(struct drm_i915_private *i915)
 	}
 
 	if (!i915_vm_is_4lvl(&ppgtt->vm)) {
-		if (intel_vgpu_active(i915)) {
-			err = gen8_preallocate_top_level_pdp(ppgtt);
-			if (err)
-				goto err_free_pd;
-		}
+		err = gen8_preallocate_top_level_pdp(ppgtt);
+		if (err)
+			goto err_free_pd;
 	}
 
 	ppgtt->vm.insert_entries = gen8_ppgtt_insert;
@@ -2021,7 +2029,7 @@ static void gtt_write_workarounds(struct intel_gt *gt)
 		intel_uncore_write(uncore,
 				   GEN8_L3_LRA_1_GPGPU,
 				   GEN9_L3_LRA_1_GPGPU_DEFAULT_VALUE_BXT);
-	else if (INTEL_GEN(i915) >= 9)
+	else if (INTEL_GEN(i915) >= 9 && INTEL_GEN(i915) <= 11)
 		intel_uncore_write(uncore,
 				   GEN8_L3_LRA_1_GPGPU,
 				   GEN9_L3_LRA_1_GPGPU_DEFAULT_VALUE_SKL);

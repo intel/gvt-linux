@@ -169,16 +169,17 @@ remove_from_client(struct i915_request *request)
 {
 	struct drm_i915_file_private *file_priv;
 
-	file_priv = READ_ONCE(request->file_priv);
-	if (!file_priv)
+	if (!READ_ONCE(request->file_priv))
 		return;
 
-	spin_lock(&file_priv->mm.lock);
-	if (request->file_priv) {
+	rcu_read_lock();
+	file_priv = xchg(&request->file_priv, NULL);
+	if (file_priv) {
+		spin_lock(&file_priv->mm.lock);
 		list_del(&request->client_link);
-		request->file_priv = NULL;
+		spin_unlock(&file_priv->mm.lock);
 	}
-	spin_unlock(&file_priv->mm.lock);
+	rcu_read_unlock();
 }
 
 static void free_capture_list(struct i915_request *request)
@@ -1465,9 +1466,10 @@ bool i915_retire_requests(struct drm_i915_private *i915)
 {
 	struct intel_gt_timelines *timelines = &i915->gt.timelines;
 	struct intel_timeline *tl, *tn;
+	unsigned long flags;
 	LIST_HEAD(free);
 
-	spin_lock(&timelines->lock);
+	spin_lock_irqsave(&timelines->lock, flags);
 	list_for_each_entry_safe(tl, tn, &timelines->active_list, link) {
 		if (!mutex_trylock(&tl->mutex))
 			continue;
@@ -1475,11 +1477,11 @@ bool i915_retire_requests(struct drm_i915_private *i915)
 		intel_timeline_get(tl);
 		GEM_BUG_ON(!tl->active_count);
 		tl->active_count++; /* pin the list element */
-		spin_unlock(&timelines->lock);
+		spin_unlock_irqrestore(&timelines->lock, flags);
 
 		retire_requests(tl);
 
-		spin_lock(&timelines->lock);
+		spin_lock_irqsave(&timelines->lock, flags);
 
 		/* Resume iteration after dropping lock */
 		list_safe_reset_next(tl, tn, link);
@@ -1494,7 +1496,7 @@ bool i915_retire_requests(struct drm_i915_private *i915)
 			list_add(&tl->link, &free);
 		}
 	}
-	spin_unlock(&timelines->lock);
+	spin_unlock_irqrestore(&timelines->lock, flags);
 
 	list_for_each_entry_safe(tl, tn, &free, link)
 		__intel_timeline_free(&tl->kref);

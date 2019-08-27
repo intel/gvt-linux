@@ -481,9 +481,9 @@ struct intel_atomic_state {
 	 * but the converse is not necessarily true; simply changing a mode may
 	 * not flip the final active status of any CRTC's
 	 */
-	unsigned int active_pipe_changes;
+	u8 active_pipe_changes;
 
-	unsigned int active_crtcs;
+	u8 active_pipes;
 	/* minimum acceptable cdclk for each pipe */
 	int min_cdclk[I915_MAX_PIPES];
 	/* minimum acceptable voltage level for each pipe */
@@ -1509,7 +1509,7 @@ intel_wait_for_vblank(struct drm_i915_private *dev_priv, enum pipe pipe)
 	drm_wait_one_vblank(&dev_priv->drm, pipe);
 }
 static inline void
-intel_wait_for_vblank_if_active(struct drm_i915_private *dev_priv, int pipe)
+intel_wait_for_vblank_if_active(struct drm_i915_private *dev_priv, enum pipe pipe)
 {
 	const struct intel_crtc *crtc = intel_get_crtc_for_pipe(dev_priv, pipe);
 

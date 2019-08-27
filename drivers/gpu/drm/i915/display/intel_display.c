@@ -490,7 +490,7 @@ static const struct intel_limit intel_limits_bxt = {
 
 /* WA Display #0827: Gen9:all */
 static void
-skl_wa_827(struct drm_i915_private *dev_priv, int pipe, bool enable)
+skl_wa_827(struct drm_i915_private *dev_priv, enum pipe pipe, bool enable)
 {
 	if (enable)
 		I915_WRITE(CLKGATE_DIS_PSL(pipe),
@@ -4421,7 +4421,7 @@ static void intel_fdi_normal_train(struct intel_crtc *crtc)
 {
 	struct drm_device *dev = crtc->base.dev;
 	struct drm_i915_private *dev_priv = to_i915(dev);
-	int pipe = crtc->pipe;
+	enum pipe pipe = crtc->pipe;
 	i915_reg_t reg;
 	u32 temp;
 
@@ -4464,7 +4464,7 @@ static void ironlake_fdi_link_train(struct intel_crtc *crtc,
 {
 	struct drm_device *dev = crtc->base.dev;
 	struct drm_i915_private *dev_priv = to_i915(dev);
-	int pipe = crtc->pipe;
+	enum pipe pipe = crtc->pipe;
 	i915_reg_t reg;
 	u32 temp, tries;
 
@@ -4565,7 +4565,7 @@ static void gen6_fdi_link_train(struct intel_crtc *crtc,
 {
 	struct drm_device *dev = crtc->base.dev;
 	struct drm_i915_private *dev_priv = to_i915(dev);
-	int pipe = crtc->pipe;
+	enum pipe pipe = crtc->pipe;
 	i915_reg_t reg;
 	u32 temp, i, retry;
 
@@ -4698,7 +4698,7 @@ static void ivb_manual_fdi_link_train(struct intel_crtc *crtc,
 {
 	struct drm_device *dev = crtc->base.dev;
 	struct drm_i915_private *dev_priv = to_i915(dev);
-	int pipe = crtc->pipe;
+	enum pipe pipe = crtc->pipe;
 	i915_reg_t reg;
 	u32 temp, i, j;
 
@@ -4816,7 +4816,7 @@ static void ironlake_fdi_pll_enable(const struct intel_crtc_state *crtc_state)
 {
 	struct intel_crtc *intel_crtc = to_intel_crtc(crtc_state->base.crtc);
 	struct drm_i915_private *dev_priv = to_i915(intel_crtc->base.dev);
-	int pipe = intel_crtc->pipe;
+	enum pipe pipe = intel_crtc->pipe;
 	i915_reg_t reg;
 	u32 temp;
 
@@ -4853,7 +4853,7 @@ static void ironlake_fdi_pll_disable(struct intel_crtc *intel_crtc)
 {
 	struct drm_device *dev = intel_crtc->base.dev;
 	struct drm_i915_private *dev_priv = to_i915(dev);
-	int pipe = intel_crtc->pipe;
+	enum pipe pipe = intel_crtc->pipe;
 	i915_reg_t reg;
 	u32 temp;
 
@@ -4884,7 +4884,7 @@ static void ironlake_fdi_disable(struct drm_crtc *crtc)
 	struct drm_device *dev = crtc->dev;
 	struct drm_i915_private *dev_priv = to_i915(dev);
 	struct intel_crtc *intel_crtc = to_intel_crtc(crtc);
-	int pipe = intel_crtc->pipe;
+	enum pipe pipe = intel_crtc->pipe;
 	i915_reg_t reg;
 	u32 temp;
 
@@ -5199,7 +5199,7 @@ static void ironlake_pch_enable(const struct intel_atomic_state *state,
 	struct intel_crtc *crtc = to_intel_crtc(crtc_state->base.crtc);
 	struct drm_device *dev = crtc->base.dev;
 	struct drm_i915_private *dev_priv = to_i915(dev);
-	int pipe = crtc->pipe;
+	enum pipe pipe = crtc->pipe;
 	u32 temp;
 
 	assert_pch_transcoder_disabled(dev_priv, pipe);
@@ -5294,7 +5294,7 @@ static void lpt_pch_enable(const struct intel_atomic_state *state,
 	lpt_enable_pch_transcoder(dev_priv, cpu_transcoder);
 }
 
-static void cpt_verify_modeset(struct drm_device *dev, int pipe)
+static void cpt_verify_modeset(struct drm_device *dev, enum pipe pipe)
 {
 	struct drm_i915_private *dev_priv = to_i915(dev);
 	i915_reg_t dslreg = PIPEDSL(pipe);
@@ -5633,7 +5633,7 @@ static void ironlake_pfit_enable(const struct intel_crtc_state *crtc_state)
 {
 	struct intel_crtc *crtc = to_intel_crtc(crtc_state->base.crtc);
 	struct drm_i915_private *dev_priv = to_i915(crtc->base.dev);
-	int pipe = crtc->pipe;
+	enum pipe pipe = crtc->pipe;
 
 	if (crtc_state->pch_pfit.enabled) {
 		/* Force use of hard-coded filter coefficients
@@ -5746,7 +5746,7 @@ intel_post_enable_primary(struct drm_crtc *crtc,
 	struct drm_device *dev = crtc->dev;
 	struct drm_i915_private *dev_priv = to_i915(dev);
 	struct intel_crtc *intel_crtc = to_intel_crtc(crtc);
-	int pipe = intel_crtc->pipe;
+	enum pipe pipe = intel_crtc->pipe;
 
 	/*
 	 * Gen2 reports pipe underruns whenever all planes are disabled.
@@ -5770,7 +5770,7 @@ intel_pre_disable_primary_noatomic(struct drm_crtc *crtc)
 	struct drm_device *dev = crtc->dev;
 	struct drm_i915_private *dev_priv = to_i915(dev);
 	struct intel_crtc *intel_crtc = to_intel_crtc(crtc);
-	int pipe = intel_crtc->pipe;
+	enum pipe pipe = intel_crtc->pipe;
 
 	/*
 	 * Gen2 reports pipe underruns whenever all planes are disabled.
@@ -6293,7 +6293,7 @@ static void ironlake_crtc_enable(struct intel_crtc_state *pipe_config,
 	struct drm_device *dev = crtc->dev;
 	struct drm_i915_private *dev_priv = to_i915(dev);
 	struct intel_crtc *intel_crtc = to_intel_crtc(crtc);
-	int pipe = intel_crtc->pipe;
+	enum pipe pipe = intel_crtc->pipe;
 
 	if (WARN_ON(intel_crtc->active))
 		return;
@@ -6426,7 +6426,7 @@ static void haswell_crtc_enable(struct intel_crtc_state *pipe_config,
 	struct drm_crtc *crtc = pipe_config->base.crtc;
 	struct drm_i915_private *dev_priv = to_i915(crtc->dev);
 	struct intel_crtc *intel_crtc = to_intel_crtc(crtc);
-	int pipe = intel_crtc->pipe, hsw_workaround_pipe;
+	enum pipe pipe = intel_crtc->pipe, hsw_workaround_pipe;
 	enum transcoder cpu_transcoder = pipe_config->cpu_transcoder;
 	bool psl_clkgate_wa;
 
@@ -6552,7 +6552,7 @@ static void ironlake_crtc_disable(struct intel_crtc_state *old_crtc_state,
 	struct drm_device *dev = crtc->dev;
 	struct drm_i915_private *dev_priv = to_i915(dev);
 	struct intel_crtc *intel_crtc = to_intel_crtc(crtc);
-	int pipe = intel_crtc->pipe;
+	enum pipe pipe = intel_crtc->pipe;
 
 	/*
 	 * Sometimes spurious CPU pipe underruns happen when the
@@ -6839,7 +6839,7 @@ static void valleyview_crtc_enable(struct intel_crtc_state *pipe_config,
 	struct drm_device *dev = crtc->dev;
 	struct drm_i915_private *dev_priv = to_i915(dev);
 	struct intel_crtc *intel_crtc = to_intel_crtc(crtc);
-	int pipe = intel_crtc->pipe;
+	enum pipe pipe = intel_crtc->pipe;
 
 	if (WARN_ON(intel_crtc->active))
 		return;
@@ -6971,7 +6971,7 @@ static void i9xx_crtc_disable(struct intel_crtc_state *old_crtc_state,
 	struct drm_device *dev = crtc->dev;
 	struct drm_i915_private *dev_priv = to_i915(dev);
 	struct intel_crtc *intel_crtc = to_intel_crtc(crtc);
-	int pipe = intel_crtc->pipe;
+	enum pipe pipe = intel_crtc->pipe;
 
 	/*
 	 * On gen2 planes are double buffered but the pipe isn't, so we must
@@ -7080,7 +7080,7 @@ static void intel_crtc_disable_noatomic(struct drm_crtc *crtc,
 		intel_display_power_put_unchecked(dev_priv, domain);
 	intel_crtc->enabled_power_domains = 0;
 
-	dev_priv->active_crtcs &= ~(1 << intel_crtc->pipe);
+	dev_priv->active_pipes &= ~BIT(intel_crtc->pipe);
 	dev_priv->min_cdclk[intel_crtc->pipe] = 0;
 	dev_priv->min_voltage_level[intel_crtc->pipe] = 0;
 
@@ -8543,7 +8543,7 @@ static void vlv_crtc_clock_get(struct intel_crtc *crtc,
 {
 	struct drm_device *dev = crtc->base.dev;
 	struct drm_i915_private *dev_priv = to_i915(dev);
-	int pipe = pipe_config->cpu_transcoder;
+	enum pipe pipe = crtc->pipe;
 	struct dpll clock;
 	u32 mdiv;
 	int refclk = 100000;
@@ -8653,7 +8653,7 @@ static void chv_crtc_clock_get(struct intel_crtc *crtc,
 {
 	struct drm_device *dev = crtc->base.dev;
 	struct drm_i915_private *dev_priv = to_i915(dev);
-	int pipe = pipe_config->cpu_transcoder;
+	enum pipe pipe = crtc->pipe;
 	enum dpio_channel port = vlv_pipe_to_channel(pipe);
 	struct dpll clock;
 	u32 cmn_dw13, pll_dw0, pll_dw1, pll_dw2, pll_dw3;
@@ -11265,7 +11265,7 @@ static void i9xx_crtc_clock_get(struct intel_crtc *crtc,
 {
 	struct drm_device *dev = crtc->base.dev;
 	struct drm_i915_private *dev_priv = to_i915(dev);
-	int pipe = pipe_config->cpu_transcoder;
+	enum pipe pipe = crtc->pipe;
 	u32 dpll = pipe_config->dpll_hw_state.dpll;
 	u32 fp;
 	struct dpll clock;
@@ -13452,7 +13452,7 @@ static int intel_modeset_checks(struct intel_atomic_state *state)
 		state->cdclk.force_min_cdclk = dev_priv->cdclk.force_min_cdclk;
 
 	state->modeset = true;
-	state->active_crtcs = dev_priv->active_crtcs;
+	state->active_pipes = dev_priv->active_pipes;
 	state->cdclk.logical = dev_priv->cdclk.logical;
 	state->cdclk.actual = dev_priv->cdclk.actual;
 	state->cdclk.pipe = INVALID_PIPE;
@@ -13460,12 +13460,12 @@ static int intel_modeset_checks(struct intel_atomic_state *state)
 	for_each_oldnew_intel_crtc_in_state(state, crtc, old_crtc_state,
 					    new_crtc_state, i) {
 		if (new_crtc_state->base.active)
-			state->active_crtcs |= 1 << i;
+			state->active_pipes |= BIT(crtc->pipe);
 		else
-			state->active_crtcs &= ~(1 << i);
+			state->active_pipes &= ~BIT(crtc->pipe);
 
 		if (old_crtc_state->base.active != new_crtc_state->base.active)
-			state->active_pipe_changes |= drm_crtc_mask(&crtc->base);
+			state->active_pipe_changes |= BIT(crtc->pipe);
 	}
 
 	/*
@@ -13494,11 +13494,11 @@ static int intel_modeset_checks(struct intel_atomic_state *state)
 				return ret;
 		}
 
-		if (is_power_of_2(state->active_crtcs)) {
+		if (is_power_of_2(state->active_pipes)) {
 			struct intel_crtc *crtc;
 			struct intel_crtc_state *crtc_state;
 
-			pipe = ilog2(state->active_crtcs);
+			pipe = ilog2(state->active_pipes);
 			crtc = intel_get_crtc_for_pipe(dev_priv, pipe);
 			crtc_state = intel_atomic_get_new_crtc_state(state, crtc);
 			if (crtc_state && needs_modeset(crtc_state))
@@ -13908,7 +13908,15 @@ static void intel_atomic_commit_tail(struct intel_atomic_state *state)
 	if (state->modeset)
 		wakeref = intel_display_power_get(dev_priv, POWER_DOMAIN_MODESET);
 
-	for_each_oldnew_intel_crtc_in_state(state, crtc, old_crtc_state, new_crtc_state, i) {
+	/*
+	 * Disable CRTC/pipes in reverse order because some features(MST in
+	 * TGL+) requires master and slave relationship between pipes, so it
+	 * should always pick the lowest pipe as master as it will be enabled
+	 * first and disable in the reverse order so the master will be the
+	 * last one to be disabled.
+	 */
+	for_each_oldnew_intel_crtc_in_state_reverse(state, crtc, old_crtc_state,
+						    new_crtc_state, i) {
 		if (needs_modeset(new_crtc_state) ||
 		    new_crtc_state->update_pipe) {
 
@@ -14191,7 +14199,7 @@ static int intel_atomic_commit(struct drm_device *dev,
 		       sizeof(state->min_cdclk));
 		memcpy(dev_priv->min_voltage_level, state->min_voltage_level,
 		       sizeof(state->min_voltage_level));
-		dev_priv->active_crtcs = state->active_crtcs;
+		dev_priv->active_pipes = state->active_pipes;
 		dev_priv->cdclk.force_min_cdclk = state->cdclk.force_min_cdclk;
 
 		intel_cdclk_swap_state(state);
@@ -16640,7 +16648,7 @@ static void intel_modeset_readout_hw_state(struct drm_device *dev)
 	struct drm_connector_list_iter conn_iter;
 	int i;
 
-	dev_priv->active_crtcs = 0;
+	dev_priv->active_pipes = 0;
 
 	for_each_intel_crtc(dev, crtc) {
 		struct intel_crtc_state *crtc_state =
@@ -16657,7 +16665,7 @@ static void intel_modeset_readout_hw_state(struct drm_device *dev)
 		crtc->active = crtc_state->base.active;
 
 		if (crtc_state->base.active)
-			dev_priv->active_crtcs |= 1 << crtc->pipe;
+			dev_priv->active_pipes |= BIT(crtc->pipe);
 
 		DRM_DEBUG_KMS("[CRTC:%d:%s] hw state readout: %s\n",
 			      crtc->base.base.id, crtc->base.name,

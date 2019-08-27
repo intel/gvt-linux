@@ -376,7 +376,7 @@ static int i915_gem_object_info(struct seq_file *m, void *data)
 static void gen8_display_interrupt_info(struct seq_file *m)
 {
 	struct drm_i915_private *dev_priv = node_to_i915(m->private);
-	int pipe;
+	enum pipe pipe;
 
 	for_each_pipe(dev_priv, pipe) {
 		enum intel_display_power_domain power_domain;
@@ -996,6 +996,7 @@ static void i915_instdone_info(struct drm_i915_private *dev_priv,
 			       struct seq_file *m,
 			       struct intel_instdone *instdone)
 {
+	const struct sseu_dev_info *sseu = &RUNTIME_INFO(dev_priv)->sseu;
 	int slice;
 	int subslice;
 
@@ -1011,11 +1012,11 @@ static void i915_instdone_info(struct drm_i915_private *dev_priv,
 	if (INTEL_GEN(dev_priv) <= 6)
 		return;
 
-	for_each_instdone_slice_subslice(dev_priv, slice, subslice)
+	for_each_instdone_slice_subslice(dev_priv, sseu, slice, subslice)
 		seq_printf(m, "\t\tSAMPLER_INSTDONE[%d][%d]: 0x%08x\n",
 			   slice, subslice, instdone->sampler[slice][subslice]);
 
-	for_each_instdone_slice_subslice(dev_priv, slice, subslice)
+	for_each_instdone_slice_subslice(dev_priv, sseu, slice, subslice)
 		seq_printf(m, "\t\tROW_INSTDONE[%d][%d]: 0x%08x\n",
 			   slice, subslice, instdone->row[slice][subslice]);
 }
@@ -2133,7 +2134,7 @@ psr_source_status(struct drm_i915_private *dev_priv, struct seq_file *m)
 			"BUF_ON",
 			"TG_ON"
 		};
-		val = I915_READ(EDP_PSR2_STATUS);
+		val = I915_READ(EDP_PSR2_STATUS(dev_priv->psr.transcoder));
 		status_val = (val & EDP_PSR2_STATUS_STATE_MASK) >>
 			      EDP_PSR2_STATUS_STATE_SHIFT;
 		if (status_val < ARRAY_SIZE(live_status))
@@ -2149,7 +2150,7 @@ psr_source_status(struct drm_i915_private *dev_priv, struct seq_file *m)
 			"SRDOFFACK",
 			"SRDENT_ON",
 		};
-		val = I915_READ(EDP_PSR_STATUS);
+		val = I915_READ(EDP_PSR_STATUS(dev_priv->psr.transcoder));
 		status_val = (val & EDP_PSR_STATUS_STATE_MASK) >>
 			      EDP_PSR_STATUS_STATE_SHIFT;
 		if (status_val < ARRAY_SIZE(live_status))
@@ -2192,10 +2193,10 @@ static int i915_edp_psr_status(struct seq_file *m, void *data)
 		goto unlock;
 
 	if (psr->psr2_enabled) {
-		val = I915_READ(EDP_PSR2_CTL);
+		val = I915_READ(EDP_PSR2_CTL(dev_priv->psr.transcoder));
 		enabled = val & EDP_PSR2_ENABLE;
 	} else {
-		val = I915_READ(EDP_PSR_CTL);
+		val = I915_READ(EDP_PSR_CTL(dev_priv->psr.transcoder));
 		enabled = val & EDP_PSR_ENABLE;
 	}
 	seq_printf(m, "Source PSR ctl: %s [0x%08x]\n",
@@ -2208,7 +2209,8 @@ static int i915_edp_psr_status(struct seq_file *m, void *data)
 	 * SKL+ Perf counter is reset to 0 everytime DC state is entered
 	 */
 	if (IS_HASWELL(dev_priv) || IS_BROADWELL(dev_priv)) {
-		val = I915_READ(EDP_PSR_PERF_CNT) & EDP_PSR_PERF_CNT_MASK;
+		val = I915_READ(EDP_PSR_PERF_CNT(dev_priv->psr.transcoder));
+		val &= EDP_PSR_PERF_CNT_MASK;
 		seq_printf(m, "Performance counter: %u\n", val);
 	}
 
@@ -2226,8 +2228,11 @@ static int i915_edp_psr_status(struct seq_file *m, void *data)
 		 * Reading all 3 registers before hand to minimize crossing a
 		 * frame boundary between register reads
 		 */
-		for (frame = 0; frame < PSR2_SU_STATUS_FRAMES; frame += 3)
-			su_frames_val[frame / 3] = I915_READ(PSR2_SU_STATUS(frame));
+		for (frame = 0; frame < PSR2_SU_STATUS_FRAMES; frame += 3) {
+			val = I915_READ(PSR2_SU_STATUS(dev_priv->psr.transcoder,
+						       frame));
+			su_frames_val[frame / 3] = val;
+		}
 
 		seq_puts(m, "Frame:\tPSR2 SU blocks:\n");
 
@@ -3721,6 +3726,15 @@ i915_cache_sharing_set(void *data, u64 val)
 	return 0;
 }
 
+static void
+intel_sseu_copy_subslices(const struct sseu_dev_info *sseu, int slice,
+			  u8 *to_mask)
+{
+	int offset = slice * sseu->ss_stride;
+
+	memcpy(&to_mask[offset], &sseu->subslice_mask[offset], sseu->ss_stride);
+}
+
 DEFINE_SIMPLE_ATTRIBUTE(i915_cache_sharing_fops,
 			i915_cache_sharing_get, i915_cache_sharing_set,
 			"%llu\n");
@@ -3794,7 +3808,7 @@ static void gen10_sseu_device_status(struct drm_i915_private *dev_priv,
 			continue;
 
 		sseu->slice_mask |= BIT(s);
-		sseu->subslice_mask[s] = info->sseu.subslice_mask[s];
+		intel_sseu_copy_subslices(&info->sseu, s, sseu->subslice_mask);
 
 		for (ss = 0; ss < info->sseu.max_subslices; ss++) {
 			unsigned int eu_cnt;
@@ -3845,18 +3859,21 @@ static void gen9_sseu_device_status(struct drm_i915_private *dev_priv,
 		sseu->slice_mask |= BIT(s);
 
 		if (IS_GEN9_BC(dev_priv))
-			sseu->subslice_mask[s] =
-				RUNTIME_INFO(dev_priv)->sseu.subslice_mask[s];
+			intel_sseu_copy_subslices(&info->sseu, s,
+						  sseu->subslice_mask);
 
 		for (ss = 0; ss < info->sseu.max_subslices; ss++) {
 			unsigned int eu_cnt;
+			u8 ss_idx = s * info->sseu.ss_stride +
+				    ss / BITS_PER_BYTE;
 
 			if (IS_GEN9_LP(dev_priv)) {
 				if (!(s_reg[s] & (GEN9_PGCTL_SS_ACK(ss))))
 					/* skip disabled subslice */
 					continue;
 
-				sseu->subslice_mask[s] |= BIT(ss);
+				sseu->subslice_mask[ss_idx] |=
+					BIT(ss % BITS_PER_BYTE);
 			}
 
 			eu_cnt = 2 * hweight32(eu_reg[2*s + ss/2] &
@@ -3873,25 +3890,23 @@ static void gen9_sseu_device_status(struct drm_i915_private *dev_priv,
 static void broadwell_sseu_device_status(struct drm_i915_private *dev_priv,
 					 struct sseu_dev_info *sseu)
 {
+	const struct intel_runtime_info *info = RUNTIME_INFO(dev_priv);
 	u32 slice_info = I915_READ(GEN8_GT_SLICE_INFO);
 	int s;
 
 	sseu->slice_mask = slice_info & GEN8_LSLICESTAT_MASK;
 
 	if (sseu->slice_mask) {
-		sseu->eu_per_subslice =
-			RUNTIME_INFO(dev_priv)->sseu.eu_per_subslice;
-		for (s = 0; s < fls(sseu->slice_mask); s++) {
-			sseu->subslice_mask[s] =
-				RUNTIME_INFO(dev_priv)->sseu.subslice_mask[s];
-		}
+		sseu->eu_per_subslice = info->sseu.eu_per_subslice;
+		for (s = 0; s < fls(sseu->slice_mask); s++)
+			intel_sseu_copy_subslices(&info->sseu, s,
+						  sseu->subslice_mask);
 		sseu->eu_total = sseu->eu_per_subslice *
 				 intel_sseu_subslice_total(sseu);
 
 		/* subtract fused off EU(s) from enabled slice(s) */
 		for (s = 0; s < fls(sseu->slice_mask); s++) {
-			u8 subslice_7eu =
-				RUNTIME_INFO(dev_priv)->sseu.subslice_7eu[s];
+			u8 subslice_7eu = info->sseu.subslice_7eu[s];
 
 			sseu->eu_total -= hweight8(subslice_7eu);
 		}
@@ -3938,6 +3953,7 @@ static void i915_print_sseu_info(struct seq_file *m, bool is_available_info,
 static int i915_sseu_status(struct seq_file *m, void *unused)
 {
 	struct drm_i915_private *dev_priv = node_to_i915(m->private);
+	const struct intel_runtime_info *info = RUNTIME_INFO(dev_priv);
 	struct sseu_dev_info sseu;
 	intel_wakeref_t wakeref;
 
@@ -3945,14 +3961,13 @@ static int i915_sseu_status(struct seq_file *m, void *unused)
 		return -ENODEV;
 
 	seq_puts(m, "SSEU Device Info\n");
-	i915_print_sseu_info(m, true, &RUNTIME_INFO(dev_priv)->sseu);
+	i915_print_sseu_info(m, true, &info->sseu);
 
 	seq_puts(m, "SSEU Device Status\n");
 	memset(&sseu, 0, sizeof(sseu));
-	sseu.max_slices = RUNTIME_INFO(dev_priv)->sseu.max_slices;
-	sseu.max_subslices = RUNTIME_INFO(dev_priv)->sseu.max_subslices;
-	sseu.max_eus_per_subslice =
-		RUNTIME_INFO(dev_priv)->sseu.max_eus_per_subslice;
+	intel_sseu_set_info(&sseu, info->sseu.max_slices,
+			    info->sseu.max_subslices,
+			    info->sseu.max_eus_per_subslice);
 
 	with_intel_runtime_pm(&dev_priv->runtime_pm, wakeref) {
 		if (IS_CHERRYVIEW(dev_priv))

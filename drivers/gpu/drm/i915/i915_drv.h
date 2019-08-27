@@ -185,7 +185,11 @@ struct i915_mmu_object;
 
 struct drm_i915_file_private {
 	struct drm_i915_private *dev_priv;
-	struct drm_file *file;
+
+	union {
+		struct drm_file *file;
+		struct rcu_head rcu;
+	};
 
 	struct {
 		spinlock_t lock;
@@ -479,6 +483,7 @@ struct i915_psr {
 	bool enabled;
 	struct intel_dp *dp;
 	enum pipe pipe;
+	enum transcoder transcoder;
 	bool active;
 	struct work_struct work;
 	unsigned busy_frontbuffer_bits;
@@ -961,6 +966,7 @@ struct i915_frontbuffer_tracking {
 };
 
 struct i915_virtual_gpu {
+	struct mutex lock; /* serialises sending of g2v_notify command pkts */
 	bool active;
 	u32 caps;
 };
@@ -1330,10 +1336,10 @@ struct drm_i915_private {
 	 */
 	u32 gpio_mmio_base;
 
+	u32 hsw_psr_mmio_adjust;
+
 	/* MMIO base address for MIPI regs */
 	u32 mipi_mmio_base;
-
-	u32 psr_mmio_base;
 
 	u32 pps_mmio_base;
 
@@ -1467,7 +1473,7 @@ struct drm_i915_private {
 	 */
 	struct mutex dpll_lock;
 
-	unsigned int active_crtcs;
+	u8 active_pipes;
 	/* minimum acceptable cdclk for each pipe */
 	int min_cdclk[I915_MAX_PIPES];
 	/* minimum acceptable voltage level for each pipe */

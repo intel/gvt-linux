@@ -1,30 +1,12 @@
-drm drm-fixes a55aa89aab90fae7c815b0551b07be37db359d76
-	Linux 5.3-rc6
-drm-misc drm-misc-fixes 51a44a28eefd0d4c1addeb23fc5a599ff1787dfd
-	drm/komeda: Add missing of_node_get() call
-drm-intel drm-intel-fixes 32f0a982650b123bdab36865617d3e03ebcacf3b
-	drm/i915: Call dma_set_max_seg_size() in i915_driver_hw_probe()
-drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
-	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
-drm drm-next 578d2342ec702e5fb8a77983fabb3754ae3e9660
-	Merge tag 'drm-next-5.4-2019-08-23' of git://people.freedesktop.org/~agd5f/linux into drm-next
-drm-misc drm-misc-next-fixes 7aaddd96d5febcf5b24357a326b3038d49a20532
-	drm/modes: Don't apply cmdline's rotation if it wasn't specified
-drm-intel drm-intel-next-fixes c36beba6b296b3c05a0f29753b04775e5ae23886
-	drm/i915: Seal races between async GPU cancellation, retirement and signaling
-drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
-	Linux 4.14-rc1
-drm-misc drm-misc-next 66c2dee4ae10a2d841c40b9dd9c7141eb23eee76
-	drm/vc4/vc4_hdmi: fill in connector info
-drm-intel drm-intel-next-queued 45e9c829ebeaa13b3b999f76963b9920d2147128
-	drm/i915/tgl/perf: use the same oa ctx_id format as icl
-drm-intel drm-intel-next be91233b1053d9725d3a437e3da44ccff2639477
-	drm/i915: Update DRIVER_DATE to 20190822
-drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
-	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
-sound-upstream for-linus 2fd2329393658514db074abd4f7dea8da1c20f81
-	ALSA: oxfw: fix to handle correct stream for PCM playback
-sound-upstream for-next 4c098dab121a4164e9daa4d1ddbc59e93054e79e
-	ALSA: oxfw: fix NULL pointer dereference to unused stream structure
-drm-intel topic/core-for-CI e67b105c23df21359de992a91670ec5ca3bd57c6
-	uapi/perf: Squelch compiler warning
+drm-tip/drm-tip a1a45a21f6fef00f6150dc151c23555aa851bf74
+	drm-tip: 2019y-08m-27d-16h-21m-20s UTC integration manifest
+vfio-upstream/for-linus 5715c4dd66a315515eedef3fc4cbe1bf4620f009
+	vfio/mdev: Synchronize device create/remove with parent removal
+vfio-upstream/next e6c5d727db0a86a3ff21aca6824aae87f3bc055f
+	Merge branches 'v5.4/vfio/alexey-tce-memory-free-v1', 'v5.4/vfio/connie-re-arrange-v2', 'v5.4/vfio/hexin-pci-reset-v3', 'v5.4/vfio/parav-mtty-uuid-v2' and 'v5.4/vfio/shameer-iova-list-v8' into v5.4/vfio/next
+origin/gvt-fixes eac4471d0882da14be652ef0a55b914145fab15a
+	drm/i915: Use after free in error path in intel_vgpu_create_workload()
+origin/gvt-next 220b65d8009dff397a112ee560c297299ba5e423
+	drm/i915/gvt: Double check batch buffer size after copy
+origin/gvt-next-fixes 2ba9be1c3a303796b4dc02cec649a9159b643337
+	drm/i915/gvt: update vgpu workload head pointer correctly

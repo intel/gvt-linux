@@ -1,0 +1,30 @@
+drm drm-fixes b0dfce90e342714b8351ecd1265013a13da23086
+	Merge branch 'linux-5.3' of git://github.com/skeggsb/linux into drm-fixes
+drm-misc drm-misc-fixes 424c38a4e32509ae82dc9d7300432295806cb911
+	drm/selftests: modes: Add more unit tests for the cmdline parser
+drm-intel drm-intel-fixes 089cf7f6ecb266b6a4164919a2e69bd2f938374a
+	Linux 5.3-rc7
+drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
+	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
+drm drm-next c7eb7c12fddcba0bfb53e006baa9a7a10f26c5f0
+	Merge tag 'exynos-drm-next-for-v5.4' of git://git.kernel.org/pub/scm/linux/kernel/git/daeinki/drm-exynos into drm-next
+drm-misc drm-misc-next-fixes 45d0dbd15a3b89ced53e058bc71b751e6473b664
+	drm/panfrost: Remove unnecessary hwaccess_lock spin_lock
+drm-intel drm-intel-next-fixes 578d2342ec702e5fb8a77983fabb3754ae3e9660
+	Merge tag 'drm-next-5.4-2019-08-23' of git://people.freedesktop.org/~agd5f/linux into drm-next
+drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
+	Linux 4.14-rc1
+drm-misc drm-misc-next 37dfdc55ffeb08b20b623eba04a3e3eb3a261962
+	drm/dp_mst: Cleanup drm_dp_send_link_address() a bit
+drm-intel drm-intel-next-queued 8f9fb61caed13e282e1e3387e64905b90cc65abd
+	drm/i915: Refresh the errno to vmf_fault translations
+drm-intel drm-intel-next be91233b1053d9725d3a437e3da44ccff2639477
+	drm/i915: Update DRIVER_DATE to 20190822
+drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
+	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
+sound-upstream for-linus 60083f9e94b2f28047d71ed778adf89357c1a8fb
+	ALSA: hda/realtek - Enable internal speaker & headset mic of ASUS UX431FL
+sound-upstream for-next 94044dfb0bcf270ee5cebd590cfa0c2a1a979687
+	MAINTAINERS: update entry of firewire audio drivers
+drm-intel topic/core-for-CI e67b105c23df21359de992a91670ec5ca3bd57c6
+	uapi/perf: Squelch compiler warning

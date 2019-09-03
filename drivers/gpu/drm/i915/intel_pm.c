@@ -1327,8 +1327,8 @@ static int g4x_compute_pipe_wm(struct intel_crtc_state *crtc_state)
 	struct intel_atomic_state *state =
 		to_intel_atomic_state(crtc_state->base.state);
 	struct g4x_wm_state *wm_state = &crtc_state->wm.g4x.optimal;
-	int num_active_planes = hweight32(crtc_state->active_planes &
-					  ~BIT(PLANE_CURSOR));
+	int num_active_planes = hweight8(crtc_state->active_planes &
+					 ~BIT(PLANE_CURSOR));
 	const struct g4x_pipe_wm *raw;
 	const struct intel_plane_state *old_plane_state;
 	const struct intel_plane_state *new_plane_state;
@@ -1490,7 +1490,7 @@ static void g4x_merge_wm(struct drm_i915_private *dev_priv,
 			 struct g4x_wm_values *wm)
 {
 	struct intel_crtc *crtc;
-	int num_active_crtcs = 0;
+	int num_active_pipes = 0;
 
 	wm->cxsr = true;
 	wm->hpll_en = true;
@@ -1509,10 +1509,10 @@ static void g4x_merge_wm(struct drm_i915_private *dev_priv,
 		if (!wm_state->fbc_en)
 			wm->fbc_en = false;
 
-		num_active_crtcs++;
+		num_active_pipes++;
 	}
 
-	if (num_active_crtcs != 1) {
+	if (num_active_pipes != 1) {
 		wm->cxsr = false;
 		wm->hpll_en = false;
 		wm->fbc_en = false;
@@ -1659,7 +1659,7 @@ static int vlv_compute_fifo(struct intel_crtc_state *crtc_state)
 		&crtc_state->wm.vlv.raw[VLV_WM_LEVEL_PM2];
 	struct vlv_fifo_state *fifo_state = &crtc_state->wm.vlv.fifo_state;
 	unsigned int active_planes = crtc_state->active_planes & ~BIT(PLANE_CURSOR);
-	int num_active_planes = hweight32(active_planes);
+	int num_active_planes = hweight8(active_planes);
 	const int fifo_size = 511;
 	int fifo_extra, fifo_left = fifo_size;
 	int sprite0_fifo_extra = 0;
@@ -1848,8 +1848,8 @@ static int vlv_compute_pipe_wm(struct intel_crtc_state *crtc_state)
 	struct vlv_wm_state *wm_state = &crtc_state->wm.vlv.optimal;
 	const struct vlv_fifo_state *fifo_state =
 		&crtc_state->wm.vlv.fifo_state;
-	int num_active_planes = hweight32(crtc_state->active_planes &
-					  ~BIT(PLANE_CURSOR));
+	int num_active_planes = hweight8(crtc_state->active_planes &
+					 ~BIT(PLANE_CURSOR));
 	bool needs_modeset = drm_atomic_crtc_needs_modeset(&crtc_state->base);
 	const struct intel_plane_state *old_plane_state;
 	const struct intel_plane_state *new_plane_state;
@@ -2098,7 +2098,7 @@ static void vlv_merge_wm(struct drm_i915_private *dev_priv,
 			 struct vlv_wm_values *wm)
 {
 	struct intel_crtc *crtc;
-	int num_active_crtcs = 0;
+	int num_active_pipes = 0;
 
 	wm->level = dev_priv->wm.max_level;
 	wm->cxsr = true;
@@ -2112,14 +2112,14 @@ static void vlv_merge_wm(struct drm_i915_private *dev_priv,
 		if (!wm_state->cxsr)
 			wm->cxsr = false;
 
-		num_active_crtcs++;
+		num_active_pipes++;
 		wm->level = min_t(int, wm->level, wm_state->num_levels - 1);
 	}
 
-	if (num_active_crtcs != 1)
+	if (num_active_pipes != 1)
 		wm->cxsr = false;
 
-	if (num_active_crtcs > 1)
+	if (num_active_pipes > 1)
 		wm->level = VLV_WM_LEVEL_PM2;
 
 	for_each_intel_crtc(&dev_priv->drm, crtc) {
@@ -3761,18 +3761,18 @@ bool intel_can_enable_sagv(struct intel_atomic_state *state)
 	/*
 	 * If there are no active CRTCs, no additional checks need be performed
 	 */
-	if (hweight32(state->active_crtcs) == 0)
+	if (hweight8(state->active_pipes) == 0)
 		return true;
 
 	/*
 	 * SKL+ workaround: bspec recommends we disable SAGV when we have
 	 * more then one pipe enabled
 	 */
-	if (hweight32(state->active_crtcs) > 1)
+	if (hweight8(state->active_pipes) > 1)
 		return false;
 
 	/* Since we're now guaranteed to only have one active CRTC... */
-	pipe = ffs(state->active_crtcs) - 1;
+	pipe = ffs(state->active_pipes) - 1;
 	crtc = intel_get_crtc_for_pipe(dev_priv, pipe);
 	crtc_state = to_intel_crtc_state(crtc->base.state);
 
@@ -3867,14 +3867,14 @@ skl_ddb_get_pipe_allocation_limits(struct drm_i915_private *dev_priv,
 	if (WARN_ON(!state) || !crtc_state->base.active) {
 		alloc->start = 0;
 		alloc->end = 0;
-		*num_active = hweight32(dev_priv->active_crtcs);
+		*num_active = hweight8(dev_priv->active_pipes);
 		return;
 	}
 
 	if (intel_state->active_pipe_changes)
-		*num_active = hweight32(intel_state->active_crtcs);
+		*num_active = hweight8(intel_state->active_pipes);
 	else
-		*num_active = hweight32(dev_priv->active_crtcs);
+		*num_active = hweight8(dev_priv->active_pipes);
 
 	ddb_size = intel_get_ddb_size(dev_priv, crtc_state, total_data_rate,
 				      *num_active, ddb);
@@ -5464,7 +5464,7 @@ skl_ddb_add_affected_pipes(struct intel_atomic_state *state, bool *changed)
 	 * If this transaction isn't actually touching any CRTC's, don't
 	 * bother with watermark calculation.  Note that if we pass this
 	 * test, we're guaranteed to hold at least one CRTC state mutex,
-	 * which means we can safely use values like dev_priv->active_crtcs
+	 * which means we can safely use values like dev_priv->active_pipes
 	 * since any racing commits that want to update them would need to
 	 * hold _all_ CRTC state mutexes.
 	 */
@@ -5489,13 +5489,13 @@ skl_ddb_add_affected_pipes(struct intel_atomic_state *state, bool *changed)
 		state->active_pipe_changes = ~0;
 
 		/*
-		 * We usually only initialize state->active_crtcs if we
+		 * We usually only initialize state->active_pipes if we
 		 * we're doing a modeset; make sure this field is always
 		 * initialized during the sanitization process that happens
 		 * on the first commit too.
 		 */
 		if (!state->modeset)
-			state->active_crtcs = dev_priv->active_crtcs;
+			state->active_pipes = dev_priv->active_pipes;
 	}
 
 	/*
@@ -5811,7 +5811,7 @@ void skl_wm_get_hw_state(struct drm_i915_private *dev_priv)
 			hw->dirty_pipes |= drm_crtc_mask(&crtc->base);
 	}
 
-	if (dev_priv->active_crtcs) {
+	if (dev_priv->active_pipes) {
 		/* Fully recompute DDB on first atomic commit */
 		dev_priv->wm.distrust_bios_wm = true;
 	}
@@ -8858,7 +8858,7 @@ static void ilk_init_clock_gating(struct drm_i915_private *dev_priv)
 
 static void cpt_init_clock_gating(struct drm_i915_private *dev_priv)
 {
-	int pipe;
+	enum pipe pipe;
 	u32 val;
 
 	/*
@@ -9076,6 +9076,22 @@ static void icl_init_clock_gating(struct drm_i915_private *dev_priv)
 	/* WaEnable32PlaneMode:icl */
 	I915_WRITE(GEN9_CSFE_CHICKEN1_RCS,
 		   _MASKED_BIT_ENABLE(GEN11_ENABLE_32_PLANE_MODE));
+}
+
+static void tgl_init_clock_gating(struct drm_i915_private *dev_priv)
+{
+	u32 vd_pg_enable = 0;
+	unsigned int i;
+
+	/* This is not a WA. Enable VD HCP & MFX_ENC powergate */
+	for (i = 0; i < I915_MAX_VCS; i++) {
+		if (HAS_ENGINE(dev_priv, _VCS(i)))
+			vd_pg_enable |= VDN_HCP_POWERGATE_ENABLE(i) |
+					VDN_MFX_POWERGATE_ENABLE(i);
+	}
+
+	I915_WRITE(POWERGATE_ENABLE,
+		   I915_READ(POWERGATE_ENABLE) | vd_pg_enable);
 }
 
 static void cnp_init_clock_gating(struct drm_i915_private *dev_priv)
@@ -9598,7 +9614,7 @@ static void nop_init_clock_gating(struct drm_i915_private *dev_priv)
 void intel_init_clock_gating_hooks(struct drm_i915_private *dev_priv)
 {
 	if (IS_GEN(dev_priv, 12))
-		dev_priv->display.init_clock_gating = nop_init_clock_gating;
+		dev_priv->display.init_clock_gating = tgl_init_clock_gating;
 	else if (IS_GEN(dev_priv, 11))
 		dev_priv->display.init_clock_gating = icl_init_clock_gating;
 	else if (IS_CANNONLAKE(dev_priv))

@@ -1,5 +1,5 @@
 /*
- * Copyright © 2006-2017 Intel Corporation
+ * Copyright © 2006-2019 Intel Corporation
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -181,6 +181,24 @@ enum plane_id {
 #define for_each_plane_id_on_crtc(__crtc, __p) \
 	for ((__p) = PLANE_PRIMARY; (__p) < I915_MAX_PLANES; (__p)++) \
 		for_each_if((__crtc)->plane_ids_mask & BIT(__p))
+
+enum port {
+	PORT_NONE = -1,
+
+	PORT_A = 0,
+	PORT_B,
+	PORT_C,
+	PORT_D,
+	PORT_E,
+	PORT_F,
+	PORT_G,
+	PORT_H,
+	PORT_I,
+
+	I915_MAX_PORTS
+};
+
+#define port_name(p) ((p) + 'A')
 
 /*
  * Ports identifier referenced from other drivers.
@@ -409,6 +427,15 @@ enum phy_fia {
 		      (old_crtc_state) = to_intel_crtc_state((__state)->base.crtcs[__i].old_state), \
 		      (new_crtc_state) = to_intel_crtc_state((__state)->base.crtcs[__i].new_state), 1); \
 	     (__i)++) \
+		for_each_if(crtc)
+
+#define for_each_oldnew_intel_crtc_in_state_reverse(__state, crtc, old_crtc_state, new_crtc_state, __i) \
+	for ((__i) = (__state)->base.dev->mode_config.num_crtc - 1; \
+	     (__i) >= 0  && \
+	     ((crtc) = to_intel_crtc((__state)->base.crtcs[__i].ptr), \
+	      (old_crtc_state) = to_intel_crtc_state((__state)->base.crtcs[__i].old_state), \
+	      (new_crtc_state) = to_intel_crtc_state((__state)->base.crtcs[__i].new_state), 1); \
+	     (__i)--) \
 		for_each_if(crtc)
 
 void intel_link_compute_m_n(u16 bpp, int nlanes,

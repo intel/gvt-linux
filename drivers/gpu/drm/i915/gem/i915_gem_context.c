@@ -1003,12 +1003,18 @@ static int emit_ppgtt_update(struct i915_request *rq, void *data)
 		intel_ring_advance(rq, cs);
 	} else if (HAS_LOGICAL_RING_CONTEXTS(engine->i915)) {
 		struct i915_ppgtt *ppgtt = i915_vm_to_ppgtt(vm);
+		int err;
+
+		/* Magic required to prevent forcewake errors! */
+		err = engine->emit_flush(rq, EMIT_INVALIDATE);
+		if (err)
+			return err;
 
 		cs = intel_ring_begin(rq, 4 * GEN8_3LVL_PDPES + 2);
 		if (IS_ERR(cs))
 			return PTR_ERR(cs);
 
-		*cs++ = MI_LOAD_REGISTER_IMM(2 * GEN8_3LVL_PDPES);
+		*cs++ = MI_LOAD_REGISTER_IMM(2 * GEN8_3LVL_PDPES) | MI_LRI_FORCE_POSTED;
 		for (i = GEN8_3LVL_PDPES; i--; ) {
 			const dma_addr_t pd_daddr = i915_page_dir_dma_addr(ppgtt, i);
 
@@ -1051,14 +1057,11 @@ static int set_ppgtt(struct drm_i915_file_private *file_priv,
 	if (upper_32_bits(args->value))
 		return -ENOENT;
 
-	err = mutex_lock_interruptible(&file_priv->vm_idr_lock);
-	if (err)
-		return err;
-
+	rcu_read_lock();
 	vm = idr_find(&file_priv->vm_idr, args->value);
-	if (vm)
-		i915_vm_get(vm);
-	mutex_unlock(&file_priv->vm_idr_lock);
+	if (vm && !kref_get_unless_zero(&vm->ref))
+		vm = NULL;
+	rcu_read_unlock();
 	if (!vm)
 		return -ENOENT;
 
@@ -2228,8 +2231,6 @@ int i915_gem_context_getparam_ioctl(struct drm_device *dev, void *data,
 		args->size = 0;
 		if (ctx->vm)
 			args->value = ctx->vm->total;
-		else if (to_i915(dev)->ggtt.alias)
-			args->value = to_i915(dev)->ggtt.alias->vm.total;
 		else
 			args->value = to_i915(dev)->ggtt.vm.total;
 		break;

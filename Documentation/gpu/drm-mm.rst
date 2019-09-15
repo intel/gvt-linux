@@ -400,16 +400,16 @@ GEM VRAM Helper Functions Reference
 .. kernel-doc:: drivers/gpu/drm/drm_gem_vram_helper.c
    :export:
 
-VRAM MM Helper Functions Reference
-----------------------------------
+GEM TTM Helper Functions Reference
+-----------------------------------
 
-.. kernel-doc:: drivers/gpu/drm/drm_vram_mm_helper.c
+.. kernel-doc:: drivers/gpu/drm/drm_gem_ttm_helper.c
    :doc: overview
 
-.. kernel-doc:: include/drm/drm_vram_mm_helper.h
+.. kernel-doc:: include/drm/drm_gem_ttm_helper.h
    :internal:
 
-.. kernel-doc:: drivers/gpu/drm/drm_vram_mm_helper.c
+.. kernel-doc:: drivers/gpu/drm/drm_gem_ttm_helper.c
    :export:
 
 VMA Offset Manager

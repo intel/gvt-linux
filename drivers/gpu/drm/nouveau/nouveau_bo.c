@@ -136,7 +136,7 @@ nouveau_bo_del_ttm(struct ttm_buffer_object *bo)
 	struct drm_device *dev = drm->dev;
 	struct nouveau_bo *nvbo = nouveau_bo(bo);
 
-	if (unlikely(nvbo->gem.filp))
+	if (unlikely(nvbo->bo.base.filp))
 		DRM_ERROR("bo %p still attached to GEM object\n", bo);
 	WARN_ON(nvbo->pin_refcnt > 0);
 	nv10_bo_put_tile_region(dev, nvbo->tile, NULL);
@@ -185,31 +185,24 @@ nouveau_bo_fixup_align(struct nouveau_bo *nvbo, u32 flags,
 	*size = roundup_64(*size, PAGE_SIZE);
 }
 
-int
-nouveau_bo_new(struct nouveau_cli *cli, u64 size, int align,
-	       uint32_t flags, uint32_t tile_mode, uint32_t tile_flags,
-	       struct sg_table *sg, struct reservation_object *robj,
-	       struct nouveau_bo **pnvbo)
+struct nouveau_bo *
+nouveau_bo_alloc(struct nouveau_cli *cli, u64 size, u32 flags, u32 tile_mode,
+		 u32 tile_flags)
 {
 	struct nouveau_drm *drm = cli->drm;
 	struct nouveau_bo *nvbo;
 	struct nvif_mmu *mmu = &cli->mmu;
 	struct nvif_vmm *vmm = cli->svm.cli ? &cli->svm.vmm : &cli->vmm.vmm;
-	size_t acc_size;
-	int type = ttm_bo_type_device;
-	int ret, i, pi = -1;
+	int i, pi = -1;
 
 	if (!size) {
 		NV_WARN(drm, "skipped size %016llx\n", size);
-		return -EINVAL;
+		return ERR_PTR(-EINVAL);
 	}
-
-	if (sg)
-		type = ttm_bo_type_sg;
 
 	nvbo = kzalloc(sizeof(struct nouveau_bo), GFP_KERNEL);
 	if (!nvbo)
-		return -ENOMEM;
+		return ERR_PTR(-ENOMEM);
 	INIT_LIST_HEAD(&nvbo->head);
 	INIT_LIST_HEAD(&nvbo->entry);
 	INIT_LIST_HEAD(&nvbo->vma_list);
@@ -231,7 +224,7 @@ nouveau_bo_new(struct nouveau_cli *cli, u64 size, int align,
 		nvbo->kind = (tile_flags & 0x0000ff00) >> 8;
 		if (!nvif_mmu_kind_valid(mmu, nvbo->kind)) {
 			kfree(nvbo);
-			return -EINVAL;
+			return ERR_PTR(-EINVAL);
 		}
 
 		nvbo->comp = mmu->kind[nvbo->kind] != nvbo->kind;
@@ -241,7 +234,7 @@ nouveau_bo_new(struct nouveau_cli *cli, u64 size, int align,
 		nvbo->comp = (tile_flags & 0x00030000) >> 16;
 		if (!nvif_mmu_kind_valid(mmu, nvbo->kind)) {
 			kfree(nvbo);
-			return -EINVAL;
+			return ERR_PTR(-EINVAL);
 		}
 	} else {
 		nvbo->zeta = (tile_flags & 0x00000007);
@@ -278,7 +271,7 @@ nouveau_bo_new(struct nouveau_cli *cli, u64 size, int align,
 	}
 
 	if (WARN_ON(pi < 0))
-		return -EINVAL;
+		return ERR_PTR(-EINVAL);
 
 	/* Disable compression if suitable settings couldn't be found. */
 	if (nvbo->comp && !vmm->page[pi].comp) {
@@ -288,21 +281,50 @@ nouveau_bo_new(struct nouveau_cli *cli, u64 size, int align,
 	}
 	nvbo->page = vmm->page[pi].shift;
 
+	return nvbo;
+}
+
+int
+nouveau_bo_init(struct nouveau_bo *nvbo, u64 size, int align, u32 flags,
+		struct sg_table *sg, struct dma_resv *robj)
+{
+	int type = sg ? ttm_bo_type_sg : ttm_bo_type_device;
+	size_t acc_size;
+	int ret;
+
+	acc_size = ttm_bo_dma_acc_size(nvbo->bo.bdev, size, sizeof(*nvbo));
+
 	nouveau_bo_fixup_align(nvbo, flags, &align, &size);
 	nvbo->bo.mem.num_pages = size >> PAGE_SHIFT;
 	nouveau_bo_placement_set(nvbo, flags, 0);
 
-	acc_size = ttm_bo_dma_acc_size(&drm->ttm.bdev, size,
-				       sizeof(struct nouveau_bo));
-
-	ret = ttm_bo_init(&drm->ttm.bdev, &nvbo->bo, size,
-			  type, &nvbo->placement,
-			  align >> PAGE_SHIFT, false, acc_size, sg,
-			  robj, nouveau_bo_del_ttm);
+	ret = ttm_bo_init(nvbo->bo.bdev, &nvbo->bo, size, type,
+			  &nvbo->placement, align >> PAGE_SHIFT, false,
+			  acc_size, sg, robj, nouveau_bo_del_ttm);
 	if (ret) {
 		/* ttm will call nouveau_bo_del_ttm if it fails.. */
 		return ret;
 	}
+
+	return 0;
+}
+
+int
+nouveau_bo_new(struct nouveau_cli *cli, u64 size, int align,
+	       uint32_t flags, uint32_t tile_mode, uint32_t tile_flags,
+	       struct sg_table *sg, struct dma_resv *robj,
+	       struct nouveau_bo **pnvbo)
+{
+	struct nouveau_bo *nvbo;
+	int ret;
+
+	nvbo = nouveau_bo_alloc(cli, size, flags, tile_mode, tile_flags);
+	if (IS_ERR(nvbo))
+		return PTR_ERR(nvbo);
+
+	ret = nouveau_bo_init(nvbo, size, align, flags, sg, robj);
+	if (ret)
+		return ret;
 
 	*pnvbo = nvbo;
 	return 0;
@@ -1323,7 +1345,7 @@ nouveau_bo_vm_cleanup(struct ttm_buffer_object *bo,
 {
 	struct nouveau_drm *drm = nouveau_bdev(bo->bdev);
 	struct drm_device *dev = drm->dev;
-	struct dma_fence *fence = reservation_object_get_excl(bo->resv);
+	struct dma_fence *fence = dma_resv_get_excl(bo->base.resv);
 
 	nv10_bo_put_tile_region(dev, *old_tile, fence);
 	*old_tile = new_tile;
@@ -1400,7 +1422,7 @@ nouveau_bo_verify_access(struct ttm_buffer_object *bo, struct file *filp)
 {
 	struct nouveau_bo *nvbo = nouveau_bo(bo);
 
-	return drm_vma_node_verify_access(&nvbo->gem.vma_node,
+	return drm_vma_node_verify_access(&nvbo->bo.base.vma_node,
 					  filp->private_data);
 }
 
@@ -1654,12 +1676,12 @@ nouveau_ttm_tt_unpopulate(struct ttm_tt *ttm)
 void
 nouveau_bo_fence(struct nouveau_bo *nvbo, struct nouveau_fence *fence, bool exclusive)
 {
-	struct reservation_object *resv = nvbo->bo.resv;
+	struct dma_resv *resv = nvbo->bo.base.resv;
 
 	if (exclusive)
-		reservation_object_add_excl_fence(resv, &fence->base);
+		dma_resv_add_excl_fence(resv, &fence->base);
 	else if (fence)
-		reservation_object_add_shared_fence(resv, &fence->base);
+		dma_resv_add_shared_fence(resv, &fence->base);
 }
 
 struct ttm_bo_driver nouveau_bo_driver = {

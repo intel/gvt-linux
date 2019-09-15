@@ -1299,7 +1299,8 @@ static int oa_get_render_ctx_id(struct i915_perf_stream *stream)
 		}
 		break;
 
-	case 11: {
+	case 11:
+	case 12: {
 		stream->specific_ctx_id_mask =
 			((1U << GEN11_SW_CTX_ID_WIDTH) - 1) << (GEN11_SW_CTX_ID_SHIFT - 32) |
 			((1U << GEN11_ENGINE_INSTANCE_WIDTH) - 1) << (GEN11_ENGINE_INSTANCE_SHIFT - 32) |
@@ -2303,6 +2304,9 @@ void i915_oa_init_reg_state(struct intel_engine_cs *engine,
 			    u32 *regs)
 {
 	struct i915_perf_stream *stream;
+
+	/* perf.exclusive_stream serialised by gen8_configure_all_contexts() */
+	lockdep_assert_held(&ce->pin_mutex);
 
 	if (engine->class != RENDER_CLASS)
 		return;

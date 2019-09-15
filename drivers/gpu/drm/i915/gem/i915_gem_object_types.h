@@ -152,17 +152,15 @@ struct drm_i915_gem_object {
 
 	/** Count of VMA actually bound by this object */
 	atomic_t bind_count;
-	/** Count of how many global VMA are currently pinned for use by HW */
-	unsigned int pin_global;
 
 	struct {
 		struct mutex lock; /* protects the pages and their use */
 		atomic_t pages_pin_count;
+		atomic_t shrink_pin;
 
 		struct sg_table *pages;
 		void *mapping;
 
-		/* TODO: whack some of this into the error state */
 		struct i915_page_sizes {
 			/**
 			 * The sg mask of the pages sg_table. i.e the mask of

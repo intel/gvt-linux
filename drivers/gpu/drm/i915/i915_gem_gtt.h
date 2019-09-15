@@ -148,8 +148,8 @@ typedef u64 gen8_pte_t;
 #define GEN8_PDE_IPS_64K BIT(11)
 #define GEN8_PDE_PS_2M   BIT(7)
 
-#define for_each_sgt_dma(__dmap, __iter, __sgt) \
-	__for_each_sgt_dma(__dmap, __iter, __sgt, I915_GTT_PAGE_SIZE)
+#define for_each_sgt_daddr(__dp, __iter, __sgt) \
+	__for_each_sgt_daddr(__dp, __iter, __sgt, I915_GTT_PAGE_SIZE)
 
 struct intel_remapped_plane_info {
 	/* in gtt pages */
@@ -376,6 +376,12 @@ i915_vm_has_scratch_64K(struct i915_address_space *vm)
 	return vm->scratch_order == get_order(I915_GTT_PAGE_SIZE_64K);
 }
 
+static inline bool
+i915_vm_has_cache_coloring(struct i915_address_space *vm)
+{
+	return i915_is_ggtt(vm) && vm->mm.color_adjust;
+}
+
 /* The Graphics Translation Table is the way in which GEN hardware translates a
  * Graphics Virtual Address into a Physical Address. In addition to the normal
  * collateral associated with any va->pa translations GEN hardware also has a
@@ -422,7 +428,6 @@ struct i915_ggtt {
 struct i915_ppgtt {
 	struct i915_address_space vm;
 
-	intel_engine_mask_t pd_dirty_engines;
 	struct i915_page_directory *pd;
 };
 
@@ -432,7 +437,9 @@ struct gen6_ppgtt {
 	struct i915_vma *vma;
 	gen6_pte_t __iomem *pd_addr;
 
-	unsigned int pin_count;
+	atomic_t pin_count;
+	struct mutex pin_mutex;
+
 	bool scan_for_unused_pt;
 };
 

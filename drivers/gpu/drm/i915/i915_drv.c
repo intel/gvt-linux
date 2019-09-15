@@ -340,7 +340,7 @@ static int i915_driver_modeset_probe(struct drm_device *dev)
 
 	if (HAS_DISPLAY(dev_priv)) {
 		ret = drm_vblank_init(&dev_priv->drm,
-				      INTEL_INFO(dev_priv)->num_pipes);
+				      INTEL_NUM_PIPES(dev_priv));
 		if (ret)
 			goto out;
 	}
@@ -1232,7 +1232,7 @@ static int i915_driver_hw_probe(struct drm_i915_private *dev_priv)
 	if (ret)
 		goto err_ggtt;
 
-	intel_gt_init_hw(dev_priv);
+	intel_gt_init_hw_early(dev_priv);
 
 	ret = i915_ggtt_enable_hw(dev_priv);
 	if (ret) {
@@ -1278,9 +1278,6 @@ static int i915_driver_hw_probe(struct drm_i915_private *dev_priv)
 
 	pm_qos_add_request(&dev_priv->pm_qos, PM_QOS_CPU_DMA_LATENCY,
 			   PM_QOS_DEFAULT_VALUE);
-
-	/* BIOS often leaves RC6 enabled, but disable it for hw init */
-	intel_sanitize_gt_powersave(dev_priv);
 
 	intel_gt_init_workarounds(dev_priv);
 
@@ -1387,8 +1384,7 @@ static void i915_driver_register(struct drm_i915_private *dev_priv)
 		acpi_video_register();
 	}
 
-	if (IS_GEN(dev_priv, 5))
-		intel_gpu_ips_init(dev_priv);
+	intel_gt_driver_register(&dev_priv->gt);
 
 	intel_audio_init(dev_priv);
 
@@ -1431,7 +1427,7 @@ static void i915_driver_unregister(struct drm_i915_private *dev_priv)
 	 */
 	drm_kms_helper_poll_fini(&dev_priv->drm);
 
-	intel_gpu_ips_teardown();
+	intel_gt_driver_unregister(&dev_priv->gt);
 	acpi_video_unregister();
 	intel_opregion_unregister(dev_priv);
 
@@ -1575,9 +1571,6 @@ int i915_driver_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 out_cleanup_hw:
 	i915_driver_hw_remove(dev_priv);
 	i915_ggtt_driver_release(dev_priv);
-
-	/* Paranoia: make sure we have disabled everything before we exit. */
-	intel_sanitize_gt_powersave(dev_priv);
 out_cleanup_mmio:
 	i915_driver_mmio_release(dev_priv);
 out_runtime_pm_put:
@@ -1648,9 +1641,6 @@ static void i915_driver_release(struct drm_device *dev)
 
 	i915_ggtt_driver_release(dev_priv);
 
-	/* Paranoia: make sure we have disabled everything before we exit. */
-	intel_sanitize_gt_powersave(dev_priv);
-
 	i915_driver_mmio_release(dev_priv);
 
 	enable_rpm_wakeref_asserts(rpm);
@@ -1699,7 +1689,7 @@ static void i915_driver_postclose(struct drm_device *dev, struct drm_file *file)
 	i915_gem_release(dev, file);
 	mutex_unlock(&dev->struct_mutex);
 
-	kfree(file_priv);
+	kfree_rcu(file_priv, rcu);
 
 	/* Catch up with all the deferred frees from "this" client */
 	i915_gem_flush_free_objects(to_i915(dev));
@@ -1879,13 +1869,18 @@ static int i915_drm_resume(struct drm_device *dev)
 	int ret;
 
 	disable_rpm_wakeref_asserts(&dev_priv->runtime_pm);
-	intel_sanitize_gt_powersave(dev_priv);
+	intel_gt_pm_disable(&dev_priv->gt);
 
 	i915_gem_sanitize(dev_priv);
 
 	ret = i915_ggtt_enable_hw(dev_priv);
 	if (ret)
 		DRM_ERROR("failed to re-enable GGTT\n");
+
+	mutex_lock(&dev_priv->drm.struct_mutex);
+	i915_gem_restore_gtt_mappings(dev_priv);
+	i915_gem_restore_fences(dev_priv);
+	mutex_unlock(&dev_priv->drm.struct_mutex);
 
 	intel_csr_ucode_resume(dev_priv);
 
@@ -2007,7 +2002,7 @@ static int i915_drm_resume_early(struct drm_device *dev)
 
 	intel_display_power_resume_early(dev_priv);
 
-	intel_sanitize_gt_powersave(dev_priv);
+	intel_gt_pm_disable(&dev_priv->gt);
 
 	intel_power_domains_resume(dev_priv);
 
@@ -2550,9 +2545,6 @@ static int intel_runtime_suspend(struct device *kdev)
 	struct drm_i915_private *dev_priv = kdev_to_i915(kdev);
 	struct intel_runtime_pm *rpm = &dev_priv->runtime_pm;
 	int ret = 0;
-
-	if (WARN_ON_ONCE(!(dev_priv->gt_pm.rc6.enabled && HAS_RC6(dev_priv))))
-		return -ENODEV;
 
 	if (WARN_ON_ONCE(!HAS_RUNTIME_PM(dev_priv)))
 		return -ENODEV;

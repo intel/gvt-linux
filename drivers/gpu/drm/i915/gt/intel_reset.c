@@ -972,7 +972,7 @@ void intel_gt_reset(struct intel_gt *gt,
 	 * was running at the time of the reset (i.e. we weren't VT
 	 * switched away).
 	 */
-	ret = i915_gem_init_hw(gt->i915);
+	ret = intel_gt_init_hw(gt);
 	if (ret) {
 		DRM_ERROR("Failed to initialise HW following reset (%d)\n",
 			  ret);
@@ -1214,10 +1214,8 @@ out:
 	intel_runtime_pm_put(&gt->i915->runtime_pm, wakeref);
 }
 
-int intel_gt_reset_trylock(struct intel_gt *gt)
+int intel_gt_reset_trylock(struct intel_gt *gt, int *srcu)
 {
-	int srcu;
-
 	might_lock(&gt->reset.backoff_srcu);
 	might_sleep();
 
@@ -1232,10 +1230,10 @@ int intel_gt_reset_trylock(struct intel_gt *gt)
 
 		rcu_read_lock();
 	}
-	srcu = srcu_read_lock(&gt->reset.backoff_srcu);
+	*srcu = srcu_read_lock(&gt->reset.backoff_srcu);
 	rcu_read_unlock();
 
-	return srcu;
+	return 0;
 }
 
 void intel_gt_reset_unlock(struct intel_gt *gt, int tag)

@@ -169,16 +169,17 @@ remove_from_client(struct i915_request *request)
 {
 	struct drm_i915_file_private *file_priv;
 
-	file_priv = READ_ONCE(request->file_priv);
-	if (!file_priv)
+	if (!READ_ONCE(request->file_priv))
 		return;
 
-	spin_lock(&file_priv->mm.lock);
-	if (request->file_priv) {
+	rcu_read_lock();
+	file_priv = xchg(&request->file_priv, NULL);
+	if (file_priv) {
+		spin_lock(&file_priv->mm.lock);
 		list_del(&request->client_link);
-		request->file_priv = NULL;
+		spin_unlock(&file_priv->mm.lock);
 	}
-	spin_unlock(&file_priv->mm.lock);
+	rcu_read_unlock();
 }
 
 static void free_capture_list(struct i915_request *request)
@@ -923,7 +924,7 @@ i915_request_await_dma_fence(struct i915_request *rq, struct dma_fence *fence)
 			ret = i915_request_await_request(rq, to_request(fence));
 		else
 			ret = i915_sw_fence_await_dma_fence(&rq->submit, fence,
-							    I915_FENCE_TIMEOUT,
+							    fence->context ? I915_FENCE_TIMEOUT : 0,
 							    I915_FENCE_GFP);
 		if (ret < 0)
 			return ret;

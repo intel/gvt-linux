@@ -888,10 +888,9 @@ void i915_gem_runtime_suspend(struct drm_i915_private *i915)
 }
 
 static long
-wait_for_timelines(struct drm_i915_private *i915,
-		   unsigned int wait, long timeout)
+wait_for_timelines(struct intel_gt *gt, unsigned int wait, long timeout)
 {
-	struct intel_gt_timelines *timelines = &i915->gt.timelines;
+	struct intel_gt_timelines *timelines = &gt->timelines;
 	struct intel_timeline *tl;
 	unsigned long flags;
 
@@ -934,15 +933,17 @@ wait_for_timelines(struct drm_i915_private *i915,
 int i915_gem_wait_for_idle(struct drm_i915_private *i915,
 			   unsigned int flags, long timeout)
 {
+	struct intel_gt *gt = &i915->gt;
+
 	/* If the device is asleep, we have no requests outstanding */
-	if (!intel_gt_pm_is_awake(&i915->gt))
+	if (!intel_gt_pm_is_awake(gt))
 		return 0;
 
 	GEM_TRACE("flags=%x (%s), timeout=%ld%s\n",
 		  flags, flags & I915_WAIT_LOCKED ? "locked" : "unlocked",
 		  timeout, timeout == MAX_SCHEDULE_TIMEOUT ? " (forever)" : "");
 
-	timeout = wait_for_timelines(i915, flags, timeout);
+	timeout = wait_for_timelines(gt, flags, timeout);
 	if (timeout < 0)
 		return timeout;
 
@@ -1148,95 +1149,6 @@ void i915_gem_sanitize(struct drm_i915_private *i915)
 	intel_runtime_pm_put(&i915->runtime_pm, wakeref);
 }
 
-static void init_unused_ring(struct intel_gt *gt, u32 base)
-{
-	struct intel_uncore *uncore = gt->uncore;
-
-	intel_uncore_write(uncore, RING_CTL(base), 0);
-	intel_uncore_write(uncore, RING_HEAD(base), 0);
-	intel_uncore_write(uncore, RING_TAIL(base), 0);
-	intel_uncore_write(uncore, RING_START(base), 0);
-}
-
-static void init_unused_rings(struct intel_gt *gt)
-{
-	struct drm_i915_private *i915 = gt->i915;
-
-	if (IS_I830(i915)) {
-		init_unused_ring(gt, PRB1_BASE);
-		init_unused_ring(gt, SRB0_BASE);
-		init_unused_ring(gt, SRB1_BASE);
-		init_unused_ring(gt, SRB2_BASE);
-		init_unused_ring(gt, SRB3_BASE);
-	} else if (IS_GEN(i915, 2)) {
-		init_unused_ring(gt, SRB0_BASE);
-		init_unused_ring(gt, SRB1_BASE);
-	} else if (IS_GEN(i915, 3)) {
-		init_unused_ring(gt, PRB1_BASE);
-		init_unused_ring(gt, PRB2_BASE);
-	}
-}
-
-int i915_gem_init_hw(struct drm_i915_private *i915)
-{
-	struct intel_uncore *uncore = &i915->uncore;
-	struct intel_gt *gt = &i915->gt;
-	int ret;
-
-	BUG_ON(!i915->kernel_context);
-	ret = intel_gt_terminally_wedged(gt);
-	if (ret)
-		return ret;
-
-	gt->last_init_time = ktime_get();
-
-	/* Double layer security blanket, see i915_gem_init() */
-	intel_uncore_forcewake_get(uncore, FORCEWAKE_ALL);
-
-	if (HAS_EDRAM(i915) && INTEL_GEN(i915) < 9)
-		intel_uncore_rmw(uncore, HSW_IDICR, 0, IDIHASHMSK(0xf));
-
-	if (IS_HASWELL(i915))
-		intel_uncore_write(uncore,
-				   MI_PREDICATE_RESULT_2,
-				   IS_HSW_GT3(i915) ?
-				   LOWER_SLICE_ENABLED : LOWER_SLICE_DISABLED);
-
-	/* Apply the GT workarounds... */
-	intel_gt_apply_workarounds(gt);
-	/* ...and determine whether they are sticking. */
-	intel_gt_verify_workarounds(gt, "init");
-
-	intel_gt_init_swizzling(gt);
-
-	/*
-	 * At least 830 can leave some of the unused rings
-	 * "active" (ie. head != tail) after resume which
-	 * will prevent c3 entry. Makes sure all unused rings
-	 * are totally idle.
-	 */
-	init_unused_rings(gt);
-
-	ret = i915_ppgtt_init_hw(gt);
-	if (ret) {
-		DRM_ERROR("Enabling PPGTT failed (%d)\n", ret);
-		goto out;
-	}
-
-	/* We can't enable contexts until all firmware is loaded */
-	ret = intel_uc_init_hw(&gt->uc);
-	if (ret) {
-		i915_probe_error(i915, "Enabling uc failed (%d)\n", ret);
-		goto out;
-	}
-
-	intel_mocs_init(gt);
-
-out:
-	intel_uncore_forcewake_put(uncore, FORCEWAKE_ALL);
-	return ret;
-}
-
 static int __intel_engines_record_defaults(struct drm_i915_private *i915)
 {
 	struct i915_request *requests[I915_NUM_ENGINES] = {};
@@ -1375,17 +1287,6 @@ out:
 	return err;
 }
 
-static int
-i915_gem_init_scratch(struct drm_i915_private *i915, unsigned int size)
-{
-	return intel_gt_init_scratch(&i915->gt, size);
-}
-
-static void i915_gem_fini_scratch(struct drm_i915_private *i915)
-{
-	intel_gt_fini_scratch(&i915->gt);
-}
-
 static int intel_engines_verify_workarounds(struct drm_i915_private *i915)
 {
 	struct intel_engine_cs *engine;
@@ -1436,12 +1337,7 @@ int i915_gem_init(struct drm_i915_private *dev_priv)
 		goto err_unlock;
 	}
 
-	ret = i915_gem_init_scratch(dev_priv,
-				    IS_GEN(dev_priv, 2) ? SZ_256K : PAGE_SIZE);
-	if (ret) {
-		GEM_BUG_ON(ret == -EIO);
-		goto err_ggtt;
-	}
+	intel_gt_init(&dev_priv->gt);
 
 	ret = intel_engines_setup(dev_priv);
 	if (ret) {
@@ -1465,7 +1361,7 @@ int i915_gem_init(struct drm_i915_private *dev_priv)
 
 	intel_uc_init(&dev_priv->gt.uc);
 
-	ret = i915_gem_init_hw(dev_priv);
+	ret = intel_gt_init_hw(&dev_priv->gt);
 	if (ret)
 		goto err_uc_init;
 
@@ -1527,15 +1423,13 @@ err_init_hw:
 err_uc_init:
 	if (ret != -EIO) {
 		intel_uc_fini(&dev_priv->gt.uc);
-		intel_cleanup_gt_powersave(dev_priv);
 		intel_engines_cleanup(dev_priv);
 	}
 err_context:
 	if (ret != -EIO)
 		i915_gem_contexts_fini(dev_priv);
 err_scratch:
-	i915_gem_fini_scratch(dev_priv);
-err_ggtt:
+	intel_gt_driver_release(&dev_priv->gt);
 err_unlock:
 	intel_uncore_forcewake_put(&dev_priv->uncore, FORCEWAKE_ALL);
 	mutex_unlock(&dev_priv->drm.struct_mutex);
@@ -1587,12 +1481,10 @@ void i915_gem_driver_unregister(struct drm_i915_private *i915)
 
 void i915_gem_driver_remove(struct drm_i915_private *dev_priv)
 {
-	GEM_BUG_ON(dev_priv->gt.awake);
-
 	intel_wakeref_auto_fini(&dev_priv->ggtt.userfault_wakeref);
 
 	i915_gem_suspend_late(dev_priv);
-	intel_disable_gt_powersave(dev_priv);
+	intel_gt_driver_remove(&dev_priv->gt);
 
 	/* Flush any outstanding unpin_work. */
 	i915_gem_drain_workqueue(dev_priv);
@@ -1610,12 +1502,10 @@ void i915_gem_driver_release(struct drm_i915_private *dev_priv)
 	mutex_lock(&dev_priv->drm.struct_mutex);
 	intel_engines_cleanup(dev_priv);
 	i915_gem_contexts_fini(dev_priv);
-	i915_gem_fini_scratch(dev_priv);
+	intel_gt_driver_release(&dev_priv->gt);
 	mutex_unlock(&dev_priv->drm.struct_mutex);
 
 	intel_wa_list_free(&dev_priv->gt_wa_list);
-
-	intel_cleanup_gt_powersave(dev_priv);
 
 	intel_uc_cleanup_firmwares(&dev_priv->gt.uc);
 	i915_gem_cleanup_userptr(dev_priv);

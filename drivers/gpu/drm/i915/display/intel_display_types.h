@@ -388,6 +388,13 @@ struct intel_hdcp {
 	wait_queue_head_t cp_irq_queue;
 	atomic_t cp_irq_count;
 	int cp_irq_count_cached;
+
+	/*
+	 * HDCP register access for gen12+ need the transcoder associated.
+	 * Transcoder attached to the connector could be changed at modeset.
+	 * Hence caching the transcoder here.
+	 */
+	enum transcoder cpu_transcoder;
 };
 
 struct intel_connector {
@@ -481,9 +488,9 @@ struct intel_atomic_state {
 	 * but the converse is not necessarily true; simply changing a mode may
 	 * not flip the final active status of any CRTC's
 	 */
-	unsigned int active_pipe_changes;
+	u8 active_pipe_changes;
 
-	unsigned int active_crtcs;
+	u8 active_pipes;
 	/* minimum acceptable cdclk for each pipe */
 	int min_cdclk[I915_MAX_PIPES];
 	/* minimum acceptable voltage level for each pipe */
@@ -1211,6 +1218,15 @@ struct intel_dp {
 	bool can_mst; /* this port supports mst */
 	bool is_mst;
 	int active_mst_links;
+
+	/*
+	 * DP_TP_* registers may be either on port or transcoder register space.
+	 */
+	struct {
+		i915_reg_t dp_tp_ctl;
+		i915_reg_t dp_tp_status;
+	} regs;
+
 	/* connector directly attached - won't be use for modeset in mst world */
 	struct intel_connector *attached_connector;
 
@@ -1509,7 +1525,7 @@ intel_wait_for_vblank(struct drm_i915_private *dev_priv, enum pipe pipe)
 	drm_wait_one_vblank(&dev_priv->drm, pipe);
 }
 static inline void
-intel_wait_for_vblank_if_active(struct drm_i915_private *dev_priv, int pipe)
+intel_wait_for_vblank_if_active(struct drm_i915_private *dev_priv, enum pipe pipe)
 {
 	const struct intel_crtc *crtc = intel_get_crtc_for_pipe(dev_priv, pipe);
 

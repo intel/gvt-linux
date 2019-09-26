@@ -171,7 +171,7 @@ vma_create(struct drm_i915_gem_object *obj,
 								i915_gem_object_get_stride(obj));
 		GEM_BUG_ON(!is_power_of_2(vma->fence_alignment));
 
-		vma->flags |= I915_VMA_GGTT;
+		__set_bit(I915_VMA_GGTT_BIT, __i915_vma_flags(vma));
 	}
 
 	spin_lock(&obj->vma.lock);
@@ -325,7 +325,8 @@ int i915_vma_bind(struct i915_vma *vma, enum i915_cache_level cache_level,
 	if (flags & PIN_USER)
 		bind_flags |= I915_VMA_LOCAL_BIND;
 
-	vma_flags = vma->flags & (I915_VMA_GLOBAL_BIND | I915_VMA_LOCAL_BIND);
+	vma_flags = atomic_read(&vma->flags);
+	vma_flags &= I915_VMA_GLOBAL_BIND | I915_VMA_LOCAL_BIND;
 	if (flags & PIN_UPDATE)
 		bind_flags |= vma_flags;
 	else
@@ -340,7 +341,7 @@ int i915_vma_bind(struct i915_vma *vma, enum i915_cache_level cache_level,
 	if (ret)
 		return ret;
 
-	vma->flags |= bind_flags;
+	atomic_or(bind_flags, &vma->flags);
 	return 0;
 }
 
@@ -359,7 +360,7 @@ void __iomem *i915_vma_pin_iomap(struct i915_vma *vma)
 	}
 
 	GEM_BUG_ON(!i915_vma_is_ggtt(vma));
-	GEM_BUG_ON((vma->flags & I915_VMA_GLOBAL_BIND) == 0);
+	GEM_BUG_ON(!i915_vma_is_bound(vma, I915_VMA_GLOBAL_BIND));
 
 	ptr = vma->iomap;
 	if (ptr == NULL) {
@@ -472,17 +473,12 @@ void __i915_vma_set_map_and_fenceable(struct i915_vma *vma)
 	mappable = vma->node.start + vma->fence_size <= i915_vm_to_ggtt(vma->vm)->mappable_end;
 
 	if (mappable && fenceable)
-		vma->flags |= I915_VMA_CAN_FENCE;
+		set_bit(I915_VMA_CAN_FENCE_BIT, __i915_vma_flags(vma));
 	else
-		vma->flags &= ~I915_VMA_CAN_FENCE;
+		clear_bit(I915_VMA_CAN_FENCE_BIT, __i915_vma_flags(vma));
 }
 
-static bool color_differs(struct drm_mm_node *node, unsigned long color)
-{
-	return node->allocated && node->color != color;
-}
-
-bool i915_gem_valid_gtt_space(struct i915_vma *vma, unsigned long cache_level)
+bool i915_gem_valid_gtt_space(struct i915_vma *vma, unsigned long color)
 {
 	struct drm_mm_node *node = &vma->node;
 	struct drm_mm_node *other;
@@ -494,7 +490,7 @@ bool i915_gem_valid_gtt_space(struct i915_vma *vma, unsigned long cache_level)
 	 * these constraints apply and set the drm_mm.color_adjust
 	 * appropriately.
 	 */
-	if (vma->vm->mm.color_adjust == NULL)
+	if (!i915_vm_has_cache_coloring(vma->vm))
 		return true;
 
 	/* Only valid to be called on an already inserted vma */
@@ -502,11 +498,13 @@ bool i915_gem_valid_gtt_space(struct i915_vma *vma, unsigned long cache_level)
 	GEM_BUG_ON(list_empty(&node->node_list));
 
 	other = list_prev_entry(node, node_list);
-	if (color_differs(other, cache_level) && !drm_mm_hole_follows(other))
+	if (i915_node_color_differs(other, color) &&
+	    !drm_mm_hole_follows(other))
 		return false;
 
 	other = list_next_entry(node, node_list);
-	if (color_differs(other, cache_level) && !drm_mm_hole_follows(node))
+	if (i915_node_color_differs(other, color) &&
+	    !drm_mm_hole_follows(node))
 		return false;
 
 	return true;
@@ -542,12 +540,12 @@ static int
 i915_vma_insert(struct i915_vma *vma, u64 size, u64 alignment, u64 flags)
 {
 	struct drm_i915_private *dev_priv = vma->vm->i915;
-	unsigned int cache_level;
+	unsigned long color;
 	u64 start, end;
 	int ret;
 
 	GEM_BUG_ON(i915_vma_is_closed(vma));
-	GEM_BUG_ON(vma->flags & (I915_VMA_GLOBAL_BIND | I915_VMA_LOCAL_BIND));
+	GEM_BUG_ON(i915_vma_is_bound(vma, I915_VMA_GLOBAL_BIND | I915_VMA_LOCAL_BIND));
 	GEM_BUG_ON(drm_mm_node_allocated(&vma->node));
 
 	size = max(size, vma->size);
@@ -583,14 +581,14 @@ i915_vma_insert(struct i915_vma *vma, u64 size, u64 alignment, u64 flags)
 		return -ENOSPC;
 	}
 
+	color = 0;
 	if (vma->obj) {
 		ret = i915_gem_object_pin_pages(vma->obj);
 		if (ret)
 			return ret;
 
-		cache_level = vma->obj->cache_level;
-	} else {
-		cache_level = 0;
+		if (i915_vm_has_cache_coloring(vma->vm))
+			color = vma->obj->cache_level;
 	}
 
 	GEM_BUG_ON(vma->pages);
@@ -608,7 +606,7 @@ i915_vma_insert(struct i915_vma *vma, u64 size, u64 alignment, u64 flags)
 		}
 
 		ret = i915_gem_gtt_reserve(vma->vm, &vma->node,
-					   size, offset, cache_level,
+					   size, offset, color,
 					   flags);
 		if (ret)
 			goto err_clear;
@@ -647,7 +645,7 @@ i915_vma_insert(struct i915_vma *vma, u64 size, u64 alignment, u64 flags)
 		}
 
 		ret = i915_gem_gtt_insert(vma->vm, &vma->node,
-					  size, alignment, cache_level,
+					  size, alignment, color,
 					  start, end, flags);
 		if (ret)
 			goto err_clear;
@@ -656,7 +654,7 @@ i915_vma_insert(struct i915_vma *vma, u64 size, u64 alignment, u64 flags)
 		GEM_BUG_ON(vma->node.start + vma->node.size > end);
 	}
 	GEM_BUG_ON(!drm_mm_node_allocated(&vma->node));
-	GEM_BUG_ON(!i915_gem_valid_gtt_space(vma, cache_level));
+	GEM_BUG_ON(!i915_gem_valid_gtt_space(vma, color));
 
 	mutex_lock(&vma->vm->mutex);
 	list_move_tail(&vma->vm_link, &vma->vm->bound_list);
@@ -681,7 +679,7 @@ static void
 i915_vma_remove(struct i915_vma *vma)
 {
 	GEM_BUG_ON(!drm_mm_node_allocated(&vma->node));
-	GEM_BUG_ON(vma->flags & (I915_VMA_GLOBAL_BIND | I915_VMA_LOCAL_BIND));
+	GEM_BUG_ON(i915_vma_is_bound(vma, I915_VMA_GLOBAL_BIND | I915_VMA_LOCAL_BIND));
 
 	vma->ops->clear_pages(vma);
 
@@ -712,7 +710,7 @@ i915_vma_remove(struct i915_vma *vma)
 int __i915_vma_do_pin(struct i915_vma *vma,
 		      u64 size, u64 alignment, u64 flags)
 {
-	const unsigned int bound = vma->flags;
+	const unsigned int bound = atomic_read(&vma->flags);
 	int ret;
 
 	lockdep_assert_held(&vma->vm->i915->drm.struct_mutex);
@@ -735,9 +733,9 @@ int __i915_vma_do_pin(struct i915_vma *vma,
 	if (ret)
 		goto err_remove;
 
-	GEM_BUG_ON((vma->flags & I915_VMA_BIND_MASK) == 0);
+	GEM_BUG_ON(!i915_vma_is_bound(vma, I915_VMA_BIND_MASK));
 
-	if ((bound ^ vma->flags) & I915_VMA_GLOBAL_BIND)
+	if ((bound ^ atomic_read(&vma->flags)) & I915_VMA_GLOBAL_BIND)
 		__i915_vma_set_map_and_fenceable(vma);
 
 	GEM_BUG_ON(i915_vma_misplaced(vma, size, alignment, flags));
@@ -747,7 +745,7 @@ err_remove:
 	if ((bound & I915_VMA_BIND_MASK) == 0) {
 		i915_vma_remove(vma);
 		GEM_BUG_ON(vma->pages);
-		GEM_BUG_ON(vma->flags & I915_VMA_BIND_MASK);
+		GEM_BUG_ON(atomic_read(&vma->flags) & I915_VMA_BIND_MASK);
 	}
 err_unpin:
 	__i915_vma_unpin(vma);
@@ -902,15 +900,13 @@ int i915_vma_move_to_active(struct i915_vma *vma,
 	 * add the active reference first and queue for it to be dropped
 	 * *last*.
 	 */
-	err = i915_active_ref(&vma->active, rq->timeline, rq);
+	err = i915_active_add_request(&vma->active, rq);
 	if (unlikely(err))
 		return err;
 
 	if (flags & EXEC_OBJECT_WRITE) {
 		if (intel_frontbuffer_invalidate(obj->frontbuffer, ORIGIN_CS))
-			i915_active_ref(&obj->frontbuffer->write,
-					rq->timeline,
-					rq);
+			i915_active_add_request(&obj->frontbuffer->write, rq);
 
 		dma_resv_add_excl_fence(vma->resv, &rq->fence);
 		obj->write_domain = I915_GEM_DOMAIN_RENDER;
@@ -994,7 +990,7 @@ int i915_vma_unbind(struct i915_vma *vma)
 		mutex_unlock(&vma->vm->mutex);
 
 		__i915_vma_iounmap(vma);
-		vma->flags &= ~I915_VMA_CAN_FENCE;
+		clear_bit(I915_VMA_CAN_FENCE_BIT, __i915_vma_flags(vma));
 	}
 	GEM_BUG_ON(vma->fence);
 	GEM_BUG_ON(i915_vma_has_userfault(vma));
@@ -1003,7 +999,7 @@ int i915_vma_unbind(struct i915_vma *vma)
 		trace_i915_vma_unbind(vma);
 		vma->ops->unbind_vma(vma);
 	}
-	vma->flags &= ~(I915_VMA_GLOBAL_BIND | I915_VMA_LOCAL_BIND);
+	atomic_and(~I915_VMA_BIND_MASK, &vma->flags);
 
 	i915_vma_remove(vma);
 

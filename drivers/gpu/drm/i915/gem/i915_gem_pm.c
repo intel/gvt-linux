@@ -137,7 +137,26 @@ static bool switch_to_kernel_context_sync(struct intel_gt *gt)
 
 bool i915_gem_load_power_context(struct drm_i915_private *i915)
 {
+	intel_gt_pm_enable(&i915->gt);
 	return switch_to_kernel_context_sync(&i915->gt);
+}
+
+static void user_forcewake(struct intel_gt *gt, bool suspend)
+{
+	int count = atomic_read(&gt->user_wakeref);
+
+	/* Inside suspend/resume so single threaded, no races to worry about. */
+	if (likely(!count))
+		return;
+
+	intel_gt_pm_get(gt);
+	if (suspend) {
+		GEM_BUG_ON(count > atomic_read(&gt->wakeref.count));
+		atomic_sub(count, &gt->wakeref.count);
+	} else {
+		atomic_add(count, &gt->wakeref.count);
+	}
+	intel_gt_pm_put(gt);
 }
 
 void i915_gem_suspend(struct drm_i915_private *i915)
@@ -146,6 +165,8 @@ void i915_gem_suspend(struct drm_i915_private *i915)
 
 	intel_wakeref_auto(&i915->ggtt.userfault_wakeref, 0);
 	flush_workqueue(i915->wq);
+
+	user_forcewake(&i915->gt, true);
 
 	mutex_lock(&i915->drm.struct_mutex);
 
@@ -241,7 +262,7 @@ void i915_gem_resume(struct drm_i915_private *i915)
 	mutex_lock(&i915->drm.struct_mutex);
 	intel_uncore_forcewake_get(&i915->uncore, FORCEWAKE_ALL);
 
-	if (i915_gem_init_hw(i915))
+	if (intel_gt_init_hw(&i915->gt))
 		goto err_wedged;
 
 	/*
@@ -257,6 +278,8 @@ void i915_gem_resume(struct drm_i915_private *i915)
 	/* Always reload a context for powersaving. */
 	if (!i915_gem_load_power_context(i915))
 		goto err_wedged;
+
+	user_forcewake(&i915->gt, false);
 
 out_unlock:
 	intel_uncore_forcewake_put(&i915->uncore, FORCEWAKE_ALL);

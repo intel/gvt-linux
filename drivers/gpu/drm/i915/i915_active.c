@@ -92,12 +92,16 @@ static void debug_active_init(struct i915_active *ref)
 
 static void debug_active_activate(struct i915_active *ref)
 {
-	debug_object_activate(ref, &active_debug_desc);
+	lockdep_assert_held(&ref->mutex);
+	if (!atomic_read(&ref->count)) /* before the first inc */
+		debug_object_activate(ref, &active_debug_desc);
 }
 
 static void debug_active_deactivate(struct i915_active *ref)
 {
-	debug_object_deactivate(ref, &active_debug_desc);
+	lockdep_assert_held(&ref->mutex);
+	if (!atomic_read(&ref->count)) /* after the last dec */
+		debug_object_deactivate(ref, &active_debug_desc);
 }
 
 static void debug_active_fini(struct i915_active *ref)
@@ -691,7 +695,7 @@ void i915_request_add_active_barriers(struct i915_request *rq)
 	struct llist_node *node, *next;
 
 	GEM_BUG_ON(intel_engine_is_virtual(engine));
-	GEM_BUG_ON(rq->timeline != engine->kernel_context->timeline);
+	GEM_BUG_ON(i915_request_timeline(rq) != engine->kernel_context->timeline);
 
 	/*
 	 * Attach the list of proto-fences to the in-flight request such

@@ -147,6 +147,12 @@ void __drm_printfn_debug(struct drm_printer *p, struct va_format *vaf)
 }
 EXPORT_SYMBOL(__drm_printfn_debug);
 
+void __drm_printfn_err(struct drm_printer *p, struct va_format *vaf)
+{
+	pr_err("*ERROR* %s %pV", p->prefix, vaf);
+}
+EXPORT_SYMBOL(__drm_printfn_err);
+
 /**
  * drm_puts - print a const string to a &drm_printer stream
  * @p: the &drm printer
@@ -178,6 +184,37 @@ void drm_printf(struct drm_printer *p, const char *f, ...)
 	va_end(args);
 }
 EXPORT_SYMBOL(drm_printf);
+
+/**
+ * drm_print_bits - print bits to a &drm_printer stream
+ *
+ * Print bits (in flag fields for example) in human readable form.
+ *
+ * @p: the &drm_printer
+ * @value: field value.
+ * @bits: Array with bit names.
+ * @nbits: Size of bit names array.
+ */
+void drm_print_bits(struct drm_printer *p, unsigned long value,
+		    const char * const bits[], unsigned int nbits)
+{
+	bool first = true;
+	unsigned int i;
+
+	if (WARN_ON_ONCE(nbits > BITS_PER_TYPE(value)))
+		nbits = BITS_PER_TYPE(value);
+
+	for_each_set_bit(i, &value, nbits) {
+		if (WARN_ON_ONCE(!bits[i]))
+			continue;
+		drm_printf(p, "%s%s", first ? "" : ",",
+			   bits[i]);
+		first = false;
+	}
+	if (first)
+		drm_printf(p, "(none)");
+}
+EXPORT_SYMBOL(drm_print_bits);
 
 void drm_dev_printk(const struct device *dev, const char *level,
 		    const char *format, ...)

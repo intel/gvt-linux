@@ -1805,7 +1805,7 @@ static int i915_drm_resume(struct drm_device *dev)
 
 	mutex_lock(&dev_priv->drm.struct_mutex);
 	i915_gem_restore_gtt_mappings(dev_priv);
-	i915_gem_restore_fences(dev_priv);
+	i915_gem_restore_fences(&dev_priv->ggtt);
 	mutex_unlock(&dev_priv->drm.struct_mutex);
 
 	intel_csr_ucode_resume(dev_priv);
@@ -2504,7 +2504,7 @@ static int intel_runtime_suspend(struct device *kdev)
 
 		intel_gt_runtime_resume(&dev_priv->gt);
 
-		i915_gem_restore_fences(dev_priv);
+		i915_gem_restore_fences(&dev_priv->ggtt);
 
 		enable_rpm_wakeref_asserts(rpm);
 
@@ -2584,7 +2584,7 @@ static int intel_runtime_resume(struct device *kdev)
 	 * we can do is to hope that things will still work (and disable RPM).
 	 */
 	intel_gt_runtime_resume(&dev_priv->gt);
-	i915_gem_restore_fences(dev_priv);
+	i915_gem_restore_fences(&dev_priv->ggtt);
 
 	/*
 	 * On VLV/CHV display interrupts are part of the display

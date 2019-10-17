@@ -271,6 +271,7 @@ enum aux_ch {
 	AUX_CH_D,
 	AUX_CH_E, /* ICL+ */
 	AUX_CH_F,
+	AUX_CH_G,
 };
 
 #define aux_ch_name(a) ((a) + 'A')
@@ -350,7 +351,7 @@ enum phy_fia {
 			    &(dev)->mode_config.plane_list,		\
 			    base.head)					\
 		for_each_if((plane_mask) &				\
-			    drm_plane_mask(&intel_plane->base)))
+			    drm_plane_mask(&intel_plane->base))
 
 #define for_each_intel_plane_on_crtc(dev, intel_crtc, intel_plane)	\
 	list_for_each_entry(intel_plane,				\
@@ -439,6 +440,14 @@ enum phy_fia {
 	      (new_crtc_state) = to_intel_crtc_state((__state)->base.crtcs[__i].new_state), 1); \
 	     (__i)--) \
 		for_each_if(crtc)
+
+#define intel_atomic_crtc_state_for_each_plane_state( \
+		  plane, plane_state, \
+		  crtc_state) \
+	for_each_intel_plane_mask(((crtc_state)->base.state->dev), (plane), \
+				((crtc_state)->base.plane_mask)) \
+		for_each_if ((plane_state = \
+			      to_intel_plane_state(__drm_atomic_get_current_plane_state((crtc_state)->base.state, &plane->base))))
 
 void intel_link_compute_m_n(u16 bpp, int nlanes,
 			    int pixel_clock, int link_clock,
@@ -531,8 +540,6 @@ void intel_dp_get_m_n(struct intel_crtc *crtc,
 		      struct intel_crtc_state *pipe_config);
 void intel_dp_set_m_n(const struct intel_crtc_state *crtc_state,
 		      enum link_m_n_set m_n);
-void intel_dp_ycbcr_420_enable(struct intel_dp *intel_dp,
-			       const struct intel_crtc_state *crtc_state);
 int intel_dotclock_calculate(int link_freq, const struct intel_link_m_n *m_n);
 bool bxt_find_best_dpll(struct intel_crtc_state *crtc_state,
 			struct dpll *best_clock);

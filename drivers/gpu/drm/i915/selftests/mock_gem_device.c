@@ -33,6 +33,7 @@
 #include "mock_gem_device.h"
 #include "mock_gtt.h"
 #include "mock_uncore.h"
+#include "mock_region.h"
 
 #include "gem/selftests/mock_context.h"
 #include "gem/selftests/mock_gem_object.h"
@@ -162,7 +163,7 @@ struct drm_i915_private *mock_gem_device(void)
 		I915_GTT_PAGE_SIZE_64K |
 		I915_GTT_PAGE_SIZE_2M;
 
-	mock_uncore_init(&i915->uncore);
+	mock_uncore_init(&i915->uncore, i915);
 	i915_gem_init__mm(i915);
 	intel_gt_init_early(&i915->gt, i915);
 	atomic_inc(&i915->gt.wakeref.count); /* disable; no hw support */

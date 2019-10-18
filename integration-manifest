@@ -1,30 +1,12 @@
-drm drm-fixes 5c1e34b5159ec65bf33e2c1a62fa7158132c10cf
-	Merge tag 'drm-misc-fixes-2019-10-17' of git://anongit.freedesktop.org/drm/drm-misc into drm-fixes
-drm-misc drm-misc-fixes 5b3ec8134f5f9fa1ed0a538441a495521078bbee
-	drm/panfrost: Handle resetting on timeout better
-drm-intel drm-intel-fixes 0a544a2a728e2e33bb7fc38dd542ecb90ee393eb
-	drm/i915: Fixup preempt-to-busy vs resubmission of a virtual request
-drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
-	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
-drm drm-next 7ed093602e0e1b60a0fc074a9692687e7d2b723d
-	Merge tag 'drm-misc-next-2019-10-09-2' of git://anongit.freedesktop.org/drm/drm-misc into drm-next
-drm-misc drm-misc-next-fixes d7d44b6fe40a98e960be92ea8617954c2596d140
-	drm/tilcdc: include linux/pinctrl/consumer.h again
-drm-intel drm-intel-next-fixes 458863e08e13ecf22b9ba1ee6d4baba0ce9990ea
-	drm/i915: Mark contents as dirty on a write fault
-drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
-	Linux 4.14-rc1
-drm-misc drm-misc-next e30b38b71294849c018322d85e90ec056438fe43
-	drm/lima: add __GFP_NOWARN flag to all dma_alloc_wc
-drm-intel drm-intel-next-queued 5d904e3c5d40c3939d53659e9c473500c3c24039
-	drm/i915: Pass in intel_gt at some for_each_engine sites
-drm-intel drm-intel-next 9445ad17109b6fe7864acc33f0c62bd9d866b722
-	drm/i915: Update DRIVER_DATE to 20191007
-drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
-	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
-sound-upstream for-linus 94989e318b2f11e217e86bee058088064fa9a2e9
-	ALSA: hda - Force runtime PM on Nvidia HDMI codecs
-sound-upstream for-next 3aac32634172819ede79426c85e0a43ee7fcc3b3
-	ALSA: fireface: use the same size of period for PCM substreams in AMDTP streams
-drm-intel topic/core-for-CI d31a39a7f1c13a611258a920bcb95b1fa10a95c7
-	HAX iommu/intel: Ignore igfx_off
+drm-tip/drm-tip f1ac92f5feb18678a3191a45be0ee4a4d255fc61
+	drm-tip: 2019y-10m-17d-23h-08m-49s UTC integration manifest
+vfio-upstream/for-linus 5715c4dd66a315515eedef3fc4cbe1bf4620f009
+	vfio/mdev: Synchronize device create/remove with parent removal
+vfio-upstream/next e6c5d727db0a86a3ff21aca6824aae87f3bc055f
+	Merge branches 'v5.4/vfio/alexey-tce-memory-free-v1', 'v5.4/vfio/connie-re-arrange-v2', 'v5.4/vfio/hexin-pci-reset-v3', 'v5.4/vfio/parav-mtty-uuid-v2' and 'v5.4/vfio/shameer-iova-list-v8' into v5.4/vfio/next
+origin/gvt-fixes eac4471d0882da14be652ef0a55b914145fab15a
+	drm/i915: Use after free in error path in intel_vgpu_create_workload()
+origin/gvt-next 220b65d8009dff397a112ee560c297299ba5e423
+	drm/i915/gvt: Double check batch buffer size after copy
+origin/gvt-next-fixes d28a1613356a53b516ce969a455645857d926abe
+	drm/i915/gvt: update RING_START reg of vGPU when the context is submitted to i915

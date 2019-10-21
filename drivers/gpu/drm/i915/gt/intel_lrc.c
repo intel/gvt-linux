@@ -252,13 +252,6 @@ static void mark_eio(struct i915_request *rq)
 	i915_request_mark_complete(rq);
 }
 
-static void mark_eio(struct i915_request *rq)
-{
-	if (!i915_request_signaled(rq))
-		dma_fence_set_error(&rq->fence, -EIO);
-	i915_request_mark_complete(rq);
-}
-
 static inline u32 intel_hws_preempt_address(struct intel_engine_cs *engine)
 {
 	return (i915_ggtt_offset(engine->status_page.vma) +

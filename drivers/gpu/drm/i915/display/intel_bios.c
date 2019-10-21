@@ -1399,6 +1399,7 @@ static enum port dvo_port_to_port(u8 dvo_port)
 		[PORT_D] = { DVO_PORT_HDMID, DVO_PORT_DPD, -1},
 		[PORT_E] = { DVO_PORT_CRT, DVO_PORT_HDMIE, DVO_PORT_DPE},
 		[PORT_F] = { DVO_PORT_HDMIF, DVO_PORT_DPF, -1},
+		[PORT_G] = { DVO_PORT_HDMIG, DVO_PORT_DPG, -1},
 	};
 	enum port port;
 	int i;
@@ -1625,7 +1626,7 @@ parse_general_definitions(struct drm_i915_private *dev_priv,
 		expected_size = 37;
 	} else if (bdb->version <= 215) {
 		expected_size = 38;
-	} else if (bdb->version <= 216) {
+	} else if (bdb->version <= 229) {
 		expected_size = 39;
 	} else {
 		expected_size = sizeof(*child);
@@ -2257,6 +2258,9 @@ enum aux_ch intel_bios_port_aux_ch(struct drm_i915_private *dev_priv,
 		break;
 	case DP_AUX_F:
 		aux_ch = AUX_CH_F;
+		break;
+	case DP_AUX_G:
+		aux_ch = AUX_CH_G;
 		break;
 	default:
 		MISSING_CASE(info->alternate_aux_channel);

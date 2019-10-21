@@ -277,6 +277,9 @@ static int intel_engine_setup(struct intel_gt *gt, enum intel_engine_id id)
 	BUILD_BUG_ON(MAX_ENGINE_CLASS >= BIT(GEN11_ENGINE_CLASS_WIDTH));
 	BUILD_BUG_ON(MAX_ENGINE_INSTANCE >= BIT(GEN11_ENGINE_INSTANCE_WIDTH));
 
+	if (GEM_DEBUG_WARN_ON(id >= ARRAY_SIZE(gt->engine)))
+		return -EINVAL;
+
 	if (GEM_DEBUG_WARN_ON(info->class > MAX_ENGINE_CLASS))
 		return -EINVAL;
 
@@ -293,6 +296,7 @@ static int intel_engine_setup(struct intel_gt *gt, enum intel_engine_id id)
 	BUILD_BUG_ON(BITS_PER_TYPE(engine->mask) < I915_NUM_ENGINES);
 
 	engine->id = id;
+	engine->legacy_idx = INVALID_ENGINE;
 	engine->mask = BIT(id);
 	engine->i915 = gt->i915;
 	engine->gt = gt;
@@ -328,6 +332,7 @@ static int intel_engine_setup(struct intel_gt *gt, enum intel_engine_id id)
 	intel_engine_sanitize_mmio(engine);
 
 	gt->engine_class[info->class][info->instance] = engine;
+	gt->engine[id] = engine;
 
 	intel_engine_add_user(engine);
 	gt->i915->engine[id] = engine;
@@ -736,6 +741,7 @@ intel_engine_init_active(struct intel_engine_cs *engine, unsigned int subclass)
 static struct intel_context *
 create_kernel_context(struct intel_engine_cs *engine)
 {
+	static struct lock_class_key kernel;
 	struct intel_context *ce;
 	int err;
 
@@ -750,6 +756,14 @@ create_kernel_context(struct intel_engine_cs *engine)
 		intel_context_put(ce);
 		return ERR_PTR(err);
 	}
+
+	/*
+	 * Give our perma-pinned kernel timelines a separate lockdep class,
+	 * so that we can use them from within the normal user timelines
+	 * should we need to inject GPU operations during their request
+	 * construction.
+	 */
+	lockdep_set_class(&ce->timeline->mutex, &kernel);
 
 	return ce;
 }
@@ -1040,6 +1054,25 @@ static bool ring_is_idle(struct intel_engine_cs *engine)
 	return idle;
 }
 
+void intel_engine_flush_submission(struct intel_engine_cs *engine)
+{
+	struct tasklet_struct *t = &engine->execlists.tasklet;
+
+	if (__tasklet_is_scheduled(t)) {
+		local_bh_disable();
+		if (tasklet_trylock(t)) {
+			/* Must wait for any GPU reset in progress. */
+			if (__tasklet_is_enabled(t))
+				t->func(t->data);
+			tasklet_unlock(t);
+		}
+		local_bh_enable();
+	}
+
+	/* Otherwise flush the tasklet if it was running on another cpu */
+	tasklet_unlock_wait(t);
+}
+
 /**
  * intel_engine_is_idle() - Report if the engine has finished process all work
  * @engine: the intel_engine_cs
@@ -1058,21 +1091,9 @@ bool intel_engine_is_idle(struct intel_engine_cs *engine)
 
 	/* Waiting to drain ELSP? */
 	if (execlists_active(&engine->execlists)) {
-		struct tasklet_struct *t = &engine->execlists.tasklet;
-
 		synchronize_hardirq(engine->i915->drm.pdev->irq);
 
-		local_bh_disable();
-		if (tasklet_trylock(t)) {
-			/* Must wait for any GPU reset in progress. */
-			if (__tasklet_is_enabled(t))
-				t->func(t->data);
-			tasklet_unlock(t);
-		}
-		local_bh_enable();
-
-		/* Otherwise flush the tasklet if it was on another cpu */
-		tasklet_unlock_wait(t);
+		intel_engine_flush_submission(engine);
 
 		if (execlists_active(&engine->execlists))
 			return false;
@@ -1102,7 +1123,7 @@ bool intel_engines_are_idle(struct intel_gt *gt)
 	if (!READ_ONCE(gt->awake))
 		return true;
 
-	for_each_engine(engine, gt->i915, id) {
+	for_each_engine(engine, gt, id) {
 		if (!intel_engine_is_idle(engine))
 			return false;
 	}
@@ -1115,7 +1136,7 @@ void intel_engines_reset_default_submission(struct intel_gt *gt)
 	struct intel_engine_cs *engine;
 	enum intel_engine_id id;
 
-	for_each_engine(engine, gt->i915, id)
+	for_each_engine(engine, gt, id)
 		engine->set_default_submission(engine);
 }
 
@@ -1225,6 +1246,17 @@ static struct intel_timeline *get_timeline(struct i915_request *rq)
 	return tl;
 }
 
+static const char *repr_timer(const struct timer_list *t)
+{
+	if (!READ_ONCE(t->expires))
+		return "inactive";
+
+	if (timer_pending(t))
+		return "active";
+
+	return "expired";
+}
+
 static void intel_engine_print_registers(struct intel_engine_cs *engine,
 					 struct drm_printer *m)
 {
@@ -1286,19 +1318,20 @@ static void intel_engine_print_registers(struct intel_engine_cs *engine,
 		unsigned int idx;
 		u8 read, write;
 
-		drm_printf(m, "\tExeclist status: 0x%08x %08x, entries %u\n",
-			   ENGINE_READ(engine, RING_EXECLIST_STATUS_LO),
-			   ENGINE_READ(engine, RING_EXECLIST_STATUS_HI),
-			   num_entries);
+		drm_printf(m, "\tExeclist tasklet queued? %s (%s), timeslice? %s\n",
+			   yesno(test_bit(TASKLET_STATE_SCHED,
+					  &engine->execlists.tasklet.state)),
+			   enableddisabled(!atomic_read(&engine->execlists.tasklet.count)),
+			   repr_timer(&engine->execlists.timer));
 
 		read = execlists->csb_head;
 		write = READ_ONCE(*execlists->csb_write);
 
-		drm_printf(m, "\tExeclist CSB read %d, write %d, tasklet queued? %s (%s)\n",
-			   read, write,
-			   yesno(test_bit(TASKLET_STATE_SCHED,
-					  &engine->execlists.tasklet.state)),
-			   enableddisabled(!atomic_read(&engine->execlists.tasklet.count)));
+		drm_printf(m, "\tExeclist status: 0x%08x %08x; CSB read:%d, write:%d, entries:%d\n",
+			   ENGINE_READ(engine, RING_EXECLIST_STATUS_LO),
+			   ENGINE_READ(engine, RING_EXECLIST_STATUS_HI),
+			   read, write, num_entries);
+
 		if (read >= num_entries)
 			read = 0;
 		if (write >= num_entries)
@@ -1456,10 +1489,10 @@ void intel_engine_dump(struct intel_engine_cs *engine,
 	spin_unlock_irqrestore(&engine->active.lock, flags);
 
 	drm_printf(m, "\tMMIO base:  0x%08x\n", engine->mmio_base);
-	wakeref = intel_runtime_pm_get_if_in_use(&engine->i915->runtime_pm);
+	wakeref = intel_runtime_pm_get_if_in_use(engine->uncore->rpm);
 	if (wakeref) {
 		intel_engine_print_registers(engine, m);
-		intel_runtime_pm_put(&engine->i915->runtime_pm, wakeref);
+		intel_runtime_pm_put(engine->uncore->rpm, wakeref);
 	} else {
 		drm_printf(m, "\tDevice is asleep; skipping register dump\n");
 	}

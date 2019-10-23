@@ -52,6 +52,7 @@ int __read_mostly sysctl_hung_task_warnings = 10;
 
 static int __read_mostly did_panic;
 static bool hung_task_show_lock;
+static bool hung_task_show_state;
 static bool hung_task_call_panic;
 
 static struct task_struct *watchdog_task;
@@ -117,7 +118,10 @@ static void check_hung_task(struct task_struct *t, unsigned long timeout)
 	if (sysctl_hung_task_panic) {
 		console_verbose();
 		hung_task_show_lock = true;
+		hung_task_show_state = true;
 		hung_task_call_panic = true;
+	} else {
+		add_taint(TAINT_WARN, LOCKDEP_STILL_OK);
 	}
 
 	/*
@@ -137,6 +141,7 @@ static void check_hung_task(struct task_struct *t, unsigned long timeout)
 			" disables this message.\n");
 		sched_show_task(t);
 		hung_task_show_lock = true;
+		hung_task_show_state = true;
 	}
 
 	touch_nmi_watchdog();
@@ -184,6 +189,7 @@ static void check_hung_uninterruptible_tasks(unsigned long timeout)
 		return;
 
 	hung_task_show_lock = false;
+	hung_task_show_state = false;
 	rcu_read_lock();
 	for_each_process_thread(g, t) {
 		if (!max_count--)
@@ -201,6 +207,10 @@ static void check_hung_uninterruptible_tasks(unsigned long timeout)
 	rcu_read_unlock();
 	if (hung_task_show_lock)
 		debug_show_all_locks();
+	if (hung_task_show_state) {
+		show_state();
+		show_workqueue_state();
+	}
 	if (hung_task_call_panic) {
 		trigger_all_cpu_backtrace();
 		panic("hung_task: blocked tasks");

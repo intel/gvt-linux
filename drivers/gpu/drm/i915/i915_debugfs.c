@@ -1011,92 +1011,6 @@ static int i915_frequency_info(struct seq_file *m, void *unused)
 	return ret;
 }
 
-static void i915_instdone_info(struct drm_i915_private *dev_priv,
-			       struct seq_file *m,
-			       struct intel_instdone *instdone)
-{
-	const struct sseu_dev_info *sseu = &RUNTIME_INFO(dev_priv)->sseu;
-	int slice;
-	int subslice;
-
-	seq_printf(m, "\t\tINSTDONE: 0x%08x\n",
-		   instdone->instdone);
-
-	if (INTEL_GEN(dev_priv) <= 3)
-		return;
-
-	seq_printf(m, "\t\tSC_INSTDONE: 0x%08x\n",
-		   instdone->slice_common);
-
-	if (INTEL_GEN(dev_priv) <= 6)
-		return;
-
-	for_each_instdone_slice_subslice(dev_priv, sseu, slice, subslice)
-		seq_printf(m, "\t\tSAMPLER_INSTDONE[%d][%d]: 0x%08x\n",
-			   slice, subslice, instdone->sampler[slice][subslice]);
-
-	for_each_instdone_slice_subslice(dev_priv, sseu, slice, subslice)
-		seq_printf(m, "\t\tROW_INSTDONE[%d][%d]: 0x%08x\n",
-			   slice, subslice, instdone->row[slice][subslice]);
-}
-
-static int i915_hangcheck_info(struct seq_file *m, void *unused)
-{
-	struct drm_i915_private *i915 = node_to_i915(m->private);
-	struct intel_gt *gt = &i915->gt;
-	struct intel_engine_cs *engine;
-	intel_wakeref_t wakeref;
-	enum intel_engine_id id;
-
-	seq_printf(m, "Reset flags: %lx\n", gt->reset.flags);
-	if (test_bit(I915_WEDGED, &gt->reset.flags))
-		seq_puts(m, "\tWedged\n");
-	if (test_bit(I915_RESET_BACKOFF, &gt->reset.flags))
-		seq_puts(m, "\tDevice (global) reset in progress\n");
-
-	if (!i915_modparams.enable_hangcheck) {
-		seq_puts(m, "Hangcheck disabled\n");
-		return 0;
-	}
-
-	if (timer_pending(&gt->hangcheck.work.timer))
-		seq_printf(m, "Hangcheck active, timer fires in %dms\n",
-			   jiffies_to_msecs(gt->hangcheck.work.timer.expires -
-					    jiffies));
-	else if (delayed_work_pending(&gt->hangcheck.work))
-		seq_puts(m, "Hangcheck active, work pending\n");
-	else
-		seq_puts(m, "Hangcheck inactive\n");
-
-	seq_printf(m, "GT active? %s\n", yesno(gt->awake));
-
-	with_intel_runtime_pm(&i915->runtime_pm, wakeref) {
-		for_each_engine(engine, i915, id) {
-			struct intel_instdone instdone;
-
-			seq_printf(m, "%s: %d ms ago\n",
-				   engine->name,
-				   jiffies_to_msecs(jiffies -
-						    engine->hangcheck.action_timestamp));
-
-			seq_printf(m, "\tACTHD = 0x%08llx [current 0x%08llx]\n",
-				   (long long)engine->hangcheck.acthd,
-				   intel_engine_get_active_head(engine));
-
-			intel_engine_get_instdone(engine, &instdone);
-
-			seq_puts(m, "\tinstdone read =\n");
-			i915_instdone_info(i915, m, &instdone);
-
-			seq_puts(m, "\tinstdone accu =\n");
-			i915_instdone_info(i915, m,
-					   &engine->hangcheck.instdone);
-		}
-	}
-
-	return 0;
-}
-
 static int ironlake_drpc_info(struct seq_file *m)
 {
 	struct drm_i915_private *i915 = node_to_i915(m->private);
@@ -1866,8 +1780,8 @@ static void i915_guc_log_info(struct seq_file *m,
 	struct intel_guc_log *log = &dev_priv->gt.uc.guc.log;
 	enum guc_log_buffer_type type;
 
-	if (!intel_guc_log_relay_enabled(log)) {
-		seq_puts(m, "GuC log relay disabled\n");
+	if (!intel_guc_log_relay_created(log)) {
+		seq_puts(m, "GuC log relay not created\n");
 		return;
 	}
 
@@ -2054,9 +1968,23 @@ i915_guc_log_relay_write(struct file *filp,
 			 loff_t *ppos)
 {
 	struct intel_guc_log *log = filp->private_data;
+	int val;
+	int ret;
 
-	intel_guc_log_relay_flush(log);
-	return cnt;
+	ret = kstrtoint_from_user(ubuf, cnt, 0, &val);
+	if (ret < 0)
+		return ret;
+
+	/*
+	 * Enable and start the guc log relay on value of 1.
+	 * Flush log relay for any other value.
+	 */
+	if (val == 1)
+		ret = intel_guc_log_relay_start(log);
+	else
+		intel_guc_log_relay_flush(log);
+
+	return ret ?: cnt;
 }
 
 static int i915_guc_log_relay_release(struct inode *inode, struct file *file)
@@ -3648,16 +3576,10 @@ i915_drop_caches_get(void *data, u64 *val)
 
 	return 0;
 }
-
 static int
-i915_drop_caches_set(void *data, u64 val)
+gt_drop_caches(struct intel_gt *gt, u64 val)
 {
-	struct drm_i915_private *i915 = data;
-	struct intel_gt *gt = &i915->gt;
 	int ret;
-
-	DRM_DEBUG("Dropping caches: 0x%08llx [0x%08llx]\n",
-		  val, val & DROP_ALL);
 
 	if (val & DROP_RESET_ACTIVE &&
 	    wait_for(intel_engines_are_idle(gt), I915_IDLE_ENGINES_TIMEOUT))
@@ -3680,6 +3602,22 @@ i915_drop_caches_set(void *data, u64 val)
 
 	if (val & DROP_RESET_ACTIVE && intel_gt_terminally_wedged(gt))
 		intel_gt_handle_error(gt, ALL_ENGINES, 0, NULL);
+
+	return 0;
+}
+
+static int
+i915_drop_caches_set(void *data, u64 val)
+{
+	struct drm_i915_private *i915 = data;
+	int ret;
+
+	DRM_DEBUG("Dropping caches: 0x%08llx [0x%08llx]\n",
+		  val, val & DROP_ALL);
+
+	ret = gt_drop_caches(&i915->gt, val);
+	if (ret)
+		return ret;
 
 	fs_reclaim_acquire(GFP_KERNEL);
 	if (val & DROP_BOUND)
@@ -4339,7 +4277,6 @@ static const struct drm_info_list i915_debugfs_list[] = {
 	{"i915_guc_stage_pool", i915_guc_stage_pool, 0},
 	{"i915_huc_load_status", i915_huc_load_status_info, 0},
 	{"i915_frequency_info", i915_frequency_info, 0},
-	{"i915_hangcheck_info", i915_hangcheck_info, 0},
 	{"i915_drpc_info", i915_drpc_info, 0},
 	{"i915_ring_freq_table", i915_ring_freq_table, 0},
 	{"i915_frontbuffer_tracking", i915_frontbuffer_tracking, 0},
@@ -4566,7 +4503,7 @@ static int i915_dsc_fec_support_show(struct seq_file *m, void *data)
 		intel_dp = enc_to_intel_dp(&intel_attached_encoder(connector)->base);
 		crtc_state = to_intel_crtc_state(crtc->state);
 		seq_printf(m, "DSC_Enabled: %s\n",
-			   yesno(crtc_state->dsc_params.compression_enable));
+			   yesno(crtc_state->dsc.compression_enable));
 		seq_printf(m, "DSC_Sink_Support: %s\n",
 			   yesno(drm_dp_sink_supports_dsc(intel_dp->dsc_dpcd)));
 		seq_printf(m, "Force_DSC_Enable: %s\n",

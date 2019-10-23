@@ -20,6 +20,8 @@
 
 struct drm_printer;
 
+struct intel_gt;
+
 /* Early gen2 devices have a cacheline of just 32 bytes, using 64 is overkill,
  * but keeps the logic simple. Indeed, the whole purpose of this macro is just
  * to give some inclination as to some of the magic values used in the various
@@ -89,38 +91,6 @@ struct drm_printer;
 /* seqno size is actually only a uint32, but since we plan to use MI_FLUSH_DW to
  * do the writes, and that must have qw aligned offsets, simply pretend it's 8b.
  */
-enum intel_engine_hangcheck_action {
-	ENGINE_IDLE = 0,
-	ENGINE_WAIT,
-	ENGINE_ACTIVE_SEQNO,
-	ENGINE_ACTIVE_HEAD,
-	ENGINE_ACTIVE_SUBUNITS,
-	ENGINE_WAIT_KICK,
-	ENGINE_DEAD,
-};
-
-static inline const char *
-hangcheck_action_to_str(const enum intel_engine_hangcheck_action a)
-{
-	switch (a) {
-	case ENGINE_IDLE:
-		return "idle";
-	case ENGINE_WAIT:
-		return "wait";
-	case ENGINE_ACTIVE_SEQNO:
-		return "active seqno";
-	case ENGINE_ACTIVE_HEAD:
-		return "active head";
-	case ENGINE_ACTIVE_SUBUNITS:
-		return "active subunits";
-	case ENGINE_WAIT_KICK:
-		return "wait kick";
-	case ENGINE_DEAD:
-		return "dead";
-	}
-
-	return "unknown";
-}
 
 static inline unsigned int
 execlists_num_ports(const struct intel_engine_execlists * const execlists)
@@ -322,10 +292,10 @@ __intel_ring_space(unsigned int head, unsigned int tail, unsigned int size)
 	return (head - tail - CACHELINE_BYTES) & (size - 1);
 }
 
-int intel_engines_init_mmio(struct drm_i915_private *i915);
-int intel_engines_setup(struct drm_i915_private *i915);
-int intel_engines_init(struct drm_i915_private *i915);
-void intel_engines_cleanup(struct drm_i915_private *i915);
+int intel_engines_init_mmio(struct intel_gt *gt);
+int intel_engines_setup(struct intel_gt *gt);
+int intel_engines_init(struct intel_gt *gt);
+void intel_engines_cleanup(struct intel_gt *gt);
 
 int intel_engine_init_common(struct intel_engine_cs *engine);
 void intel_engine_cleanup_common(struct intel_engine_cs *engine);
@@ -524,5 +494,14 @@ void intel_engine_init_active(struct intel_engine_cs *engine,
 #define ENGINE_PHYSICAL	0
 #define ENGINE_MOCK	1
 #define ENGINE_VIRTUAL	2
+
+static inline bool
+intel_engine_has_preempt_reset(const struct intel_engine_cs *engine)
+{
+	if (!CONFIG_DRM_I915_PREEMPT_TIMEOUT)
+		return 0;
+
+	return intel_engine_has_preemption(engine);
+}
 
 #endif /* _INTEL_RINGBUFFER_H_ */

@@ -14863,7 +14863,7 @@ static void intel_plane_unpin_fb(struct intel_plane_state *old_plane_state)
 static void fb_obj_bump_render_priority(struct drm_i915_gem_object *obj)
 {
 	struct i915_sched_attr attr = {
-		.priority = I915_PRIORITY_DISPLAY,
+		.priority = I915_USER_PRIORITY(I915_PRIORITY_DISPLAY),
 	};
 
 	i915_gem_object_wait_priority(obj, 0, &attr);
@@ -16293,6 +16293,21 @@ intel_mode_valid(struct drm_device *dev,
 	    mode->vsync_end > vtotal_max ||
 	    mode->vtotal > vtotal_max)
 		return MODE_V_ILLEGAL;
+
+	if (INTEL_GEN(dev_priv) >= 5) {
+		if (mode->hdisplay < 64 ||
+		    mode->htotal - mode->hdisplay < 32)
+			return MODE_H_ILLEGAL;
+
+		if (mode->vtotal - mode->vdisplay < 5)
+			return MODE_V_ILLEGAL;
+	} else {
+		if (mode->htotal - mode->hdisplay < 32)
+			return MODE_H_ILLEGAL;
+
+		if (mode->vtotal - mode->vdisplay < 3)
+			return MODE_V_ILLEGAL;
+	}
 
 	return MODE_OK;
 }

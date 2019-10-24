@@ -1,30 +1,10 @@
-drm drm-fixes 7d194c2100ad2a6dded545887d02754948ca5241
-	Linux 5.4-rc4
-drm-misc drm-misc-fixes 29cd13cfd7624726d9e6becbae9aa419ef35af7f
-	drm/v3d: Fix memory leak in v3d_submit_cl_ioctl
-drm-intel drm-intel-fixes 7d194c2100ad2a6dded545887d02754948ca5241
-	Linux 5.4-rc4
-drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
-	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
-drm drm-next 2e79e22e092acd55da0b2db066e4826d7d152c41
-	Merge v5.4-rc4 into drm-next
-drm-misc drm-misc-next-fixes d7d44b6fe40a98e960be92ea8617954c2596d140
-	drm/tilcdc: include linux/pinctrl/consumer.h again
-drm-intel drm-intel-next-fixes 458863e08e13ecf22b9ba1ee6d4baba0ce9990ea
-	drm/i915: Mark contents as dirty on a write fault
-drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
-	Linux 4.14-rc1
-drm-misc drm-misc-next 9a42c7c647a9ad0f7ebb147a52eda3dcb7c84292
-	drm/tegra: Move drm_dp_link helpers to Tegra DRM
-drm-intel drm-intel-next-queued 8eb8e322ec07392e8c8008437216c38c310ff6c7
-	drm/i915/gvt: fix dead locking in early workload shadow
-drm-intel drm-intel-next ce53908bba6fa6e905d8fe81da4591d3e7a65878
-	drm/i915: Update DRIVER_DATE to 20191021
-drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
-	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
-sound-upstream for-linus ba8bf0967a154796be15c4983603aad0b05c3138
-	ALSA: usb-audio: Fix copy&paste error in the validator
-sound-upstream for-next 46b4bff6572b0552b1ee062043621e4b252638d8
-	PCI: Fix missing inline for pci_pr3_present()
-drm-intel topic/core-for-CI d31a39a7f1c13a611258a920bcb95b1fa10a95c7
-	HAX iommu/intel: Ignore igfx_off
+drm-tip/drm-tip a62b1c4e7739c6777d51e7b2d66406b935131451
+	drm-tip: 2019y-10m-23d-22h-55m-47s UTC integration manifest
+vfio-upstream/for-linus 95f89e090618efca63918b658c2002e57d393036
+	vfio/type1: Initialize resv_msi_base
+vfio-upstream/next 026948f01eac4dda130aa623b7414375633fe7c1
+	vfio/type1: remove hugepage checks in is_invalid_reserved_pfn()
+origin/gvt-fixes eac4471d0882da14be652ef0a55b914145fab15a
+	drm/i915: Use after free in error path in intel_vgpu_create_workload()
+origin/gvt-next 220b65d8009dff397a112ee560c297299ba5e423
+	drm/i915/gvt: Double check batch buffer size after copy

@@ -1999,7 +1999,7 @@ intel_dp_compute_link_config_wide(struct intel_dp *intel_dp,
 				  struct intel_crtc_state *pipe_config,
 				  const struct link_config_limits *limits)
 {
-	struct drm_display_mode *adjusted_mode = &pipe_config->base.adjusted_mode;
+	struct drm_display_mode *adjusted_mode = &pipe_config->hw.adjusted_mode;
 	int bpp, clock, lane_count;
 	int mode_rate, link_clock, link_avail;
 
@@ -2053,7 +2053,7 @@ static int intel_dp_dsc_compute_config(struct intel_dp *intel_dp,
 {
 	struct intel_digital_port *dig_port = dp_to_dig_port(intel_dp);
 	struct drm_i915_private *dev_priv = to_i915(dig_port->base.base.dev);
-	struct drm_display_mode *adjusted_mode = &pipe_config->base.adjusted_mode;
+	struct drm_display_mode *adjusted_mode = &pipe_config->hw.adjusted_mode;
 	u8 dsc_max_bpc;
 	int pipe_bpp;
 	int ret;
@@ -2164,7 +2164,7 @@ intel_dp_compute_link_config(struct intel_encoder *encoder,
 			     struct intel_crtc_state *pipe_config,
 			     struct drm_connector_state *conn_state)
 {
-	struct drm_display_mode *adjusted_mode = &pipe_config->base.adjusted_mode;
+	struct drm_display_mode *adjusted_mode = &pipe_config->hw.adjusted_mode;
 	struct intel_dp *intel_dp = enc_to_intel_dp(&encoder->base);
 	struct link_config_limits limits;
 	int common_len;
@@ -2252,8 +2252,8 @@ intel_dp_ycbcr420_config(struct intel_dp *intel_dp,
 {
 	const struct drm_display_info *info = &connector->display_info;
 	const struct drm_display_mode *adjusted_mode =
-		&crtc_state->base.adjusted_mode;
-	struct intel_crtc *crtc = to_intel_crtc(crtc_state->base.crtc);
+		&crtc_state->hw.adjusted_mode;
+	struct intel_crtc *crtc = to_intel_crtc(crtc_state->uapi.crtc);
 	int ret;
 
 	if (!drm_mode_is_420_only(info, adjusted_mode) ||
@@ -2281,7 +2281,7 @@ bool intel_dp_limited_color_range(const struct intel_crtc_state *crtc_state,
 	const struct intel_digital_connector_state *intel_conn_state =
 		to_intel_digital_connector_state(conn_state);
 	const struct drm_display_mode *adjusted_mode =
-		&crtc_state->base.adjusted_mode;
+		&crtc_state->hw.adjusted_mode;
 
 	/*
 	 * Our YCbCr output is always limited range.
@@ -2314,11 +2314,11 @@ intel_dp_compute_config(struct intel_encoder *encoder,
 			struct drm_connector_state *conn_state)
 {
 	struct drm_i915_private *dev_priv = to_i915(encoder->base.dev);
-	struct drm_display_mode *adjusted_mode = &pipe_config->base.adjusted_mode;
+	struct drm_display_mode *adjusted_mode = &pipe_config->hw.adjusted_mode;
 	struct intel_dp *intel_dp = enc_to_intel_dp(&encoder->base);
 	struct intel_lspcon *lspcon = enc_to_intel_lspcon(&encoder->base);
 	enum port port = encoder->port;
-	struct intel_crtc *intel_crtc = to_intel_crtc(pipe_config->base.crtc);
+	struct intel_crtc *intel_crtc = to_intel_crtc(pipe_config->uapi.crtc);
 	struct intel_connector *intel_connector = intel_dp->attached_connector;
 	struct intel_digital_connector_state *intel_conn_state =
 		to_intel_digital_connector_state(conn_state);
@@ -2436,8 +2436,8 @@ static void intel_dp_prepare(struct intel_encoder *encoder,
 	struct drm_i915_private *dev_priv = to_i915(encoder->base.dev);
 	struct intel_dp *intel_dp = enc_to_intel_dp(&encoder->base);
 	enum port port = encoder->port;
-	struct intel_crtc *crtc = to_intel_crtc(pipe_config->base.crtc);
-	const struct drm_display_mode *adjusted_mode = &pipe_config->base.adjusted_mode;
+	struct intel_crtc *crtc = to_intel_crtc(pipe_config->uapi.crtc);
+	const struct drm_display_mode *adjusted_mode = &pipe_config->hw.adjusted_mode;
 
 	intel_dp_set_link_params(intel_dp, pipe_config->port_clock,
 				 pipe_config->lane_count,
@@ -3034,7 +3034,7 @@ static void assert_edp_pll(struct drm_i915_private *dev_priv, bool state)
 static void ironlake_edp_pll_on(struct intel_dp *intel_dp,
 				const struct intel_crtc_state *pipe_config)
 {
-	struct intel_crtc *crtc = to_intel_crtc(pipe_config->base.crtc);
+	struct intel_crtc *crtc = to_intel_crtc(pipe_config->uapi.crtc);
 	struct drm_i915_private *dev_priv = to_i915(crtc->base.dev);
 
 	assert_pipe_disabled(dev_priv, crtc->pipe);
@@ -3074,7 +3074,7 @@ static void ironlake_edp_pll_on(struct intel_dp *intel_dp,
 static void ironlake_edp_pll_off(struct intel_dp *intel_dp,
 				 const struct intel_crtc_state *old_crtc_state)
 {
-	struct intel_crtc *crtc = to_intel_crtc(old_crtc_state->base.crtc);
+	struct intel_crtc *crtc = to_intel_crtc(old_crtc_state->uapi.crtc);
 	struct drm_i915_private *dev_priv = to_i915(crtc->base.dev);
 
 	assert_pipe_disabled(dev_priv, crtc->pipe);
@@ -3234,7 +3234,7 @@ static void intel_dp_get_config(struct intel_encoder *encoder,
 	struct intel_dp *intel_dp = enc_to_intel_dp(&encoder->base);
 	u32 tmp, flags = 0;
 	enum port port = encoder->port;
-	struct intel_crtc *crtc = to_intel_crtc(pipe_config->base.crtc);
+	struct intel_crtc *crtc = to_intel_crtc(pipe_config->uapi.crtc);
 
 	if (encoder->type == INTEL_OUTPUT_EDP)
 		pipe_config->output_types |= BIT(INTEL_OUTPUT_EDP);
@@ -3269,7 +3269,7 @@ static void intel_dp_get_config(struct intel_encoder *encoder,
 			flags |= DRM_MODE_FLAG_NVSYNC;
 	}
 
-	pipe_config->base.adjusted_mode.flags |= flags;
+	pipe_config->hw.adjusted_mode.flags |= flags;
 
 	if (IS_G4X(dev_priv) && tmp & DP_COLOR_RANGE_16_235)
 		pipe_config->limited_color_range = true;
@@ -3286,7 +3286,7 @@ static void intel_dp_get_config(struct intel_encoder *encoder,
 			pipe_config->port_clock = 270000;
 	}
 
-	pipe_config->base.adjusted_mode.crtc_clock =
+	pipe_config->hw.adjusted_mode.crtc_clock =
 		intel_dotclock_calculate(pipe_config->port_clock,
 					 &pipe_config->dp_m_n);
 
@@ -3501,7 +3501,7 @@ static void intel_enable_dp(struct intel_encoder *encoder,
 {
 	struct drm_i915_private *dev_priv = to_i915(encoder->base.dev);
 	struct intel_dp *intel_dp = enc_to_intel_dp(&encoder->base);
-	struct intel_crtc *crtc = to_intel_crtc(pipe_config->base.crtc);
+	struct intel_crtc *crtc = to_intel_crtc(pipe_config->uapi.crtc);
 	u32 dp_reg = I915_READ(intel_dp->output_reg);
 	enum pipe pipe = crtc->pipe;
 	intel_wakeref_t wakeref;
@@ -3634,7 +3634,7 @@ static void vlv_init_panel_power_sequencer(struct intel_encoder *encoder,
 {
 	struct drm_i915_private *dev_priv = to_i915(encoder->base.dev);
 	struct intel_dp *intel_dp = enc_to_intel_dp(&encoder->base);
-	struct intel_crtc *crtc = to_intel_crtc(crtc_state->base.crtc);
+	struct intel_crtc *crtc = to_intel_crtc(crtc_state->uapi.crtc);
 
 	lockdep_assert_held(&dev_priv->pps_mutex);
 
@@ -4156,7 +4156,7 @@ intel_dp_link_down(struct intel_encoder *encoder,
 {
 	struct drm_i915_private *dev_priv = to_i915(encoder->base.dev);
 	struct intel_dp *intel_dp = enc_to_intel_dp(&encoder->base);
-	struct intel_crtc *crtc = to_intel_crtc(old_crtc_state->base.crtc);
+	struct intel_crtc *crtc = to_intel_crtc(old_crtc_state->uapi.crtc);
 	enum port port = encoder->port;
 	u32 DP = intel_dp->DP;
 
@@ -5079,7 +5079,7 @@ int intel_dp_retrain_link(struct intel_encoder *encoder,
 
 	WARN_ON(!intel_crtc_has_dp_encoder(crtc_state));
 
-	if (!crtc_state->base.active)
+	if (!crtc_state->hw.active)
 		return 0;
 
 	if (conn_state->commit &&
@@ -6914,7 +6914,7 @@ static void intel_dp_set_drrs_state(struct drm_i915_private *dev_priv,
 				    int refresh_rate)
 {
 	struct intel_dp *intel_dp = dev_priv->drrs.dp;
-	struct intel_crtc *intel_crtc = to_intel_crtc(crtc_state->base.crtc);
+	struct intel_crtc *intel_crtc = to_intel_crtc(crtc_state->uapi.crtc);
 	enum drrs_refresh_rate_type index = DRRS_HIGH_RR;
 
 	if (refresh_rate <= 0) {
@@ -6947,7 +6947,7 @@ static void intel_dp_set_drrs_state(struct drm_i915_private *dev_priv,
 		return;
 	}
 
-	if (!crtc_state->base.active) {
+	if (!crtc_state->hw.active) {
 		DRM_DEBUG_KMS("eDP encoder disabled. CRTC not Active\n");
 		return;
 	}

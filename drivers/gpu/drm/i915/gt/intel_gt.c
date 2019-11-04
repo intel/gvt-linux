@@ -25,15 +25,18 @@ void intel_gt_init_early(struct intel_gt *gt, struct drm_i915_private *i915)
 
 	intel_gt_init_reset(gt);
 	intel_gt_init_requests(gt);
+	intel_gt_init_timelines(gt);
 	intel_gt_pm_init_early(gt);
 
 	intel_rps_init_early(&gt->rps);
 	intel_uc_init_early(&gt->uc);
 }
 
-void intel_gt_init_hw_early(struct drm_i915_private *i915)
+void intel_gt_init_hw_early(struct intel_gt *gt, struct i915_ggtt *ggtt)
 {
-	i915->gt.ggtt = &i915->ggtt;
+	gt->ggtt = ggtt;
+
+	intel_gt_sanitize(gt, false);
 }
 
 static void init_unused_ring(struct intel_gt *gt, u32 base)
@@ -395,4 +398,5 @@ void intel_gt_driver_late_release(struct intel_gt *gt)
 {
 	intel_uc_driver_late_release(&gt->uc);
 	intel_gt_fini_reset(gt);
+	intel_gt_fini_timelines(gt);
 }

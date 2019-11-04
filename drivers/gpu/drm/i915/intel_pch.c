@@ -52,7 +52,8 @@ intel_pch_type(const struct drm_i915_private *dev_priv, unsigned short id)
 		return PCH_SPT;
 	case INTEL_PCH_SPT_LP_DEVICE_ID_TYPE:
 		DRM_DEBUG_KMS("Found SunrisePoint LP PCH\n");
-		WARN_ON(!IS_SKYLAKE(dev_priv) && !IS_KABYLAKE(dev_priv));
+		WARN_ON(!IS_SKYLAKE(dev_priv) && !IS_KABYLAKE(dev_priv) &&
+			!IS_COFFEELAKE(dev_priv));
 		return PCH_SPT;
 	case INTEL_PCH_KBP_DEVICE_ID_TYPE:
 		DRM_DEBUG_KMS("Found Kaby Lake PCH (KBP)\n");
@@ -61,6 +62,7 @@ intel_pch_type(const struct drm_i915_private *dev_priv, unsigned short id)
 		/* KBP is SPT compatible */
 		return PCH_SPT;
 	case INTEL_PCH_CNP_DEVICE_ID_TYPE:
+	case INTEL_PCH_CNP2_DEVICE_ID_TYPE:
 		DRM_DEBUG_KMS("Found Cannon Lake PCH (CNP)\n");
 		WARN_ON(!IS_CANNONLAKE(dev_priv) && !IS_COFFEELAKE(dev_priv));
 		return PCH_CNP;
@@ -79,7 +81,6 @@ intel_pch_type(const struct drm_i915_private *dev_priv, unsigned short id)
 		WARN_ON(!IS_ICELAKE(dev_priv));
 		return PCH_ICP;
 	case INTEL_PCH_MCC_DEVICE_ID_TYPE:
-	case INTEL_PCH_MCC2_DEVICE_ID_TYPE:
 		DRM_DEBUG_KMS("Found Mule Creek Canyon PCH\n");
 		WARN_ON(!IS_ELKHARTLAKE(dev_priv));
 		return PCH_MCC;
@@ -87,6 +88,11 @@ intel_pch_type(const struct drm_i915_private *dev_priv, unsigned short id)
 		DRM_DEBUG_KMS("Found Tiger Lake LP PCH\n");
 		WARN_ON(!IS_TIGERLAKE(dev_priv));
 		return PCH_TGP;
+	case INTEL_PCH_JSP_DEVICE_ID_TYPE:
+	case INTEL_PCH_JSP2_DEVICE_ID_TYPE:
+		DRM_DEBUG_KMS("Found Jasper Lake PCH\n");
+		WARN_ON(!IS_ELKHARTLAKE(dev_priv));
+		return PCH_JSP;
 	default:
 		return PCH_NONE;
 	}

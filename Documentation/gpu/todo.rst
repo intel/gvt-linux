@@ -171,21 +171,12 @@ Contact: Maintainer of the driver you plan to convert
 
 Level: Intermediate
 
-Convert drivers to use drm_fb_helper_fbdev_setup/teardown()
------------------------------------------------------------
+Convert drivers to use drm_fbdev_generic_setup()
+------------------------------------------------
 
-Most drivers can use drm_fb_helper_fbdev_setup() except maybe:
-
-- amdgpu which has special logic to decide whether to call
-  drm_helper_disable_unused_functions()
-
-- armada which isn't atomic and doesn't call
-  drm_helper_disable_unused_functions()
-
-- i915 which calls drm_fb_helper_initial_config() in a worker
-
-Drivers that use drm_framebuffer_remove() to clean up the fbdev framebuffer can
-probably use drm_fb_helper_fbdev_teardown().
+Most drivers can use drm_fbdev_generic_setup(). Driver have to implement
+atomic modesetting and GEM vmap support. Current generic fbdev emulation
+expects the framebuffer in system memory (or system-like memory).
 
 Contact: Maintainer of the driver you plan to convert
 
@@ -328,8 +319,8 @@ drm_fb_helper tasks
   these igt tests need to be fixed: kms_fbcon_fbt@psr and
   kms_fbcon_fbt@psr-suspend.
 
-- The max connector argument for drm_fb_helper_init() and
-  drm_fb_helper_fbdev_setup() isn't used anymore and can be removed.
+- The max connector argument for drm_fb_helper_init() isn't used anymore and
+  can be removed.
 
 - The helper doesn't keep an array of connectors anymore so these can be
   removed: drm_fb_helper_single_add_all_connectors(),
@@ -348,6 +339,23 @@ connector register/unregister fixes
   registered when calling drm_dp_aux_register. Fix this by instead calling
   drm_dp_aux_init, and moving the actual registering into a late_register
   callback as recommended in the kerneldoc.
+
+Level: Intermediate
+
+Remove load/unload callbacks from all non-DRIVER_LEGACY drivers
+---------------------------------------------------------------
+
+The load/unload callbacks in struct &drm_driver are very much midlayers, plus
+for historical reasons they get the ordering wrong (and we can't fix that)
+between setting up the &drm_driver structure and calling drm_dev_register().
+
+- Rework drivers to no longer use the load/unload callbacks, directly coding the
+  load/unload sequence into the driver's probe function.
+
+- Once all non-DRIVER_LEGACY drivers are converted, disallow the load/unload
+  callbacks for all modern drivers.
+
+Contact: Daniel Vetter
 
 Level: Intermediate
 

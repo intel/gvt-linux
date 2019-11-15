@@ -1029,9 +1029,9 @@ i915_error_object_create(struct drm_i915_private *i915,
 		for_each_sgt_daddr(dma, iter, vma->pages) {
 			void __iomem *s;
 
-			s = io_mapping_map_atomic_wc(&mem->iomap, dma);
+			s = io_mapping_map_wc(&mem->iomap, dma, PAGE_SIZE);
 			ret = compress_page(compress, (void __force *)s, dst);
-			io_mapping_unmap_atomic(s);
+			io_mapping_unmap(s);
 			if (ret)
 				break;
 		}
@@ -1043,9 +1043,9 @@ i915_error_object_create(struct drm_i915_private *i915,
 
 			drm_clflush_pages(&page, 1);
 
-			s = kmap_atomic(page);
+			s = kmap(page);
 			ret = compress_page(compress, s, dst);
-			kunmap_atomic(s);
+			kunmap(s);
 
 			drm_clflush_pages(&page, 1);
 
@@ -1230,10 +1230,7 @@ static void record_request(const struct i915_request *request,
 	erq->start = i915_ggtt_offset(request->ring->vma);
 	erq->head = request->head;
 	erq->tail = request->tail;
-
-	rcu_read_lock();
 	erq->pid = ctx->pid ? pid_nr(ctx->pid) : 0;
-	rcu_read_unlock();
 }
 
 static void engine_record_requests(struct intel_engine_cs *engine,

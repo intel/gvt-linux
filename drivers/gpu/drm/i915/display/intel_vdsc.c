@@ -33,7 +33,7 @@ enum COLUMN_INDEX_BPC {
 #define DSC_SUPPORTED_VERSION_MIN		1
 
 /* From DSC_v1.11 spec, rc_parameter_Set syntax element typically constant */
-static u16 rc_buf_thresh[] = {
+static const u16 rc_buf_thresh[] = {
 	896, 1792, 2688, 3584, 4480, 5376, 6272, 6720, 7168, 7616,
 	7744, 7872, 8000, 8064
 };
@@ -53,7 +53,7 @@ struct rc_parameters {
  * Selected Rate Control Related Parameter Recommended Values
  * from DSC_v1.11 spec & C Model release: DSC_model_20161212
  */
-static struct rc_parameters rc_params[][MAX_COLUMN_INDEX] = {
+static const struct rc_parameters rc_parameters[][MAX_COLUMN_INDEX] = {
 {
 	/* 6BPP/8BPC */
 	{ 768, 15, 6144, 3, 13, 11, 11, {
@@ -319,33 +319,30 @@ static int get_column_index_for_rc_params(u8 bits_per_component)
 	}
 }
 
-int intel_dp_compute_dsc_params(struct intel_dp *intel_dp,
-				struct intel_crtc_state *pipe_config)
+static const struct rc_parameters *get_rc_params(u16 compressed_bpp,
+						 u8 bits_per_component)
 {
+	int row_index, column_index;
+
+	row_index = get_row_index_for_rc_params(compressed_bpp);
+	if (row_index < 0)
+		return NULL;
+
+	column_index = get_column_index_for_rc_params(bits_per_component);
+	if (column_index < 0)
+		return NULL;
+
+	return &rc_parameters[row_index][column_index];
+}
+
+/* Values filled from DSC Sink DPCD */
+static int intel_dsc_dp_compute_params(struct intel_encoder *encoder,
+				       struct intel_crtc_state *pipe_config)
+{
+	struct intel_dp *intel_dp = enc_to_intel_dp(&encoder->base);
 	struct drm_dsc_config *vdsc_cfg = &pipe_config->dsc.config;
-	u16 compressed_bpp = pipe_config->dsc.compressed_bpp;
-	u8 i = 0;
-	int row_index = 0;
-	int column_index = 0;
-	u8 line_buf_depth = 0;
+	u8 line_buf_depth;
 
-	vdsc_cfg->pic_width = pipe_config->base.adjusted_mode.crtc_hdisplay;
-	vdsc_cfg->pic_height = pipe_config->base.adjusted_mode.crtc_vdisplay;
-	vdsc_cfg->slice_width = DIV_ROUND_UP(vdsc_cfg->pic_width,
-					     pipe_config->dsc.slice_count);
-	/*
-	 * Slice Height of 8 works for all currently available panels. So start
-	 * with that if pic_height is an integral multiple of 8.
-	 * Eventually add logic to try multiple slice heights.
-	 */
-	if (vdsc_cfg->pic_height % 8 == 0)
-		vdsc_cfg->slice_height = 8;
-	else if (vdsc_cfg->pic_height % 4 == 0)
-		vdsc_cfg->slice_height = 4;
-	else
-		vdsc_cfg->slice_height = 2;
-
-	/* Values filled from DSC Sink DPCD */
 	vdsc_cfg->dsc_version_major =
 		(intel_dp->dsc_dpcd[DP_DSC_REV - DP_DSC_SUPPORT] &
 		 DP_DSC_MAJOR_MASK) >> DP_DSC_MAJOR_SHIFT;
@@ -362,6 +359,7 @@ int intel_dp_compute_dsc_params(struct intel_dp *intel_dp,
 		DRM_DEBUG_KMS("DSC Sink Line Buffer Depth invalid\n");
 		return -EINVAL;
 	}
+
 	if (vdsc_cfg->dsc_version_minor == 2)
 		vdsc_cfg->line_buf_depth = (line_buf_depth == DSC_1_2_MAX_LINEBUF_DEPTH_BITS) ?
 			DSC_1_2_MAX_LINEBUF_DEPTH_VAL : line_buf_depth;
@@ -369,13 +367,42 @@ int intel_dp_compute_dsc_params(struct intel_dp *intel_dp,
 		vdsc_cfg->line_buf_depth = (line_buf_depth > DSC_1_1_MAX_LINEBUF_DEPTH_BITS) ?
 			DSC_1_1_MAX_LINEBUF_DEPTH_BITS : line_buf_depth;
 
+	vdsc_cfg->block_pred_enable =
+			intel_dp->dsc_dpcd[DP_DSC_BLK_PREDICTION_SUPPORT - DP_DSC_SUPPORT] &
+		DP_DSC_BLK_PREDICTION_IS_SUPPORTED;
+
+	return 0;
+}
+
+int intel_dsc_compute_params(struct intel_encoder *encoder,
+			     struct intel_crtc_state *pipe_config)
+{
+	struct drm_dsc_config *vdsc_cfg = &pipe_config->dsc.config;
+	u16 compressed_bpp = pipe_config->dsc.compressed_bpp;
+	const struct rc_parameters *rc_params;
+	u8 i = 0;
+	int ret;
+
+	vdsc_cfg->pic_width = pipe_config->hw.adjusted_mode.crtc_hdisplay;
+	vdsc_cfg->pic_height = pipe_config->hw.adjusted_mode.crtc_vdisplay;
+	vdsc_cfg->slice_width = DIV_ROUND_UP(vdsc_cfg->pic_width,
+					     pipe_config->dsc.slice_count);
+	/*
+	 * Slice Height of 8 works for all currently available panels. So start
+	 * with that if pic_height is an integral multiple of 8.
+	 * Eventually add logic to try multiple slice heights.
+	 */
+	if (vdsc_cfg->pic_height % 8 == 0)
+		vdsc_cfg->slice_height = 8;
+	else if (vdsc_cfg->pic_height % 4 == 0)
+		vdsc_cfg->slice_height = 4;
+	else
+		vdsc_cfg->slice_height = 2;
+
 	/* Gen 11 does not support YCbCr */
 	vdsc_cfg->simple_422 = false;
 	/* Gen 11 does not support VBR */
 	vdsc_cfg->vbr_enable = false;
-	vdsc_cfg->block_pred_enable =
-			intel_dp->dsc_dpcd[DP_DSC_BLK_PREDICTION_SUPPORT - DP_DSC_SUPPORT] &
-		DP_DSC_BLK_PREDICTION_IS_SUPPORTED;
 
 	/* Gen 11 only supports integral values of bpp */
 	vdsc_cfg->bits_per_pixel = compressed_bpp << 4;
@@ -399,39 +426,29 @@ int intel_dp_compute_dsc_params(struct intel_dp *intel_dp,
 		vdsc_cfg->rc_buf_thresh[13] = 0x7D;
 	}
 
-	row_index = get_row_index_for_rc_params(compressed_bpp);
-	column_index =
-		get_column_index_for_rc_params(vdsc_cfg->bits_per_component);
-
-	if (row_index < 0 || column_index < 0)
+	rc_params = get_rc_params(compressed_bpp, vdsc_cfg->bits_per_component);
+	if (!rc_params)
 		return -EINVAL;
 
-	vdsc_cfg->first_line_bpg_offset =
-		rc_params[row_index][column_index].first_line_bpg_offset;
-	vdsc_cfg->initial_xmit_delay =
-		rc_params[row_index][column_index].initial_xmit_delay;
-	vdsc_cfg->initial_offset =
-		rc_params[row_index][column_index].initial_offset;
-	vdsc_cfg->flatness_min_qp =
-		rc_params[row_index][column_index].flatness_min_qp;
-	vdsc_cfg->flatness_max_qp =
-		rc_params[row_index][column_index].flatness_max_qp;
-	vdsc_cfg->rc_quant_incr_limit0 =
-		rc_params[row_index][column_index].rc_quant_incr_limit0;
-	vdsc_cfg->rc_quant_incr_limit1 =
-		rc_params[row_index][column_index].rc_quant_incr_limit1;
+	vdsc_cfg->first_line_bpg_offset = rc_params->first_line_bpg_offset;
+	vdsc_cfg->initial_xmit_delay = rc_params->initial_xmit_delay;
+	vdsc_cfg->initial_offset = rc_params->initial_offset;
+	vdsc_cfg->flatness_min_qp = rc_params->flatness_min_qp;
+	vdsc_cfg->flatness_max_qp = rc_params->flatness_max_qp;
+	vdsc_cfg->rc_quant_incr_limit0 = rc_params->rc_quant_incr_limit0;
+	vdsc_cfg->rc_quant_incr_limit1 = rc_params->rc_quant_incr_limit1;
 
 	for (i = 0; i < DSC_NUM_BUF_RANGES; i++) {
 		vdsc_cfg->rc_range_params[i].range_min_qp =
-			rc_params[row_index][column_index].rc_range_params[i].range_min_qp;
+			rc_params->rc_range_params[i].range_min_qp;
 		vdsc_cfg->rc_range_params[i].range_max_qp =
-			rc_params[row_index][column_index].rc_range_params[i].range_max_qp;
+			rc_params->rc_range_params[i].range_max_qp;
 		/*
 		 * Range BPG Offset uses 2's complement and is only a 6 bits. So
 		 * mask it to get only 6 bits.
 		 */
 		vdsc_cfg->rc_range_params[i].range_bpg_offset =
-			rc_params[row_index][column_index].rc_range_params[i].range_bpg_offset &
+			rc_params->rc_range_params[i].range_bpg_offset &
 			DSC_RANGE_BPG_OFFSET_MASK;
 	}
 
@@ -453,13 +470,17 @@ int intel_dp_compute_dsc_params(struct intel_dp *intel_dp,
 	vdsc_cfg->initial_scale_value = (vdsc_cfg->rc_model_size << 3) /
 		(vdsc_cfg->rc_model_size - vdsc_cfg->initial_offset);
 
+	ret = intel_dsc_dp_compute_params(encoder, pipe_config);
+	if (ret)
+		return ret;
+
 	return drm_dsc_compute_rc_parameters(vdsc_cfg);
 }
 
 enum intel_display_power_domain
 intel_dsc_power_domain(const struct intel_crtc_state *crtc_state)
 {
-	struct drm_i915_private *i915 = to_i915(crtc_state->base.crtc->dev);
+	struct drm_i915_private *i915 = to_i915(crtc_state->uapi.crtc->dev);
 	enum transcoder cpu_transcoder = crtc_state->cpu_transcoder;
 
 	/*
@@ -480,10 +501,10 @@ intel_dsc_power_domain(const struct intel_crtc_state *crtc_state)
 		return POWER_DOMAIN_TRANSCODER(cpu_transcoder);
 }
 
-static void intel_configure_pps_for_dsc_encoder(struct intel_encoder *encoder,
-						const struct intel_crtc_state *crtc_state)
+static void intel_dsc_pps_configure(struct intel_encoder *encoder,
+				    const struct intel_crtc_state *crtc_state)
 {
-	struct intel_crtc *crtc = to_intel_crtc(crtc_state->base.crtc);
+	struct intel_crtc *crtc = to_intel_crtc(crtc_state->uapi.crtc);
 	struct drm_i915_private *dev_priv = to_i915(encoder->base.dev);
 	const struct drm_dsc_config *vdsc_cfg = &crtc_state->dsc.config;
 	enum pipe pipe = crtc->pipe;
@@ -880,8 +901,8 @@ static void intel_configure_pps_for_dsc_encoder(struct intel_encoder *encoder,
 	}
 }
 
-static void intel_dp_write_dsc_pps_sdp(struct intel_encoder *encoder,
-				       const struct intel_crtc_state *crtc_state)
+static void intel_dsc_dp_pps_write(struct intel_encoder *encoder,
+				   const struct intel_crtc_state *crtc_state)
 {
 	struct intel_dp *intel_dp = enc_to_intel_dp(&encoder->base);
 	struct intel_digital_port *intel_dig_port = dp_to_dig_port(intel_dp);
@@ -902,7 +923,7 @@ static void intel_dp_write_dsc_pps_sdp(struct intel_encoder *encoder,
 void intel_dsc_enable(struct intel_encoder *encoder,
 		      const struct intel_crtc_state *crtc_state)
 {
-	struct intel_crtc *crtc = to_intel_crtc(crtc_state->base.crtc);
+	struct intel_crtc *crtc = to_intel_crtc(crtc_state->uapi.crtc);
 	struct drm_i915_private *dev_priv = to_i915(encoder->base.dev);
 	enum pipe pipe = crtc->pipe;
 	i915_reg_t dss_ctl1_reg, dss_ctl2_reg;
@@ -916,9 +937,9 @@ void intel_dsc_enable(struct intel_encoder *encoder,
 	intel_display_power_get(dev_priv,
 				intel_dsc_power_domain(crtc_state));
 
-	intel_configure_pps_for_dsc_encoder(encoder, crtc_state);
+	intel_dsc_pps_configure(encoder, crtc_state);
 
-	intel_dp_write_dsc_pps_sdp(encoder, crtc_state);
+	intel_dsc_dp_pps_write(encoder, crtc_state);
 
 	if (crtc_state->cpu_transcoder == TRANSCODER_EDP) {
 		dss_ctl1_reg = DSS_CTL1;
@@ -938,7 +959,7 @@ void intel_dsc_enable(struct intel_encoder *encoder,
 
 void intel_dsc_disable(const struct intel_crtc_state *old_crtc_state)
 {
-	struct intel_crtc *crtc = to_intel_crtc(old_crtc_state->base.crtc);
+	struct intel_crtc *crtc = to_intel_crtc(old_crtc_state->uapi.crtc);
 	struct drm_i915_private *dev_priv = to_i915(crtc->base.dev);
 	enum pipe pipe = crtc->pipe;
 	i915_reg_t dss_ctl1_reg, dss_ctl2_reg;

@@ -2684,11 +2684,11 @@ static int i915_display_info(struct seq_file *m, void *unused)
 
 		seq_printf(m, "CRTC %d: pipe: %c, active=%s, (size=%dx%d), dither=%s, bpp=%d\n",
 			   crtc->base.base.id, pipe_name(crtc->pipe),
-			   yesno(pipe_config->base.active),
+			   yesno(pipe_config->hw.active),
 			   pipe_config->pipe_src_w, pipe_config->pipe_src_h,
 			   yesno(pipe_config->dither), pipe_config->pipe_bpp);
 
-		if (pipe_config->base.active) {
+		if (pipe_config->hw.active) {
 			struct intel_plane *cursor =
 				to_intel_plane(crtc->base.cursor);
 
@@ -4161,11 +4161,11 @@ static int i915_drrs_ctl_set(void *data, u64 val)
 
 		crtc_state = to_intel_crtc_state(crtc->base.state);
 
-		if (!crtc_state->base.active ||
+		if (!crtc_state->hw.active ||
 		    !crtc_state->has_drrs)
 			goto out;
 
-		commit = crtc_state->base.commit;
+		commit = crtc_state->uapi.commit;
 		if (commit) {
 			ret = wait_for_completion_interruptible(&commit->hw_done);
 			if (ret)
@@ -4177,7 +4177,7 @@ static int i915_drrs_ctl_set(void *data, u64 val)
 			struct intel_encoder *encoder;
 			struct intel_dp *intel_dp;
 
-			if (!(crtc_state->base.connector_mask &
+			if (!(crtc_state->uapi.connector_mask &
 			      drm_connector_mask(connector)))
 				continue;
 
@@ -4236,14 +4236,14 @@ i915_fifo_underrun_reset_write(struct file *filp,
 			return ret;
 
 		crtc_state = to_intel_crtc_state(intel_crtc->base.state);
-		commit = crtc_state->base.commit;
+		commit = crtc_state->uapi.commit;
 		if (commit) {
 			ret = wait_for_completion_interruptible(&commit->hw_done);
 			if (!ret)
 				ret = wait_for_completion_interruptible(&commit->flip_done);
 		}
 
-		if (!ret && crtc_state->base.active) {
+		if (!ret && crtc_state->hw.active) {
 			DRM_DEBUG_KMS("Re-arming FIFO underruns on pipe %c\n",
 				      pipe_name(intel_crtc->pipe));
 

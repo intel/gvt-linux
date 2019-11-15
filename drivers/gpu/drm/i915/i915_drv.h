@@ -627,13 +627,9 @@ struct ddi_vbt_port_info {
 
 	int max_tmds_clock;
 
-	/*
-	 * This is an index in the HDMI/DVI DDI buffer translation table.
-	 * The special value HDMI_LEVEL_SHIFT_UNKNOWN means the VBT didn't
-	 * populate this field.
-	 */
-#define HDMI_LEVEL_SHIFT_UNKNOWN	0xff
+	/* This is an index in the HDMI/DVI DDI buffer translation table. */
 	u8 hdmi_level_shift;
+	u8 hdmi_level_shift_set:1;
 
 	u8 supports_dvi:1;
 	u8 supports_hdmi:1;
@@ -724,8 +720,7 @@ struct intel_vbt_data {
 
 	int crt_ddc_pin;
 
-	int child_dev_num;
-	struct child_device_config *child_dev;
+	struct list_head display_devices;
 
 	struct ddi_vbt_port_info ddi_port_info[I915_MAX_PORTS];
 	struct sdvo_device_mapping sdvo_mappings[2];
@@ -889,6 +884,10 @@ struct intel_wm_config {
 struct intel_cdclk_state {
 	unsigned int cdclk, vco, ref, bypass;
 	u8 voltage_level;
+};
+
+struct i915_selftest_stash {
+	atomic_t counter;
 };
 
 struct drm_i915_private {
@@ -1248,8 +1247,6 @@ struct drm_i915_private {
 	struct intel_gt gt;
 
 	struct {
-		struct notifier_block pm_notifier;
-
 		struct i915_gem_contexts {
 			spinlock_t lock; /* locks list */
 			struct list_head list;
@@ -1285,6 +1282,8 @@ struct drm_i915_private {
 
 	/* Mutex to protect the above hdcp component related values. */
 	struct mutex hdcp_comp_mutex;
+
+	I915_SELFTEST_DECLARE(struct i915_selftest_stash selftest;)
 
 	/*
 	 * NOTE: This is the dri1/ums dungeon, don't add stuff here. Your patch

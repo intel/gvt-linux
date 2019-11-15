@@ -1870,7 +1870,7 @@ alloc_oa_config_buffer(struct i915_perf_stream *stream,
 	config_length += num_lri_dwords(oa_config->mux_regs_len);
 	config_length += num_lri_dwords(oa_config->b_counter_regs_len);
 	config_length += num_lri_dwords(oa_config->flex_regs_len);
-	config_length++; /* MI_BATCH_BUFFER_END */
+	config_length += 3; /* MI_BATCH_BUFFER_START */
 	config_length = ALIGN(sizeof(u32) * config_length, I915_GTT_PAGE_SIZE);
 
 	obj = i915_gem_object_create_shmem(stream->perf->i915, config_length);
@@ -1895,7 +1895,12 @@ alloc_oa_config_buffer(struct i915_perf_stream *stream,
 			     oa_config->flex_regs,
 			     oa_config->flex_regs_len);
 
-	*cs++ = MI_BATCH_BUFFER_END;
+	/* Jump into the active wait. */
+	*cs++ = (INTEL_GEN(stream->perf->i915) < 8 ?
+		 MI_BATCH_BUFFER_START :
+		 MI_BATCH_BUFFER_START_GEN8);
+	*cs++ = i915_ggtt_offset(stream->noa_wait);
+	*cs++ = 0;
 
 	i915_gem_object_flush_map(obj);
 	i915_gem_object_unpin_map(obj);
@@ -2428,6 +2433,13 @@ static int gen8_enable_metric_set(struct i915_perf_stream *stream)
 	return emit_oa_config(stream, oa_config, oa_context(stream));
 }
 
+static u32 oag_report_ctx_switches(const struct i915_perf_stream *stream)
+{
+	return _MASKED_FIELD(GEN12_OAG_OA_DEBUG_DISABLE_CTX_SWITCH_REPORTS,
+			     (stream->sample_flags & SAMPLE_OA_REPORT) ?
+			     0 : GEN12_OAG_OA_DEBUG_DISABLE_CTX_SWITCH_REPORTS);
+}
+
 static int gen12_enable_metric_set(struct i915_perf_stream *stream)
 {
 	struct intel_uncore *uncore = stream->uncore;
@@ -2441,12 +2453,10 @@ static int gen12_enable_metric_set(struct i915_perf_stream *stream)
 			   _MASKED_BIT_ENABLE(GEN12_OAG_OA_DEBUG_DISABLE_CLK_RATIO_REPORTS |
 					      GEN12_OAG_OA_DEBUG_INCLUDE_CLK_RATIO) |
 			   /*
-			    * If the user didn't require OA reports, instruct the
-			    * hardware not to emit ctx switch reports.
+			    * If the user didn't require OA reports, instruct
+			    * the hardware not to emit ctx switch reports.
 			    */
-			   !(stream->sample_flags & SAMPLE_OA_REPORT) ?
-			   _MASKED_BIT_ENABLE(GEN12_OAG_OA_DEBUG_DISABLE_CTX_SWITCH_REPORTS) :
-			   _MASKED_BIT_DISABLE(GEN12_OAG_OA_DEBUG_DISABLE_CTX_SWITCH_REPORTS));
+			   oag_report_ctx_switches(stream));
 
 	intel_uncore_write(uncore, GEN12_OAG_OAGLBCTXCTRL, periodic ?
 			   (GEN12_OAG_OAGLBCTXCTRL_COUNTER_RESUME |

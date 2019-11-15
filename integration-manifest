@@ -1,0 +1,34 @@
+drm drm-fixes 07ceccacfb27be0e151b876caeda3a556cef099c
+	Merge tag 'drm-fixes-5.4-2019-11-14' of git://people.freedesktop.org/~agd5f/linux into drm-fixes
+drm-misc drm-misc-fixes 0b8e7bbde5e7e2c419567e1ee29587dae3b78ee3
+	drm/sun4i: tcon: Set min division of TCON0_DCLK to 1.
+drm-intel drm-intel-fixes 1c602006d1dcb7501ae1c569fdabe1b8e1f082a4
+	drm/i915/tgl: MOCS table update
+drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
+	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
+drm drm-next 17cc51390c141662748dbbc2fe98f3ed10f2e13e
+	Merge branch 'vmwgfx-next' of git://people.freedesktop.org/~thomash/linux into drm-next
+drm-misc drm-misc-next-fixes a64fc11b9a520c55ca34d82e5ca32274f49b6b15
+	drm/msm: fix memleak on release
+drm-intel drm-intel-next-fixes 789c4aea3f08026360d026c0ea69b33797ac88c2
+	drm/i915: Split a setting of MSA to MST and SST
+drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
+	Linux 4.14-rc1
+drm-misc drm-misc-next 8d938df2056253218555800ea39a6ec391669f18
+	drm/panel: Add DT bindings for Sony ACX424AKP
+drm-intel drm-intel-next-queued 1cdc2330e8d396c9cbebfc75fba4c94d34f80782
+	drm/i915/guc: Properly capture & release GuC interrupts on Gen11+
+drm-intel drm-intel-next 1883e2999f045e1fd6f76a7f30288a5312085289
+	drm/i915: Update DRIVER_DATE to 20191101
+drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
+	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
+sound-upstream for-linus 976a68f06b2ea49e2ab67a5f84919a8b105db8be
+	ALSA: usb-audio: Fix incorrect size check for processing/extension units
+sound-upstream for-next f35ef592477c5347b8f780a5f0d4970671e22c61
+	ALSA: usb-audio: Add skip_validation option
+drm-intel topic/core-for-CI 883d9554ea8e228c4e6aca8339b1c1c970a938e8
+	Revert "Revert "ALSA: hda: Add Tigerlake/Jasperlake PCI ID""
+drm-misc topic/mst-suspend-resume-reprobe 12a280c7286857119cf0d88c487f695e3a1c0912
+	drm/dp_mst: Add topology ref history tracking for debugging
+drm-intel topic/drm-mipi-dsi-dsc-updates f4dea1aaa9a12486f5813fada574192feb3850cd
+	drm/dsi: add helpers for DSI compression mode and PPS packets

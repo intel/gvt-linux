@@ -264,6 +264,9 @@ static unsigned int icl_max_bw(struct drm_i915_private *dev_priv,
 
 void intel_bw_init_hw(struct drm_i915_private *dev_priv)
 {
+	if (!HAS_DISPLAY(dev_priv))
+		return;
+
 	if (IS_GEN(dev_priv, 12))
 		icl_get_bw_info(dev_priv, &tgl_sa_info);
 	else if (IS_GEN(dev_priv, 11))
@@ -297,7 +300,7 @@ static unsigned int intel_bw_crtc_num_active_planes(const struct intel_crtc_stat
 
 static unsigned int intel_bw_crtc_data_rate(const struct intel_crtc_state *crtc_state)
 {
-	struct intel_crtc *crtc = to_intel_crtc(crtc_state->base.crtc);
+	struct intel_crtc *crtc = to_intel_crtc(crtc_state->uapi.crtc);
 	unsigned int data_rate = 0;
 	enum plane_id plane_id;
 
@@ -318,7 +321,7 @@ static unsigned int intel_bw_crtc_data_rate(const struct intel_crtc_state *crtc_
 void intel_bw_crtc_update(struct intel_bw_state *bw_state,
 			  const struct intel_crtc_state *crtc_state)
 {
-	struct intel_crtc *crtc = to_intel_crtc(crtc_state->base.crtc);
+	struct intel_crtc *crtc = to_intel_crtc(crtc_state->uapi.crtc);
 
 	bw_state->data_rate[crtc->pipe] =
 		intel_bw_crtc_data_rate(crtc_state);

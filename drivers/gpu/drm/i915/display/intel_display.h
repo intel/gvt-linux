@@ -332,8 +332,11 @@ enum phy_fia {
 	     (__s) < RUNTIME_INFO(__dev_priv)->num_sprites[(__p)];	\
 	     (__s)++)
 
-#define for_each_port_masked(__port, __ports_mask) \
-	for ((__port) = PORT_A; (__port) < I915_MAX_PORTS; (__port)++)	\
+#define for_each_port(__port) \
+	for ((__port) = PORT_A; (__port) < I915_MAX_PORTS; (__port)++)
+
+#define for_each_port_masked(__port, __ports_mask)			\
+	for_each_port(__port)						\
 		for_each_if((__ports_mask) & BIT(__port))
 
 #define for_each_phy_masked(__phy, __phys_mask) \
@@ -446,10 +449,18 @@ enum phy_fia {
 #define intel_atomic_crtc_state_for_each_plane_state( \
 		  plane, plane_state, \
 		  crtc_state) \
-	for_each_intel_plane_mask(((crtc_state)->base.state->dev), (plane), \
-				((crtc_state)->base.plane_mask)) \
+	for_each_intel_plane_mask(((crtc_state)->uapi.state->dev), (plane), \
+				((crtc_state)->uapi.plane_mask)) \
 		for_each_if ((plane_state = \
-			      to_intel_plane_state(__drm_atomic_get_current_plane_state((crtc_state)->base.state, &plane->base))))
+			      to_intel_plane_state(__drm_atomic_get_current_plane_state((crtc_state)->uapi.state, &plane->base))))
+
+#define for_each_new_intel_connector_in_state(__state, connector, new_connector_state, __i) \
+	for ((__i) = 0; \
+	     (__i) < (__state)->base.num_connector; \
+	     (__i)++) \
+		for_each_if ((__state)->base.connectors[__i].ptr && \
+			     ((connector) = to_intel_connector((__state)->base.connectors[__i].ptr), \
+			     (new_connector_state) = to_intel_digital_connector_state((__state)->base.connectors[__i].new_state), 1))
 
 void intel_link_compute_m_n(u16 bpp, int nlanes,
 			    int pixel_clock, int link_clock,

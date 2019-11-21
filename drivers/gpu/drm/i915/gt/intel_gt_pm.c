@@ -62,7 +62,7 @@ static int __gt_unpark(struct intel_wakeref *wf)
 	GEM_BUG_ON(!gt->awake);
 
 	if (NEEDS_RC6_CTX_CORRUPTION_WA(i915))
-		intel_uncore_forcewake_get(&i915->uncore, FORCEWAKE_ALL);
+		intel_uncore_forcewake_get(gt->uncore, FORCEWAKE_ALL);
 
 	intel_rps_unpark(&gt->rps);
 	i915_pmu_gt_unparked(i915);
@@ -90,8 +90,8 @@ static int __gt_park(struct intel_wakeref *wf)
 	intel_synchronize_irq(i915);
 
 	if (NEEDS_RC6_CTX_CORRUPTION_WA(i915)) {
-		intel_rc6_ctx_wa_check(&i915->gt.rc6);
-		intel_uncore_forcewake_put(&i915->uncore, FORCEWAKE_ALL);
+		intel_rc6_ctx_wa_check(&gt->rc6);
+		intel_uncore_forcewake_put(gt->uncore, FORCEWAKE_ALL);
 	}
 
 	GEM_BUG_ON(!wakeref);
@@ -105,7 +105,6 @@ static int __gt_park(struct intel_wakeref *wf)
 static const struct intel_wakeref_ops wf_ops = {
 	.get = __gt_unpark,
 	.put = __gt_park,
-	.flags = INTEL_WAKEREF_PUT_ASYNC,
 };
 
 void intel_gt_pm_init_early(struct intel_gt *gt)
@@ -257,6 +256,7 @@ static void wait_for_suspend(struct intel_gt *gt)
 		 * the gpu quiet.
 		 */
 		intel_gt_set_wedged(gt);
+		intel_gt_retire_requests(gt);
 	}
 
 	intel_gt_pm_wait_for_idle(gt);
@@ -272,7 +272,7 @@ void intel_gt_suspend_prepare(struct intel_gt *gt)
 
 static suspend_state_t pm_suspend_target(void)
 {
-#if IS_ENABLED(CONFIG_PM_SLEEP)
+#if IS_ENABLED(CONFIG_SUSPEND) && IS_ENABLED(CONFIG_PM_SLEEP)
 	return pm_suspend_target_state;
 #else
 	return PM_SUSPEND_TO_IDLE;

@@ -1,30 +1,10 @@
-drm drm-fixes f824c1b35a75497542c02ccf081514f14962ab38
-	Merge tag 'drm-fixes-5.4-2019-11-20' of git://people.freedesktop.org/~agd5f/linux into drm-fixes
-drm-misc drm-misc-fixes c131280c03bd1c225c2e64e9ef75873ffca3d96e
-	drm/mcde: dsi: Fix invalid pointer dereference if panel cannot be found
-drm-intel drm-intel-fixes 71d122629c04707eb7f65447fb2f5bd092d98ce3
-	drm/i915/fbdev: Restore physical addresses for fb_mmap()
-drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
-	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
-drm drm-next 17eee668b3cad423a47c090fe2275733c55db910
-	Merge tag 'drm-misc-next-fixes-2019-11-20' of git://anongit.freedesktop.org/drm/drm-misc into drm-next
-drm-misc drm-misc-next-fixes 9786b65bc61acec63f923978c75e707afbb74bc7
-	drm/ttm: fix mmap refcounting
-drm-intel drm-intel-next-fixes 0122baaa93cc681faace064ec25d16bb5c9825ab
-	Merge tag 'gvt-next-fixes-2019-11-12' of https://github.com/intel/gvt-linux into drm-intel-next-fixes
-drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
-	Linux 4.14-rc1
-drm-misc drm-misc-next 7819c4607fb077bfc7b0074382d0cfef35ef17c0
-	MAINTAINERS: Remove myself from drm-misc entry
-drm-intel drm-intel-next-queued 689122dcc36e08f53732adf7ae0246f62eff3eb6
-	Revert "drm/i915/gt: Wait for new requests in intel_gt_retire_requests()"
-drm-intel drm-intel-next 1883e2999f045e1fd6f76a7f30288a5312085289
-	drm/i915: Update DRIVER_DATE to 20191101
-drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
-	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
-sound-upstream for-linus 976a68f06b2ea49e2ab67a5f84919a8b105db8be
-	ALSA: usb-audio: Fix incorrect size check for processing/extension units
-sound-upstream for-next 695d1ec3994f9de2cefae80ee2087c95d2e5a2f3
-	ALSA: hda/realtek - Enable the headset-mic on a Xiaomi's laptop
-drm-intel topic/core-for-CI 883d9554ea8e228c4e6aca8339b1c1c970a938e8
-	Revert "Revert "ALSA: hda: Add Tigerlake/Jasperlake PCI ID""
+drm-tip/drm-tip fbec270656a873c25d05a69d40c5335bedd68a67
+	drm-tip: 2019y-11m-21d-08h-09m-44s UTC integration manifest
+vfio-upstream/for-linus 95f89e090618efca63918b658c2002e57d393036
+	vfio/type1: Initialize resv_msi_base
+origin/gvt-fixes 41d931459b53e32c67a1f8838d1e6826a69ee745
+	drm/i915/gvt: fix dropping obj reference twice
+origin/gvt-next-fixes 83faaf074e6d1ca4d1441aded0d3f01bce413479
+	drm/i915/gvt: Stop initializing pvinfo through reading mmio
+origin/gvt-next 220b65d8009dff397a112ee560c297299ba5e423
+	drm/i915/gvt: Double check batch buffer size after copy

@@ -1,0 +1,30 @@
+drm drm-fixes 51658c04c338d7ef98d6c2c19009e4814632db50
+	Merge tag 'drm-intel-fixes-2019-11-21' of git://anongit.freedesktop.org/drm/drm-intel into drm-fixes
+drm-misc drm-misc-fixes c131280c03bd1c225c2e64e9ef75873ffca3d96e
+	drm/mcde: dsi: Fix invalid pointer dereference if panel cannot be found
+drm-intel drm-intel-fixes 71d122629c04707eb7f65447fb2f5bd092d98ce3
+	drm/i915/fbdev: Restore physical addresses for fb_mmap()
+drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
+	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
+drm drm-next 17eee668b3cad423a47c090fe2275733c55db910
+	Merge tag 'drm-misc-next-fixes-2019-11-20' of git://anongit.freedesktop.org/drm/drm-misc into drm-next
+drm-misc drm-misc-next-fixes 9786b65bc61acec63f923978c75e707afbb74bc7
+	drm/ttm: fix mmap refcounting
+drm-intel drm-intel-next-fixes 0122baaa93cc681faace064ec25d16bb5c9825ab
+	Merge tag 'gvt-next-fixes-2019-11-12' of https://github.com/intel/gvt-linux into drm-intel-next-fixes
+drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
+	Linux 4.14-rc1
+drm-misc drm-misc-next 92ec07677107974c31b32030a4f897398e452ca9
+	drm/msm: Don't init ww_mutec acquire ctx before needed
+drm-intel drm-intel-next-queued 1ff2f9e26c56a18d78507ac88f52bfd0a9e8ed99
+	drm/i915/selftests: Always hold a reference on a waited upon request
+drm-intel drm-intel-next 1883e2999f045e1fd6f76a7f30288a5312085289
+	drm/i915: Update DRIVER_DATE to 20191101
+drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
+	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
+sound-upstream for-linus 976a68f06b2ea49e2ab67a5f84919a8b105db8be
+	ALSA: usb-audio: Fix incorrect size check for processing/extension units
+sound-upstream for-next 6b5a6bccec745ea813cab40022b9fc970b535680
+	ALSA: usb-audio: Fix Scarlett 6i6 Gen 2 port data
+drm-intel topic/core-for-CI 883d9554ea8e228c4e6aca8339b1c1c970a938e8
+	Revert "Revert "ALSA: hda: Add Tigerlake/Jasperlake PCI ID""

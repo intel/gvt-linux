@@ -102,15 +102,15 @@ intel_dsb_get(struct intel_crtc *crtc)
 	struct intel_dsb *dsb = &crtc->dsb;
 	struct drm_i915_gem_object *obj;
 	struct i915_vma *vma;
+	u32 *buf;
 	intel_wakeref_t wakeref;
 
 	if (!HAS_DSB(i915))
 		return dsb;
 
-	if (atomic_add_return(1, &dsb->refcount) != 1)
+	if (dsb->refcount++ != 0)
 		return dsb;
 
-	dsb->id = DSB1;
 	wakeref = intel_runtime_pm_get(&i915->runtime_pm);
 
 	obj = i915_gem_object_create_internal(i915, DSB_BUF_SIZE);
@@ -119,26 +119,33 @@ intel_dsb_get(struct intel_crtc *crtc)
 		goto err;
 	}
 
-	vma = i915_gem_object_ggtt_pin(obj, NULL, 0, 0, PIN_MAPPABLE);
+	vma = i915_gem_object_ggtt_pin(obj, NULL, 0, 0, 0);
 	if (IS_ERR(vma)) {
 		DRM_ERROR("Vma creation failed\n");
 		i915_gem_object_put(obj);
-		atomic_dec(&dsb->refcount);
 		goto err;
 	}
 
-	dsb->cmd_buf = i915_gem_object_pin_map(vma->obj, I915_MAP_WC);
-	if (IS_ERR(dsb->cmd_buf)) {
+	buf = i915_gem_object_pin_map(vma->obj, I915_MAP_WC);
+	if (IS_ERR(buf)) {
 		DRM_ERROR("Command buffer creation failed\n");
-		i915_vma_unpin_and_release(&vma, 0);
-		dsb->cmd_buf = NULL;
-		atomic_dec(&dsb->refcount);
 		goto err;
 	}
+
+	dsb->id = DSB1;
 	dsb->vma = vma;
+	dsb->cmd_buf = buf;
 
 err:
+	/*
+	 * Set cmd_buf to NULL so the writes pass-through, but leave the
+	 * dangling refcount to be removed later by the corresponding
+	 * intel_dsb_put(): the important error message will already be
+	 * logged above.
+	 */
+	dsb->cmd_buf = NULL;
 	intel_runtime_pm_put(&i915->runtime_pm, wakeref);
+
 	return dsb;
 }
 
@@ -158,10 +165,10 @@ void intel_dsb_put(struct intel_dsb *dsb)
 	if (!HAS_DSB(i915))
 		return;
 
-	if (WARN_ON(atomic_read(&dsb->refcount) == 0))
+	if (WARN_ON(dsb->refcount == 0))
 		return;
 
-	if (atomic_dec_and_test(&dsb->refcount)) {
+	if (--dsb->refcount == 0) {
 		i915_vma_unpin_and_release(&dsb->vma, I915_VMA_RELEASE_MAP);
 		dsb->cmd_buf = NULL;
 		dsb->free_pos = 0;

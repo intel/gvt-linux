@@ -262,7 +262,7 @@ int intel_timeline_init(struct intel_timeline *timeline,
 	return 0;
 }
 
-static void timelines_init(struct intel_gt *gt)
+void intel_gt_init_timelines(struct intel_gt *gt)
 {
 	struct intel_gt_timelines *timelines = &gt->timelines;
 
@@ -271,11 +271,6 @@ static void timelines_init(struct intel_gt *gt)
 
 	spin_lock_init(&timelines->hwsp_lock);
 	INIT_LIST_HEAD(&timelines->hwsp_free_list);
-}
-
-void intel_timelines_init(struct drm_i915_private *i915)
-{
-	timelines_init(&i915->gt);
 }
 
 void intel_timeline_fini(struct intel_timeline *timeline)
@@ -337,34 +332,52 @@ int intel_timeline_pin(struct intel_timeline *tl)
 void intel_timeline_enter(struct intel_timeline *tl)
 {
 	struct intel_gt_timelines *timelines = &tl->gt->timelines;
-	unsigned long flags;
 
+	/*
+	 * Pretend we are serialised by the timeline->mutex.
+	 *
+	 * While generally true, there are a few exceptions to the rule
+	 * for the engine->kernel_context being used to manage power
+	 * transitions. As the engine_park may be called from under any
+	 * timeline, it uses the power mutex as a global serialisation
+	 * lock to prevent any other request entering its timeline.
+	 *
+	 * The rule is generally tl->mutex, otherwise engine->wakeref.mutex.
+	 *
+	 * However, intel_gt_retire_request() does not know which engine
+	 * it is retiring along and so cannot partake in the engine-pm
+	 * barrier, and there we use the tl->active_count as a means to
+	 * pin the timeline in the active_list while the locks are dropped.
+	 * Ergo, as that is outside of the engine-pm barrier, we need to
+	 * use atomic to manipulate tl->active_count.
+	 */
 	lockdep_assert_held(&tl->mutex);
-
 	GEM_BUG_ON(!atomic_read(&tl->pin_count));
-	if (tl->active_count++)
-		return;
-	GEM_BUG_ON(!tl->active_count); /* overflow? */
 
-	spin_lock_irqsave(&timelines->lock, flags);
-	list_add(&tl->link, &timelines->active_list);
-	spin_unlock_irqrestore(&timelines->lock, flags);
+	if (atomic_add_unless(&tl->active_count, 1, 0))
+		return;
+
+	spin_lock(&timelines->lock);
+	if (!atomic_fetch_inc(&tl->active_count))
+		list_add_tail(&tl->link, &timelines->active_list);
+	spin_unlock(&timelines->lock);
 }
 
 void intel_timeline_exit(struct intel_timeline *tl)
 {
 	struct intel_gt_timelines *timelines = &tl->gt->timelines;
-	unsigned long flags;
 
+	/* See intel_timeline_enter() */
 	lockdep_assert_held(&tl->mutex);
 
-	GEM_BUG_ON(!tl->active_count);
-	if (--tl->active_count)
+	GEM_BUG_ON(!atomic_read(&tl->active_count));
+	if (atomic_add_unless(&tl->active_count, -1, 1))
 		return;
 
-	spin_lock_irqsave(&timelines->lock, flags);
-	list_del(&tl->link);
-	spin_unlock_irqrestore(&timelines->lock, flags);
+	spin_lock(&timelines->lock);
+	if (atomic_dec_and_test(&tl->active_count))
+		list_del(&tl->link);
+	spin_unlock(&timelines->lock);
 
 	/*
 	 * Since this timeline is idle, all bariers upon which we were waiting
@@ -562,17 +575,12 @@ void __intel_timeline_free(struct kref *kref)
 	kfree_rcu(timeline, rcu);
 }
 
-static void timelines_fini(struct intel_gt *gt)
+void intel_gt_fini_timelines(struct intel_gt *gt)
 {
 	struct intel_gt_timelines *timelines = &gt->timelines;
 
 	GEM_BUG_ON(!list_empty(&timelines->active_list));
 	GEM_BUG_ON(!list_empty(&timelines->hwsp_free_list));
-}
-
-void intel_timelines_fini(struct drm_i915_private *i915)
-{
-	timelines_fini(&i915->gt);
 }
 
 #if IS_ENABLED(CONFIG_DRM_I915_SELFTEST)

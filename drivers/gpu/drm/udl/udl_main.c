@@ -317,6 +317,9 @@ int udl_init(struct udl_device *udl)
 
 	DRM_DEBUG("\n");
 
+	udl->active_fb_16 = NULL;
+	spin_lock_init(&udl->active_fb_16_lock);
+
 	mutex_init(&udl->gem_lock);
 
 	if (!udl_parse_vendor_descriptor(dev, udl->udev)) {
@@ -335,10 +338,6 @@ int udl_init(struct udl_device *udl)
 
 	DRM_DEBUG("\n");
 	ret = udl_modeset_init(dev);
-	if (ret)
-		goto err;
-
-	ret = udl_fbdev_init(dev);
 	if (ret)
 		goto err;
 
@@ -367,6 +366,4 @@ void udl_fini(struct drm_device *dev)
 
 	if (udl->urbs.count)
 		udl_free_urb_list(dev);
-
-	udl_fbdev_cleanup(dev);
 }

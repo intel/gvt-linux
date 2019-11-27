@@ -22,6 +22,8 @@
  *
  */
 
+#include <linux/sched/mm.h>
+
 #include "display/intel_frontbuffer.h"
 #include "gt/intel_gt.h"
 #include "i915_drv.h"
@@ -186,7 +188,7 @@ static void __i915_gem_free_objects(struct drm_i915_private *i915,
 		GEM_BUG_ON(!list_empty(&obj->lut_list));
 
 		atomic_set(&obj->mm.pages_pin_count, 0);
-		__i915_gem_object_put_pages(obj, I915_MM_NORMAL);
+		__i915_gem_object_put_pages(obj);
 		GEM_BUG_ON(i915_gem_object_has_pages(obj));
 		bitmap_free(obj->bit_17);
 
@@ -277,18 +279,14 @@ i915_gem_object_flush_write_domain(struct drm_i915_gem_object *obj,
 
 	switch (obj->write_domain) {
 	case I915_GEM_DOMAIN_GTT:
-		for_each_ggtt_vma(vma, obj)
-			intel_gt_flush_ggtt_writes(vma->vm->gt);
+		spin_lock(&obj->vma.lock);
+		for_each_ggtt_vma(vma, obj) {
+			if (i915_vma_unset_ggtt_write(vma))
+				intel_gt_flush_ggtt_writes(vma->vm->gt);
+		}
+		spin_unlock(&obj->vma.lock);
 
 		intel_frontbuffer_flush(obj->frontbuffer, ORIGIN_CPU);
-
-		for_each_ggtt_vma(vma, obj) {
-			if (vma->iomap)
-				continue;
-
-			i915_vma_unset_ggtt_write(vma);
-		}
-
 		break;
 
 	case I915_GEM_DOMAIN_WC:

@@ -7,6 +7,7 @@
 #include <linux/prime_numbers.h>
 
 #include "gem/i915_gem_pm.h"
+#include "gt/intel_engine_pm.h"
 #include "gt/intel_gt.h"
 #include "gt/intel_gt_requests.h"
 #include "gt/intel_reset.h"
@@ -26,6 +27,12 @@
 
 #define DW_PER_PAGE (PAGE_SIZE / sizeof(u32))
 
+static inline struct i915_address_space *ctx_vm(struct i915_gem_context *ctx)
+{
+	/* single threaded, private ctx */
+	return rcu_dereference_protected(ctx->vm, true);
+}
+
 static int live_nop_switch(void *arg)
 {
 	const unsigned int nctx = 1024;
@@ -33,7 +40,7 @@ static int live_nop_switch(void *arg)
 	struct intel_engine_cs *engine;
 	struct i915_gem_context **ctx;
 	struct igt_live_test t;
-	struct drm_file *file;
+	struct file *file;
 	unsigned long n;
 	int err = -ENODEV;
 
@@ -67,25 +74,34 @@ static int live_nop_switch(void *arg)
 	}
 
 	for_each_uabi_engine(engine, i915) {
-		struct i915_request *rq;
+		struct i915_request *rq = NULL;
 		unsigned long end_time, prime;
 		ktime_t times[2] = {};
 
 		times[0] = ktime_get_raw();
 		for (n = 0; n < nctx; n++) {
-			rq = igt_request_alloc(ctx[n], engine);
-			if (IS_ERR(rq)) {
-				err = PTR_ERR(rq);
+			struct i915_request *this;
+
+			this = igt_request_alloc(ctx[n], engine);
+			if (IS_ERR(this)) {
+				err = PTR_ERR(this);
 				goto out_file;
 			}
-			i915_request_add(rq);
+			if (rq) {
+				i915_request_await_dma_fence(this, &rq->fence);
+				i915_request_put(rq);
+			}
+			rq = i915_request_get(this);
+			i915_request_add(this);
 		}
 		if (i915_request_wait(rq, 0, HZ / 5) < 0) {
 			pr_err("Failed to populated %d contexts\n", nctx);
 			intel_gt_set_wedged(&i915->gt);
+			i915_request_put(rq);
 			err = -EIO;
 			goto out_file;
 		}
+		i915_request_put(rq);
 
 		times[1] = ktime_get_raw();
 
@@ -100,11 +116,19 @@ static int live_nop_switch(void *arg)
 		for_each_prime_number_from(prime, 2, 8192) {
 			times[1] = ktime_get_raw();
 
+			rq = NULL;
 			for (n = 0; n < prime; n++) {
-				rq = igt_request_alloc(ctx[n % nctx], engine);
-				if (IS_ERR(rq)) {
-					err = PTR_ERR(rq);
+				struct i915_request *this;
+
+				this = igt_request_alloc(ctx[n % nctx], engine);
+				if (IS_ERR(this)) {
+					err = PTR_ERR(this);
 					goto out_file;
+				}
+
+				if (rq) { /* Force submission order */
+					i915_request_await_dma_fence(this, &rq->fence);
+					i915_request_put(rq);
 				}
 
 				/*
@@ -121,14 +145,18 @@ static int live_nop_switch(void *arg)
 				 * for latency.
 				 */
 
-				i915_request_add(rq);
+				rq = i915_request_get(this);
+				i915_request_add(this);
 			}
+			GEM_BUG_ON(!rq);
 			if (i915_request_wait(rq, 0, HZ / 5) < 0) {
 				pr_err("Switching between %ld contexts timed out\n",
 				       prime);
 				intel_gt_set_wedged(&i915->gt);
+				i915_request_put(rq);
 				break;
 			}
+			i915_request_put(rq);
 
 			times[1] = ktime_sub(ktime_get_raw(), times[1]);
 			if (prime == 2)
@@ -149,7 +177,7 @@ static int live_nop_switch(void *arg)
 	}
 
 out_file:
-	mock_file_free(i915, file);
+	fput(file);
 	return err;
 }
 
@@ -255,7 +283,7 @@ static int live_parallel_switch(void *arg)
 	int (* const *fn)(void *arg);
 	struct i915_gem_context *ctx;
 	struct intel_context *ce;
-	struct drm_file *file;
+	struct file *file;
 	int n, m, count;
 	int err = 0;
 
@@ -377,7 +405,7 @@ out:
 	}
 	kfree(data);
 out_file:
-	mock_file_free(i915, file);
+	fput(file);
 	return err;
 }
 
@@ -502,17 +530,17 @@ out_unmap:
 	return err;
 }
 
-static int file_add_object(struct drm_file *file,
-			    struct drm_i915_gem_object *obj)
+static int file_add_object(struct file *file, struct drm_i915_gem_object *obj)
 {
 	int err;
 
 	GEM_BUG_ON(obj->base.handle_count);
 
 	/* tie the object to the drm_file for easy reaping */
-	err = idr_alloc(&file->object_idr, &obj->base, 1, 0, GFP_KERNEL);
+	err = idr_alloc(&to_drm_file(file)->object_idr,
+			&obj->base, 1, 0, GFP_KERNEL);
 	if (err < 0)
-		return  err;
+		return err;
 
 	i915_gem_object_get(obj);
 	obj->base.handle_count++;
@@ -521,7 +549,7 @@ static int file_add_object(struct drm_file *file,
 
 static struct drm_i915_gem_object *
 create_test_object(struct i915_address_space *vm,
-		   struct drm_file *file,
+		   struct file *file,
 		   struct list_head *objects)
 {
 	struct drm_i915_gem_object *obj;
@@ -621,9 +649,9 @@ static int igt_ctx_exec(void *arg)
 		unsigned long ncontexts, ndwords, dw;
 		struct i915_request *tq[5] = {};
 		struct igt_live_test t;
-		struct drm_file *file;
 		IGT_TIMEOUT(end_time);
 		LIST_HEAD(objects);
+		struct file *file;
 
 		if (!intel_engine_can_store_dword(engine))
 			continue;
@@ -716,7 +744,7 @@ out_file:
 		if (igt_live_test_end(&t))
 			err = -EIO;
 
-		mock_file_free(i915, file);
+		fput(file);
 		if (err)
 			return err;
 
@@ -733,7 +761,7 @@ static int igt_shared_ctx_exec(void *arg)
 	struct i915_gem_context *parent;
 	struct intel_engine_cs *engine;
 	struct igt_live_test t;
-	struct drm_file *file;
+	struct file *file;
 	int err = 0;
 
 	/*
@@ -786,14 +814,15 @@ static int igt_shared_ctx_exec(void *arg)
 			}
 
 			mutex_lock(&ctx->mutex);
-			__assign_ppgtt(ctx, parent->vm);
+			__assign_ppgtt(ctx, ctx_vm(parent));
 			mutex_unlock(&ctx->mutex);
 
 			ce = i915_gem_context_get_engine(ctx, engine->legacy_idx);
 			GEM_BUG_ON(IS_ERR(ce));
 
 			if (!obj) {
-				obj = create_test_object(parent->vm, file, &objects);
+				obj = create_test_object(ctx_vm(parent),
+							 file, &objects);
 				if (IS_ERR(obj)) {
 					err = PTR_ERR(obj);
 					intel_context_put(ce);
@@ -854,7 +883,7 @@ out_test:
 	if (igt_live_test_end(&t))
 		err = -EIO;
 out_file:
-	mock_file_free(i915, file);
+	fput(file);
 	return err;
 }
 
@@ -1140,8 +1169,7 @@ out:
 		igt_spinner_end(spin);
 
 	if ((flags & TEST_IDLE) && ret == 0) {
-		ret = intel_gt_wait_for_idle(ce->engine->gt,
-					     MAX_SCHEDULE_TIMEOUT);
+		ret = igt_flush_test(ce->engine->i915);
 		if (ret)
 			return ret;
 
@@ -1163,9 +1191,11 @@ __sseu_test(const char *name,
 	struct igt_spinner *spin = NULL;
 	int ret;
 
+	intel_engine_pm_get(ce->engine);
+
 	ret = __sseu_prepare(name, flags, ce, &spin);
 	if (ret)
-		return ret;
+		goto out_pm;
 
 	ret = intel_context_reconfigure_sseu(ce, sseu);
 	if (ret)
@@ -1180,6 +1210,8 @@ out_spin:
 		igt_spinner_fini(spin);
 		kfree(spin);
 	}
+out_pm:
+	intel_engine_pm_put(ce->engine);
 	return ret;
 }
 
@@ -1317,10 +1349,10 @@ static int igt_ctx_readonly(void *arg)
 	struct i915_gem_context *ctx;
 	unsigned long idx, ndwords, dw;
 	struct igt_live_test t;
-	struct drm_file *file;
 	I915_RND_STATE(prng);
 	IGT_TIMEOUT(end_time);
 	LIST_HEAD(objects);
+	struct file *file;
 	int err = -ENODEV;
 
 	/*
@@ -1343,14 +1375,11 @@ static int igt_ctx_readonly(void *arg)
 		goto out_file;
 	}
 
-	rcu_read_lock();
-	vm = rcu_dereference(ctx->vm) ?: &i915->ggtt.alias->vm;
+	vm = ctx_vm(ctx) ?: &i915->ggtt.alias->vm;
 	if (!vm || !vm->has_read_only) {
-		rcu_read_unlock();
 		err = 0;
 		goto out_file;
 	}
-	rcu_read_unlock();
 
 	ndwords = 0;
 	dw = 0;
@@ -1380,7 +1409,7 @@ static int igt_ctx_readonly(void *arg)
 				pr_err("Failed to fill dword %lu [%lu/%lu] with gpu (%s) [full-ppgtt? %s], err=%d\n",
 				       ndwords, dw, max_dwords(obj),
 				       ce->engine->name,
-				       yesno(!!rcu_access_pointer(ctx->vm)),
+				       yesno(!!ctx_vm(ctx)),
 				       err);
 				i915_gem_context_unlock_engines(ctx);
 				goto out_file;
@@ -1426,7 +1455,7 @@ out_file:
 	if (igt_live_test_end(&t))
 		err = -EIO;
 
-	mock_file_free(i915, file);
+	fput(file);
 	return err;
 }
 
@@ -1663,9 +1692,9 @@ static int igt_vm_isolation(void *arg)
 	struct i915_gem_context *ctx_a, *ctx_b;
 	struct intel_engine_cs *engine;
 	struct igt_live_test t;
-	struct drm_file *file;
 	I915_RND_STATE(prng);
 	unsigned long count;
+	struct file *file;
 	u64 vm_total;
 	int err;
 
@@ -1698,11 +1727,11 @@ static int igt_vm_isolation(void *arg)
 	}
 
 	/* We can only test vm isolation, if the vm are distinct */
-	if (ctx_a->vm == ctx_b->vm)
+	if (ctx_vm(ctx_a) == ctx_vm(ctx_b))
 		goto out_file;
 
-	vm_total = ctx_a->vm->total;
-	GEM_BUG_ON(ctx_b->vm->total != vm_total);
+	vm_total = ctx_vm(ctx_a)->total;
+	GEM_BUG_ON(ctx_vm(ctx_b)->total != vm_total);
 	vm_total -= I915_GTT_PAGE_SIZE;
 
 	count = 0;
@@ -1750,7 +1779,7 @@ static int igt_vm_isolation(void *arg)
 out_file:
 	if (igt_live_test_end(&t))
 		err = -EIO;
-	mock_file_free(i915, file);
+	fput(file);
 	return err;
 }
 

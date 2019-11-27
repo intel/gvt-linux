@@ -6,12 +6,14 @@
 
 #include <linux/prime_numbers.h>
 
+#include "gt/intel_engine_pm.h"
 #include "gt/intel_gt.h"
 #include "gt/intel_gt_pm.h"
 #include "huge_gem_object.h"
 #include "i915_selftest.h"
 #include "selftests/i915_random.h"
 #include "selftests/igt_flush_test.h"
+#include "selftests/igt_mmap.h"
 
 struct tile {
 	unsigned int width;
@@ -535,7 +537,7 @@ static int make_obj_busy(struct drm_i915_gem_object *obj)
 		if (err)
 			return err;
 
-		rq = i915_request_create(engine->kernel_context);
+		rq = intel_engine_create_kernel_request(engine);
 		if (IS_ERR(rq)) {
 			i915_vma_unpin(vma);
 			return PTR_ERR(rq);
@@ -606,28 +608,49 @@ static int igt_mmap_offset_exhaustion(void *arg)
 	struct drm_i915_private *i915 = arg;
 	struct drm_mm *mm = &i915->drm.vma_offset_manager->vm_addr_space_mm;
 	struct drm_i915_gem_object *obj;
-	struct drm_mm_node resv, *hole;
-	u64 hole_start, hole_end;
+	struct drm_mm_node *hole, *next;
 	int loop, err;
 
 	/* Disable background reaper */
 	disable_retire_worker(i915);
 	GEM_BUG_ON(!i915->gt.awake);
+	intel_gt_retire_requests(&i915->gt);
+	i915_gem_drain_freed_objects(i915);
 
 	/* Trim the device mmap space to only a page */
-	memset(&resv, 0, sizeof(resv));
-	drm_mm_for_each_hole(hole, mm, hole_start, hole_end) {
-		resv.start = hole_start;
-		resv.size = hole_end - hole_start - 1; /* PAGE_SIZE units */
-		mmap_offset_lock(i915);
-		err = drm_mm_reserve_node(mm, &resv);
-		mmap_offset_unlock(i915);
-		if (err) {
-			pr_err("Failed to trim VMA manager, err=%d\n", err);
+	mmap_offset_lock(i915);
+	loop = 1; /* PAGE_SIZE units */
+	list_for_each_entry_safe(hole, next, &mm->hole_stack, hole_stack) {
+		struct drm_mm_node *resv;
+
+		resv = kzalloc(sizeof(*resv), GFP_NOWAIT);
+		if (!resv) {
+			err = -ENOMEM;
 			goto out_park;
 		}
-		break;
+
+		resv->start = drm_mm_hole_node_start(hole) + loop;
+		resv->size = hole->hole_size - loop;
+		resv->color = -1ul;
+		loop = 0;
+
+		if (!resv->size) {
+			kfree(resv);
+			continue;
+		}
+
+		pr_debug("Reserving hole [%llx + %llx]\n",
+			 resv->start, resv->size);
+
+		err = drm_mm_reserve_node(mm, resv);
+		if (err) {
+			pr_err("Failed to trim VMA manager, err=%d\n", err);
+			kfree(resv);
+			goto out_park;
+		}
 	}
+	GEM_BUG_ON(!list_is_singular(&mm->hole_stack));
+	mmap_offset_unlock(i915);
 
 	/* Just fits! */
 	if (!assert_mmap_offset(i915, PAGE_SIZE, 0)) {
@@ -684,14 +707,228 @@ static int igt_mmap_offset_exhaustion(void *arg)
 
 out:
 	mmap_offset_lock(i915);
-	drm_mm_remove_node(&resv);
-	mmap_offset_unlock(i915);
 out_park:
+	drm_mm_for_each_node_safe(hole, next, mm) {
+		if (hole->color != -1ul)
+			continue;
+
+		drm_mm_remove_node(hole);
+		kfree(hole);
+	}
+	mmap_offset_unlock(i915);
 	restore_retire_worker(i915);
 	return err;
 err_obj:
 	i915_gem_object_put(obj);
 	goto out;
+}
+
+#define expand32(x) (((x) << 0) | ((x) << 8) | ((x) << 16) | ((x) << 24))
+static int igt_mmap_gtt(void *arg)
+{
+	struct drm_i915_private *i915 = arg;
+	struct drm_i915_gem_object *obj;
+	struct vm_area_struct *area;
+	unsigned long addr;
+	void *vaddr;
+	int err, i;
+
+	if (!i915_ggtt_has_aperture(&i915->ggtt))
+		return 0;
+
+	obj = i915_gem_object_create_internal(i915, PAGE_SIZE);
+	if (IS_ERR(obj))
+		return PTR_ERR(obj);
+
+	vaddr = i915_gem_object_pin_map(obj, I915_MAP_WB);
+	if (IS_ERR(vaddr)) {
+		err = PTR_ERR(vaddr);
+		goto out;
+	}
+	memset(vaddr, POISON_INUSE, PAGE_SIZE);
+	i915_gem_object_flush_map(obj);
+	i915_gem_object_unpin_map(obj);
+
+	err = create_mmap_offset(obj);
+	if (err)
+		goto out;
+
+	addr = igt_mmap_node(i915, &obj->base.vma_node,
+			     0, PROT_WRITE, MAP_SHARED);
+	if (IS_ERR_VALUE(addr)) {
+		err = addr;
+		goto out;
+	}
+
+	pr_debug("igt_mmap(obj:gtt) @ %lx\n", addr);
+
+	area = find_vma(current->mm, addr);
+	if (!area) {
+		pr_err("Did not create a vm_area_struct for the mmap\n");
+		err = -EINVAL;
+		goto out_unmap;
+	}
+
+	if (area->vm_private_data != obj) {
+		pr_err("vm_area_struct did not point back to our object!\n");
+		err = -EINVAL;
+		goto out_unmap;
+	}
+
+	for (i = 0; i < PAGE_SIZE / sizeof(u32); i++) {
+		u32 __user *ux = u64_to_user_ptr((u64)(addr + i * sizeof(*ux)));
+		u32 x;
+
+		if (get_user(x, ux)) {
+			pr_err("Unable to read from GTT mmap, offset:%zd\n",
+			       i * sizeof(x));
+			err = -EFAULT;
+			break;
+		}
+
+		if (x != expand32(POISON_INUSE)) {
+			pr_err("Read incorrect value from GTT mmap, offset:%zd, found:%x, expected:%x\n",
+			       i * sizeof(x), x, expand32(POISON_INUSE));
+			err = -EINVAL;
+			break;
+		}
+
+		x = expand32(POISON_FREE);
+		if (put_user(x, ux)) {
+			pr_err("Unable to write to GTT mmap, offset:%zd\n",
+			       i * sizeof(x));
+			err = -EFAULT;
+			break;
+		}
+	}
+
+out_unmap:
+	vm_munmap(addr, PAGE_SIZE);
+
+	vaddr = i915_gem_object_pin_map(obj, I915_MAP_FORCE_WC);
+	if (IS_ERR(vaddr)) {
+		err = PTR_ERR(vaddr);
+		goto out;
+	}
+	if (err == 0 && memchr_inv(vaddr, POISON_FREE, PAGE_SIZE)) {
+		pr_err("Write via GGTT mmap did not land in backing store\n");
+		err = -EINVAL;
+	}
+	i915_gem_object_unpin_map(obj);
+
+out:
+	i915_gem_object_put(obj);
+	return err;
+}
+
+static int check_present_pte(pte_t *pte, unsigned long addr, void *data)
+{
+	if (!pte_present(*pte) || pte_none(*pte)) {
+		pr_err("missing PTE:%lx\n",
+		       (addr - (unsigned long)data) >> PAGE_SHIFT);
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+static int check_absent_pte(pte_t *pte, unsigned long addr, void *data)
+{
+	if (pte_present(*pte) && !pte_none(*pte)) {
+		pr_err("present PTE:%lx; expected to be revoked\n",
+		       (addr - (unsigned long)data) >> PAGE_SHIFT);
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+static int check_present(unsigned long addr, unsigned long len)
+{
+	return apply_to_page_range(current->mm, addr, len,
+				   check_present_pte, (void *)addr);
+}
+
+static int check_absent(unsigned long addr, unsigned long len)
+{
+	return apply_to_page_range(current->mm, addr, len,
+				   check_absent_pte, (void *)addr);
+}
+
+static int prefault_range(u64 start, u64 len)
+{
+	const char __user *addr, *end;
+	char __maybe_unused c;
+	int err;
+
+	addr = u64_to_user_ptr(start);
+	end = addr + len;
+
+	for (; addr < end; addr += PAGE_SIZE) {
+		err = __get_user(c, addr);
+		if (err)
+			return err;
+	}
+
+	return __get_user(c, end - 1);
+}
+
+static int igt_mmap_gtt_revoke(void *arg)
+{
+	struct drm_i915_private *i915 = arg;
+	struct drm_i915_gem_object *obj;
+	unsigned long addr;
+	int err;
+
+	if (!i915_ggtt_has_aperture(&i915->ggtt))
+		return 0;
+
+	obj = i915_gem_object_create_internal(i915, SZ_4M);
+	if (IS_ERR(obj))
+		return PTR_ERR(obj);
+
+	err = create_mmap_offset(obj);
+	if (err)
+		goto out;
+
+	addr = igt_mmap_node(i915, &obj->base.vma_node,
+			     0, PROT_WRITE, MAP_SHARED);
+	if (IS_ERR_VALUE(addr)) {
+		err = addr;
+		goto out;
+	}
+
+	err = prefault_range(addr, obj->base.size);
+	if (err)
+		goto out_unmap;
+
+	GEM_BUG_ON(!atomic_read(&obj->bind_count));
+
+	err = check_present(addr, obj->base.size);
+	if (err)
+		goto out_unmap;
+
+	/*
+	 * After unbinding the object from the GGTT, its address may be reused
+	 * for other objects. Ergo we have to revoke the previous mmap PTE
+	 * access as it no longer points to the same object.
+	 */
+	err = i915_gem_object_unbind(obj, I915_GEM_OBJECT_UNBIND_ACTIVE);
+	if (err) {
+		pr_err("Failed to unbind object!\n");
+		goto out_unmap;
+	}
+	GEM_BUG_ON(atomic_read(&obj->bind_count));
+
+	err = check_absent(addr, obj->base.size);
+	if (err)
+		goto out_unmap;
+
+out_unmap:
+	vm_munmap(addr, obj->base.size);
+out:
+	i915_gem_object_put(obj);
+	return err;
 }
 
 int i915_gem_mman_live_selftests(struct drm_i915_private *i915)
@@ -700,6 +937,8 @@ int i915_gem_mman_live_selftests(struct drm_i915_private *i915)
 		SUBTEST(igt_partial_tiling),
 		SUBTEST(igt_smoke_tiling),
 		SUBTEST(igt_mmap_offset_exhaustion),
+		SUBTEST(igt_mmap_gtt),
+		SUBTEST(igt_mmap_gtt_revoke),
 	};
 
 	return i915_subtests(tests, i915);

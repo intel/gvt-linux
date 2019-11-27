@@ -1045,7 +1045,7 @@ i915_error_object_create(struct drm_i915_private *i915,
 
 			s = kmap(page);
 			ret = compress_page(compress, s, dst);
-			kunmap(s);
+			kunmap(page);
 
 			drm_clflush_pages(&page, 1);
 
@@ -1230,10 +1230,7 @@ static void record_request(const struct i915_request *request,
 	erq->start = i915_ggtt_offset(request->ring->vma);
 	erq->head = request->head;
 	erq->tail = request->tail;
-
-	rcu_read_lock();
 	erq->pid = ctx->pid ? pid_nr(ctx->pid) : 0;
-	rcu_read_unlock();
 }
 
 static void engine_record_requests(struct intel_engine_cs *engine,

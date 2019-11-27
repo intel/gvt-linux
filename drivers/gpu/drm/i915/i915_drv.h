@@ -273,11 +273,11 @@ struct drm_i915_display_funcs {
 	int (*compute_pipe_wm)(struct intel_crtc_state *crtc_state);
 	int (*compute_intermediate_wm)(struct intel_crtc_state *crtc_state);
 	void (*initial_watermarks)(struct intel_atomic_state *state,
-				   struct intel_crtc_state *crtc_state);
+				   struct intel_crtc *crtc);
 	void (*atomic_update_watermarks)(struct intel_atomic_state *state,
-					 struct intel_crtc_state *crtc_state);
+					 struct intel_crtc *crtc);
 	void (*optimize_watermarks)(struct intel_atomic_state *state,
-				    struct intel_crtc_state *crtc_state);
+				    struct intel_crtc *crtc);
 	int (*compute_global_watermarks)(struct intel_atomic_state *state);
 	void (*update_wm)(struct intel_crtc *crtc);
 	int (*modeset_calc_cdclk)(struct intel_atomic_state *state);
@@ -290,10 +290,10 @@ struct drm_i915_display_funcs {
 					 struct intel_initial_plane_config *);
 	int (*crtc_compute_clock)(struct intel_crtc *crtc,
 				  struct intel_crtc_state *crtc_state);
-	void (*crtc_enable)(struct intel_crtc_state *pipe_config,
-			    struct intel_atomic_state *old_state);
-	void (*crtc_disable)(struct intel_crtc_state *old_crtc_state,
-			     struct intel_atomic_state *old_state);
+	void (*crtc_enable)(struct intel_atomic_state *state,
+			    struct intel_crtc *crtc);
+	void (*crtc_disable)(struct intel_atomic_state *state,
+			     struct intel_crtc *crtc);
 	void (*commit_modeset_enables)(struct intel_atomic_state *state);
 	void (*commit_modeset_disables)(struct intel_atomic_state *state);
 	void (*audio_codec_enable)(struct intel_encoder *encoder,
@@ -621,19 +621,18 @@ struct i915_gem_mm {
 
 #define I915_ENGINE_WEDGED_TIMEOUT  (60 * HZ)  /* Reset but no recovery? */
 
+/* Amount of SAGV/QGV points, BSpec precisely defines this */
+#define I915_NUM_QGV_POINTS 8
+
 struct ddi_vbt_port_info {
 	/* Non-NULL if port present. */
 	const struct child_device_config *child;
 
 	int max_tmds_clock;
 
-	/*
-	 * This is an index in the HDMI/DVI DDI buffer translation table.
-	 * The special value HDMI_LEVEL_SHIFT_UNKNOWN means the VBT didn't
-	 * populate this field.
-	 */
-#define HDMI_LEVEL_SHIFT_UNKNOWN	0xff
+	/* This is an index in the HDMI/DVI DDI buffer translation table. */
 	u8 hdmi_level_shift;
+	u8 hdmi_level_shift_set:1;
 
 	u8 supports_dvi:1;
 	u8 supports_hdmi:1;
@@ -724,8 +723,7 @@ struct intel_vbt_data {
 
 	int crt_ddc_pin;
 
-	int child_dev_num;
-	struct child_device_config *child_dev;
+	struct list_head display_devices;
 
 	struct ddi_vbt_port_info ddi_port_info[I915_MAX_PORTS];
 	struct sdvo_device_mapping sdvo_mappings[2];
@@ -889,6 +887,10 @@ struct intel_wm_config {
 struct intel_cdclk_state {
 	unsigned int cdclk, vco, ref, bypass;
 	u8 voltage_level;
+};
+
+struct i915_selftest_stash {
+	atomic_t counter;
 };
 
 struct drm_i915_private {
@@ -1233,7 +1235,8 @@ struct drm_i915_private {
 	} dram_info;
 
 	struct intel_bw_info {
-		unsigned int deratedbw[3]; /* for each QGV point */
+		/* for each QGV point */
+		unsigned int deratedbw[I915_NUM_QGV_POINTS];
 		u8 num_qgv_points;
 		u8 num_planes;
 	} max_bw[6];
@@ -1248,8 +1251,6 @@ struct drm_i915_private {
 	struct intel_gt gt;
 
 	struct {
-		struct notifier_block pm_notifier;
-
 		struct i915_gem_contexts {
 			spinlock_t lock; /* locks list */
 			struct list_head list;
@@ -1285,6 +1286,8 @@ struct drm_i915_private {
 
 	/* Mutex to protect the above hdcp component related values. */
 	struct mutex hdcp_comp_mutex;
+
+	I915_SELFTEST_DECLARE(struct i915_selftest_stash selftest;)
 
 	/*
 	 * NOTE: This is the dri1/ums dungeon, don't add stuff here. Your patch
@@ -1661,7 +1664,7 @@ IS_SUBPLATFORM(const struct drm_i915_private *i915,
 
 /* WaRsDisableCoarsePowerGating:skl,cnl */
 #define NEEDS_WaRsDisableCoarsePowerGating(dev_priv) \
-	(IS_CANNONLAKE(dev_priv) || IS_GEN(dev_priv, 9))
+	IS_GEN_RANGE(dev_priv, 9, 10)
 
 #define HAS_GMBUS_IRQ(dev_priv) (INTEL_GEN(dev_priv) >= 4)
 #define HAS_GMBUS_BURST_READ(dev_priv) (INTEL_GEN(dev_priv) >= 10 || \
@@ -1842,14 +1845,6 @@ i915_gem_object_ggtt_pin(struct drm_i915_gem_object *obj,
 int i915_gem_object_unbind(struct drm_i915_gem_object *obj,
 			   unsigned long flags);
 #define I915_GEM_OBJECT_UNBIND_ACTIVE BIT(0)
-
-struct i915_vma * __must_check
-i915_gem_object_pin(struct drm_i915_gem_object *obj,
-		    struct i915_address_space *vm,
-		    const struct i915_ggtt_view *view,
-		    u64 size,
-		    u64 alignment,
-		    u64 flags);
 
 void i915_gem_runtime_suspend(struct drm_i915_private *dev_priv);
 

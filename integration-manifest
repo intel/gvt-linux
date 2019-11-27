@@ -1,0 +1,30 @@
+drm drm-fixes 51658c04c338d7ef98d6c2c19009e4814632db50
+	Merge tag 'drm-intel-fixes-2019-11-21' of git://anongit.freedesktop.org/drm/drm-intel into drm-fixes
+drm-misc drm-misc-fixes 6645d42d79d33e8a9fe262660a75d5f4556bbea9
+	dma-buf: Fix memory leak in sync_file_merge()
+drm-intel drm-intel-fixes 71d122629c04707eb7f65447fb2f5bd092d98ce3
+	drm/i915/fbdev: Restore physical addresses for fb_mmap()
+drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
+	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
+drm drm-next acc61b8929365e63a3e8c8c8913177795aa45594
+	Merge tag 'drm-next-5.5-2019-11-22' of git://people.freedesktop.org/~agd5f/linux into drm-next
+drm-misc drm-misc-next-fixes 9786b65bc61acec63f923978c75e707afbb74bc7
+	drm/ttm: fix mmap refcounting
+drm-intel drm-intel-next-fixes 0725d9a31869e6c80630e99da366ede2848295cc
+	drm/i915/gt: Make intel_ring_unpin() safe for concurrent pint
+drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
+	Linux 4.14-rc1
+drm-misc drm-misc-next 19d32ace8b6acebc45da1ea748000ac79ccc7721
+	udmabuf: Remove deleted map/unmap handlers.
+drm-intel drm-intel-next-queued 7e7129dcbd81721b8f69a535c686cedfded888c1
+	drm/i915: Disable display interrupts during display IRQ handler
+drm-intel drm-intel-next 1883e2999f045e1fd6f76a7f30288a5312085289
+	drm/i915: Update DRIVER_DATE to 20191101
+drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
+	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
+sound-upstream for-linus 8218df93b7c4b1c6d02c4f726029e10efa4b7ca2
+	ALSA: hda/hdmi - enable automatic runtime pm for AMD HDMI codecs by default
+sound-upstream for-next 8218df93b7c4b1c6d02c4f726029e10efa4b7ca2
+	ALSA: hda/hdmi - enable automatic runtime pm for AMD HDMI codecs by default
+drm-intel topic/core-for-CI 883d9554ea8e228c4e6aca8339b1c1c970a938e8
+	Revert "Revert "ALSA: hda: Add Tigerlake/Jasperlake PCI ID""

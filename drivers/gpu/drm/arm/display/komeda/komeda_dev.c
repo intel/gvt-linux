@@ -58,6 +58,8 @@ static void komeda_debugfs_init(struct komeda_dev *mdev)
 	mdev->debugfs_root = debugfs_create_dir("komeda", NULL);
 	debugfs_create_file("register", 0444, mdev->debugfs_root,
 			    mdev, &komeda_register_fops);
+	debugfs_create_x16("err_verbosity", 0664, mdev->debugfs_root,
+			   &mdev->err_verbosity);
 }
 #endif
 
@@ -184,18 +186,11 @@ struct komeda_dev *komeda_dev_create(struct device *dev)
 	struct platform_device *pdev = to_platform_device(dev);
 	const struct komeda_product_data *product;
 	struct komeda_dev *mdev;
-	struct resource *io_res;
 	int err = 0;
 
 	product = of_device_get_match_data(dev);
 	if (!product)
 		return ERR_PTR(-ENODEV);
-
-	io_res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	if (!io_res) {
-		DRM_ERROR("No registers defined.\n");
-		return ERR_PTR(-ENODEV);
-	}
 
 	mdev = devm_kzalloc(dev, sizeof(*mdev), GFP_KERNEL);
 	if (!mdev)
@@ -204,7 +199,7 @@ struct komeda_dev *komeda_dev_create(struct device *dev)
 	mutex_init(&mdev->lock);
 
 	mdev->dev = dev;
-	mdev->reg_base = devm_ioremap_resource(dev, io_res);
+	mdev->reg_base = devm_platform_ioremap_resource(pdev, 0);
 	if (IS_ERR(mdev->reg_base)) {
 		DRM_ERROR("Map register space failed.\n");
 		err = PTR_ERR(mdev->reg_base);
@@ -279,6 +274,8 @@ struct komeda_dev *komeda_dev_create(struct device *dev)
 		DRM_ERROR("create sysfs group failed.\n");
 		goto err_cleanup;
 	}
+
+	mdev->err_verbosity = KOMEDA_DEV_PRINT_ERR_EVENTS;
 
 #ifdef CONFIG_DEBUG_FS
 	komeda_debugfs_init(mdev);

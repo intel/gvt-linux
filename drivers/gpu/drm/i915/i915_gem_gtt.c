@@ -123,6 +123,16 @@ static void gen6_ggtt_invalidate(struct i915_ggtt *ggtt)
 {
 	struct intel_uncore *uncore = ggtt->vm.gt->uncore;
 
+	spin_lock_irq(&uncore->lock);
+	intel_uncore_write_fw(uncore, GFX_FLSH_CNTL_GEN6, GFX_FLSH_CNTL_EN);
+	intel_uncore_read_fw(uncore, GFX_FLSH_CNTL_GEN6);
+	spin_unlock_irq(&uncore->lock);
+}
+
+static void gen8_ggtt_invalidate(struct i915_ggtt *ggtt)
+{
+	struct intel_uncore *uncore = ggtt->vm.gt->uncore;
+
 	/*
 	 * Note that as an uncached mmio write, this will flush the
 	 * WCB of the writes into the GGTT before it triggers the invalidate.
@@ -135,7 +145,7 @@ static void guc_ggtt_invalidate(struct i915_ggtt *ggtt)
 	struct intel_uncore *uncore = ggtt->vm.gt->uncore;
 	struct drm_i915_private *i915 = ggtt->vm.i915;
 
-	gen6_ggtt_invalidate(ggtt);
+	gen8_ggtt_invalidate(ggtt);
 
 	if (INTEL_GEN(i915) >= 12)
 		intel_uncore_write_fw(uncore, GEN12_GUC_TLB_INV_CR,
@@ -1683,6 +1693,23 @@ static void gen6_ppgtt_insert_entries(struct i915_address_space *vm,
 	vma->page_sizes.gtt = I915_GTT_PAGE_SIZE;
 }
 
+static void gen6_flush_pd(struct gen6_ppgtt *ppgtt)
+{
+	struct i915_page_directory * const pd = ppgtt->base.pd;
+	struct i915_page_table *pt;
+	unsigned int pde;
+
+	mutex_lock(&ppgtt->flush);
+
+	gen6_for_all_pdes(pt, pd, pde)
+		gen6_write_pde(ppgtt, pde, pt);
+
+	ioread32(ppgtt->pd_addr + pde - 1);
+	gen6_ggtt_invalidate(ppgtt->base.vm.gt->ggtt);
+
+	mutex_unlock(&ppgtt->flush);
+}
+
 static int gen6_alloc_va_range(struct i915_address_space *vm,
 			       u64 start, u64 length)
 {
@@ -1692,7 +1719,6 @@ static int gen6_alloc_va_range(struct i915_address_space *vm,
 	intel_wakeref_t wakeref;
 	u64 from = start;
 	unsigned int pde;
-	bool flush = false;
 	int ret = 0;
 
 	wakeref = intel_runtime_pm_get(&vm->i915->runtime_pm);
@@ -1717,11 +1743,6 @@ static int gen6_alloc_va_range(struct i915_address_space *vm,
 			spin_lock(&pd->lock);
 			if (pd->entry[pde] == &vm->scratch[1]) {
 				pd->entry[pde] = pt;
-				if (i915_vma_is_bound(ppgtt->vma,
-						      I915_VMA_GLOBAL_BIND)) {
-					gen6_write_pde(ppgtt, pde, pt);
-					flush = true;
-				}
 			} else {
 				alloc = pt;
 				pt = pd->entry[pde];
@@ -1732,8 +1753,9 @@ static int gen6_alloc_va_range(struct i915_address_space *vm,
 	}
 	spin_unlock(&pd->lock);
 
-	if (flush)
-		gen6_ggtt_invalidate(vm->gt->ggtt);
+	if (i915_vma_is_bound(ppgtt->vma, I915_VMA_GLOBAL_BIND))
+		/* Rewrite them all! Anything less misses an invalidate. */
+		gen6_flush_pd(ppgtt);
 
 	goto out;
 
@@ -1793,6 +1815,7 @@ static void gen6_ppgtt_cleanup(struct i915_address_space *vm)
 	gen6_ppgtt_free_pd(ppgtt);
 	free_scratch(vm);
 
+	mutex_destroy(&ppgtt->flush);
 	mutex_destroy(&ppgtt->pin_mutex);
 	kfree(ppgtt->base.pd);
 }
@@ -1817,17 +1840,11 @@ static int pd_vma_bind(struct i915_vma *vma,
 	struct i915_ggtt *ggtt = i915_vm_to_ggtt(vma->vm);
 	struct gen6_ppgtt *ppgtt = vma->private;
 	u32 ggtt_offset = i915_ggtt_offset(vma) / I915_GTT_PAGE_SIZE;
-	struct i915_page_table *pt;
-	unsigned int pde;
 
 	px_base(ppgtt->base.pd)->ggtt_offset = ggtt_offset * sizeof(gen6_pte_t);
 	ppgtt->pd_addr = (gen6_pte_t __iomem *)ggtt->gsm + ggtt_offset;
 
-	gen6_for_all_pdes(pt, ppgtt->base.pd, pde)
-		gen6_write_pde(ppgtt, pde, pt);
-
-	gen6_ggtt_invalidate(ggtt);
-
+	gen6_flush_pd(ppgtt);
 	return 0;
 }
 
@@ -1958,6 +1975,7 @@ static struct i915_ppgtt *gen6_ppgtt_create(struct drm_i915_private *i915)
 	if (!ppgtt)
 		return ERR_PTR(-ENOMEM);
 
+	mutex_init(&ppgtt->flush);
 	mutex_init(&ppgtt->pin_mutex);
 
 	ppgtt_init(&ppgtt->base, &i915->gt);
@@ -1994,6 +2012,7 @@ err_scratch:
 err_pd:
 	kfree(ppgtt->base.pd);
 err_free:
+	mutex_destroy(&ppgtt->pin_mutex);
 	kfree(ppgtt);
 	return ERR_PTR(err);
 }
@@ -3041,7 +3060,7 @@ static int gen8_gmch_probe(struct i915_ggtt *ggtt)
 			ggtt->vm.clear_range = bxt_vtd_ggtt_clear_range__BKL;
 	}
 
-	ggtt->invalidate = gen6_ggtt_invalidate;
+	ggtt->invalidate = gen8_ggtt_invalidate;
 
 	ggtt->vm.vma_ops.bind_vma    = ggtt_bind_vma;
 	ggtt->vm.vma_ops.unbind_vma  = ggtt_unbind_vma;
@@ -3281,7 +3300,7 @@ int i915_ggtt_enable_hw(struct drm_i915_private *dev_priv)
 
 void i915_ggtt_enable_guc(struct i915_ggtt *ggtt)
 {
-	GEM_BUG_ON(ggtt->invalidate != gen6_ggtt_invalidate);
+	GEM_BUG_ON(ggtt->invalidate != gen8_ggtt_invalidate);
 
 	ggtt->invalidate = guc_ggtt_invalidate;
 
@@ -3291,13 +3310,13 @@ void i915_ggtt_enable_guc(struct i915_ggtt *ggtt)
 void i915_ggtt_disable_guc(struct i915_ggtt *ggtt)
 {
 	/* XXX Temporary pardon for error unload */
-	if (ggtt->invalidate == gen6_ggtt_invalidate)
+	if (ggtt->invalidate == gen8_ggtt_invalidate)
 		return;
 
 	/* We should only be called after i915_ggtt_enable_guc() */
 	GEM_BUG_ON(ggtt->invalidate != guc_ggtt_invalidate);
 
-	ggtt->invalidate = gen6_ggtt_invalidate;
+	ggtt->invalidate = gen8_ggtt_invalidate;
 
 	ggtt->invalidate(ggtt);
 }

@@ -44,7 +44,9 @@
 #include "gem/i915_gem_clflush.h"
 #include "gem/i915_gem_context.h"
 #include "gem/i915_gem_ioctls.h"
+#include "gem/i915_gem_mman.h"
 #include "gem/i915_gem_pm.h"
+#include "gt/intel_context.h"
 #include "gt/intel_engine_user.h"
 #include "gt/intel_gt.h"
 #include "gt/intel_gt_pm.h"
@@ -118,32 +120,70 @@ i915_gem_get_aperture_ioctl(struct drm_device *dev, void *data,
 int i915_gem_object_unbind(struct drm_i915_gem_object *obj,
 			   unsigned long flags)
 {
-	struct i915_vma *vma;
+	struct intel_runtime_pm *rpm = &to_i915(obj->base.dev)->runtime_pm;
 	LIST_HEAD(still_in_list);
-	int ret = 0;
+	intel_wakeref_t wakeref;
+	struct i915_vma *vma;
+	int ret;
 
+	if (!atomic_read(&obj->bind_count))
+		return 0;
+
+	/*
+	 * As some machines use ACPI to handle runtime-resume callbacks, and
+	 * ACPI is quite kmalloc happy, we cannot resume beneath the vm->mutex
+	 * as they are required by the shrinker. Ergo, we wake the device up
+	 * first just in case.
+	 */
+	wakeref = intel_runtime_pm_get(rpm);
+
+try_again:
+	ret = 0;
 	spin_lock(&obj->vma.lock);
 	while (!ret && (vma = list_first_entry_or_null(&obj->vma.list,
 						       struct i915_vma,
 						       obj_link))) {
 		struct i915_address_space *vm = vma->vm;
+		bool awake = false;
 
-		ret = -EBUSY;
+		ret = -EAGAIN;
 		if (!i915_vm_tryopen(vm))
 			break;
+
+		/* Prevent vma being freed by i915_vma_parked as we unbind */
+		if (intel_gt_pm_get_if_awake(vm->gt)) {
+			awake = true;
+		} else {
+			if (i915_vma_is_closed(vma)) {
+				spin_unlock(&obj->vma.lock);
+				i915_vma_parked(vm->gt);
+				goto err_vm;
+			}
+		}
 
 		list_move_tail(&vma->obj_link, &still_in_list);
 		spin_unlock(&obj->vma.lock);
 
+		ret = -EBUSY;
 		if (flags & I915_GEM_OBJECT_UNBIND_ACTIVE ||
 		    !i915_vma_is_active(vma))
 			ret = i915_vma_unbind(vma);
 
+		if (awake)
+			intel_gt_pm_put(vm->gt);
+err_vm:
 		i915_vm_close(vm);
 		spin_lock(&obj->vma.lock);
 	}
 	list_splice(&still_in_list, &obj->vma.list);
 	spin_unlock(&obj->vma.lock);
+
+	if (ret == -EAGAIN && flags & I915_GEM_OBJECT_UNBIND_ACTIVE) {
+		rcu_barrier(); /* flush the i915_vm_release() */
+		goto try_again;
+	}
+
+	intel_runtime_pm_put(rpm, wakeref);
 
 	return ret;
 }
@@ -854,7 +894,7 @@ void i915_gem_runtime_suspend(struct drm_i915_private *i915)
 
 	list_for_each_entry_safe(obj, on,
 				 &i915->ggtt.userfault_list, userfault_link)
-		__i915_gem_object_release_mmap(obj);
+		__i915_gem_object_release_mmap_gtt(obj);
 
 	/*
 	 * The fence will be lost when the device powers down. If any were
@@ -891,22 +931,8 @@ i915_gem_object_ggtt_pin(struct drm_i915_gem_object *obj,
 			 u64 alignment,
 			 u64 flags)
 {
-	struct drm_i915_private *dev_priv = to_i915(obj->base.dev);
-	struct i915_address_space *vm = &dev_priv->ggtt.vm;
-
-	return i915_gem_object_pin(obj, vm, view, size, alignment,
-				   flags | PIN_GLOBAL);
-}
-
-struct i915_vma *
-i915_gem_object_pin(struct drm_i915_gem_object *obj,
-		    struct i915_address_space *vm,
-		    const struct i915_ggtt_view *view,
-		    u64 size,
-		    u64 alignment,
-		    u64 flags)
-{
-	struct drm_i915_private *dev_priv = to_i915(obj->base.dev);
+	struct drm_i915_private *i915 = to_i915(obj->base.dev);
+	struct i915_ggtt *ggtt = &i915->ggtt;
 	struct i915_vma *vma;
 	int ret;
 
@@ -915,17 +941,19 @@ i915_gem_object_pin(struct drm_i915_gem_object *obj,
 
 	if (flags & PIN_MAPPABLE &&
 	    (!view || view->type == I915_GGTT_VIEW_NORMAL)) {
-		/* If the required space is larger than the available
+		/*
+		 * If the required space is larger than the available
 		 * aperture, we will not able to find a slot for the
 		 * object and unbinding the object now will be in
 		 * vain. Worse, doing so may cause us to ping-pong
 		 * the object in and out of the Global GTT and
 		 * waste a lot of cycles under the mutex.
 		 */
-		if (obj->base.size > dev_priv->ggtt.mappable_end)
+		if (obj->base.size > ggtt->mappable_end)
 			return ERR_PTR(-E2BIG);
 
-		/* If NONBLOCK is set the caller is optimistically
+		/*
+		 * If NONBLOCK is set the caller is optimistically
 		 * trying to cache the full object within the mappable
 		 * aperture, and *must* have a fallback in place for
 		 * situations where we cannot bind the object. We
@@ -941,11 +969,11 @@ i915_gem_object_pin(struct drm_i915_gem_object *obj,
 		 * we could try to minimise harm to others.
 		 */
 		if (flags & PIN_NONBLOCK &&
-		    obj->base.size > dev_priv->ggtt.mappable_end / 2)
+		    obj->base.size > ggtt->mappable_end / 2)
 			return ERR_PTR(-ENOSPC);
 	}
 
-	vma = i915_vma_instance(obj, vm, view);
+	vma = i915_vma_instance(obj, &ggtt->vm, view);
 	if (IS_ERR(vma))
 		return vma;
 
@@ -955,7 +983,7 @@ i915_gem_object_pin(struct drm_i915_gem_object *obj,
 				return ERR_PTR(-ENOSPC);
 
 			if (flags & PIN_MAPPABLE &&
-			    vma->fence_size > dev_priv->ggtt.mappable_end / 2)
+			    vma->fence_size > ggtt->mappable_end / 2)
 				return ERR_PTR(-ENOSPC);
 		}
 
@@ -965,14 +993,14 @@ i915_gem_object_pin(struct drm_i915_gem_object *obj,
 	}
 
 	if (vma->fence && !i915_gem_object_is_tiled(obj)) {
-		mutex_lock(&vma->vm->mutex);
+		mutex_lock(&ggtt->vm.mutex);
 		ret = i915_vma_revoke_fence(vma);
-		mutex_unlock(&vma->vm->mutex);
+		mutex_unlock(&ggtt->vm.mutex);
 		if (ret)
 			return ERR_PTR(ret);
 	}
 
-	ret = i915_vma_pin(vma, size, alignment, flags);
+	ret = i915_vma_pin(vma, size, alignment, flags | PIN_GLOBAL);
 	if (ret)
 		return ERR_PTR(ret);
 
@@ -1053,6 +1081,18 @@ out:
 	return err;
 }
 
+static int __intel_context_flush_retire(struct intel_context *ce)
+{
+	struct intel_timeline *tl;
+
+	tl = intel_context_timeline_lock(ce);
+	if (IS_ERR(tl))
+		return PTR_ERR(tl);
+
+	intel_context_timeline_unlock(tl);
+	return 0;
+}
+
 static int __intel_engines_record_defaults(struct intel_gt *gt)
 {
 	struct i915_request *requests[I915_NUM_ENGINES] = {};
@@ -1070,8 +1110,13 @@ static int __intel_engines_record_defaults(struct intel_gt *gt)
 	 */
 
 	for_each_engine(engine, gt, id) {
+		struct intel_renderstate so;
 		struct intel_context *ce;
 		struct i915_request *rq;
+
+		err = intel_renderstate_init(&so, engine);
+		if (err)
+			goto out;
 
 		/* We must be able to switch to something! */
 		GEM_BUG_ON(!engine->kernel_context);
@@ -1095,13 +1140,14 @@ static int __intel_engines_record_defaults(struct intel_gt *gt)
 		if (err)
 			goto err_rq;
 
-		err = intel_renderstate_emit(rq);
+		err = intel_renderstate_emit(&so, rq);
 		if (err)
 			goto err_rq;
 
 err_rq:
 		requests[id] = i915_request_get(rq);
 		i915_request_add(rq);
+		intel_renderstate_fini(&so);
 		if (err)
 			goto out;
 	}
@@ -1121,12 +1167,19 @@ err_rq:
 		if (!rq)
 			continue;
 
-		/* We want to be able to unbind the state from the GGTT */
-		GEM_BUG_ON(intel_context_is_pinned(rq->hw_context));
-
+		GEM_BUG_ON(!test_bit(CONTEXT_ALLOC_BIT,
+				     &rq->hw_context->flags));
 		state = rq->hw_context->state;
 		if (!state)
 			continue;
+
+		/* Serialise with retirement on another CPU */
+		err = __intel_context_flush_retire(rq->hw_context);
+		if (err)
+			goto out;
+
+		/* We want to be able to unbind the state from the GGTT */
+		GEM_BUG_ON(intel_context_is_pinned(rq->hw_context));
 
 		/*
 		 * As we will hold a reference to the logical state, it will
@@ -1208,8 +1261,6 @@ int i915_gem_init(struct drm_i915_private *dev_priv)
 	if (intel_vgpu_active(dev_priv) && !intel_vgpu_has_huge_gtt(dev_priv))
 		mkwrite_device_info(dev_priv)->page_sizes =
 			I915_GTT_PAGE_SIZE_4K;
-
-	intel_timelines_init(dev_priv);
 
 	ret = i915_gem_init_userptr(dev_priv);
 	if (ret)
@@ -1324,7 +1375,6 @@ err_unlock:
 	if (ret != -EIO) {
 		intel_uc_cleanup_firmwares(&dev_priv->gt.uc);
 		i915_gem_cleanup_userptr(dev_priv);
-		intel_timelines_fini(dev_priv);
 	}
 
 	if (ret == -EIO) {
@@ -1388,7 +1438,6 @@ void i915_gem_driver_release(struct drm_i915_private *dev_priv)
 
 	intel_uc_cleanup_firmwares(&dev_priv->gt.uc);
 	i915_gem_cleanup_userptr(dev_priv);
-	intel_timelines_fini(dev_priv);
 
 	i915_gem_drain_freed_objects(dev_priv);
 

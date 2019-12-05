@@ -991,6 +991,58 @@ static void intel_engine_context_out(struct intel_engine_cs *engine)
 	write_sequnlock_irqrestore(&engine->stats.lock, flags);
 }
 
+static int lrc_ring_mi_mode(const struct intel_engine_cs *engine)
+{
+	if (INTEL_GEN(engine->i915) >= 12)
+		return 0x60;
+	else if (INTEL_GEN(engine->i915) >= 9)
+		return 0x54;
+	else if (engine->class == RENDER_CLASS)
+		return 0x58;
+	else
+		return -1;
+}
+
+static void
+execlists_check_context(const struct intel_context *ce,
+			const struct intel_engine_cs *engine)
+{
+	const struct intel_ring *ring = ce->ring;
+	u32 *regs = ce->lrc_reg_state;
+	bool valid = true;
+	int x;
+
+	if (regs[CTX_RING_START] != i915_ggtt_offset(ring->vma)) {
+		pr_err("%s: context submitted with incorrect RING_START [%08x], expected %08x\n",
+		       engine->name,
+		       regs[CTX_RING_START],
+		       i915_ggtt_offset(ring->vma));
+		regs[CTX_RING_START] = i915_ggtt_offset(ring->vma);
+		valid = false;
+	}
+
+	if ((regs[CTX_RING_CTL] & ~(RING_WAIT | RING_WAIT_SEMAPHORE)) !=
+	    (RING_CTL_SIZE(ring->size) | RING_VALID)) {
+		pr_err("%s: context submitted with incorrect RING_CTL [%08x], expected %08x\n",
+		       engine->name,
+		       regs[CTX_RING_CTL],
+		       (u32)(RING_CTL_SIZE(ring->size) | RING_VALID));
+		regs[CTX_RING_CTL] = RING_CTL_SIZE(ring->size) | RING_VALID;
+		valid = false;
+	}
+
+	x = lrc_ring_mi_mode(engine);
+	if (x != -1 && regs[x + 1] & (regs[x + 1] >> 16) & STOP_RING) {
+		pr_err("%s: context submitted with STOP_RING [%08x] in RING_MI_MODE\n",
+		       engine->name, regs[x + 1]);
+		regs[x + 1] &= ~STOP_RING;
+		regs[x + 1] |= STOP_RING << 16;
+		valid = false;
+	}
+
+	WARN_ONCE(!valid, "Invalid lrc state found before submission\n");
+}
+
 static void restore_default_state(struct intel_context *ce,
 				  struct intel_engine_cs *engine)
 {
@@ -1055,6 +1107,9 @@ __execlists_schedule_in(struct i915_request *rq)
 	if (unlikely(i915_gem_context_is_banned(ce->gem_context)))
 		reset_active(rq, engine);
 
+	if (IS_ENABLED(CONFIG_DRM_I915_DEBUG_GEM))
+		execlists_check_context(ce, engine);
+
 	if (ce->tag) {
 		/* Use a fixed tag for OA and friends */
 		ce->lrc_desc |= (u64)ce->tag << 32;
@@ -1067,7 +1122,7 @@ __execlists_schedule_in(struct i915_request *rq)
 		BUILD_BUG_ON(NUM_CONTEXT_TAG > GEN12_MAX_CONTEXT_HW_ID);
 	}
 
-	intel_gt_pm_get(engine->gt);
+	__intel_gt_pm_get(engine->gt);
 	execlists_context_status_change(rq, INTEL_CONTEXT_SCHEDULE_IN);
 	intel_engine_context_in(engine);
 
@@ -1178,13 +1233,8 @@ static u64 execlists_update_context(const struct i915_request *rq)
 	 * may not be visible to the HW prior to the completion of the UC
 	 * register write and that we may begin execution from the context
 	 * before its image is complete leading to invalid PD chasing.
-	 *
-	 * Furthermore, Braswell, at least, wants a full mb to be sure that
-	 * the writes are coherent in memory (visible to the GPU) prior to
-	 * execution, and not just visible to other CPUs (as is the result of
-	 * wmb).
 	 */
-	mb();
+	wmb();
 
 	desc = ce->lrc_desc;
 	ce->lrc_desc &= ~CTX_DESC_FORCE_RESTORE;
@@ -1250,33 +1300,56 @@ assert_pending_valid(const struct intel_engine_execlists *execlists,
 	}
 
 	for (port = execlists->pending; (rq = *port); port++) {
+		unsigned long flags;
+		bool ok = true;
+
+		GEM_BUG_ON(!kref_read(&rq->fence.refcount));
+		GEM_BUG_ON(!i915_request_is_active(rq));
+
 		if (ce == rq->hw_context) {
-			GEM_TRACE_ERR("Duplicate context in pending[%zd]\n",
+			GEM_TRACE_ERR("Dup context:%llx in pending[%zd]\n",
+				      ce->timeline->fence_context,
 				      port - execlists->pending);
 			return false;
 		}
-
 		ce = rq->hw_context;
-		if (i915_request_completed(rq))
+
+		/* Hold tightly onto the lock to prevent concurrent retires! */
+		if (!spin_trylock_irqsave(&rq->lock, flags))
 			continue;
 
-		if (i915_active_is_idle(&ce->active)) {
-			GEM_TRACE_ERR("Inactive context in pending[%zd]\n",
+		if (i915_request_completed(rq))
+			goto unlock;
+
+		if (i915_active_is_idle(&ce->active) &&
+		    !i915_gem_context_is_kernel(ce->gem_context)) {
+			GEM_TRACE_ERR("Inactive context:%llx in pending[%zd]\n",
+				      ce->timeline->fence_context,
 				      port - execlists->pending);
-			return false;
+			ok = false;
+			goto unlock;
 		}
 
 		if (!i915_vma_is_pinned(ce->state)) {
-			GEM_TRACE_ERR("Unpinned context in pending[%zd]\n",
+			GEM_TRACE_ERR("Unpinned context:%llx in pending[%zd]\n",
+				      ce->timeline->fence_context,
 				      port - execlists->pending);
-			return false;
+			ok = false;
+			goto unlock;
 		}
 
 		if (!i915_vma_is_pinned(ce->ring->vma)) {
-			GEM_TRACE_ERR("Unpinned ringbuffer in pending[%zd]\n",
+			GEM_TRACE_ERR("Unpinned ring:%llx in pending[%zd]\n",
+				      ce->timeline->fence_context,
 				      port - execlists->pending);
-			return false;
+			ok = false;
+			goto unlock;
 		}
+
+unlock:
+		spin_unlock_irqrestore(&rq->lock, flags);
+		if (!ok)
+			return false;
 	}
 
 	return ce;
@@ -2373,7 +2446,7 @@ __execlists_update_reg_state(const struct intel_context *ce,
 	GEM_BUG_ON(!intel_ring_offset_valid(ring, ring->head));
 	GEM_BUG_ON(!intel_ring_offset_valid(ring, ring->tail));
 
-	regs[CTX_RING_BUFFER_START] = i915_ggtt_offset(ring->vma);
+	regs[CTX_RING_START] = i915_ggtt_offset(ring->vma);
 	regs[CTX_RING_HEAD] = ring->head;
 	regs[CTX_RING_TAIL] = ring->tail;
 
@@ -2956,20 +3029,16 @@ static void reset_csb_pointers(struct intel_engine_cs *engine)
 	WRITE_ONCE(*execlists->csb_write, reset_value);
 	wmb(); /* Make sure this is visible to HW (paranoia?) */
 
+	/*
+	 * Sometimes Icelake forgets to reset its pointers on a GPU reset.
+	 * Bludgeon them with a mmio update to be sure.
+	 */
+	ENGINE_WRITE(engine, RING_CONTEXT_STATUS_PTR,
+		     reset_value << 8 | reset_value);
+	ENGINE_POSTING_READ(engine, RING_CONTEXT_STATUS_PTR);
+
 	invalidate_csb_entries(&execlists->csb_status[0],
 			       &execlists->csb_status[reset_value]);
-}
-
-static int lrc_ring_mi_mode(const struct intel_engine_cs *engine)
-{
-	if (INTEL_GEN(engine->i915) >= 12)
-		return 0x60;
-	else if (INTEL_GEN(engine->i915) >= 9)
-		return 0x54;
-	else if (engine->class == RENDER_CLASS)
-		return 0x58;
-	else
-		return -1;
 }
 
 static void __execlists_reset_reg_state(const struct intel_context *ce,
@@ -3711,8 +3780,18 @@ void intel_execlists_set_default_submission(struct intel_engine_cs *engine)
 		engine->flags |= I915_ENGINE_HAS_RELATIVE_MMIO;
 }
 
+static void execlists_shutdown(struct intel_engine_cs *engine)
+{
+	/* Synchronise with residual timers and any softirq they raise */
+	del_timer_sync(&engine->execlists.timer);
+	del_timer_sync(&engine->execlists.preempt);
+	tasklet_kill(&engine->execlists.tasklet);
+}
+
 static void execlists_destroy(struct intel_engine_cs *engine)
 {
+	execlists_shutdown(engine);
+
 	intel_engine_cleanup_common(engine);
 	lrc_destroy_wa_ctx(engine);
 	kfree(engine);
@@ -3905,7 +3984,7 @@ static void init_common_reg_state(u32 * const regs,
 			_MASKED_BIT_DISABLE(CTX_CTRL_ENGINE_CTX_SAVE_INHIBIT |
 					    CTX_CTRL_RS_CTX_ENABLE);
 
-	regs[CTX_RING_BUFFER_CONTROL] = RING_CTL_SIZE(ring->size) | RING_VALID;
+	regs[CTX_RING_CTL] = RING_CTL_SIZE(ring->size) | RING_VALID;
 	regs[CTX_BB_STATE] = RING_BB_PPGTT;
 }
 
@@ -4023,6 +4102,7 @@ populate_lr_context(struct intel_context *ce,
 
 		memcpy(vaddr, defaults, engine->context_size);
 		i915_gem_object_unpin_map(engine->default_state);
+		__set_bit(CONTEXT_VALID_BIT, &ce->flags);
 		inhibit = false;
 	}
 

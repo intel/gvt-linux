@@ -632,7 +632,7 @@ do {									\
 	typecheck(struct lockdep_map *, &(lock)->dep_map);		\
 	lock_acquire(&(lock)->dep_map, subclass, 0, 1, 1, NULL,		\
 		     _THIS_IP_);					\
-	lock_release(&(lock)->dep_map, 0, _THIS_IP_);		\
+	lock_release(&(lock)->dep_map, _THIS_IP_);		\
 } while (0)
 
 #define lockdep_assert_irqs_enabled()	do {				\

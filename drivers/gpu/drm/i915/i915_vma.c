@@ -28,7 +28,9 @@
 #include "display/intel_frontbuffer.h"
 
 #include "gt/intel_engine.h"
+#include "gt/intel_engine_heartbeat.h"
 #include "gt/intel_gt.h"
+#include "gt/intel_gt_requests.h"
 
 #include "i915_drv.h"
 #include "i915_globals.h"
@@ -939,6 +941,38 @@ err_pages:
 	return err;
 }
 
+static void flush_idle_contexts(struct intel_gt *gt)
+{
+	struct intel_engine_cs *engine;
+	enum intel_engine_id id;
+
+	for_each_engine(engine, gt, id)
+		intel_engine_flush_barriers(engine);
+
+	intel_gt_wait_for_idle(gt, MAX_SCHEDULE_TIMEOUT);
+}
+
+int i915_ggtt_pin(struct i915_vma *vma, u32 align, unsigned int flags)
+{
+	struct i915_address_space *vm = vma->vm;
+	int err;
+
+	GEM_BUG_ON(!i915_vma_is_ggtt(vma));
+
+	do {
+		err = i915_vma_pin(vma, 0, align, flags | PIN_GLOBAL);
+		if (err != -ENOSPC)
+			return err;
+
+		/* Unlike i915_vma_pin, we don't take no for an answer! */
+		flush_idle_contexts(vm->gt);
+		if (mutex_lock_interruptible(&vm->mutex) == 0) {
+			i915_gem_evict_vm(vm);
+			mutex_unlock(&vm->mutex);
+		}
+	} while (1);
+}
+
 void i915_vma_close(struct i915_vma *vma)
 {
 	struct intel_gt *gt = vma->vm->gt;
@@ -1019,7 +1053,9 @@ void i915_vma_parked(struct intel_gt *gt)
 		if (!kref_get_unless_zero(&obj->base.refcount))
 			continue;
 
-		if (!i915_vm_tryopen(vm)) {
+		if (i915_vm_tryopen(vm)) {
+			list_del_init(&vma->closed_link);
+		} else {
 			i915_gem_object_put(obj);
 			obj = NULL;
 		}
@@ -1054,10 +1090,8 @@ static void __i915_vma_iounmap(struct i915_vma *vma)
 
 void i915_vma_revoke_mmap(struct i915_vma *vma)
 {
-	struct drm_vma_offset_node *node = &vma->obj->base.vma_node;
+	struct drm_vma_offset_node *node;
 	u64 vma_offset;
-
-	lockdep_assert_held(&vma->vm->mutex);
 
 	if (!i915_vma_has_userfault(vma))
 		return;
@@ -1065,6 +1099,7 @@ void i915_vma_revoke_mmap(struct i915_vma *vma)
 	GEM_BUG_ON(!i915_vma_is_map_and_fenceable(vma));
 	GEM_BUG_ON(!vma->obj->userfault_count);
 
+	node = &vma->mmo->vma_node;
 	vma_offset = vma->ggtt_view.partial.offset << PAGE_SHIFT;
 	unmap_mapping_range(vma->vm->i915->drm.anon_inode->i_mapping,
 			    drm_vma_node_offset_addr(node) + vma_offset,
@@ -1146,7 +1181,7 @@ int __i915_vma_unbind(struct i915_vma *vma)
 	GEM_BUG_ON(i915_vma_is_active(vma));
 	if (i915_vma_is_pinned(vma)) {
 		vma_print_allocator(vma, "is pinned");
-		return -EBUSY;
+		return -EAGAIN;
 	}
 
 	GEM_BUG_ON(i915_vma_is_active(vma));

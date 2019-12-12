@@ -254,7 +254,7 @@ int intel_timeline_init(struct intel_timeline *timeline,
 
 	mutex_init(&timeline->mutex);
 
-	INIT_ACTIVE_FENCE(&timeline->last_request, &timeline->mutex);
+	INIT_ACTIVE_FENCE(&timeline->last_request);
 	INIT_LIST_HEAD(&timeline->requests);
 
 	i915_syncmap_init(&timeline->sync);
@@ -262,7 +262,7 @@ int intel_timeline_init(struct intel_timeline *timeline,
 	return 0;
 }
 
-static void timelines_init(struct intel_gt *gt)
+void intel_gt_init_timelines(struct intel_gt *gt)
 {
 	struct intel_gt_timelines *timelines = &gt->timelines;
 
@@ -271,11 +271,6 @@ static void timelines_init(struct intel_gt *gt)
 
 	spin_lock_init(&timelines->hwsp_lock);
 	INIT_LIST_HEAD(&timelines->hwsp_free_list);
-}
-
-void intel_timelines_init(struct drm_i915_private *i915)
-{
-	timelines_init(&i915->gt);
 }
 
 void intel_timeline_fini(struct intel_timeline *timeline)
@@ -338,7 +333,6 @@ int intel_timeline_pin(struct intel_timeline *tl)
 void intel_timeline_enter(struct intel_timeline *tl)
 {
 	struct intel_gt_timelines *timelines = &tl->gt->timelines;
-	unsigned long flags;
 
 	/*
 	 * Pretend we are serialised by the timeline->mutex.
@@ -364,16 +358,15 @@ void intel_timeline_enter(struct intel_timeline *tl)
 	if (atomic_add_unless(&tl->active_count, 1, 0))
 		return;
 
-	spin_lock_irqsave(&timelines->lock, flags);
+	spin_lock(&timelines->lock);
 	if (!atomic_fetch_inc(&tl->active_count))
 		list_add_tail(&tl->link, &timelines->active_list);
-	spin_unlock_irqrestore(&timelines->lock, flags);
+	spin_unlock(&timelines->lock);
 }
 
 void intel_timeline_exit(struct intel_timeline *tl)
 {
 	struct intel_gt_timelines *timelines = &tl->gt->timelines;
-	unsigned long flags;
 
 	/* See intel_timeline_enter() */
 	lockdep_assert_held(&tl->mutex);
@@ -382,10 +375,10 @@ void intel_timeline_exit(struct intel_timeline *tl)
 	if (atomic_add_unless(&tl->active_count, -1, 1))
 		return;
 
-	spin_lock_irqsave(&timelines->lock, flags);
+	spin_lock(&timelines->lock);
 	if (atomic_dec_and_test(&tl->active_count))
 		list_del(&tl->link);
-	spin_unlock_irqrestore(&timelines->lock, flags);
+	spin_unlock(&timelines->lock);
 
 	/*
 	 * Since this timeline is idle, all bariers upon which we were waiting
@@ -583,17 +576,12 @@ void __intel_timeline_free(struct kref *kref)
 	kfree_rcu(timeline, rcu);
 }
 
-static void timelines_fini(struct intel_gt *gt)
+void intel_gt_fini_timelines(struct intel_gt *gt)
 {
 	struct intel_gt_timelines *timelines = &gt->timelines;
 
 	GEM_BUG_ON(!list_empty(&timelines->active_list));
 	GEM_BUG_ON(!list_empty(&timelines->hwsp_free_list));
-}
-
-void intel_timelines_fini(struct drm_i915_private *i915)
-{
-	timelines_fini(&i915->gt);
 }
 
 #if IS_ENABLED(CONFIG_DRM_I915_SELFTEST)

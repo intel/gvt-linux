@@ -332,8 +332,11 @@ enum phy_fia {
 	     (__s) < RUNTIME_INFO(__dev_priv)->num_sprites[(__p)];	\
 	     (__s)++)
 
-#define for_each_port_masked(__port, __ports_mask) \
-	for ((__port) = PORT_A; (__port) < I915_MAX_PORTS; (__port)++)	\
+#define for_each_port(__port) \
+	for ((__port) = PORT_A; (__port) < I915_MAX_PORTS; (__port)++)
+
+#define for_each_port_masked(__port, __ports_mask)			\
+	for_each_port(__port)						\
 		for_each_if((__ports_mask) & BIT(__port))
 
 #define for_each_phy_masked(__phy, __phys_mask) \
@@ -376,6 +379,13 @@ enum phy_fia {
 	list_for_each_entry(intel_encoder,			\
 			    &(dev)->mode_config.encoder_list,	\
 			    base.head)
+
+#define for_each_intel_encoder_mask(dev, intel_encoder, encoder_mask)	\
+	list_for_each_entry(intel_encoder,				\
+			    &(dev)->mode_config.encoder_list,		\
+			    base.head)					\
+		for_each_if((encoder_mask) &				\
+			    drm_encoder_mask(&intel_encoder->base))
 
 #define for_each_intel_dp(dev, intel_encoder)			\
 	for_each_intel_encoder(dev, intel_encoder)		\
@@ -446,10 +456,18 @@ enum phy_fia {
 #define intel_atomic_crtc_state_for_each_plane_state( \
 		  plane, plane_state, \
 		  crtc_state) \
-	for_each_intel_plane_mask(((crtc_state)->base.state->dev), (plane), \
-				((crtc_state)->base.plane_mask)) \
+	for_each_intel_plane_mask(((crtc_state)->uapi.state->dev), (plane), \
+				((crtc_state)->uapi.plane_mask)) \
 		for_each_if ((plane_state = \
-			      to_intel_plane_state(__drm_atomic_get_current_plane_state((crtc_state)->base.state, &plane->base))))
+			      to_intel_plane_state(__drm_atomic_get_current_plane_state((crtc_state)->uapi.state, &plane->base))))
+
+#define for_each_new_intel_connector_in_state(__state, connector, new_connector_state, __i) \
+	for ((__i) = 0; \
+	     (__i) < (__state)->base.num_connector; \
+	     (__i)++) \
+		for_each_if ((__state)->base.connectors[__i].ptr && \
+			     ((connector) = to_intel_connector((__state)->base.connectors[__i].ptr), \
+			     (new_connector_state) = to_intel_digital_connector_state((__state)->base.connectors[__i].new_state), 1))
 
 void intel_link_compute_m_n(u16 bpp, int nlanes,
 			    int pixel_clock, int link_clock,
@@ -499,8 +517,6 @@ enum tc_port intel_port_to_tc(struct drm_i915_private *dev_priv,
 			      enum port port);
 int intel_get_pipe_from_crtc_id_ioctl(struct drm_device *dev, void *data,
 				      struct drm_file *file_priv);
-enum transcoder intel_pipe_to_cpu_transcoder(struct drm_i915_private *dev_priv,
-					     enum pipe pipe);
 u32 intel_crtc_get_vblank_counter(struct intel_crtc *crtc);
 
 int ironlake_get_lanes_required(int target_clock, int link_bw, int bpp);
@@ -547,7 +563,6 @@ bool bxt_find_best_dpll(struct intel_crtc_state *crtc_state,
 			struct dpll *best_clock);
 int chv_calc_dpll_params(int refclk, struct dpll *pll_clock);
 
-bool intel_crtc_active(struct intel_crtc *crtc);
 bool hsw_crtc_state_ips_capable(const struct intel_crtc_state *crtc_state);
 void hsw_enable_ips(const struct intel_crtc_state *crtc_state);
 void hsw_disable_ips(const struct intel_crtc_state *crtc_state);
@@ -603,9 +618,10 @@ void assert_fdi_rx_pll(struct drm_i915_private *dev_priv,
 		       enum pipe pipe, bool state);
 #define assert_fdi_rx_pll_enabled(d, p) assert_fdi_rx_pll(d, p, true)
 #define assert_fdi_rx_pll_disabled(d, p) assert_fdi_rx_pll(d, p, false)
-void assert_pipe(struct drm_i915_private *dev_priv, enum pipe pipe, bool state);
-#define assert_pipe_enabled(d, p) assert_pipe(d, p, true)
-#define assert_pipe_disabled(d, p) assert_pipe(d, p, false)
+void assert_pipe(struct drm_i915_private *dev_priv,
+		 enum transcoder cpu_transcoder, bool state);
+#define assert_pipe_enabled(d, t) assert_pipe(d, t, true)
+#define assert_pipe_disabled(d, t) assert_pipe(d, t, false)
 
 /* Use I915_STATE_WARN(x) and I915_STATE_WARN_ON() (rather than WARN() and
  * WARN_ON()) for hw state sanity checks to check for unexpected conditions

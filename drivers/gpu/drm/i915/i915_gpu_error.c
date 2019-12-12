@@ -599,9 +599,10 @@ static void err_print_capabilities(struct drm_i915_error_state_buf *m,
 {
 	struct drm_printer p = i915_error_printer(m);
 
-	intel_device_info_dump_flags(info, &p);
+	intel_device_info_print_static(info, &p);
+	intel_device_info_print_runtime(runtime, &p);
+	intel_device_info_print_topology(&runtime->sseu, &p);
 	intel_driver_caps_print(caps, &p);
-	intel_device_info_dump_topology(&runtime->sseu, &p);
 }
 
 static void err_print_params(struct drm_i915_error_state_buf *m,
@@ -1045,7 +1046,7 @@ i915_error_object_create(struct drm_i915_private *i915,
 
 			s = kmap(page);
 			ret = compress_page(compress, s, dst);
-			kunmap(s);
+			kunmap(page);
 
 			drm_clflush_pages(&page, 1);
 
@@ -1230,10 +1231,7 @@ static void record_request(const struct i915_request *request,
 	erq->start = i915_ggtt_offset(request->ring->vma);
 	erq->head = request->head;
 	erq->tail = request->tail;
-
-	rcu_read_lock();
 	erq->pid = ctx->pid ? pid_nr(ctx->pid) : 0;
-	rcu_read_unlock();
 }
 
 static void engine_record_requests(struct intel_engine_cs *engine,

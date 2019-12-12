@@ -20,8 +20,8 @@ struct __guc_ads_blob;
 
 /*
  * Top level structure of GuC. It handles firmware loading and manages client
- * pool and doorbells. intel_guc owns a intel_guc_client to replace the legacy
- * ExecList submission.
+ * pool. intel_guc owns a intel_guc_client to replace the legacy ExecList
+ * submission.
  */
 struct intel_guc {
 	struct intel_uc_fw fw;
@@ -46,13 +46,13 @@ struct intel_guc {
 
 	struct i915_vma *stage_desc_pool;
 	void *stage_desc_pool_vaddr;
-	struct ida stage_ids;
 
-	struct intel_guc_client *execbuf_client;
+	struct i915_vma *workqueue;
+	void *workqueue_vaddr;
+	spinlock_t wq_lock;
 
-	DECLARE_BITMAP(doorbell_bitmap, GUC_NUM_DOORBELLS);
-	/* Cyclic counter mod pagesize	*/
-	u32 db_cacheline;
+	struct i915_vma *proc_desc;
+	void *proc_desc_vaddr;
 
 	/* Control params for fw initialization */
 	u32 params[GUC_CTL_MAX_DWORDS];
@@ -149,6 +149,8 @@ int intel_guc_auth_huc(struct intel_guc *guc, u32 rsa_offset);
 int intel_guc_suspend(struct intel_guc *guc);
 int intel_guc_resume(struct intel_guc *guc);
 struct i915_vma *intel_guc_allocate_vma(struct intel_guc *guc, u32 size);
+int intel_guc_allocate_and_map_vma(struct intel_guc *guc, u32 size,
+				   struct i915_vma **out_vma, void **out_vaddr);
 
 static inline bool intel_guc_is_supported(struct intel_guc *guc)
 {

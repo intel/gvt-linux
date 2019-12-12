@@ -21,6 +21,7 @@
 #include "intel_reset.h"
 
 #include "uc/intel_guc.h"
+#include "uc/intel_guc_submission.h"
 
 #define RESET_MAX_RETRIES 3
 
@@ -81,11 +82,20 @@ static bool context_mark_guilty(struct i915_gem_context *ctx)
 	bool banned;
 	int i;
 
+	if (i915_gem_context_is_closed(ctx)) {
+		i915_gem_context_set_banned(ctx);
+		return true;
+	}
+
 	atomic_inc(&ctx->guilty_count);
 
 	/* Cool contexts are too cool to be banned! (Used for reset testing.) */
 	if (!i915_gem_context_is_bannable(ctx))
 		return false;
+
+	dev_notice(ctx->i915->drm.dev,
+		   "%s context reset due to GPU hang\n",
+		   ctx->name);
 
 	/* Record the timestamp for the last N hangs */
 	prev_hang = ctx->hang_timestamp[0];
@@ -124,6 +134,7 @@ void __i915_request_reset(struct i915_request *rq, bool guilty)
 
 	GEM_BUG_ON(i915_request_completed(rq));
 
+	rcu_read_lock(); /* protect the GEM context */
 	if (guilty) {
 		i915_request_skip(rq, -EIO);
 		if (context_mark_guilty(rq->gem_context))
@@ -132,6 +143,7 @@ void __i915_request_reset(struct i915_request *rq, bool guilty)
 		dma_fence_set_error(&rq->fence, -EAGAIN);
 		context_mark_innocent(rq->gem_context);
 	}
+	rcu_read_unlock();
 }
 
 static bool i915_in_reset(struct pci_dev *pdev)
@@ -667,8 +679,13 @@ static void revoke_mmaps(struct intel_gt *gt)
 			continue;
 
 		GEM_BUG_ON(vma->fence != &gt->ggtt->fence_regs[i]);
-		node = &vma->obj->base.vma_node;
+
+		if (!vma->mmo)
+			continue;
+
+		node = &vma->mmo->vma_node;
 		vma_offset = vma->ggtt_view.partial.offset << PAGE_SHIFT;
+
 		unmap_mapping_range(gt->i915->drm.anon_inode->i_mapping,
 				    drm_vma_node_offset_addr(node) + vma_offset,
 				    vma->size,
@@ -820,7 +837,6 @@ static bool __intel_gt_unset_wedged(struct intel_gt *gt)
 {
 	struct intel_gt_timelines *timelines = &gt->timelines;
 	struct intel_timeline *tl;
-	unsigned long flags;
 	bool ok;
 
 	if (!test_bit(I915_WEDGED, &gt->reset.flags))
@@ -842,7 +858,7 @@ static bool __intel_gt_unset_wedged(struct intel_gt *gt)
 	 *
 	 * No more can be submitted until we reset the wedged bit.
 	 */
-	spin_lock_irqsave(&timelines->lock, flags);
+	spin_lock(&timelines->lock);
 	list_for_each_entry(tl, &timelines->active_list, link) {
 		struct dma_fence *fence;
 
@@ -850,7 +866,7 @@ static bool __intel_gt_unset_wedged(struct intel_gt *gt)
 		if (!fence)
 			continue;
 
-		spin_unlock_irqrestore(&timelines->lock, flags);
+		spin_unlock(&timelines->lock);
 
 		/*
 		 * All internal dependencies (i915_requests) will have
@@ -863,10 +879,10 @@ static bool __intel_gt_unset_wedged(struct intel_gt *gt)
 		dma_fence_put(fence);
 
 		/* Restart iteration after droping lock */
-		spin_lock_irqsave(&timelines->lock, flags);
+		spin_lock(&timelines->lock);
 		tl = list_entry(&timelines->active_list, typeof(*tl), link);
 	}
-	spin_unlock_irqrestore(&timelines->lock, flags);
+	spin_unlock(&timelines->lock);
 
 	/* We must reset pending GPU events before restoring our submission */
 	ok = !HAS_EXECLISTS(gt->i915); /* XXX better agnosticism desired */
@@ -1070,6 +1086,7 @@ static inline int intel_gt_reset_engine(struct intel_engine_cs *engine)
 int intel_engine_reset(struct intel_engine_cs *engine, const char *msg)
 {
 	struct intel_gt *gt = engine->gt;
+	bool uses_guc = intel_engine_in_guc_submission_mode(engine);
 	int ret;
 
 	GEM_TRACE("%s flags=%lx\n", engine->name, gt->reset.flags);
@@ -1085,14 +1102,14 @@ int intel_engine_reset(struct intel_engine_cs *engine, const char *msg)
 			   "Resetting %s for %s\n", engine->name, msg);
 	atomic_inc(&engine->i915->gpu_error.reset_engine_count[engine->uabi_class]);
 
-	if (!engine->gt->uc.guc.execbuf_client)
+	if (!uses_guc)
 		ret = intel_gt_reset_engine(engine);
 	else
 		ret = intel_guc_reset_engine(&engine->gt->uc.guc, engine);
 	if (ret) {
 		/* If we fail here, we expect to fallback to a global reset */
 		DRM_DEBUG_DRIVER("%sFailed to reset %s, ret=%d\n",
-				 engine->gt->uc.guc.execbuf_client ? "GuC " : "",
+				 uses_guc ? "GuC " : "",
 				 engine->name, ret);
 		goto out;
 	}

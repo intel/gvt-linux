@@ -1,32 +1,10 @@
-drm drm-fixes cdf1d28ced9d7c63502afc409bad3b80198f101a
-	Merge branch 'linux-5.5' of git://github.com/skeggsb/linux into drm-fixes
-drm-misc drm-misc-fixes cdf1d28ced9d7c63502afc409bad3b80198f101a
-	Merge branch 'linux-5.5' of git://github.com/skeggsb/linux into drm-fixes
-drm-intel drm-intel-fixes 750bde2fd4ffacc297473c36d6fdb29c395b06aa
-	drm/i915: Serialise with remote retirement
-drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
-	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
-drm drm-next e42617b825f8073569da76dc4510bfa019b1c35a
-	Linux 5.5-rc1
-drm-misc drm-misc-next-fixes 0a5239985a3bc084738851afdf3fceb7d5651b0c
-	drm/panfrost: Open/close the perfcnt BO
-drm-intel drm-intel-next-fixes 01bb630319337be15fc50c211126180198d4e157
-	drm/i915/ehl: Make icp_digital_port_connected() use phy instead of port
-drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
-	Linux 4.14-rc1
-drm-misc drm-misc-next 17cfcb68af3bc7d5e8ae08779b1853310a2949f3
-	drm/komeda: Enable new product D32 support
-drm-intel drm-intel-next-queued 601a9ee0f0c71efdd36b7fe7b053e2fb42187c7e
-	drm/i915: Streamline skl_commit_modeset_enables()
-drm-intel drm-intel-next 1883e2999f045e1fd6f76a7f30288a5312085289
-	drm/i915: Update DRIVER_DATE to 20191101
-drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
-	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
-sound-upstream for-linus 5815bdfd7f54739be9abed1301d55f5e74d7ad1f
-	ALSA: hda/realtek - Line-out jack doesn't work on a Dell AIO
-sound-upstream for-next 341a79ee8b080ed41dccc13250fcffc2c2028ccd
-	ALSA: hda: tegra: Fix unused variable compile warning
-drm-intel topic/core-for-CI fc8e409df4c8c4931ae61d6ad09b2cd4d9eaccaa
-	Revert "drm/i915: Don't select BROKEN"
-drm drm-vmwgfx-coherent 0a6cad5df541108cfd3fbd79eef48eb824c89bdc
-	Merge branch 'vmwgfx-coherent' of git://people.freedesktop.org/~thomash/linux into drm-next
+drm-tip/drm-tip b8870a9cb78bb11f21414804940fadc47ac848dd
+	drm-tip: 2019y-12m-12d-21h-06m-50s UTC integration manifest
+vfio-upstream/for-linus 95f89e090618efca63918b658c2002e57d393036
+	vfio/type1: Initialize resv_msi_base
+origin/gvt-fixes 9f674c811740b5db4b34668b72d47f6e7b879b0a
+	drm/i915/gvt: Pin vgpu dma address before using
+origin/gvt-next-fixes 92b1aa773fadb4e2a90ed5d3beecb422d568ad9a
+	drm/i915/gvt: Fix cmd length check for MI_ATOMIC
+origin/gvt-next c5bd85353c0e2dac3e30855a9e4953c0c408dfef
+	drm/i915/gvt: remove unused type attributes

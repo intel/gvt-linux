@@ -70,6 +70,7 @@
 #include <drm/i915_drm.h>
 
 #include "gt/intel_engine_heartbeat.h"
+#include "gt/intel_engine_pm.h"
 #include "gt/intel_engine_user.h"
 #include "gt/intel_lrc_reg.h"
 #include "gt/intel_ring.h"
@@ -169,6 +170,44 @@ lookup_user_engine(struct i915_gem_context *ctx,
 	return i915_gem_context_get_engine(ctx, idx);
 }
 
+static struct i915_address_space *
+context_get_vm_rcu(struct i915_gem_context *ctx)
+{
+	GEM_BUG_ON(!rcu_access_pointer(ctx->vm));
+
+	do {
+		struct i915_address_space *vm;
+
+		/*
+		 * We do not allow downgrading from full-ppgtt [to a shared
+		 * global gtt], so ctx->vm cannot become NULL.
+		 */
+		vm = rcu_dereference(ctx->vm);
+		if (!kref_get_unless_zero(&vm->ref))
+			continue;
+
+		/*
+		 * This ppgtt may have be reallocated between
+		 * the read and the kref, and reassigned to a third
+		 * context. In order to avoid inadvertent sharing
+		 * of this ppgtt with that third context (and not
+		 * src), we have to confirm that we have the same
+		 * ppgtt after passing through the strong memory
+		 * barrier implied by a successful
+		 * kref_get_unless_zero().
+		 *
+		 * Once we have acquired the current ppgtt of ctx,
+		 * we no longer care if it is released from ctx, as
+		 * it cannot be reallocated elsewhere.
+		 */
+
+		if (vm == rcu_access_pointer(ctx->vm))
+			return rcu_pointer_handoff(vm);
+
+		i915_vm_put(vm);
+	} while (1);
+}
+
 static void __free_engines(struct i915_gem_engines *e, unsigned int count)
 {
 	while (count--) {
@@ -236,14 +275,10 @@ static void i915_gem_context_free(struct i915_gem_context *ctx)
 	free_engines(rcu_access_pointer(ctx->engines));
 	mutex_destroy(&ctx->engines_mutex);
 
-	kfree(ctx->jump_whitelist);
-
 	if (ctx->timeline)
 		intel_timeline_put(ctx->timeline);
 
-	kfree(ctx->name);
 	put_pid(ctx->pid);
-
 	mutex_destroy(&ctx->mutex);
 
 	kfree_rcu(ctx, rcu);
@@ -427,11 +462,29 @@ static void kill_context(struct i915_gem_context *ctx)
 	}
 }
 
+static void set_closed_name(struct i915_gem_context *ctx)
+{
+	char *s;
+
+	/* Replace '[]' with '<>' to indicate closed in debug prints */
+
+	s = strrchr(ctx->name, '[');
+	if (!s)
+		return;
+
+	*s = '<';
+
+	s = strchr(s + 1, ']');
+	if (s)
+		*s = '>';
+}
+
 static void context_close(struct i915_gem_context *ctx)
 {
 	struct i915_address_space *vm;
 
 	i915_gem_context_set_closed(ctx);
+	set_closed_name(ctx);
 
 	mutex_lock(&ctx->mutex);
 
@@ -528,9 +581,6 @@ __create_context(struct drm_i915_private *i915)
 
 	for (i = 0; i < ARRAY_SIZE(ctx->hang_timestamp); i++)
 		ctx->hang_timestamp[i] = jiffies - CONTEXT_FAST_HANG_JIFFIES;
-
-	ctx->jump_whitelist = NULL;
-	ctx->jump_whitelist_cmds = 0;
 
 	spin_lock(&i915->gem.contexts.lock);
 	list_add_tail(&ctx->link, &i915->gem.contexts.list);
@@ -757,12 +807,8 @@ static int gem_context_register(struct i915_gem_context *ctx,
 	mutex_unlock(&ctx->mutex);
 
 	ctx->pid = get_task_pid(current, PIDTYPE_PID);
-	ctx->name = kasprintf(GFP_KERNEL, "%s[%d]",
-			      current->comm, pid_nr(ctx->pid));
-	if (!ctx->name) {
-		ret = -ENOMEM;
-		goto err_pid;
-	}
+	snprintf(ctx->name, sizeof(ctx->name), "%s[%d]",
+		 current->comm, pid_nr(ctx->pid));
 
 	/* And finally expose ourselves to userspace via the idr */
 	mutex_lock(&fpriv->context_idr_lock);
@@ -771,8 +817,6 @@ static int gem_context_register(struct i915_gem_context *ctx,
 	if (ret >= 0)
 		goto out;
 
-	kfree(fetch_and_zero(&ctx->name));
-err_pid:
 	put_pid(fetch_and_zero(&ctx->pid));
 out:
 	return ret;
@@ -1012,7 +1056,7 @@ static int get_ppgtt(struct drm_i915_file_private *file_priv,
 		return -ENODEV;
 
 	rcu_read_lock();
-	vm = i915_vm_get(ctx->vm);
+	vm = context_get_vm_rcu(ctx);
 	rcu_read_unlock();
 
 	ret = mutex_lock_interruptible(&file_priv->vm_idr_lock);
@@ -1096,9 +1140,6 @@ static int emit_ppgtt_update(struct i915_request *rq, void *data)
 		}
 		*cs++ = MI_NOOP;
 		intel_ring_advance(rq, cs);
-	} else {
-		/* ppGTT is not part of the legacy context image */
-		gen6_ppgtt_pin(i915_vm_to_ppgtt(vm));
 	}
 
 	return 0;
@@ -1106,10 +1147,20 @@ static int emit_ppgtt_update(struct i915_request *rq, void *data)
 
 static bool skip_ppgtt_update(struct intel_context *ce, void *data)
 {
+	if (!test_bit(CONTEXT_ALLOC_BIT, &ce->flags))
+		return true;
+
 	if (HAS_LOGICAL_RING_CONTEXTS(ce->engine->i915))
-		return !ce->state;
-	else
-		return !atomic_read(&ce->pin_count);
+		return false;
+
+	if (!atomic_read(&ce->pin_count))
+		return true;
+
+	/* ppGTT is not part of the legacy context image */
+	if (gen6_ppgtt_pin(i915_vm_to_ppgtt(ce->vm)))
+		return true;
+
+	return false;
 }
 
 static int set_ppgtt(struct drm_i915_file_private *file_priv,
@@ -1217,7 +1268,7 @@ gen8_modify_rpcs(struct intel_context *ce, struct intel_sseu sseu)
 	if (!intel_context_is_pinned(ce))
 		return 0;
 
-	rq = i915_request_create(ce->engine->kernel_context);
+	rq = intel_engine_create_kernel_request(ce->engine);
 	if (IS_ERR(rq))
 		return PTR_ERR(rq);
 
@@ -1961,7 +2012,8 @@ static int clone_engines(struct i915_gem_context *dst,
 	user_engines = i915_gem_context_user_engines(src);
 	i915_gem_context_unlock_engines(src);
 
-	free_engines(dst->engines);
+	/* Serialised by constructor */
+	free_engines(__context_engines_static(dst));
 	RCU_INIT_POINTER(dst->engines, clone);
 	if (user_engines)
 		i915_gem_context_set_user_engines(dst);
@@ -1996,7 +2048,8 @@ static int clone_sseu(struct i915_gem_context *dst,
 	unsigned long n;
 	int err;
 
-	clone = dst->engines; /* no locking required; sole access */
+	/* no locking required; sole access under constructor*/
+	clone = __context_engines_static(dst);
 	if (e->num_engines != clone->num_engines) {
 		err = -EINVAL;
 		goto unlock;
@@ -2041,47 +2094,21 @@ static int clone_vm(struct i915_gem_context *dst,
 	struct i915_address_space *vm;
 	int err = 0;
 
+	if (!rcu_access_pointer(src->vm))
+		return 0;
+
 	rcu_read_lock();
-	do {
-		vm = rcu_dereference(src->vm);
-		if (!vm)
-			break;
-
-		if (!kref_get_unless_zero(&vm->ref))
-			continue;
-
-		/*
-		 * This ppgtt may have be reallocated between
-		 * the read and the kref, and reassigned to a third
-		 * context. In order to avoid inadvertent sharing
-		 * of this ppgtt with that third context (and not
-		 * src), we have to confirm that we have the same
-		 * ppgtt after passing through the strong memory
-		 * barrier implied by a successful
-		 * kref_get_unless_zero().
-		 *
-		 * Once we have acquired the current ppgtt of src,
-		 * we no longer care if it is released from src, as
-		 * it cannot be reallocated elsewhere.
-		 */
-
-		if (vm == rcu_access_pointer(src->vm))
-			break;
-
-		i915_vm_put(vm);
-	} while (1);
+	vm = context_get_vm_rcu(src);
 	rcu_read_unlock();
 
-	if (vm) {
-		if (!mutex_lock_interruptible(&dst->mutex)) {
-			__assign_ppgtt(dst, vm);
-			mutex_unlock(&dst->mutex);
-		} else {
-			err = -EINTR;
-		}
-		i915_vm_put(vm);
+	if (!mutex_lock_interruptible(&dst->mutex)) {
+		__assign_ppgtt(dst, vm);
+		mutex_unlock(&dst->mutex);
+	} else {
+		err = -EINTR;
 	}
 
+	i915_vm_put(vm);
 	return err;
 }
 

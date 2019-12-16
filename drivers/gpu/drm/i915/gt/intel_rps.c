@@ -1663,23 +1663,53 @@ void intel_rps_init(struct intel_rps *rps)
 	if (INTEL_GEN(i915) <= 7)
 		rps->pm_intrmsk_mbz |= GEN6_PM_RP_UP_EI_EXPIRED;
 
-	if (INTEL_GEN(i915) >= 8)
+	if (INTEL_GEN(i915) >= 8 && INTEL_GEN(i915) < 11)
 		rps->pm_intrmsk_mbz |= GEN8_PMINTR_DISABLE_REDIRECT_TO_GUC;
 }
 
-u32 intel_get_cagf(struct intel_rps *rps, u32 rpstat)
+u32 intel_rps_get_cagf(struct intel_rps *rps, u32 rpstat)
 {
 	struct drm_i915_private *i915 = rps_to_i915(rps);
 	u32 cagf;
 
-	if (INTEL_GEN(i915) >= 9)
+	if (IS_VALLEYVIEW(i915) || IS_CHERRYVIEW(i915))
+		cagf = (rpstat >> 8) & 0xff;
+	else if (INTEL_GEN(i915) >= 9)
 		cagf = (rpstat & GEN9_CAGF_MASK) >> GEN9_CAGF_SHIFT;
 	else if (IS_HASWELL(i915) || IS_BROADWELL(i915))
 		cagf = (rpstat & HSW_CAGF_MASK) >> HSW_CAGF_SHIFT;
 	else
 		cagf = (rpstat & GEN6_CAGF_MASK) >> GEN6_CAGF_SHIFT;
 
-	return  cagf;
+	return cagf;
+}
+
+static u32 read_cagf(struct intel_rps *rps)
+{
+	struct drm_i915_private *i915 = rps_to_i915(rps);
+	u32 freq;
+
+	if (IS_VALLEYVIEW(i915) || IS_CHERRYVIEW(i915)) {
+		vlv_punit_get(i915);
+		freq = vlv_punit_read(i915, PUNIT_REG_GPU_FREQ_STS);
+		vlv_punit_put(i915);
+	} else {
+		freq = intel_uncore_read(rps_to_gt(rps)->uncore, GEN6_RPSTAT1);
+	}
+
+	return intel_rps_get_cagf(rps, freq);
+}
+
+u32 intel_rps_read_actual_frequency(struct intel_rps *rps)
+{
+	struct intel_runtime_pm *rpm = rps_to_gt(rps)->uncore->rpm;
+	intel_wakeref_t wakeref;
+	u32 freq = 0;
+
+	with_intel_runtime_pm_if_in_use(rpm, wakeref)
+		freq = intel_gpu_freq(rps, read_cagf(rps));
+
+	return freq;
 }
 
 /* External interface for intel_ips.ko */
@@ -1715,6 +1745,7 @@ void intel_rps_driver_register(struct intel_rps *rps)
 	 * set up, to avoid intel-ips sneaking in and reading bogus values.
 	 */
 	if (IS_GEN(gt->i915, 5)) {
+		GEM_BUG_ON(ips_mchdev);
 		rcu_assign_pointer(ips_mchdev, gt->i915);
 		ips_ping_for_i915_load();
 	}
@@ -1722,7 +1753,8 @@ void intel_rps_driver_register(struct intel_rps *rps)
 
 void intel_rps_driver_unregister(struct intel_rps *rps)
 {
-	rcu_assign_pointer(ips_mchdev, NULL);
+	if (rcu_access_pointer(ips_mchdev) == rps_to_i915(rps))
+		rcu_assign_pointer(ips_mchdev, NULL);
 }
 
 static struct drm_i915_private *mchdev_get(void)

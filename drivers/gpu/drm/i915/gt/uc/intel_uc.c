@@ -267,18 +267,17 @@ static void guc_disable_communication(struct intel_guc *guc)
 
 void intel_uc_fetch_firmwares(struct intel_uc *uc)
 {
-	struct drm_i915_private *i915 = uc_to_gt(uc)->i915;
 	int err;
 
 	if (!intel_uc_uses_guc(uc))
 		return;
 
-	err = intel_uc_fw_fetch(&uc->guc.fw, i915);
+	err = intel_uc_fw_fetch(&uc->guc.fw);
 	if (err)
 		return;
 
 	if (intel_uc_uses_huc(uc))
-		intel_uc_fw_fetch(&uc->huc.fw, i915);
+		intel_uc_fw_fetch(&uc->huc.fw);
 }
 
 void intel_uc_cleanup_firmwares(struct intel_uc *uc)
@@ -486,11 +485,8 @@ int intel_uc_init_hw(struct intel_uc *uc)
 	if (ret)
 		goto err_communication;
 
-	if (intel_uc_supports_guc_submission(uc)) {
-		ret = intel_guc_submission_enable(guc);
-		if (ret)
-			goto err_communication;
-	}
+	if (intel_uc_supports_guc_submission(uc))
+		intel_guc_submission_enable(guc);
 
 	dev_info(i915->drm.dev, "%s firmware %s version %u.%u %s:%s\n",
 		 intel_uc_fw_type_repr(INTEL_UC_FW_TYPE_GUC), guc->fw.path,

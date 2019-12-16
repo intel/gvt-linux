@@ -21,7 +21,7 @@ static int __engine_unpark(struct intel_wakeref *wf)
 		container_of(wf, typeof(*engine), wakeref);
 	void *map;
 
-	GEM_TRACE("%s\n", engine->name);
+	ENGINE_TRACE(engine, "\n");
 
 	intel_gt_pm_get(engine->gt);
 
@@ -80,7 +80,7 @@ __queue_and_release_pm(struct i915_request *rq,
 {
 	struct intel_gt_timelines *timelines = &engine->gt->timelines;
 
-	GEM_TRACE("%s\n", engine->name);
+	ENGINE_TRACE(engine, "\n");
 
 	/*
 	 * We have to serialise all potential retirement paths with our
@@ -183,7 +183,7 @@ static void call_idle_barriers(struct intel_engine_cs *engine)
 			container_of((struct list_head *)node,
 				     typeof(*cb), node);
 
-		cb->func(NULL, cb);
+		cb->func(ERR_PTR(-EAGAIN), cb);
 	}
 }
 
@@ -204,7 +204,7 @@ static int __engine_park(struct intel_wakeref *wf)
 	if (!switch_to_kernel_context(engine))
 		return -EBUSY;
 
-	GEM_TRACE("%s\n", engine->name);
+	ENGINE_TRACE(engine, "\n");
 
 	call_idle_barriers(engine); /* cleanup after wedging */
 

@@ -141,7 +141,7 @@ static const struct engine_info intel_engines[] = {
 
 /**
  * intel_engine_context_size() - return the size of the context for an engine
- * @dev_priv: i915 device private
+ * @gt: the gt
  * @class: engine class
  *
  * Each engine class may require a different amount of space for a context
@@ -153,17 +153,18 @@ static const struct engine_info intel_engines[] = {
  * in LRC mode, but does not include the "shared data page" used with
  * GuC submission. The caller should account for this if using the GuC.
  */
-u32 intel_engine_context_size(struct drm_i915_private *dev_priv, u8 class)
+u32 intel_engine_context_size(struct intel_gt *gt, u8 class)
 {
+	struct intel_uncore *uncore = gt->uncore;
 	u32 cxt_size;
 
 	BUILD_BUG_ON(I915_GTT_PAGE_SIZE != PAGE_SIZE);
 
 	switch (class) {
 	case RENDER_CLASS:
-		switch (INTEL_GEN(dev_priv)) {
+		switch (INTEL_GEN(gt->i915)) {
 		default:
-			MISSING_CASE(INTEL_GEN(dev_priv));
+			MISSING_CASE(INTEL_GEN(gt->i915));
 			return DEFAULT_LR_CONTEXT_RENDER_SIZE;
 		case 12:
 		case 11:
@@ -175,14 +176,14 @@ u32 intel_engine_context_size(struct drm_i915_private *dev_priv, u8 class)
 		case 8:
 			return GEN8_LR_CONTEXT_RENDER_SIZE;
 		case 7:
-			if (IS_HASWELL(dev_priv))
+			if (IS_HASWELL(gt->i915))
 				return HSW_CXT_TOTAL_SIZE;
 
-			cxt_size = I915_READ(GEN7_CXT_SIZE);
+			cxt_size = intel_uncore_read(uncore, GEN7_CXT_SIZE);
 			return round_up(GEN7_CXT_TOTAL_SIZE(cxt_size) * 64,
 					PAGE_SIZE);
 		case 6:
-			cxt_size = I915_READ(CXT_SIZE);
+			cxt_size = intel_uncore_read(uncore, CXT_SIZE);
 			return round_up(GEN6_CXT_TOTAL_SIZE(cxt_size) * 64,
 					PAGE_SIZE);
 		case 5:
@@ -197,9 +198,9 @@ u32 intel_engine_context_size(struct drm_i915_private *dev_priv, u8 class)
 			 * minimum allocation anyway so it should all come
 			 * out in the wash.
 			 */
-			cxt_size = I915_READ(CXT_SIZE) + 1;
+			cxt_size = intel_uncore_read(uncore, CXT_SIZE) + 1;
 			DRM_DEBUG_DRIVER("gen%d CXT_SIZE = %d bytes [0x%08x]\n",
-					 INTEL_GEN(dev_priv),
+					 INTEL_GEN(gt->i915),
 					 cxt_size * 64,
 					 cxt_size - 1);
 			return round_up(cxt_size * 64, PAGE_SIZE);
@@ -216,7 +217,7 @@ u32 intel_engine_context_size(struct drm_i915_private *dev_priv, u8 class)
 	case VIDEO_DECODE_CLASS:
 	case VIDEO_ENHANCEMENT_CLASS:
 	case COPY_ENGINE_CLASS:
-		if (INTEL_GEN(dev_priv) < 8)
+		if (INTEL_GEN(gt->i915) < 8)
 			return 0;
 		return GEN8_LR_CONTEXT_OTHER_SIZE;
 	}
@@ -324,8 +325,7 @@ static int intel_engine_setup(struct intel_gt *gt, enum intel_engine_id id)
 	 */
 	engine->destroy = (typeof(engine->destroy))kfree;
 
-	engine->context_size = intel_engine_context_size(gt->i915,
-							 engine->class);
+	engine->context_size = intel_engine_context_size(gt, engine->class);
 	if (WARN_ON(engine->context_size > BIT(20)))
 		engine->context_size = 0;
 	if (engine->context_size)
@@ -344,7 +344,6 @@ static int intel_engine_setup(struct intel_gt *gt, enum intel_engine_id id)
 	gt->engine_class[info->class][info->instance] = engine;
 	gt->engine[id] = engine;
 
-	intel_engine_add_user(engine);
 	gt->i915->engine[id] = engine;
 
 	return 0;
@@ -481,6 +480,8 @@ int intel_engines_init(struct intel_gt *gt)
 		err = init(engine);
 		if (err)
 			goto cleanup;
+
+		intel_engine_add_user(engine);
 	}
 
 	return 0;
@@ -911,7 +912,7 @@ int intel_engine_stop_cs(struct intel_engine_cs *engine)
 	if (INTEL_GEN(engine->i915) < 3)
 		return -ENODEV;
 
-	GEM_TRACE("%s\n", engine->name);
+	ENGINE_TRACE(engine, "\n");
 
 	intel_uncore_write_fw(uncore, mode, _MASKED_BIT_ENABLE(STOP_RING));
 
@@ -920,7 +921,7 @@ int intel_engine_stop_cs(struct intel_engine_cs *engine)
 					 mode, MODE_IDLE, MODE_IDLE,
 					 1000, stop_timeout(engine),
 					 NULL)) {
-		GEM_TRACE("%s: timed out on STOP_RING -> IDLE\n", engine->name);
+		ENGINE_TRACE(engine, "timed out on STOP_RING -> IDLE\n");
 		err = -ETIMEDOUT;
 	}
 
@@ -932,7 +933,7 @@ int intel_engine_stop_cs(struct intel_engine_cs *engine)
 
 void intel_engine_cancel_stop_cs(struct intel_engine_cs *engine)
 {
-	GEM_TRACE("%s\n", engine->name);
+	ENGINE_TRACE(engine, "\n");
 
 	ENGINE_WRITE_FW(engine, RING_MI_MODE, _MASKED_BIT_DISABLE(STOP_RING));
 }
@@ -1478,6 +1479,8 @@ void intel_engine_dump(struct intel_engine_cs *engine,
 		drm_printf(m, "*** WEDGED ***\n");
 
 	drm_printf(m, "\tAwake? %d\n", atomic_read(&engine->wakeref.count));
+	drm_printf(m, "\tBarriers?: %s\n",
+		   yesno(!llist_empty(&engine->barrier_tasks)));
 
 	rcu_read_lock();
 	rq = READ_ONCE(engine->heartbeat.systole);

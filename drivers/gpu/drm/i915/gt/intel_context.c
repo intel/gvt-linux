@@ -68,9 +68,8 @@ int __intel_context_do_pin(struct intel_context *ce)
 		if (err)
 			goto err;
 
-		GEM_TRACE("%s context:%llx pin ring:{head:%04x, tail:%04x}\n",
-			  ce->engine->name, ce->timeline->fence_context,
-			  ce->ring->head, ce->ring->tail);
+		CE_TRACE(ce, "pin ring:{head:%04x, tail:%04x}\n",
+			 ce->ring->head, ce->ring->tail);
 
 		i915_gem_context_get(ce->gem_context); /* for ctx->ppgtt */
 
@@ -98,8 +97,7 @@ void intel_context_unpin(struct intel_context *ce)
 	mutex_lock_nested(&ce->pin_mutex, SINGLE_DEPTH_NESTING);
 
 	if (likely(atomic_dec_and_test(&ce->pin_count))) {
-		GEM_TRACE("%s context:%llx retire\n",
-			  ce->engine->name, ce->timeline->fence_context);
+		CE_TRACE(ce, "retire\n");
 
 		ce->ops->unpin(ce);
 
@@ -113,13 +111,10 @@ void intel_context_unpin(struct intel_context *ce)
 
 static int __context_pin_state(struct i915_vma *vma)
 {
-	u64 flags;
+	unsigned int bias = i915_ggtt_pin_bias(vma) | PIN_OFFSET_BIAS;
 	int err;
 
-	flags = i915_ggtt_pin_bias(vma) | PIN_OFFSET_BIAS;
-	flags |= PIN_HIGH | PIN_GLOBAL;
-
-	err = i915_vma_pin(vma, 0, 0, flags);
+	err = i915_ggtt_pin(vma, 0, bias | PIN_HIGH);
 	if (err)
 		return err;
 
@@ -144,9 +139,9 @@ static void __intel_context_retire(struct i915_active *active)
 {
 	struct intel_context *ce = container_of(active, typeof(*ce), active);
 
-	GEM_TRACE("%s context:%llx retire\n",
-		  ce->engine->name, ce->timeline->fence_context);
+	CE_TRACE(ce, "retire\n");
 
+	set_bit(CONTEXT_VALID_BIT, &ce->flags);
 	if (ce->state)
 		__context_unpin_state(ce->state);
 
@@ -310,27 +305,8 @@ int intel_context_prepare_remote_request(struct intel_context *ce,
 	GEM_BUG_ON(rq->hw_context == ce);
 
 	if (rcu_access_pointer(rq->timeline) != tl) { /* timeline sharing! */
-		/*
-		 * Ideally, we just want to insert our foreign fence as
-		 * a barrier into the remove context, such that this operation
-		 * occurs after all current operations in that context, and
-		 * all future operations must occur after this.
-		 *
-		 * Currently, the timeline->last_request tracking is guarded
-		 * by its mutex and so we must obtain that to atomically
-		 * insert our barrier. However, since we already hold our
-		 * timeline->mutex, we must be careful against potential
-		 * inversion if we are the kernel_context as the remote context
-		 * will itself poke at the kernel_context when it needs to
-		 * unpin. Ergo, if already locked, we drop both locks and
-		 * try again (through the magic of userspace repeating EAGAIN).
-		 */
-		if (!mutex_trylock(&tl->mutex))
-			return -EAGAIN;
-
 		/* Queue this switch after current activity by this context. */
 		err = i915_active_fence_set(&tl->last_request, rq);
-		mutex_unlock(&tl->mutex);
 		if (err)
 			return err;
 	}

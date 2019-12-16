@@ -670,7 +670,7 @@ void __init prepare_namespace(void)
 
 	mount_root();
 out:
-	devtmpfs_mount();
+	devtmpfs_mount("dev");
 	ksys_mount(".", "/", NULL, MS_MOVE, NULL);
 	ksys_chroot(".");
 }

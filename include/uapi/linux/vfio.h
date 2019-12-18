@@ -476,6 +476,16 @@ struct vfio_irq_info_cap_type {
 	__u32 subtype;  /* type specific */
 };
 
+/* vGPU IRQ TYPE */
+#define VFIO_IRQ_TYPE_GFX			(1)
+
+/* sub-types for VFIO_IRQ_TYPE_GFX */
+/*
+ * vGPU device display dmabuf page flip event.
+ *
+ */
+#define VFIO_IRQ_SUBTYPE_GFX_DISPLAY_PAGE_FLIP	(1)
+
 /**
  * VFIO_DEVICE_SET_IRQS - _IOW(VFIO_TYPE, VFIO_BASE + 10, struct vfio_irq_set)
  *

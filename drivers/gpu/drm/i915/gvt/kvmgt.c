@@ -78,6 +78,19 @@ struct vfio_region {
 	void				*data;
 };
 
+struct intel_vgpu_irqops {
+	int (*add_capability)(struct intel_vgpu *vgpu,
+			   struct vfio_info_cap *caps);
+};
+
+struct vfio_irq {
+	u32	type;
+	u32	subtype;
+	u32	flags;
+	u32	count;
+	const struct intel_vgpu_irqops *ops;
+};
+
 struct vfio_edid_region {
 	struct vfio_region_gfx_edid vfio_edid_regs;
 	void *edid_blob;
@@ -635,6 +648,38 @@ static int kvmgt_set_edid(void *p_vgpu, int port_num)
 	return ret;
 }
 
+static int intel_vgpu_register_irq(struct intel_vgpu *vgpu,
+				   unsigned int type, unsigned int subtype,
+				   u32 count, u32 flags)
+{
+	struct vfio_irq *irq;
+
+	irq = krealloc(vgpu->vdev.irq,
+			(vgpu->vdev.num_irqs + 1) * sizeof(*irq),
+			GFP_KERNEL);
+	if (!irq)
+		return -ENOMEM;
+
+	vgpu->vdev.irq = irq;
+	vgpu->vdev.irq[vgpu->vdev.num_irqs].type = type;
+	vgpu->vdev.irq[vgpu->vdev.num_irqs].subtype = subtype;
+	vgpu->vdev.irq[vgpu->vdev.num_irqs].count = count;
+	vgpu->vdev.irq[vgpu->vdev.num_irqs].flags = flags;
+	vgpu->vdev.num_irqs++;
+	return 0;
+}
+
+static int kvmgt_register_display_irq(void *p_vgpu)
+{
+	struct intel_vgpu *vgpu = (struct intel_vgpu *)p_vgpu;
+
+	intel_vgpu_register_irq(vgpu, VFIO_IRQ_TYPE_GFX,
+				VFIO_IRQ_SUBTYPE_GFX_DISPLAY_PAGE_FLIP,
+				1,
+				VFIO_IRQ_INFO_MASKABLE | VFIO_IRQ_INFO_EVENTFD);
+	return 0;
+}
+
 static void kvmgt_put_vfio_device(void *vgpu)
 {
 	if (WARN_ON(!((struct intel_vgpu *)vgpu)->vdev.vfio_device))
@@ -1184,6 +1229,8 @@ static int intel_vgpu_get_irq_count(struct intel_vgpu *vgpu, int type)
 {
 	if (type == VFIO_PCI_INTX_IRQ_INDEX || type == VFIO_PCI_MSI_IRQ_INDEX)
 		return 1;
+	else if (type < VFIO_PCI_NUM_IRQS + vgpu->vdev.num_irqs)
+		return vgpu->vdev.irq[type - VFIO_PCI_NUM_IRQS].count;
 
 	return 0;
 }
@@ -1231,7 +1278,60 @@ static int intel_vgpu_set_msi_trigger(struct intel_vgpu *vgpu,
 	return 0;
 }
 
-static int intel_vgpu_set_irqs(struct intel_vgpu *vgpu, u32 flags,
+static int intel_vgu_set_display_irq_mask(struct intel_vgpu *vgpu,
+		unsigned int index, unsigned int start, unsigned int count,
+		u32 flags, void *data)
+{
+	if (start != 0 || count > 2)
+		return -EINVAL;
+
+	if (flags & VFIO_IRQ_SET_DATA_NONE)
+		vgpu->vdev.display_event_mask = true;
+
+	return 0;
+}
+
+static int intel_vgu_set_display_irq_unmask(struct intel_vgpu *vgpu,
+		unsigned int index, unsigned int start, unsigned int count,
+		u32 flags, void *data)
+{
+	if (start != 0 || count > 2)
+		return -EINVAL;
+
+	if (flags & VFIO_IRQ_SET_DATA_NONE)
+		vgpu->vdev.display_event_mask = false;
+
+	return 0;
+}
+
+static int intel_vgpu_set_display_event_trigger(struct intel_vgpu *vgpu,
+		unsigned int index, unsigned int start, unsigned int count,
+		u32 flags, void *data)
+{
+	struct eventfd_ctx *trigger;
+
+	if (flags & VFIO_IRQ_SET_DATA_EVENTFD) {
+		int fd = *(int *)data;
+
+		trigger = eventfd_ctx_fdget(fd);
+		if (IS_ERR(trigger)) {
+			gvt_vgpu_err("eventfd_ctx_fdget failed\n");
+			return PTR_ERR(trigger);
+		}
+		vgpu->vdev.vblank_trigger = trigger;
+		vgpu->vdev.display_event_mask = false;
+	} else if ((flags & VFIO_IRQ_SET_DATA_NONE) && !count) {
+		trigger = vgpu->vdev.vblank_trigger;
+		if (trigger) {
+			eventfd_ctx_put(trigger);
+			vgpu->vdev.vblank_trigger = NULL;
+		}
+	}
+
+	return 0;
+}
+
+int intel_vgpu_set_irqs(struct intel_vgpu *vgpu, u32 flags,
 		unsigned int index, unsigned int start, unsigned int count,
 		void *data)
 {
@@ -1264,6 +1364,35 @@ static int intel_vgpu_set_irqs(struct intel_vgpu *vgpu, u32 flags,
 			break;
 		}
 		break;
+	default:
+	{
+		int i;
+
+		if (index >= VFIO_PCI_NUM_IRQS +
+					vgpu->vdev.num_irqs)
+			return -EINVAL;
+		index =
+			array_index_nospec(index,
+						VFIO_PCI_NUM_IRQS +
+						vgpu->vdev.num_irqs);
+
+		i = index - VFIO_PCI_NUM_IRQS;
+		if (vgpu->vdev.irq[i].type == VFIO_IRQ_TYPE_GFX &&
+		    vgpu->vdev.irq[i].subtype ==
+		    VFIO_IRQ_SUBTYPE_GFX_DISPLAY_PAGE_FLIP) {
+			switch (flags & VFIO_IRQ_SET_ACTION_TYPE_MASK) {
+			case VFIO_IRQ_SET_ACTION_MASK:
+				func = intel_vgu_set_display_irq_mask;
+				break;
+			case VFIO_IRQ_SET_ACTION_UNMASK:
+				func = intel_vgu_set_display_irq_unmask;
+				break;
+			case VFIO_IRQ_SET_ACTION_TRIGGER:
+				func = intel_vgpu_set_display_event_trigger;
+				break;
+			}
+		}
+	}
 	}
 
 	if (!func)
@@ -1295,7 +1424,7 @@ static long intel_vgpu_ioctl(struct mdev_device *mdev, unsigned int cmd,
 		info.flags |= VFIO_DEVICE_FLAGS_RESET;
 		info.num_regions = VFIO_PCI_NUM_REGIONS +
 				vgpu->vdev.num_regions;
-		info.num_irqs = VFIO_PCI_NUM_IRQS;
+		info.num_irqs = VFIO_PCI_NUM_IRQS + vgpu->vdev.num_irqs;
 
 		return copy_to_user((void __user *)arg, &info, minsz) ?
 			-EFAULT : 0;
@@ -1453,32 +1582,82 @@ static long intel_vgpu_ioctl(struct mdev_device *mdev, unsigned int cmd,
 			-EFAULT : 0;
 	} else if (cmd == VFIO_DEVICE_GET_IRQ_INFO) {
 		struct vfio_irq_info info;
+		struct vfio_info_cap caps = { .buf = NULL, .size = 0 };
+		unsigned int i;
+		int ret;
 
 		minsz = offsetofend(struct vfio_irq_info, count);
 
 		if (copy_from_user(&info, (void __user *)arg, minsz))
 			return -EFAULT;
 
-		if (info.argsz < minsz || info.index >= VFIO_PCI_NUM_IRQS)
+		if (info.argsz < minsz)
 			return -EINVAL;
 
 		switch (info.index) {
 		case VFIO_PCI_INTX_IRQ_INDEX:
 		case VFIO_PCI_MSI_IRQ_INDEX:
+			info.flags = VFIO_IRQ_INFO_EVENTFD;
 			break;
-		default:
+		case VFIO_PCI_MSIX_IRQ_INDEX:
+		case VFIO_PCI_ERR_IRQ_INDEX:
+		case VFIO_PCI_REQ_IRQ_INDEX:
 			return -EINVAL;
-		}
+		default:
+		{
+			struct vfio_irq_info_cap_type cap_type = {
+				.header.id = VFIO_IRQ_INFO_CAP_TYPE,
+				.header.version = 1 };
 
-		info.flags = VFIO_IRQ_INFO_EVENTFD;
+			if (info.index >= VFIO_PCI_NUM_IRQS +
+					vgpu->vdev.num_irqs)
+				return -EINVAL;
+			info.index =
+				array_index_nospec(info.index,
+						VFIO_PCI_NUM_IRQS +
+						vgpu->vdev.num_irqs);
+
+			i = info.index - VFIO_PCI_NUM_IRQS;
+
+			info.flags = vgpu->vdev.irq[i].flags;
+			cap_type.type = vgpu->vdev.irq[i].type;
+			cap_type.subtype = vgpu->vdev.irq[i].subtype;
+
+			ret = vfio_info_add_capability(&caps,
+						&cap_type.header,
+						sizeof(cap_type));
+			if (ret)
+				return ret;
+
+		}
+		}
 
 		info.count = intel_vgpu_get_irq_count(vgpu, info.index);
 
 		if (info.index == VFIO_PCI_INTX_IRQ_INDEX)
 			info.flags |= (VFIO_IRQ_INFO_MASKABLE |
 				       VFIO_IRQ_INFO_AUTOMASKED);
-		else
-			info.flags |= VFIO_IRQ_INFO_NORESIZE;
+
+		if (caps.size) {
+			info.flags |= VFIO_IRQ_INFO_FLAG_CAPS;
+			if (info.argsz < sizeof(info) + caps.size) {
+				info.argsz = sizeof(info) + caps.size;
+				info.cap_offset = 0;
+			} else {
+				vfio_info_cap_shift(&caps, sizeof(info));
+				if (copy_to_user((void __user *)arg +
+						  sizeof(info), caps.buf,
+						  caps.size)) {
+					kfree(caps.buf);
+					return -EFAULT;
+				}
+				info.cap_offset = sizeof(info);
+				if (offsetofend(struct vfio_irq_info, cap_offset) > minsz)
+					minsz = offsetofend(struct vfio_irq_info, cap_offset);
+			}
+
+			kfree(caps.buf);
+		}
 
 		return copy_to_user((void __user *)arg, &info, minsz) ?
 			-EFAULT : 0;
@@ -1497,7 +1676,8 @@ static long intel_vgpu_ioctl(struct mdev_device *mdev, unsigned int cmd,
 			int max = intel_vgpu_get_irq_count(vgpu, hdr.index);
 
 			ret = vfio_set_irqs_validate_and_prepare(&hdr, max,
-						VFIO_PCI_NUM_IRQS, &data_size);
+					VFIO_PCI_NUM_IRQS + vgpu->vdev.num_irqs,
+								 &data_size);
 			if (ret) {
 				gvt_vgpu_err("intel:vfio_set_irqs_validate_and_prepare failed\n");
 				return -EINVAL;
@@ -1816,6 +1996,10 @@ static void kvmgt_detach_vgpu(void *p_vgpu)
 	vgpu->vdev.num_regions = 0;
 	kfree(vgpu->vdev.region);
 	vgpu->vdev.region = NULL;
+
+	vgpu->vdev.num_irqs = 0;
+	kfree(vgpu->vdev.irq);
+	vgpu->vdev.irq = NULL;
 }
 
 static int kvmgt_inject_msi(unsigned long handle, u32 addr, u16 data)
@@ -2052,6 +2236,7 @@ static struct intel_gvt_mpt kvmgt_mpt = {
 	.dma_pin_guest_page = kvmgt_dma_pin_guest_page,
 	.set_opregion = kvmgt_set_opregion,
 	.set_edid = kvmgt_set_edid,
+	.register_display_irq = kvmgt_register_display_irq,
 	.get_vfio_device = kvmgt_get_vfio_device,
 	.put_vfio_device = kvmgt_put_vfio_device,
 	.is_valid_gfn = kvmgt_is_valid_gfn,

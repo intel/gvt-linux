@@ -760,9 +760,10 @@ static int pri_surf_mmio_write(struct intel_vgpu *vgpu, unsigned int offset,
 
 	vgpu_vreg_t(vgpu, PIPE_FLIPCOUNT_G4X(pipe))++;
 
-	if (vgpu_vreg_t(vgpu, DSPCNTR(pipe)) & PLANE_CTL_ASYNC_FLIP)
+	if (vgpu_vreg_t(vgpu, DSPCNTR(pipe)) & PLANE_CTL_ASYNC_FLIP) {
 		intel_vgpu_trigger_virtual_event(vgpu, event);
-	else
+		set_bit(PLANE_PRIMARY, vgpu->display.async_flip_event[pipe]);
+	} else
 		set_bit(event, vgpu->irq.flip_done_event[pipe]);
 
 	return 0;

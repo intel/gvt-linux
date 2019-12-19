@@ -128,6 +128,8 @@ struct intel_vgpu_display {
 	struct intel_vgpu_i2c_edid i2c_edid;
 	struct intel_vgpu_port ports[I915_MAX_PORTS];
 	struct intel_vgpu_sbi sbi;
+	DECLARE_BITMAP(async_flip_event[I915_MAX_PIPES],
+		       I915_MAX_PLANES);
 };
 
 struct vgpu_sched_ctl {
@@ -201,8 +203,12 @@ struct intel_vgpu {
 		struct mdev_device *mdev;
 		struct vfio_region *region;
 		int num_regions;
+		struct vfio_irq *irq;
+		int num_irqs;
 		struct eventfd_ctx *intx_trigger;
 		struct eventfd_ctx *msi_trigger;
+		struct eventfd_ctx *vblank_trigger;
+		bool display_event_mask;
 
 		/*
 		 * Two caches are used to avoid mapping duplicated pages (eg.

@@ -113,6 +113,9 @@ static const char * const irq_name[INTEL_GVT_EVENT_MAX] = {
 	[SPRITE_A_FLIP_DONE] = "Sprite Plane A flip done",
 	[SPRITE_B_FLIP_DONE] = "Sprite Plane B flip done",
 	[SPRITE_C_FLIP_DONE] = "Sprite Plane C flip done",
+	[CURSOR_A_FLIP_DONE] = "Cursor Plane A flip done",
+	[CURSOR_B_FLIP_DONE] = "Cursor Plane B flip done",
+	[CURSOR_C_FLIP_DONE] = "Cursor Plane C flip done",
 
 	[PCU_THERMAL] = "PCU Thermal Event",
 	[PCU_PCODE2DRIVER_MAILBOX] = "PCU pcode2driver mailbox event",
@@ -593,6 +596,10 @@ static void gen8_init_irq(
 		SET_BIT_INFO(irq, 4, SPRITE_A_FLIP_DONE, INTEL_GVT_IRQ_INFO_DE_PIPE_A);
 		SET_BIT_INFO(irq, 4, SPRITE_B_FLIP_DONE, INTEL_GVT_IRQ_INFO_DE_PIPE_B);
 		SET_BIT_INFO(irq, 4, SPRITE_C_FLIP_DONE, INTEL_GVT_IRQ_INFO_DE_PIPE_C);
+
+		SET_BIT_INFO(irq, 6, CURSOR_A_FLIP_DONE, INTEL_GVT_IRQ_INFO_DE_PIPE_A);
+		SET_BIT_INFO(irq, 6, CURSOR_B_FLIP_DONE, INTEL_GVT_IRQ_INFO_DE_PIPE_B);
+		SET_BIT_INFO(irq, 6, CURSOR_C_FLIP_DONE, INTEL_GVT_IRQ_INFO_DE_PIPE_C);
 	}
 
 	/* GEN8 interrupt PCU events */

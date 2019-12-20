@@ -397,18 +397,34 @@ static void emulate_vblank_on_pipe(struct intel_vgpu *vgpu, int pipe)
 		[PIPE_C] = PIPE_C_VBLANK,
 	};
 	int event;
+	bool fb_flip = false;
 
 	if (pipe < PIPE_A || pipe > PIPE_C)
 		return;
+
+	for_each_set_bit(event, vgpu->display.async_flip_event[pipe],
+			I915_MAX_PLANES) {
+		clear_bit(event, vgpu->display.async_flip_event[pipe]);
+		if (!pipe_is_enabled(vgpu, pipe))
+			continue;
+		fb_flip = true;
+	}
+
+	/* Ideally, async page flip event can be delievered to user space in async page flip */
+	/* handler. However, in that way user space would get a flood of the events, which */
+	/* user space won't handle anyway.. */
+	if (fb_flip && vgpu->vdev.vblank_trigger && !vgpu->vdev.display_event_mask)
+		eventfd_signal(vgpu->vdev.vblank_trigger, 1);//fixme: page_flip_trigger
 
 	for_each_set_bit(event, irq->flip_done_event[pipe],
 			INTEL_GVT_EVENT_MAX) {
 		clear_bit(event, irq->flip_done_event[pipe]);
 		if (!pipe_is_enabled(vgpu, pipe))
 			continue;
-		/* Notify user space */
-		if (vgpu->vdev.vblank_trigger && !vgpu->vdev.display_event_mask)
-			eventfd_signal(vgpu->vdev.vblank_trigger, 1);
+
+		/* Don't need to notify user space twice */
+		if (!fb_flip && vgpu->vdev.vblank_trigger && !vgpu->vdev.display_event_mask)
+			eventfd_signal(vgpu->vdev.vblank_trigger, 1);//fixme: page_flip_trigger
 
 		intel_vgpu_trigger_virtual_event(vgpu, event);
 	}

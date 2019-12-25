@@ -638,6 +638,26 @@ void intel_vgpu_trigger_virtual_event(struct intel_vgpu *vgpu,
 	ops->check_pending_irq(vgpu);
 }
 
+void intel_vgpu_set_virtual_event(struct intel_vgpu *vgpu,
+	enum intel_gvt_event_type event)
+{
+	struct intel_gvt *gvt = vgpu->gvt;
+	struct intel_gvt_irq *irq = &gvt->irq;
+	gvt_event_virt_handler_t handler;
+
+	handler = get_event_virt_handler(irq, event);
+	WARN_ON(!handler);
+
+	handler(irq, event, vgpu);
+}
+
+void intel_vgpu_inject_virtual_event(struct intel_vgpu *vgpu)
+{
+	struct intel_gvt *gvt = vgpu->gvt;
+	struct intel_gvt_irq_ops *ops = gvt->irq.ops;
+	ops->check_pending_irq(vgpu);
+}
+
 static void init_events(
 	struct intel_gvt_irq *irq)
 {

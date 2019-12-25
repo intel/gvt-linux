@@ -426,13 +426,16 @@ static void emulate_vblank_on_pipe(struct intel_vgpu *vgpu, int pipe)
 		if (!fb_flip && vgpu->vdev.vblank_trigger && !vgpu->vdev.display_event_mask)
 			eventfd_signal(vgpu->vdev.vblank_trigger, 1);//fixme: page_flip_trigger
 
-		intel_vgpu_trigger_virtual_event(vgpu, event);
+		intel_vgpu_set_virtual_event(vgpu, event);
+		/* intel_vgpu_trigger_virtual_event(vgpu, event); */
 	}
 
 	if (pipe_is_enabled(vgpu, pipe)) {
 		vgpu_vreg_t(vgpu, PIPE_FRMCOUNT_G4X(pipe))++;
-		intel_vgpu_trigger_virtual_event(vgpu, vblank_event[pipe]);
+		intel_vgpu_set_virtual_event(vgpu, vblank_event[pipe]);
+		/* intel_vgpu_trigger_virtual_event(vgpu, vblank_event[pipe]); */
 	}
+	intel_vgpu_inject_virtual_event(vgpu);
 }
 
 static void emulate_vblank(struct intel_vgpu *vgpu)

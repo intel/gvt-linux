@@ -223,6 +223,11 @@ void intel_gvt_clean_irq(struct intel_gvt *gvt);
 void intel_vgpu_trigger_virtual_event(struct intel_vgpu *vgpu,
 	enum intel_gvt_event_type event);
 
+void intel_vgpu_set_virtual_event(struct intel_vgpu *vgpu,
+	enum intel_gvt_event_type event);
+
+void intel_vgpu_inject_virtual_event(struct intel_vgpu *vgpu);
+
 int intel_vgpu_reg_iir_handler(struct intel_vgpu *vgpu, unsigned int reg,
 	void *p_data, unsigned int bytes);
 int intel_vgpu_reg_ier_handler(struct intel_vgpu *vgpu,

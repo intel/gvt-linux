@@ -51,8 +51,10 @@ static int init_fake_lmem_bar(struct intel_memory_region *mem)
 
 static void release_fake_lmem_bar(struct intel_memory_region *mem)
 {
-	if (drm_mm_node_allocated(&mem->fake_mappable))
-		drm_mm_remove_node(&mem->fake_mappable);
+	if (!drm_mm_node_allocated(&mem->fake_mappable))
+		return;
+
+	drm_mm_remove_node(&mem->fake_mappable);
 
 	dma_unmap_resource(&mem->i915->drm.pdev->dev,
 			   mem->remap_addr,
@@ -87,6 +89,8 @@ region_lmem_init(struct intel_memory_region *mem)
 	ret = intel_memory_region_init_buddy(mem);
 	if (ret)
 		io_mapping_fini(&mem->iomap);
+
+	intel_memory_region_set_name(mem, "local");
 
 	return ret;
 }

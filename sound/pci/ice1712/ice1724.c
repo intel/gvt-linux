@@ -707,7 +707,7 @@ static int snd_vt1724_pcm_hw_params(struct snd_pcm_substream *substream,
 				    struct snd_pcm_hw_params *hw_params)
 {
 	struct snd_ice1712 *ice = snd_pcm_substream_chip(substream);
-	int i, chs, err;
+	int i, chs;
 
 	chs = params_channels(hw_params);
 	mutex_lock(&ice->open_mutex);
@@ -743,11 +743,7 @@ static int snd_vt1724_pcm_hw_params(struct snd_pcm_substream *substream,
 	}
 	mutex_unlock(&ice->open_mutex);
 
-	err = snd_vt1724_set_pro_rate(ice, params_rate(hw_params), 0);
-	if (err < 0)
-		return err;
-
-	return snd_pcm_lib_malloc_pages(substream, params_buffer_bytes(hw_params));
+	return snd_vt1724_set_pro_rate(ice, params_rate(hw_params), 0);
 }
 
 static int snd_vt1724_pcm_hw_free(struct snd_pcm_substream *substream)
@@ -761,7 +757,7 @@ static int snd_vt1724_pcm_hw_free(struct snd_pcm_substream *substream)
 		if (ice->pcm_reserved[i] == substream)
 			ice->pcm_reserved[i] = NULL;
 	mutex_unlock(&ice->open_mutex);
-	return snd_pcm_lib_free_pages(substream);
+	return 0;
 }
 
 static int snd_vt1724_playback_pro_prepare(struct snd_pcm_substream *substream)
@@ -1103,7 +1099,6 @@ static int snd_vt1724_capture_pro_close(struct snd_pcm_substream *substream)
 static const struct snd_pcm_ops snd_vt1724_playback_pro_ops = {
 	.open =		snd_vt1724_playback_pro_open,
 	.close =	snd_vt1724_playback_pro_close,
-	.ioctl =	snd_pcm_lib_ioctl,
 	.hw_params =	snd_vt1724_pcm_hw_params,
 	.hw_free =	snd_vt1724_pcm_hw_free,
 	.prepare =	snd_vt1724_playback_pro_prepare,
@@ -1114,7 +1109,6 @@ static const struct snd_pcm_ops snd_vt1724_playback_pro_ops = {
 static const struct snd_pcm_ops snd_vt1724_capture_pro_ops = {
 	.open =		snd_vt1724_capture_pro_open,
 	.close =	snd_vt1724_capture_pro_close,
-	.ioctl =	snd_pcm_lib_ioctl,
 	.hw_params =	snd_vt1724_pcm_hw_params,
 	.hw_free =	snd_vt1724_pcm_hw_free,
 	.prepare =	snd_vt1724_pcm_prepare,
@@ -1145,9 +1139,8 @@ static int snd_vt1724_pcm_profi(struct snd_ice1712 *ice, int device)
 	pcm->info_flags = 0;
 	strcpy(pcm->name, "ICE1724");
 
-	snd_pcm_lib_preallocate_pages_for_all(pcm, SNDRV_DMA_TYPE_DEV,
-					      &ice->pci->dev,
-					      256*1024, 256*1024);
+	snd_pcm_set_managed_buffer_all(pcm, SNDRV_DMA_TYPE_DEV,
+				       &ice->pci->dev, 256*1024, 256*1024);
 
 	ice->pcm_pro = pcm;
 
@@ -1282,7 +1275,6 @@ static int snd_vt1724_capture_spdif_close(struct snd_pcm_substream *substream)
 static const struct snd_pcm_ops snd_vt1724_playback_spdif_ops = {
 	.open =		snd_vt1724_playback_spdif_open,
 	.close =	snd_vt1724_playback_spdif_close,
-	.ioctl =	snd_pcm_lib_ioctl,
 	.hw_params =	snd_vt1724_pcm_hw_params,
 	.hw_free =	snd_vt1724_pcm_hw_free,
 	.prepare =	snd_vt1724_playback_spdif_prepare,
@@ -1293,7 +1285,6 @@ static const struct snd_pcm_ops snd_vt1724_playback_spdif_ops = {
 static const struct snd_pcm_ops snd_vt1724_capture_spdif_ops = {
 	.open =		snd_vt1724_capture_spdif_open,
 	.close =	snd_vt1724_capture_spdif_close,
-	.ioctl =	snd_pcm_lib_ioctl,
 	.hw_params =	snd_vt1724_pcm_hw_params,
 	.hw_free =	snd_vt1724_pcm_hw_free,
 	.prepare =	snd_vt1724_pcm_prepare,
@@ -1343,9 +1334,8 @@ static int snd_vt1724_pcm_spdif(struct snd_ice1712 *ice, int device)
 	pcm->info_flags = 0;
 	strcpy(pcm->name, name);
 
-	snd_pcm_lib_preallocate_pages_for_all(pcm, SNDRV_DMA_TYPE_DEV,
-					      &ice->pci->dev,
-					      256*1024, 256*1024);
+	snd_pcm_set_managed_buffer_all(pcm, SNDRV_DMA_TYPE_DEV,
+				       &ice->pci->dev, 256*1024, 256*1024);
 
 	ice->pcm = pcm;
 
@@ -1427,7 +1417,6 @@ static int snd_vt1724_playback_indep_close(struct snd_pcm_substream *substream)
 static const struct snd_pcm_ops snd_vt1724_playback_indep_ops = {
 	.open =		snd_vt1724_playback_indep_open,
 	.close =	snd_vt1724_playback_indep_close,
-	.ioctl =	snd_pcm_lib_ioctl,
 	.hw_params =	snd_vt1724_pcm_hw_params,
 	.hw_free =	snd_vt1724_pcm_hw_free,
 	.prepare =	snd_vt1724_playback_indep_prepare,
@@ -1457,9 +1446,8 @@ static int snd_vt1724_pcm_indep(struct snd_ice1712 *ice, int device)
 	pcm->info_flags = 0;
 	strcpy(pcm->name, "ICE1724 Surround PCM");
 
-	snd_pcm_lib_preallocate_pages_for_all(pcm, SNDRV_DMA_TYPE_DEV,
-					      &ice->pci->dev,
-					      256*1024, 256*1024);
+	snd_pcm_set_managed_buffer_all(pcm, SNDRV_DMA_TYPE_DEV,
+				       &ice->pci->dev, 256*1024, 256*1024);
 
 	ice->pcm_ds = pcm;
 
@@ -2549,7 +2537,6 @@ static int snd_vt1724_create(struct snd_card *card,
 	ice->irq = -1;
 	pci_set_master(pci);
 	snd_vt1724_proc_init(ice);
-	synchronize_irq(pci->irq);
 
 	card->private_data = ice;
 
@@ -2570,6 +2557,7 @@ static int snd_vt1724_create(struct snd_card *card,
 	}
 
 	ice->irq = pci->irq;
+	card->sync_irq = ice->irq;
 
 	snd_vt1724_chip_reset(ice);
 	if (snd_vt1724_read_eeprom(ice, modelname) < 0) {

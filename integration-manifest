@@ -1,32 +1,10 @@
-drm drm-fixes 866bd5eeaf13a8e008fa7b818fb445bacd4dbdb0
-	Merge tag 'amd-drm-fixes-5.5-2020-01-01' of git://people.freedesktop.org/~agd5f/linux into drm-fixes
-drm-misc drm-misc-fixes ac2917b01992c098b8d4e6837115e3ca347fdd90
-	drm/arm/mali: make malidp_mw_connector_helper_funcs static
-drm-intel drm-intel-fixes fd6988496e79a6a4bdb514a4655d2920209eb85d
-	Linux 5.5-rc4
-drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
-	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
-drm drm-next 5f773e551a3b977013df24d570d486645f326672
-	drm/amdgpu/display: use msleep rather than udelay for HDCP
-drm-misc drm-misc-next-fixes 0a5239985a3bc084738851afdf3fceb7d5651b0c
-	drm/panfrost: Open/close the perfcnt BO
-drm-intel drm-intel-next-fixes 01bb630319337be15fc50c211126180198d4e157
-	drm/i915/ehl: Make icp_digital_port_connected() use phy instead of port
-drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
-	Linux 4.14-rc1
-drm-misc drm-misc-next 1ce0d5162b98bf6120db1b259d0f0706e69f15fd
-	drm/panel: declare variable as __be16
-drm-intel drm-intel-next-queued f17b898009d8c979340ff9b68bee1232f00d1d42
-	drm/i915/gem: Drop local vma->vm_file reference
-drm-intel drm-intel-next 3446c63a0f2a691fdc6fffaddc6e0c1285efc80c
-	drm/i915: Update DRIVER_DATE to 20191223
-drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
-	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
-sound-upstream for-linus 48e01504cf5315cbe6de9b7412e792bfcc3dd9e1
-	ALSA: hda/realtek - Enable the bass speaker of ASUS UX431FLC
-sound-upstream for-next c56fc8c9ad7a8693a9c07a39fd3081576f908fea
-	ALSA: hda: constify copied structure
-drm-intel topic/core-for-CI 78c1332d19c217f195c5cf2e3e735f18ac9e8936
-	sched/vtime: Prevent unstable evaluation of WARN(vtime->state)
-drm drm-vmwgfx-coherent 0a6cad5df541108cfd3fbd79eef48eb824c89bdc
-	Merge branch 'vmwgfx-coherent' of git://people.freedesktop.org/~thomash/linux into drm-next
+drm-tip/drm-tip d207bb67a1192ff32488fdc403e6708def18d80f
+	drm-tip: 2020y-01m-02d-00h-44m-27s UTC integration manifest
+vfio-upstream/for-linus 95f89e090618efca63918b658c2002e57d393036
+	vfio/type1: Initialize resv_msi_base
+origin/gvt-fixes 5e822e44cecec1ea48925630aa31dfac827fd202
+	drm/i915/gvt: Fix guest boot warning
+origin/gvt-next-fixes 92b1aa773fadb4e2a90ed5d3beecb422d568ad9a
+	drm/i915/gvt: Fix cmd length check for MI_ATOMIC
+origin/gvt-next c5bd85353c0e2dac3e30855a9e4953c0c408dfef
+	drm/i915/gvt: remove unused type attributes

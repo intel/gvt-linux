@@ -1,0 +1,32 @@
+drm drm-fixes 023b3b0e139f54a680202790ba801f61aa43a5c8
+	Merge tag 'drm-intel-fixes-2020-01-09-1' of git://anongit.freedesktop.org/drm/drm-intel into drm-fixes
+drm-misc drm-misc-fixes f30e27779d3031a092c2a177b7fb76adccc45241
+	drm/fb-helper: Round up bits_per_pixel if possible
+drm-intel drm-intel-fixes 2b2c4a83d69dc9f2b46b8e791f5b8c2451c267bd
+	drm/i915/dp: Disable Port sync mode correctly on teardown
+drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
+	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
+drm drm-next a566696cf9f27f701cd4a6426d46f112c180059c
+	Merge tag 'drm-misc-next-2020-01-07' of git://anongit.freedesktop.org/drm/drm-misc into drm-next
+drm-misc drm-misc-next-fixes 0a5239985a3bc084738851afdf3fceb7d5651b0c
+	drm/panfrost: Open/close the perfcnt BO
+drm-intel drm-intel-next-fixes 01bb630319337be15fc50c211126180198d4e157
+	drm/i915/ehl: Make icp_digital_port_connected() use phy instead of port
+drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
+	Linux 4.14-rc1
+drm-misc drm-misc-next 44c58c520ffc4b1f75241e5029c5ae6b223d0623
+	drm/panel: simple: Add Satoz SAT050AT40H12R2 panel support
+drm-intel drm-intel-next-queued 5c34ba27cbbbfa61e6491309451d7bfc91507cac
+	drm/i915: Pass cpu_transcoder to assert_pipe_disabled() always
+drm-intel drm-intel-next 3446c63a0f2a691fdc6fffaddc6e0c1285efc80c
+	drm/i915: Update DRIVER_DATE to 20191223
+drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
+	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
+sound-upstream for-linus 8e85def5723eccea30ebf22645673692ab8cb3e2
+	ALSA: hda: enable regmap internal locking
+sound-upstream for-next 1a0986c1bc14a6a05da9d9cdeb61833560bacb1e
+	ALSA: hda: Fix a typo in comments
+drm-intel topic/core-for-CI 78c1332d19c217f195c5cf2e3e735f18ac9e8936
+	sched/vtime: Prevent unstable evaluation of WARN(vtime->state)
+drm drm-vmwgfx-coherent 0a6cad5df541108cfd3fbd79eef48eb824c89bdc
+	Merge branch 'vmwgfx-coherent' of git://people.freedesktop.org/~thomash/linux into drm-next

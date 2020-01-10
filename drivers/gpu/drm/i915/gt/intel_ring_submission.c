@@ -33,6 +33,7 @@
 
 #include "gem/i915_gem_context.h"
 
+#include "gen6_ppgtt.h"
 #include "i915_drv.h"
 #include "i915_trace.h"
 #include "intel_context.h"
@@ -1328,26 +1329,12 @@ static int ring_context_alloc(struct intel_context *ce)
 
 static int ring_context_pin(struct intel_context *ce)
 {
-	int err;
-
-	err = intel_context_active_acquire(ce);
-	if (err)
-		return err;
-
-	err = __context_pin_ppgtt(ce);
-	if (err)
-		goto err_active;
-
-	return 0;
-
-err_active:
-	intel_context_active_release(ce);
-	return err;
+	return __context_pin_ppgtt(ce);
 }
 
 static void ring_context_reset(struct intel_context *ce)
 {
-	intel_ring_reset(ce->ring, 0);
+	intel_ring_reset(ce->ring, ce->ring->emit);
 }
 
 static const struct intel_context_ops ring_context_ops = {
@@ -1394,7 +1381,7 @@ static int load_pd_dir(struct i915_request *rq,
 
 	intel_ring_advance(rq, cs);
 
-	return 0;
+	return rq->engine->emit_flush(rq, EMIT_FLUSH);
 }
 
 static inline int mi_set_context(struct i915_request *rq, u32 flags)
@@ -1584,7 +1571,7 @@ static int switch_mm(struct i915_request *rq, struct i915_address_space *vm)
 	if (ret)
 		return ret;
 
-	return rq->engine->emit_flush(rq, EMIT_FLUSH);
+	return rq->engine->emit_flush(rq, EMIT_INVALIDATE);
 }
 
 static int switch_context(struct i915_request *rq)
@@ -1840,8 +1827,6 @@ static void setup_common(struct intel_engine_cs *engine)
 
 	setup_irq(engine);
 
-	engine->release = ring_release;
-
 	engine->resume = xcs_resume;
 	engine->reset.prepare = reset_prepare;
 	engine->reset.rewind = reset_rewind;
@@ -2006,6 +1991,9 @@ int intel_ring_submission_setup(struct intel_engine_cs *engine)
 	engine->legacy.timeline = timeline;
 
 	GEM_BUG_ON(timeline->hwsp_ggtt != engine->status_page.vma);
+
+	/* Finally, take ownership and responsibility for cleanup! */
+	engine->release = ring_release;
 
 	return 0;
 

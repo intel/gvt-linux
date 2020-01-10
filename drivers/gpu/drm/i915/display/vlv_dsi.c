@@ -23,7 +23,6 @@
  * Author: Jani Nikula <jani.nikula@intel.com>
  */
 
-#include <linux/gpio/consumer.h>
 #include <linux/slab.h>
 
 #include <drm/drm_atomic_helper.h>
@@ -793,9 +792,6 @@ static void intel_dsi_pre_enable(struct intel_encoder *encoder,
 	if (!IS_GEMINILAKE(dev_priv))
 		intel_dsi_prepare(encoder, pipe_config);
 
-	/* Power on, try both CRC pmic gpio and VBT */
-	if (intel_dsi->gpio_panel)
-		gpiod_set_value_cansleep(intel_dsi->gpio_panel, 1);
 	intel_dsi_vbt_exec_sequence(intel_dsi, MIPI_SEQ_POWER_ON);
 	intel_dsi_msleep(intel_dsi, intel_dsi->panel_on_delay);
 
@@ -895,7 +891,7 @@ static void intel_dsi_post_disable(struct intel_encoder *encoder,
 	if (IS_GEN9_LP(dev_priv)) {
 		intel_crtc_vblank_off(old_crtc_state);
 
-		skylake_scaler_disable(old_crtc_state);
+		skl_scaler_disable(old_crtc_state);
 	}
 
 	if (is_vid_mode(intel_dsi)) {
@@ -945,11 +941,8 @@ static void intel_dsi_post_disable(struct intel_encoder *encoder,
 	/* Assert reset */
 	intel_dsi_vbt_exec_sequence(intel_dsi, MIPI_SEQ_ASSERT_RESET);
 
-	/* Power off, try both CRC pmic gpio and VBT */
 	intel_dsi_msleep(intel_dsi, intel_dsi->panel_off_delay);
 	intel_dsi_vbt_exec_sequence(intel_dsi, MIPI_SEQ_POWER_OFF);
-	if (intel_dsi->gpio_panel)
-		gpiod_set_value_cansleep(intel_dsi->gpio_panel, 0);
 
 	/*
 	 * FIXME As we do with eDP, just make a note of the time here
@@ -1541,10 +1534,7 @@ static void intel_dsi_encoder_destroy(struct drm_encoder *encoder)
 {
 	struct intel_dsi *intel_dsi = enc_to_intel_dsi(encoder);
 
-	/* dispose of the gpios */
-	if (intel_dsi->gpio_panel)
-		gpiod_put(intel_dsi->gpio_panel);
-
+	intel_dsi_vbt_gpio_cleanup(intel_dsi);
 	intel_encoder_destroy(encoder);
 }
 
@@ -1825,6 +1815,7 @@ void vlv_dsi_init(struct drm_i915_private *dev_priv)
 	struct drm_connector *connector;
 	struct drm_display_mode *current_mode, *fixed_mode;
 	enum port port;
+	enum pipe pipe;
 
 	DRM_DEBUG_KMS("\n");
 
@@ -1923,20 +1914,8 @@ void vlv_dsi_init(struct drm_i915_private *dev_priv)
 
 	vlv_dphy_param_init(intel_dsi);
 
-	/*
-	 * In case of BYT with CRC PMIC, we need to use GPIO for
-	 * Panel control.
-	 */
-	if ((IS_VALLEYVIEW(dev_priv) || IS_CHERRYVIEW(dev_priv)) &&
-	    (dev_priv->vbt.dsi.config->pwm_blc == PPS_BLC_PMIC)) {
-		intel_dsi->gpio_panel =
-			gpiod_get(dev->dev, "panel", GPIOD_OUT_HIGH);
-
-		if (IS_ERR(intel_dsi->gpio_panel)) {
-			DRM_ERROR("Failed to own gpio for panel control\n");
-			intel_dsi->gpio_panel = NULL;
-		}
-	}
+	intel_dsi_vbt_gpio_init(intel_dsi,
+				intel_dsi_get_hw_state(intel_encoder, &pipe));
 
 	drm_connector_init(dev, connector, &intel_dsi_connector_funcs,
 			   DRM_MODE_CONNECTOR_DSI);

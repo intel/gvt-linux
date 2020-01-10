@@ -247,7 +247,7 @@ static void hsw_post_disable_crt(struct intel_encoder *encoder,
 
 	intel_ddi_disable_transcoder_func(old_crtc_state);
 
-	ironlake_pfit_disable(old_crtc_state);
+	ilk_pfit_disable(old_crtc_state);
 
 	intel_ddi_disable_pipe_clock(old_crtc_state);
 
@@ -351,7 +351,7 @@ intel_crt_mode_valid(struct drm_connector *connector,
 
 	/* The FDI receiver on LPT only supports 8bpc and only has 2 lanes. */
 	if (HAS_PCH_LPT(dev_priv) &&
-	    (ironlake_get_lanes_required(mode->clock, 270000, 24) > 2))
+	    ilk_get_lanes_required(mode->clock, 270000, 24) > 2)
 		return MODE_CLOCK_HIGH;
 
 	/* HSW/BDW FDI limited to 4k */
@@ -427,7 +427,7 @@ static int hsw_crt_compute_config(struct intel_encoder *encoder,
 	return 0;
 }
 
-static bool intel_ironlake_crt_detect_hotplug(struct drm_connector *connector)
+static bool ilk_crt_detect_hotplug(struct drm_connector *connector)
 {
 	struct drm_device *dev = connector->dev;
 	struct intel_crt *crt = intel_attached_crt(connector);
@@ -440,7 +440,7 @@ static bool intel_ironlake_crt_detect_hotplug(struct drm_connector *connector)
 		bool turn_off_dac = HAS_PCH_SPLIT(dev_priv);
 		u32 save_adpa;
 
-		crt->force_hotplug_required = 0;
+		crt->force_hotplug_required = false;
 
 		save_adpa = adpa = I915_READ(crt->adpa_reg);
 		DRM_DEBUG_KMS("trigger hotplug detect cycle: adpa=0x%x\n", adpa);
@@ -535,7 +535,7 @@ static bool intel_crt_detect_hotplug(struct drm_connector *connector)
 	int i, tries = 0;
 
 	if (HAS_PCH_SPLIT(dev_priv))
-		return intel_ironlake_crt_detect_hotplug(connector);
+		return ilk_crt_detect_hotplug(connector);
 
 	if (IS_VALLEYVIEW(dev_priv))
 		return valleyview_crt_detect_hotplug(connector);
@@ -925,7 +925,7 @@ void intel_crt_reset(struct drm_encoder *encoder)
 		POSTING_READ(crt->adpa_reg);
 
 		DRM_DEBUG_KMS("crt adpa set to 0x%x\n", adpa);
-		crt->force_hotplug_required = 1;
+		crt->force_hotplug_required = true;
 	}
 
 }
@@ -1063,7 +1063,7 @@ void intel_crt_init(struct drm_i915_private *dev_priv)
 	/*
 	 * Configure the automatic hotplug detection stuff
 	 */
-	crt->force_hotplug_required = 0;
+	crt->force_hotplug_required = false;
 
 	/*
 	 * TODO: find a proper way to discover whether we need to set the the

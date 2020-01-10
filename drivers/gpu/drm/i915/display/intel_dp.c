@@ -2509,7 +2509,7 @@ static void intel_dp_prepare(struct intel_encoder *encoder,
 	 *
 	 * CPT PCH is quite different, having many bits moved
 	 * to the TRANS_DP_CTL register instead. That
-	 * configuration happens (oddly) in ironlake_pch_enable
+	 * configuration happens (oddly) in ilk_pch_enable
 	 */
 
 	/* Preserve the BIOS-computed detected bit. This is
@@ -2653,7 +2653,7 @@ static void edp_wait_backlight_off(struct intel_dp *intel_dp)
  * is locked
  */
 
-static  u32 ironlake_get_pp_control(struct intel_dp *intel_dp)
+static  u32 ilk_get_pp_control(struct intel_dp *intel_dp)
 {
 	struct drm_i915_private *dev_priv = dp_to_i915(intel_dp);
 	u32 control;
@@ -2703,7 +2703,7 @@ static bool edp_panel_vdd_on(struct intel_dp *intel_dp)
 	if (!edp_have_panel_power(intel_dp))
 		wait_panel_power_cycle(intel_dp);
 
-	pp = ironlake_get_pp_control(intel_dp);
+	pp = ilk_get_pp_control(intel_dp);
 	pp |= EDP_FORCE_VDD;
 
 	pp_stat_reg = _pp_stat_reg(intel_dp);
@@ -2768,7 +2768,7 @@ static void edp_panel_vdd_off_sync(struct intel_dp *intel_dp)
 		      intel_dig_port->base.base.base.id,
 		      intel_dig_port->base.base.name);
 
-	pp = ironlake_get_pp_control(intel_dp);
+	pp = ilk_get_pp_control(intel_dp);
 	pp &= ~EDP_FORCE_VDD;
 
 	pp_ctrl_reg = _pp_ctrl_reg(intel_dp);
@@ -2864,7 +2864,7 @@ static void edp_panel_on(struct intel_dp *intel_dp)
 	wait_panel_power_cycle(intel_dp);
 
 	pp_ctrl_reg = _pp_ctrl_reg(intel_dp);
-	pp = ironlake_get_pp_control(intel_dp);
+	pp = ilk_get_pp_control(intel_dp);
 	if (IS_GEN(dev_priv, 5)) {
 		/* ILK workaround: disable reset around power sequence */
 		pp &= ~PANEL_POWER_RESET;
@@ -2919,7 +2919,7 @@ static void edp_panel_off(struct intel_dp *intel_dp)
 	WARN(!intel_dp->want_panel_vdd, "Need [ENCODER:%d:%s] VDD to turn off panel\n",
 	     dig_port->base.base.base.id, dig_port->base.base.name);
 
-	pp = ironlake_get_pp_control(intel_dp);
+	pp = ilk_get_pp_control(intel_dp);
 	/* We need to switch off panel power _and_ force vdd, for otherwise some
 	 * panels get very unhappy and cease to work. */
 	pp &= ~(PANEL_POWER_ON | PANEL_POWER_RESET | EDP_FORCE_VDD |
@@ -2968,7 +2968,7 @@ static void _intel_edp_backlight_on(struct intel_dp *intel_dp)
 		i915_reg_t pp_ctrl_reg = _pp_ctrl_reg(intel_dp);
 		u32 pp;
 
-		pp = ironlake_get_pp_control(intel_dp);
+		pp = ilk_get_pp_control(intel_dp);
 		pp |= EDP_BLC_ENABLE;
 
 		I915_WRITE(pp_ctrl_reg, pp);
@@ -3004,7 +3004,7 @@ static void _intel_edp_backlight_off(struct intel_dp *intel_dp)
 		i915_reg_t pp_ctrl_reg = _pp_ctrl_reg(intel_dp);
 		u32 pp;
 
-		pp = ironlake_get_pp_control(intel_dp);
+		pp = ilk_get_pp_control(intel_dp);
 		pp &= ~EDP_BLC_ENABLE;
 
 		I915_WRITE(pp_ctrl_reg, pp);
@@ -3042,7 +3042,7 @@ static void intel_edp_backlight_power(struct intel_connector *connector,
 
 	is_enabled = false;
 	with_pps_lock(intel_dp, wakeref)
-		is_enabled = ironlake_get_pp_control(intel_dp) & EDP_BLC_ENABLE;
+		is_enabled = ilk_get_pp_control(intel_dp) & EDP_BLC_ENABLE;
 	if (is_enabled == enable)
 		return;
 
@@ -3079,13 +3079,13 @@ static void assert_edp_pll(struct drm_i915_private *dev_priv, bool state)
 #define assert_edp_pll_enabled(d) assert_edp_pll((d), true)
 #define assert_edp_pll_disabled(d) assert_edp_pll((d), false)
 
-static void ironlake_edp_pll_on(struct intel_dp *intel_dp,
-				const struct intel_crtc_state *pipe_config)
+static void ilk_edp_pll_on(struct intel_dp *intel_dp,
+			   const struct intel_crtc_state *pipe_config)
 {
 	struct intel_crtc *crtc = to_intel_crtc(pipe_config->uapi.crtc);
 	struct drm_i915_private *dev_priv = to_i915(crtc->base.dev);
 
-	assert_pipe_disabled(dev_priv, crtc->pipe);
+	assert_pipe_disabled(dev_priv, pipe_config->cpu_transcoder);
 	assert_dp_port_disabled(intel_dp);
 	assert_edp_pll_disabled(dev_priv);
 
@@ -3119,13 +3119,13 @@ static void ironlake_edp_pll_on(struct intel_dp *intel_dp,
 	udelay(200);
 }
 
-static void ironlake_edp_pll_off(struct intel_dp *intel_dp,
-				 const struct intel_crtc_state *old_crtc_state)
+static void ilk_edp_pll_off(struct intel_dp *intel_dp,
+			    const struct intel_crtc_state *old_crtc_state)
 {
 	struct intel_crtc *crtc = to_intel_crtc(old_crtc_state->uapi.crtc);
 	struct drm_i915_private *dev_priv = to_i915(crtc->base.dev);
 
-	assert_pipe_disabled(dev_priv, crtc->pipe);
+	assert_pipe_disabled(dev_priv, old_crtc_state->cpu_transcoder);
 	assert_dp_port_disabled(intel_dp);
 	assert_edp_pll_enabled(dev_priv);
 
@@ -3410,7 +3410,7 @@ static void g4x_post_disable_dp(struct intel_encoder *encoder,
 
 	/* Only ilk+ has port A */
 	if (port == PORT_A)
-		ironlake_edp_pll_off(intel_dp, old_crtc_state);
+		ilk_edp_pll_off(intel_dp, old_crtc_state);
 }
 
 static void vlv_post_disable_dp(struct intel_encoder *encoder,
@@ -3615,7 +3615,7 @@ static void g4x_pre_enable_dp(struct intel_encoder *encoder,
 
 	/* Only ilk+ has port A */
 	if (port == PORT_A)
-		ironlake_edp_pll_on(intel_dp, pipe_config);
+		ilk_edp_pll_on(intel_dp, pipe_config);
 }
 
 static void vlv_detach_power_sequencer(struct intel_dp *intel_dp)
@@ -4903,7 +4903,7 @@ static u8 intel_dp_autotest_video_pattern(struct intel_dp *intel_dp)
 	intel_dp->compliance.test_data.hdisplay = be16_to_cpu(h_width);
 	intel_dp->compliance.test_data.vdisplay = be16_to_cpu(v_height);
 	/* Set test active flag here so userspace doesn't interrupt things */
-	intel_dp->compliance.test_active = 1;
+	intel_dp->compliance.test_active = true;
 
 	return DP_TEST_ACK;
 }
@@ -4947,7 +4947,7 @@ static u8 intel_dp_autotest_edid(struct intel_dp *intel_dp)
 	}
 
 	/* Set test active flag here so userspace doesn't interrupt things */
-	intel_dp->compliance.test_active = 1;
+	intel_dp->compliance.test_active = true;
 
 	return test_result;
 }
@@ -6693,7 +6693,7 @@ intel_pps_readout_hw_state(struct intel_dp *intel_dp, struct edp_power_seq *seq)
 
 	intel_pps_get_registers(intel_dp, &regs);
 
-	pp_ctl = ironlake_get_pp_control(intel_dp);
+	pp_ctl = ilk_get_pp_control(intel_dp);
 
 	/* Ensure PPS is unlocked */
 	if (!HAS_DDI(dev_priv))
@@ -6863,7 +6863,7 @@ intel_dp_init_panel_power_sequencer_registers(struct intel_dp *intel_dp,
 	 * soon as the new power sequencer gets initialized.
 	 */
 	if (force_disable_vdd) {
-		u32 pp = ironlake_get_pp_control(intel_dp);
+		u32 pp = ilk_get_pp_control(intel_dp);
 
 		WARN(pp & PANEL_POWER_ON, "Panel power already on\n");
 

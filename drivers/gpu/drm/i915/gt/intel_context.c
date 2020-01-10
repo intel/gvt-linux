@@ -43,29 +43,75 @@ intel_context_create(struct intel_engine_cs *engine)
 	return ce;
 }
 
+int intel_context_alloc_state(struct intel_context *ce)
+{
+	int err = 0;
+
+	if (mutex_lock_interruptible(&ce->pin_mutex))
+		return -EINTR;
+
+	if (!test_bit(CONTEXT_ALLOC_BIT, &ce->flags)) {
+		err = ce->ops->alloc(ce);
+		if (unlikely(err))
+			goto unlock;
+
+		set_bit(CONTEXT_ALLOC_BIT, &ce->flags);
+	}
+
+unlock:
+	mutex_unlock(&ce->pin_mutex);
+	return err;
+}
+
+static int intel_context_active_acquire(struct intel_context *ce)
+{
+	int err;
+
+	err = i915_active_acquire(&ce->active);
+	if (err)
+		return err;
+
+	/* Preallocate tracking nodes */
+	if (!intel_context_is_barrier(ce)) {
+		err = i915_active_acquire_preallocate_barrier(&ce->active,
+							      ce->engine);
+		if (err) {
+			i915_active_release(&ce->active);
+			return err;
+		}
+	}
+
+	return 0;
+}
+
+static void intel_context_active_release(struct intel_context *ce)
+{
+	/* Nodes preallocated in intel_context_active() */
+	i915_active_acquire_barrier(&ce->active);
+	i915_active_release(&ce->active);
+}
+
 int __intel_context_do_pin(struct intel_context *ce)
 {
 	int err;
+
+	if (unlikely(!test_bit(CONTEXT_ALLOC_BIT, &ce->flags))) {
+		err = intel_context_alloc_state(ce);
+		if (err)
+			return err;
+	}
 
 	if (mutex_lock_interruptible(&ce->pin_mutex))
 		return -EINTR;
 
 	if (likely(!atomic_read(&ce->pin_count))) {
-		intel_wakeref_t wakeref;
-
-		if (unlikely(!test_bit(CONTEXT_ALLOC_BIT, &ce->flags))) {
-			err = ce->ops->alloc(ce);
-			if (unlikely(err))
-				goto err;
-
-			__set_bit(CONTEXT_ALLOC_BIT, &ce->flags);
-		}
-
-		err = 0;
-		with_intel_runtime_pm(ce->engine->uncore->rpm, wakeref)
-			err = ce->ops->pin(ce);
-		if (err)
+		err = intel_context_active_acquire(ce);
+		if (unlikely(err))
 			goto err;
+
+		err = ce->ops->pin(ce);
+		if (unlikely(err))
+			goto err_active;
 
 		CE_TRACE(ce, "pin ring:{head:%04x, tail:%04x}\n",
 			 ce->ring->head, ce->ring->tail);
@@ -79,6 +125,8 @@ int __intel_context_do_pin(struct intel_context *ce)
 	mutex_unlock(&ce->pin_mutex);
 	return 0;
 
+err_active:
+	intel_context_active_release(ce);
 err:
 	mutex_unlock(&ce->pin_mutex);
 	return err;
@@ -86,22 +134,20 @@ err:
 
 void intel_context_unpin(struct intel_context *ce)
 {
-	if (likely(atomic_add_unless(&ce->pin_count, -1, 1)))
+	if (!atomic_dec_and_test(&ce->pin_count))
 		return;
 
-	/* We may be called from inside intel_context_pin() to evict another */
+	CE_TRACE(ce, "unpin\n");
+	ce->ops->unpin(ce);
+
+	/*
+	 * Once released, we may asynchronously drop the active reference.
+	 * As that may be the only reference keeping the context alive,
+	 * take an extra now so that it is not freed before we finish
+	 * dereferencing it.
+	 */
 	intel_context_get(ce);
-	mutex_lock_nested(&ce->pin_mutex, SINGLE_DEPTH_NESTING);
-
-	if (likely(atomic_dec_and_test(&ce->pin_count))) {
-		CE_TRACE(ce, "retire\n");
-
-		ce->ops->unpin(ce);
-
-		intel_context_active_release(ce);
-	}
-
-	mutex_unlock(&ce->pin_mutex);
+	intel_context_active_release(ce);
 	intel_context_put(ce);
 }
 
@@ -152,6 +198,8 @@ static int __intel_context_active(struct i915_active *active)
 	struct intel_context *ce = container_of(active, typeof(*ce), active);
 	int err;
 
+	CE_TRACE(ce, "active\n");
+
 	intel_context_get(ce);
 
 	err = intel_ring_pin(ce->ring);
@@ -178,34 +226,6 @@ err_ring:
 err_put:
 	intel_context_put(ce);
 	return err;
-}
-
-int intel_context_active_acquire(struct intel_context *ce)
-{
-	int err;
-
-	err = i915_active_acquire(&ce->active);
-	if (err)
-		return err;
-
-	/* Preallocate tracking nodes */
-	if (!intel_context_is_barrier(ce)) {
-		err = i915_active_acquire_preallocate_barrier(&ce->active,
-							      ce->engine);
-		if (err) {
-			i915_active_release(&ce->active);
-			return err;
-		}
-	}
-
-	return 0;
-}
-
-void intel_context_active_release(struct intel_context *ce)
-{
-	/* Nodes preallocated in intel_context_active() */
-	i915_active_acquire_barrier(&ce->active);
-	i915_active_release(&ce->active);
 }
 
 void

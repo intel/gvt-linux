@@ -41,14 +41,10 @@
 #include <drm/drm_fourcc.h>
 
 #include "i915_drv.h"
+#include "i915_trace.h"
 #include "intel_display_types.h"
 #include "intel_fbc.h"
 #include "intel_frontbuffer.h"
-
-static inline bool fbc_supported(struct drm_i915_private *dev_priv)
-{
-	return HAS_FBC(dev_priv);
-}
 
 /*
  * In some platforms where the CRTC's x:0/y:0 coordinates doesn't match the
@@ -205,6 +201,10 @@ static bool g4x_fbc_is_active(struct drm_i915_private *dev_priv)
 /* This function forces a CFB recompression through the nuke operation. */
 static void intel_fbc_recompress(struct drm_i915_private *dev_priv)
 {
+	struct intel_fbc *fbc = &dev_priv->fbc;
+
+	trace_intel_fbc_nuke(fbc->crtc);
+
 	I915_WRITE(MSG_FBC_REND_STATE, FBC_REND_NUKE);
 	POSTING_READ(MSG_FBC_REND_STATE);
 }
@@ -361,6 +361,8 @@ static void intel_fbc_hw_activate(struct drm_i915_private *dev_priv)
 {
 	struct intel_fbc *fbc = &dev_priv->fbc;
 
+	trace_intel_fbc_activate(fbc->crtc);
+
 	fbc->active = true;
 	fbc->activated = true;
 
@@ -377,6 +379,8 @@ static void intel_fbc_hw_activate(struct drm_i915_private *dev_priv)
 static void intel_fbc_hw_deactivate(struct drm_i915_private *dev_priv)
 {
 	struct intel_fbc *fbc = &dev_priv->fbc;
+
+	trace_intel_fbc_deactivate(fbc->crtc);
 
 	fbc->active = false;
 
@@ -543,7 +547,7 @@ void intel_fbc_cleanup_cfb(struct drm_i915_private *dev_priv)
 {
 	struct intel_fbc *fbc = &dev_priv->fbc;
 
-	if (!fbc_supported(dev_priv))
+	if (!HAS_FBC(dev_priv))
 		return;
 
 	mutex_lock(&fbc->lock);
@@ -867,16 +871,20 @@ static bool intel_fbc_can_flip_nuke(const struct intel_crtc_state *crtc_state)
 	return true;
 }
 
-bool intel_fbc_pre_update(struct intel_crtc *crtc,
-			  const struct intel_crtc_state *crtc_state,
-			  const struct intel_plane_state *plane_state)
+bool intel_fbc_pre_update(struct intel_atomic_state *state,
+			  struct intel_crtc *crtc)
 {
+	struct intel_plane *plane = to_intel_plane(crtc->base.primary);
+	const struct intel_crtc_state *crtc_state =
+		intel_atomic_get_new_crtc_state(state, crtc);
+	const struct intel_plane_state *plane_state =
+		intel_atomic_get_new_plane_state(state, plane);
 	struct drm_i915_private *dev_priv = to_i915(crtc->base.dev);
 	struct intel_fbc *fbc = &dev_priv->fbc;
 	const char *reason = "update pending";
 	bool need_vblank_wait = false;
 
-	if (!fbc_supported(dev_priv))
+	if (!plane->has_fbc || !plane_state)
 		return need_vblank_wait;
 
 	mutex_lock(&fbc->lock);
@@ -967,12 +975,16 @@ static void __intel_fbc_post_update(struct intel_crtc *crtc)
 		intel_fbc_deactivate(dev_priv, "frontbuffer write");
 }
 
-void intel_fbc_post_update(struct intel_crtc *crtc)
+void intel_fbc_post_update(struct intel_atomic_state *state,
+			   struct intel_crtc *crtc)
 {
 	struct drm_i915_private *dev_priv = to_i915(crtc->base.dev);
+	struct intel_plane *plane = to_intel_plane(crtc->base.primary);
+	const struct intel_plane_state *plane_state =
+		intel_atomic_get_new_plane_state(state, plane);
 	struct intel_fbc *fbc = &dev_priv->fbc;
 
-	if (!fbc_supported(dev_priv))
+	if (!plane->has_fbc || !plane_state)
 		return;
 
 	mutex_lock(&fbc->lock);
@@ -994,7 +1006,7 @@ void intel_fbc_invalidate(struct drm_i915_private *dev_priv,
 {
 	struct intel_fbc *fbc = &dev_priv->fbc;
 
-	if (!fbc_supported(dev_priv))
+	if (!HAS_FBC(dev_priv))
 		return;
 
 	if (origin == ORIGIN_GTT || origin == ORIGIN_FLIP)
@@ -1015,7 +1027,7 @@ void intel_fbc_flush(struct drm_i915_private *dev_priv,
 {
 	struct intel_fbc *fbc = &dev_priv->fbc;
 
-	if (!fbc_supported(dev_priv))
+	if (!HAS_FBC(dev_priv))
 		return;
 
 	mutex_lock(&fbc->lock);
@@ -1107,16 +1119,19 @@ out:
  * intel_fbc_enable multiple times for the same pipe without an
  * intel_fbc_disable in the middle, as long as it is deactivated.
  */
-void intel_fbc_enable(struct intel_crtc *crtc,
-		      const struct intel_crtc_state *crtc_state,
-		      const struct intel_plane_state *plane_state)
+void intel_fbc_enable(struct intel_atomic_state *state,
+		      struct intel_crtc *crtc)
 {
 	struct drm_i915_private *dev_priv = to_i915(crtc->base.dev);
+	struct intel_plane *plane = to_intel_plane(crtc->base.primary);
+	const struct intel_crtc_state *crtc_state =
+		intel_atomic_get_new_crtc_state(state, crtc);
+	const struct intel_plane_state *plane_state =
+		intel_atomic_get_new_plane_state(state, plane);
 	struct intel_fbc *fbc = &dev_priv->fbc;
 	struct intel_fbc_state_cache *cache = &fbc->state_cache;
-	const struct drm_framebuffer *fb = plane_state->hw.fb;
 
-	if (!fbc_supported(dev_priv))
+	if (!plane->has_fbc || !plane_state)
 		return;
 
 	mutex_lock(&fbc->lock);
@@ -1139,14 +1154,14 @@ void intel_fbc_enable(struct intel_crtc *crtc,
 
 	if (intel_fbc_alloc_cfb(dev_priv,
 				intel_fbc_calculate_cfb_size(dev_priv, cache),
-				fb->format->cpp[0])) {
+				plane_state->hw.fb->format->cpp[0])) {
 		cache->plane.visible = false;
 		fbc->no_fbc_reason = "not enough stolen memory";
 		goto out;
 	}
 
 	if ((IS_GEN9_BC(dev_priv) || IS_BROXTON(dev_priv)) &&
-	    fb->modifier != I915_FORMAT_MOD_X_TILED)
+	    plane_state->hw.fb->modifier != I915_FORMAT_MOD_X_TILED)
 		cache->gen9_wa_cfb_stride =
 			DIV_ROUND_UP(cache->plane.src_w, 32 * fbc->threshold) * 8;
 	else
@@ -1169,9 +1184,10 @@ out:
 void intel_fbc_disable(struct intel_crtc *crtc)
 {
 	struct drm_i915_private *dev_priv = to_i915(crtc->base.dev);
+	struct intel_plane *plane = to_intel_plane(crtc->base.primary);
 	struct intel_fbc *fbc = &dev_priv->fbc;
 
-	if (!fbc_supported(dev_priv))
+	if (!plane->has_fbc)
 		return;
 
 	mutex_lock(&fbc->lock);
@@ -1190,7 +1206,7 @@ void intel_fbc_global_disable(struct drm_i915_private *dev_priv)
 {
 	struct intel_fbc *fbc = &dev_priv->fbc;
 
-	if (!fbc_supported(dev_priv))
+	if (!HAS_FBC(dev_priv))
 		return;
 
 	mutex_lock(&fbc->lock);
@@ -1267,7 +1283,7 @@ void intel_fbc_handle_fifo_underrun_irq(struct drm_i915_private *dev_priv)
 {
 	struct intel_fbc *fbc = &dev_priv->fbc;
 
-	if (!fbc_supported(dev_priv))
+	if (!HAS_FBC(dev_priv))
 		return;
 
 	/* There's no guarantee that underrun_detected won't be set to true

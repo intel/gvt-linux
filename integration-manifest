@@ -1,0 +1,32 @@
+drm drm-fixes def9d2780727cec3313ed3522d0123158d87224d
+	Linux 5.5-rc7
+drm-misc drm-misc-fixes db1a079569687eeb7f617a50bbb0474e9e11b64a
+	drm/dp_mst: Handle SST-only branch device case
+drm-intel drm-intel-fixes 88550e1c345c6d3f70292fa60d481eb320e11953
+	drm/i915/pmu: Do not use colons or dashes in PMU names
+drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
+	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
+drm drm-next d7ca2d19c751b6715e9cb899a6b94f47b3499d02
+	Merge tag 'drm-msm-next-2020-01-14' of https://gitlab.freedesktop.org/drm/msm into drm-next
+drm-misc drm-misc-next-fixes 0a5239985a3bc084738851afdf3fceb7d5651b0c
+	drm/panfrost: Open/close the perfcnt BO
+drm-intel drm-intel-next-fixes 01bb630319337be15fc50c211126180198d4e157
+	drm/i915/ehl: Make icp_digital_port_connected() use phy instead of port
+drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
+	Linux 4.14-rc1
+drm-misc drm-misc-next d1d511d516f72e0da2fea1e32a2dbf7b4f19b81f
+	drm: tiny: st7735r: Add support for Okaya RH128128T
+drm-intel drm-intel-next-queued cd69952778aa4fc9325d993eea52dfff796f8e22
+	drm/i915/gt: Be paranoid and reset the GPU before release
+drm-intel drm-intel-next f2221a50494037af98206713155c8d4f2e7bccaa
+	drm/i915: Update DRIVER_DATE to 20200114
+drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
+	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
+sound-upstream for-linus e5dbdcb31285a975d623d2bf2c9e7b2940489008
+	Merge tag 'asoc-fix-v5.5-rc6' of https://git.kernel.org/pub/scm/linux/kernel/git/broonie/sound into for-linus
+sound-upstream for-next 5af29028fd6db9438b5584ab7179710a0a22569d
+	ALSA: hda/realtek - Add Headset Mic supported for HP cPC
+drm-intel topic/core-for-CI 78c1332d19c217f195c5cf2e3e735f18ac9e8936
+	sched/vtime: Prevent unstable evaluation of WARN(vtime->state)
+drm drm-vmwgfx-coherent 0a6cad5df541108cfd3fbd79eef48eb824c89bdc
+	Merge branch 'vmwgfx-coherent' of git://people.freedesktop.org/~thomash/linux into drm-next

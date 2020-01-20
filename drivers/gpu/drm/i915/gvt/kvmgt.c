@@ -1597,12 +1597,10 @@ static struct mdev_parent_ops intel_vgpu_ops = {
 
 static int kvmgt_host_init(struct device *dev, void *gvt, const void *ops)
 {
-	struct attribute **kvm_type_attrs;
 	struct attribute_group **kvm_vgpu_type_groups;
 
 	intel_gvt_ops = ops;
-	if (!intel_gvt_ops->get_gvt_attrs(&kvm_type_attrs,
-			&kvm_vgpu_type_groups))
+	if (!intel_gvt_ops->get_gvt_attrs(&kvm_vgpu_type_groups))
 		return -EFAULT;
 	intel_vgpu_ops.supported_type_groups = kvm_vgpu_type_groups;
 
@@ -1768,8 +1766,6 @@ static int kvmgt_guest_init(struct mdev_device *mdev)
 
 	kvmgt_protect_table_init(info);
 	gvt_cache_init(vgpu);
-
-	init_completion(&vgpu->vblank_done);
 
 	info->track_node.track_write = kvmgt_page_track_write;
 	info->track_node.track_flush_slot = kvmgt_page_track_flush_slot;

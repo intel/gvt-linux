@@ -48,6 +48,7 @@
 #include "gt/uc/intel_guc_submission.h"
 
 #include "i915_debugfs.h"
+#include "i915_debugfs_params.h"
 #include "i915_irq.h"
 #include "i915_trace.h"
 #include "intel_csr.h"
@@ -1913,7 +1914,7 @@ static int i915_guc_log_relay_open(struct inode *inode, struct file *file)
 	struct intel_guc *guc = &i915->gt.uc.guc;
 	struct intel_guc_log *log = &guc->log;
 
-	if (!intel_guc_is_running(guc))
+	if (!intel_guc_is_ready(guc))
 		return -ENODEV;
 
 	file->private_data = log;
@@ -1979,7 +1980,7 @@ static int i915_psr_sink_status_show(struct seq_file *m, void *data)
 	struct drm_connector *connector = m->private;
 	struct drm_i915_private *dev_priv = to_i915(connector->dev);
 	struct intel_dp *intel_dp =
-		enc_to_intel_dp(intel_attached_encoder(to_intel_connector(connector)));
+		intel_attached_dp(to_intel_connector(connector));
 	int ret;
 
 	if (!CAN_PSR(dev_priv)) {
@@ -2160,7 +2161,7 @@ i915_edp_psr_debug_set(void *data, u64 val)
 	if (!CAN_PSR(dev_priv))
 		return -ENODEV;
 
-	DRM_DEBUG_KMS("Setting PSR debug to %llx\n", val);
+	drm_dbg_kms(&dev_priv->drm, "Setting PSR debug to %llx\n", val);
 
 	wakeref = intel_runtime_pm_get(&dev_priv->runtime_pm);
 
@@ -2186,29 +2187,6 @@ i915_edp_psr_debug_get(void *data, u64 *val)
 DEFINE_SIMPLE_ATTRIBUTE(i915_edp_psr_debug_fops,
 			i915_edp_psr_debug_get, i915_edp_psr_debug_set,
 			"%llu\n");
-
-static int i915_energy_uJ(struct seq_file *m, void *data)
-{
-	struct drm_i915_private *dev_priv = node_to_i915(m->private);
-	unsigned long long power;
-	intel_wakeref_t wakeref;
-	u32 units;
-
-	if (INTEL_GEN(dev_priv) < 6)
-		return -ENODEV;
-
-	if (rdmsrl_safe(MSR_RAPL_POWER_UNIT, &power))
-		return -ENODEV;
-
-	units = (power & 0x1f00) >> 8;
-	with_intel_runtime_pm(&dev_priv->runtime_pm, wakeref)
-		power = I915_READ(MCH_SECP_NRG_STTS);
-
-	power = (1000000 * power) >> units; /* convert to uJ */
-	seq_printf(m, "%llu", power);
-
-	return 0;
-}
 
 static int i915_runtime_pm_status(struct seq_file *m, void *unused)
 {
@@ -2390,7 +2368,7 @@ static void intel_hdcp_info(struct seq_file *m,
 static void intel_dp_info(struct seq_file *m,
 			  struct intel_connector *intel_connector)
 {
-	struct intel_encoder *intel_encoder = intel_connector->encoder;
+	struct intel_encoder *intel_encoder = intel_attached_encoder(intel_connector);
 	struct intel_dp *intel_dp = enc_to_intel_dp(intel_encoder);
 
 	seq_printf(m, "\tDPCD rev: %x\n", intel_dp->dpcd[DP_DPCD_REV]);
@@ -2409,7 +2387,7 @@ static void intel_dp_info(struct seq_file *m,
 static void intel_dp_mst_info(struct seq_file *m,
 			  struct intel_connector *intel_connector)
 {
-	struct intel_encoder *intel_encoder = intel_connector->encoder;
+	struct intel_encoder *intel_encoder = intel_attached_encoder(intel_connector);
 	struct intel_dp_mst_encoder *intel_mst =
 		enc_to_mst(intel_encoder);
 	struct intel_digital_port *intel_dig_port = intel_mst->primary;
@@ -2423,7 +2401,7 @@ static void intel_dp_mst_info(struct seq_file *m,
 static void intel_hdmi_info(struct seq_file *m,
 			    struct intel_connector *intel_connector)
 {
-	struct intel_encoder *intel_encoder = intel_connector->encoder;
+	struct intel_encoder *intel_encoder = intel_attached_encoder(intel_connector);
 	struct intel_hdmi *intel_hdmi = enc_to_intel_hdmi(intel_encoder);
 
 	seq_printf(m, "\taudio support: %s\n", yesno(intel_hdmi->has_audio));
@@ -2802,7 +2780,7 @@ static int i915_wa_registers(struct seq_file *m, void *unused)
 		for (wa = wal->list; count--; wa++)
 			seq_printf(m, "0x%X: 0x%08X, mask: 0x%08X\n",
 				   i915_mmio_reg_offset(wa->reg),
-				   wa->val, wa->mask);
+				   wa->set, wa->clr);
 
 		seq_printf(m, "\n");
 	}
@@ -2844,7 +2822,8 @@ static ssize_t i915_ipc_status_write(struct file *file, const char __user *ubuf,
 
 	with_intel_runtime_pm(&dev_priv->runtime_pm, wakeref) {
 		if (!dev_priv->ipc_enabled && enable)
-			DRM_INFO("Enabling IPC: WM will be proper only after next commit\n");
+			drm_info(&dev_priv->drm,
+				 "Enabling IPC: WM will be proper only after next commit\n");
 		dev_priv->wm.distrust_bios_wm = true;
 		dev_priv->ipc_enabled = enable;
 		intel_enable_ipc(dev_priv);
@@ -2920,16 +2899,7 @@ static void drrs_status_per_crtc(struct seq_file *m,
 	}
 	drm_connector_list_iter_end(&conn_iter);
 
-	if (dev_priv->vbt.drrs_type == STATIC_DRRS_SUPPORT)
-		seq_puts(m, "\tVBT: DRRS_type: Static");
-	else if (dev_priv->vbt.drrs_type == SEAMLESS_DRRS_SUPPORT)
-		seq_puts(m, "\tVBT: DRRS_type: Seamless");
-	else if (dev_priv->vbt.drrs_type == DRRS_NOT_SUPPORTED)
-		seq_puts(m, "\tVBT: DRRS_type: None");
-	else
-		seq_puts(m, "\tVBT: DRRS_type: FIXME: Unrecognized Value");
-
-	seq_puts(m, "\n\n");
+	seq_puts(m, "\n");
 
 	if (to_intel_crtc_state(intel_crtc->base.state)->has_drrs) {
 		struct intel_panel *panel;
@@ -3053,7 +3023,8 @@ static ssize_t i915_displayport_test_active_write(struct file *file,
 	if (IS_ERR(input_buffer))
 		return PTR_ERR(input_buffer);
 
-	DRM_DEBUG_DRIVER("Copied %d bytes from user\n", (unsigned int)len);
+	drm_dbg(&to_i915(dev)->drm,
+		"Copied %d bytes from user\n", (unsigned int)len);
 
 	drm_connector_list_iter_begin(dev, &conn_iter);
 	drm_for_each_connector_iter(connector, &conn_iter) {
@@ -3072,7 +3043,8 @@ static ssize_t i915_displayport_test_active_write(struct file *file,
 			status = kstrtoint(input_buffer, 10, &val);
 			if (status < 0)
 				break;
-			DRM_DEBUG_DRIVER("Got %d for test active\n", val);
+			drm_dbg(&to_i915(dev)->drm,
+				"Got %d for test active\n", val);
 			/* To prevent erroneous activation of the compliance
 			 * testing code, only accept an actual value of 1 here
 			 */
@@ -3641,7 +3613,8 @@ i915_cache_sharing_set(void *data, u64 val)
 	if (val > 3)
 		return -EINVAL;
 
-	DRM_DEBUG_DRIVER("Manually setting uncore sharing to %llu\n", val);
+	drm_dbg(&dev_priv->drm,
+		"Manually setting uncore sharing to %llu\n", val);
 	with_intel_runtime_pm(&dev_priv->runtime_pm, wakeref) {
 		u32 snpcr;
 
@@ -3997,10 +3970,11 @@ static ssize_t i915_hpd_storm_ctl_write(struct file *file,
 		return -EINVAL;
 
 	if (new_threshold > 0)
-		DRM_DEBUG_KMS("Setting HPD storm detection threshold to %d\n",
-			      new_threshold);
+		drm_dbg_kms(&dev_priv->drm,
+			    "Setting HPD storm detection threshold to %d\n",
+			    new_threshold);
 	else
-		DRM_DEBUG_KMS("Disabling HPD storm detection\n");
+		drm_dbg_kms(&dev_priv->drm, "Disabling HPD storm detection\n");
 
 	spin_lock_irq(&dev_priv->irq_lock);
 	hotplug->hpd_storm_threshold = new_threshold;
@@ -4077,8 +4051,8 @@ static ssize_t i915_hpd_short_storm_ctl_write(struct file *file,
 	else if (kstrtobool(tmp, &new_state) != 0)
 		return -EINVAL;
 
-	DRM_DEBUG_KMS("%sabling HPD short storm detection\n",
-		      new_state ? "En" : "Dis");
+	drm_dbg_kms(&dev_priv->drm, "%sabling HPD short storm detection\n",
+		    new_state ? "En" : "Dis");
 
 	spin_lock_irq(&dev_priv->irq_lock);
 	hotplug->hpd_short_storm_enabled = new_state;
@@ -4148,8 +4122,9 @@ static int i915_drrs_ctl_set(void *data, u64 val)
 			if (encoder->type != INTEL_OUTPUT_EDP)
 				continue;
 
-			DRM_DEBUG_DRIVER("Manually %sabling DRRS. %llu\n",
-						val ? "en" : "dis", val);
+			drm_dbg(&dev_priv->drm,
+				"Manually %sabling DRRS. %llu\n",
+				val ? "en" : "dis", val);
 
 			intel_dp = enc_to_intel_dp(encoder);
 			if (val)
@@ -4207,8 +4182,9 @@ i915_fifo_underrun_reset_write(struct file *filp,
 		}
 
 		if (!ret && crtc_state->hw.active) {
-			DRM_DEBUG_KMS("Re-arming FIFO underruns on pipe %c\n",
-				      pipe_name(intel_crtc->pipe));
+			drm_dbg_kms(&dev_priv->drm,
+				    "Re-arming FIFO underruns on pipe %c\n",
+				    pipe_name(intel_crtc->pipe));
 
 			intel_crtc_arm_fifo_underrun(intel_crtc, crtc_state);
 		}
@@ -4259,7 +4235,6 @@ static const struct drm_info_list i915_debugfs_list[] = {
 	{"i915_swizzle_info", i915_swizzle_info, 0},
 	{"i915_llc", i915_llc, 0},
 	{"i915_edp_psr_status", i915_edp_psr_status, 0},
-	{"i915_energy_uJ", i915_energy_uJ, 0},
 	{"i915_runtime_pm_status", i915_runtime_pm_status, 0},
 	{"i915_power_domain_info", i915_power_domain_info, 0},
 	{"i915_dmc_info", i915_dmc_info, 0},
@@ -4311,9 +4286,10 @@ int i915_debugfs_register(struct drm_i915_private *dev_priv)
 	struct drm_minor *minor = dev_priv->drm.primary;
 	int i;
 
+	i915_debugfs_params(dev_priv);
+
 	debugfs_create_file("i915_forcewake_user", S_IRUSR, minor->debugfs_root,
 			    to_i915(minor->dev), &i915_forcewake_fops);
-
 	for (i = 0; i < ARRAY_SIZE(i915_debugfs_files); i++) {
 		debugfs_create_file(i915_debugfs_files[i].name,
 				    S_IRUGO | S_IWUSR,
@@ -4327,70 +4303,11 @@ int i915_debugfs_register(struct drm_i915_private *dev_priv)
 					minor->debugfs_root, minor);
 }
 
-struct dpcd_block {
-	/* DPCD dump start address. */
-	unsigned int offset;
-	/* DPCD dump end address, inclusive. If unset, .size will be used. */
-	unsigned int end;
-	/* DPCD dump size. Used if .end is unset. If unset, defaults to 1. */
-	size_t size;
-	/* Only valid for eDP. */
-	bool edp;
-};
-
-static const struct dpcd_block i915_dpcd_debug[] = {
-	{ .offset = DP_DPCD_REV, .size = DP_RECEIVER_CAP_SIZE },
-	{ .offset = DP_PSR_SUPPORT, .end = DP_PSR_CAPS },
-	{ .offset = DP_DOWNSTREAM_PORT_0, .size = 16 },
-	{ .offset = DP_LINK_BW_SET, .end = DP_EDP_CONFIGURATION_SET },
-	{ .offset = DP_SINK_COUNT, .end = DP_ADJUST_REQUEST_LANE2_3 },
-	{ .offset = DP_SET_POWER },
-	{ .offset = DP_EDP_DPCD_REV },
-	{ .offset = DP_EDP_GENERAL_CAP_1, .end = DP_EDP_GENERAL_CAP_3 },
-	{ .offset = DP_EDP_DISPLAY_CONTROL_REGISTER, .end = DP_EDP_BACKLIGHT_FREQ_CAP_MAX_LSB },
-	{ .offset = DP_EDP_DBC_MINIMUM_BRIGHTNESS_SET, .end = DP_EDP_DBC_MAXIMUM_BRIGHTNESS_SET },
-};
-
-static int i915_dpcd_show(struct seq_file *m, void *data)
-{
-	struct drm_connector *connector = m->private;
-	struct intel_dp *intel_dp =
-		enc_to_intel_dp(intel_attached_encoder(to_intel_connector(connector)));
-	u8 buf[16];
-	ssize_t err;
-	int i;
-
-	if (connector->status != connector_status_connected)
-		return -ENODEV;
-
-	for (i = 0; i < ARRAY_SIZE(i915_dpcd_debug); i++) {
-		const struct dpcd_block *b = &i915_dpcd_debug[i];
-		size_t size = b->end ? b->end - b->offset + 1 : (b->size ?: 1);
-
-		if (b->edp &&
-		    connector->connector_type != DRM_MODE_CONNECTOR_eDP)
-			continue;
-
-		/* low tech for now */
-		if (WARN_ON(size > sizeof(buf)))
-			continue;
-
-		err = drm_dp_dpcd_read(&intel_dp->aux, b->offset, buf, size);
-		if (err < 0)
-			seq_printf(m, "%04x: ERROR %d\n", b->offset, (int)err);
-		else
-			seq_printf(m, "%04x: %*ph\n", b->offset, (int)err, buf);
-	}
-
-	return 0;
-}
-DEFINE_SHOW_ATTRIBUTE(i915_dpcd);
-
 static int i915_panel_show(struct seq_file *m, void *data)
 {
 	struct drm_connector *connector = m->private;
 	struct intel_dp *intel_dp =
-		enc_to_intel_dp(intel_attached_encoder(to_intel_connector(connector)));
+		intel_attached_dp(to_intel_connector(connector));
 
 	if (connector->status != connector_status_connected)
 		return -ENODEV;
@@ -4468,7 +4385,7 @@ static int i915_dsc_fec_support_show(struct seq_file *m, void *data)
 		} else if (ret) {
 			break;
 		}
-		intel_dp = enc_to_intel_dp(intel_attached_encoder(to_intel_connector(connector)));
+		intel_dp = intel_attached_dp(to_intel_connector(connector));
 		crtc_state = to_intel_crtc_state(crtc->state);
 		seq_printf(m, "DSC_Enabled: %s\n",
 			   yesno(crtc_state->dsc.compression_enable));
@@ -4496,20 +4413,21 @@ static ssize_t i915_dsc_fec_support_write(struct file *file,
 	struct drm_connector *connector =
 		((struct seq_file *)file->private_data)->private;
 	struct intel_encoder *encoder = intel_attached_encoder(to_intel_connector(connector));
+	struct drm_i915_private *i915 = to_i915(encoder->base.dev);
 	struct intel_dp *intel_dp = enc_to_intel_dp(encoder);
 
 	if (len == 0)
 		return 0;
 
-	DRM_DEBUG_DRIVER("Copied %zu bytes from user to force DSC\n",
-			 len);
+	drm_dbg(&i915->drm,
+		"Copied %zu bytes from user to force DSC\n", len);
 
 	ret = kstrtobool_from_user(ubuf, len, &dsc_enable);
 	if (ret < 0)
 		return ret;
 
-	DRM_DEBUG_DRIVER("Got %s for DSC Enable\n",
-			 (dsc_enable) ? "true" : "false");
+	drm_dbg(&i915->drm, "Got %s for DSC Enable\n",
+		(dsc_enable) ? "true" : "false");
 	intel_dp->force_dsc_en = dsc_enable;
 
 	*offp += len;
@@ -4549,11 +4467,6 @@ int i915_debugfs_connector_add(struct drm_connector *connector)
 	/* The connector must have been registered beforehands. */
 	if (!root)
 		return -ENODEV;
-
-	if (connector->connector_type == DRM_MODE_CONNECTOR_DisplayPort ||
-	    connector->connector_type == DRM_MODE_CONNECTOR_eDP)
-		debugfs_create_file("i915_dpcd", S_IRUGO, root,
-				    connector, &i915_dpcd_fops);
 
 	if (connector->connector_type == DRM_MODE_CONNECTOR_eDP) {
 		debugfs_create_file("i915_panel_timings", S_IRUGO, root,

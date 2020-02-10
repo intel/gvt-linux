@@ -390,13 +390,23 @@ out:
 	return err;
 }
 
-void i915_active_set_exclusive(struct i915_active *ref, struct dma_fence *f)
+struct dma_fence *
+i915_active_set_exclusive(struct i915_active *ref, struct dma_fence *f)
 {
+	struct dma_fence *prev;
+
 	/* We expect the caller to manage the exclusive timeline ordering */
 	GEM_BUG_ON(i915_active_is_idle(ref));
 
-	if (!__i915_active_fence_set(&ref->excl, f))
+	rcu_read_lock();
+	prev = __i915_active_fence_set(&ref->excl, f);
+	if (prev)
+		prev = dma_fence_get_rcu(prev);
+	else
 		atomic_inc(&ref->count);
+	rcu_read_unlock();
+
+	return prev;
 }
 
 bool i915_active_acquire_if_busy(struct i915_active *ref)
@@ -416,13 +426,15 @@ int i915_active_acquire(struct i915_active *ref)
 	if (err)
 		return err;
 
-	if (!atomic_read(&ref->count) && ref->active)
-		err = ref->active(ref);
-	if (!err) {
-		spin_lock_irq(&ref->tree_lock); /* vs __active_retire() */
-		debug_active_activate(ref);
-		atomic_inc(&ref->count);
-		spin_unlock_irq(&ref->tree_lock);
+	if (likely(!i915_active_acquire_if_busy(ref))) {
+		if (ref->active)
+			err = ref->active(ref);
+		if (!err) {
+			spin_lock_irq(&ref->tree_lock); /* __active_retire() */
+			debug_active_activate(ref);
+			atomic_inc(&ref->count);
+			spin_unlock_irq(&ref->tree_lock);
+		}
 	}
 
 	mutex_unlock(&ref->mutex);
@@ -605,7 +617,7 @@ int i915_active_acquire_preallocate_barrier(struct i915_active *ref,
 					    struct intel_engine_cs *engine)
 {
 	intel_engine_mask_t tmp, mask = engine->mask;
-	struct llist_node *pos = NULL, *next;
+	struct llist_node *first = NULL, *last = NULL;
 	struct intel_gt *gt = engine->gt;
 	int err;
 
@@ -621,8 +633,10 @@ int i915_active_acquire_preallocate_barrier(struct i915_active *ref,
 	 * We can then use the preallocated nodes in
 	 * i915_active_acquire_barrier()
 	 */
+	GEM_BUG_ON(!mask);
 	for_each_engine_masked(engine, gt, mask, tmp) {
 		u64 idx = engine->kernel_context->timeline->fence_context;
+		struct llist_node *prev = first;
 		struct active_node *node;
 
 		node = reuse_idle_barrier(ref, idx);
@@ -656,23 +670,23 @@ int i915_active_acquire_preallocate_barrier(struct i915_active *ref,
 		GEM_BUG_ON(rcu_access_pointer(node->base.fence) != ERR_PTR(-EAGAIN));
 
 		GEM_BUG_ON(barrier_to_engine(node) != engine);
-		next = barrier_to_ll(node);
-		next->next = pos;
-		if (!pos)
-			pos = next;
+		first = barrier_to_ll(node);
+		first->next = prev;
+		if (!last)
+			last = first;
 		intel_engine_pm_get(engine);
 	}
 
 	GEM_BUG_ON(!llist_empty(&ref->preallocated_barriers));
-	llist_add_batch(next, pos, &ref->preallocated_barriers);
+	llist_add_batch(first, last, &ref->preallocated_barriers);
 
 	return 0;
 
 unwind:
-	while (pos) {
-		struct active_node *node = barrier_from_ll(pos);
+	while (first) {
+		struct active_node *node = barrier_from_ll(first);
 
-		pos = pos->next;
+		first = first->next;
 
 		atomic_dec(&ref->count);
 		intel_engine_pm_put(barrier_to_engine(node));

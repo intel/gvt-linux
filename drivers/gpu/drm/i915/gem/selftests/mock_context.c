@@ -37,7 +37,7 @@ mock_context(struct drm_i915_private *i915,
 	if (name) {
 		struct i915_ppgtt *ppgtt;
 
-		strncpy(ctx->name, name, sizeof(ctx->name));
+		strncpy(ctx->name, name, sizeof(ctx->name) - 1);
 
 		ppgtt = mock_ppgtt(i915, name);
 		if (!ppgtt)
@@ -82,6 +82,8 @@ live_context(struct drm_i915_private *i915, struct file *file)
 	ctx = i915_gem_create_context(i915, 0);
 	if (IS_ERR(ctx))
 		return ctx;
+
+	i915_gem_context_set_no_error_capture(ctx);
 
 	err = gem_context_register(ctx, to_drm_file(file)->driver_priv, &id);
 	if (err < 0)

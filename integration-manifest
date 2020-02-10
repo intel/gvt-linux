@@ -1,34 +1,12 @@
-drm drm-fixes d5226fa6dbae0569ee43ecfc08bdcd6770fc4755
-	Linux 5.5
-drm-misc drm-misc-fixes 7e0cf7e9936c4358b0863357b90aa12afe6489da
-	drm/panfrost: Make sure the shrinker does not reclaim referenced BOs
-drm-intel drm-intel-fixes d5226fa6dbae0569ee43ecfc08bdcd6770fc4755
-	Linux 5.5
-drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
-	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
-drm drm-next 9f880327160feb695de03caa29604883b0d00087
-	Merge tag 'amd-drm-next-5.6-2020-02-05' of git://people.freedesktop.org/~agd5f/linux into drm-next
-drm-misc drm-misc-next-fixes e1cf35b94c5fd122a8780587559fc6da9fc2dd12
-	drm/edid: fix building error
-drm-intel drm-intel-next-fixes c2cebbc4a593bd2ee72d46a8439dcbca512b5507
-	drm/i915: Fix i915_error_state_store error defination
-drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
-	Linux 4.14-rc1
-drm-misc drm-misc-next 1525c20cff96cd60549f8dd44f9b2fb15ee1715b
-	drm/tiny/st7735r: No need to set ->owner for spi_register_driver()
-drm-intel drm-intel-next-queued 06f7a61c9b515e5f3a3793e6b4dec93d27b462fc
-	drm/i915/selftests: Remove erroneous intel_engine_pm_put
-drm-intel drm-intel-next f2221a50494037af98206713155c8d4f2e7bccaa
-	drm/i915: Update DRIVER_DATE to 20200114
-drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
-	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
-sound-upstream for-linus 6954b323a183dc18fa9bf2ad700e0ed344918c5f
-	Merge tag 'asoc-v5.6-3' of https://git.kernel.org/pub/scm/linux/kernel/git/broonie/sound into for-linus
-sound-upstream for-next 6954b323a183dc18fa9bf2ad700e0ed344918c5f
-	Merge tag 'asoc-v5.6-3' of https://git.kernel.org/pub/scm/linux/kernel/git/broonie/sound into for-linus
-drm-intel topic/core-for-CI 7b0293cc45a0a4024a11c07c9328efb049dcd96c
-	perf: Make perf able to build with latest libbfd
-drm drm-vmwgfx-coherent 0a6cad5df541108cfd3fbd79eef48eb824c89bdc
-	Merge branch 'vmwgfx-coherent' of git://people.freedesktop.org/~thomash/linux into drm-next
-drm-intel topic/drm-warn dc1a73e50f9c63d4dd928df538082200467dc4b1
-	drm/print: introduce new struct drm_device based WARN* macros
+drm-tip/drm-tip 3f73f2a3f99a5d390c0ae1807d4ed0917fe2e090
+	drm-tip: 2020y-02m-10d-01h-55m-45s UTC integration manifest
+vfio-upstream/for-linus 95f89e090618efca63918b658c2002e57d393036
+	vfio/type1: Initialize resv_msi_base
+intel-iommu/x86/vt-d 857f081426e5aa38313426c13373730f1345fe95
+	iommu/vt-d: Remove unnecessary WARN_ON_ONCE()
+origin/gvt-fixes 0e9d7bb293f3f9c3ee376b126141407efb265f31
+	drm/i915/gvt: more locking for ppgtt mm LRU list
+origin/gvt-next-fixes 92b1aa773fadb4e2a90ed5d3beecb422d568ad9a
+	drm/i915/gvt: Fix cmd length check for MI_ATOMIC
+origin/gvt-next 9ef0e6af0d68b541a39360c341f5db2a0d7da3ff
+	drm/i915/gvt: fix high-order allocation failure on late load

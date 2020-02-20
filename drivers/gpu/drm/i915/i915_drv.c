@@ -2672,7 +2672,7 @@ const struct dev_pm_ops i915_pm_ops = {
 static const struct file_operations i915_driver_fops = {
 	.owner = THIS_MODULE,
 	.open = drm_open,
-	.release = drm_release,
+	.release = drm_release_noglobal,
 	.unlocked_ioctl = drm_ioctl,
 	.mmap = i915_gem_mmap,
 	.poll = drm_poll,
@@ -2768,9 +2768,6 @@ static struct drm_driver driver = {
 	.prime_fd_to_handle = drm_gem_prime_fd_to_handle,
 	.gem_prime_export = i915_gem_prime_export,
 	.gem_prime_import = i915_gem_prime_import,
-
-	.get_vblank_timestamp = drm_calc_vbltimestamp_from_scanoutpos,
-	.get_scanout_position = i915_get_crtc_scanoutpos,
 
 	.dumb_create = i915_gem_dumb_create,
 	.dumb_map_offset = i915_gem_dumb_mmap_offset,

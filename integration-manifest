@@ -1,0 +1,32 @@
+drm drm-fixes 97d9a4e9619a822c5baf6a63e6f5b80fee4d4213
+	Merge tag 'drm-intel-fixes-2020-02-20' of git://anongit.freedesktop.org/drm/drm-intel into drm-fixes
+drm-misc drm-misc-fixes fbb30168c7395b9cfeb9e6f7b0c0bca854a6552d
+	drm/virtio: fix resource id creation race
+drm-intel drm-intel-fixes f8788d86ab28f61f7b46eb6be375f8a726783636
+	Linux 5.6-rc3
+drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
+	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
+drm drm-next 1b245ec5b685ebf8e6e5d1e6b5bcc03b6608e8b0
+	Merge tag 'drm-misc-next-2020-02-10' of git://anongit.freedesktop.org/drm/drm-misc into drm-next
+drm-misc drm-misc-next-fixes e1cf35b94c5fd122a8780587559fc6da9fc2dd12
+	drm/edid: fix building error
+drm-intel drm-intel-next-fixes 11a48a5a18c63fd7621bb050228cebf13566e4d8
+	Linux 5.6-rc2
+drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
+	Linux 4.14-rc1
+drm-misc drm-misc-next a8dada7a84dad2e024eb23313b8d9ca68ab198a2
+	MAINTAINERS: Update myself email address
+drm-intel drm-intel-next-queued 12b3788093cb73722b3471335fddb11d8e652ad2
+	drm/i915: Update DRIVER_DATE to 20200224
+drm-intel drm-intel-next 30ab3bbf58d2628a8641ad72772c91c6907e37d6
+	drm/i915: Update DRIVER_DATE to 20200224
+drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
+	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
+sound-upstream for-linus c37c0ab029569a75fd180edb03d411e7a28a936f
+	ALSA: hda/realtek - Fix a regression for mute led on Lenovo Carbon X1
+sound-upstream for-next 2948f4a4e583a4d283a4b57b7b1101761daee5cc
+	Merge branch 'topic/usb-uac2-effect-unit' into for-next
+drm-intel topic/core-for-CI 72212a758bdd916331477e782bdad1fa3f625322
+	x86/mce/therm_throt: Handle case where throttle_active_work() is called on behalf of an offline CPU
+drm drm-vmwgfx-coherent 0a6cad5df541108cfd3fbd79eef48eb824c89bdc
+	Merge branch 'vmwgfx-coherent' of git://people.freedesktop.org/~thomash/linux into drm-next

@@ -61,6 +61,7 @@
  * @new_event:			Stores the last high/low status of the
  *				THERM_STATUS_PROCHOT or
  *				THERM_STATUS_POWER_LIMIT.
+ * @cpu:			CPU id for this instance.
  * @level:			Stores whether this _thermal_state instance is
  *				for a CORE level or for PACKAGE level.
  * @sample_index:		Index for storing the next sample in the buffer
@@ -86,6 +87,7 @@ struct _thermal_state {
 	unsigned long		total_time_ms;
 	bool			rate_control_active;
 	bool			new_event;
+	int			cpu;
 	u8			level;
 	u8			sample_index;
 	u8			sample_count;
@@ -239,10 +241,18 @@ static void __maybe_unused throttle_active_work(struct work_struct *work)
 {
 	struct _thermal_state *state = container_of(to_delayed_work(work),
 						struct _thermal_state, therm_work);
-	unsigned int i, avg, this_cpu = smp_processor_id();
+	unsigned int i, avg, this_cpu;
 	u64 now = get_jiffies_64();
 	bool hot;
 	u8 temp;
+
+	get_online_cpus();
+	this_cpu = get_cpu();
+
+	if (state->cpu != this_cpu) {
+		state->rate_control_active = false;
+		goto end;
+	}
 
 	get_therm_status(state->level, &hot, &temp);
 	/* temperature value is offset from the max so lesser means hotter */
@@ -254,7 +264,7 @@ static void __maybe_unused throttle_active_work(struct work_struct *work)
 				state->count);
 
 		state->rate_control_active = false;
-		return;
+		goto end;
 	}
 
 	if (time_before64(now, state->next_check) &&
@@ -284,10 +294,10 @@ static void __maybe_unused throttle_active_work(struct work_struct *work)
 	avg /= ARRAY_SIZE(state->temp_samples);
 
 	if (state->average > avg) {
-		pr_warn("CPU%d: %s temperature is above threshold, cpu clock is throttled (total events = %lu)\n",
-			this_cpu,
-			state->level == CORE_LEVEL ? "Core" : "Package",
-			state->count);
+		pr_notice("CPU%d: %s temperature is above threshold, cpu clock is throttled (total events = %lu)\n",
+			  this_cpu,
+			  state->level == CORE_LEVEL ? "Core" : "Package",
+			  state->count);
 		state->rate_control_active = true;
 	}
 
@@ -296,6 +306,10 @@ static void __maybe_unused throttle_active_work(struct work_struct *work)
 re_arm:
 	clear_therm_status_log(state->level);
 	schedule_delayed_work_on(this_cpu, &state->therm_work, THERM_THROT_POLL_INTERVAL);
+
+end:
+	put_cpu();
+	put_online_cpus();
 }
 
 /***
@@ -359,6 +373,7 @@ static void therm_throt_process(bool new_event, int event, int level)
 
 		state->baseline_temp = temp;
 		state->last_interrupt_time = now;
+		state->cpu = this_cpu;
 		schedule_delayed_work_on(this_cpu, &state->therm_work, THERM_THROT_POLL_INTERVAL);
 	} else if (old_event && state->last_interrupt_time) {
 		unsigned long throttle_time;

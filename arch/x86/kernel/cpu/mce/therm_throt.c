@@ -284,10 +284,10 @@ static void __maybe_unused throttle_active_work(struct work_struct *work)
 	avg /= ARRAY_SIZE(state->temp_samples);
 
 	if (state->average > avg) {
-		pr_warn("CPU%d: %s temperature is above threshold, cpu clock is throttled (total events = %lu)\n",
-			this_cpu,
-			state->level == CORE_LEVEL ? "Core" : "Package",
-			state->count);
+		pr_notice("CPU%d: %s temperature is above threshold, cpu clock is throttled (total events = %lu)\n",
+			  this_cpu,
+			  state->level == CORE_LEVEL ? "Core" : "Package",
+			  state->count);
 		state->rate_control_active = true;
 	}
 
@@ -486,9 +486,14 @@ static int thermal_throttle_offline(unsigned int cpu)
 {
 	struct thermal_state *state = &per_cpu(thermal_state, cpu);
 	struct device *dev = get_cpu_device(cpu);
+	u32 l;
 
-	cancel_delayed_work(&state->package_throttle.therm_work);
-	cancel_delayed_work(&state->core_throttle.therm_work);
+	/* Mask the thermal vector before draining evtl. pending work */
+	l = apic_read(APIC_LVTTHMR);
+	apic_write(APIC_LVTTHMR, l | APIC_LVT_MASKED);
+
+	cancel_delayed_work_sync(&state->package_throttle.therm_work);
+	cancel_delayed_work_sync(&state->core_throttle.therm_work);
 
 	state->package_throttle.rate_control_active = false;
 	state->core_throttle.rate_control_active = false;

@@ -47,6 +47,7 @@ i915-y += i915_drv.o \
 	  i915_sysfs.o \
 	  i915_utils.o \
 	  intel_device_info.o \
+	  intel_dram.o \
 	  intel_memory_region.o \
 	  intel_pch.o \
 	  intel_pm.o \
@@ -82,6 +83,7 @@ gt-y += \
 	gt/gen8_ppgtt.o \
 	gt/intel_breadcrumbs.o \
 	gt/intel_context.o \
+	gt/intel_context_param.o \
 	gt/intel_context_sseu.o \
 	gt/intel_engine_cs.o \
 	gt/intel_engine_heartbeat.o \

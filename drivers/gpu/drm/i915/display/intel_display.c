@@ -41,7 +41,6 @@
 #include <drm/drm_plane_helper.h>
 #include <drm/drm_probe_helper.h>
 #include <drm/drm_rect.h>
-#include <drm/i915_drm.h>
 
 #include "display/intel_crt.h"
 #include "display/intel_ddi.h"
@@ -247,6 +246,15 @@ intel_fdi_link_freq(struct drm_i915_private *dev_priv,
 		return pipe_config->port_clock; /* SPLL */
 	else
 		return dev_priv->fdi_pll_freq;
+}
+
+static bool
+has_transcoder(struct drm_i915_private *dev_priv, enum transcoder cpu_transcoder)
+{
+	if (cpu_transcoder == TRANSCODER_EDP)
+		return HAS_TRANSCODER_EDP(dev_priv);
+	else
+		return INTEL_INFO(dev_priv)->pipe_mask & BIT(cpu_transcoder);
 }
 
 static const struct intel_limit intel_limits_i8xx_dac = {
@@ -2720,9 +2728,10 @@ u32 intel_plane_fb_max_stride(struct drm_i915_private *dev_priv,
 
 	/*
 	 * We assume the primary plane for pipe A has
-	 * the highest stride limits of them all.
+	 * the highest stride limits of them all,
+	 * if in case pipe A is disabled, use the first pipe from pipe_mask.
 	 */
-	crtc = intel_get_crtc_for_pipe(dev_priv, PIPE_A);
+	crtc = intel_get_first_crtc(dev_priv);
 	if (!crtc)
 		return 0;
 
@@ -14299,11 +14308,11 @@ verify_single_dpll_state(struct drm_i915_private *dev_priv,
 	if (new_crtc_state->hw.active)
 		I915_STATE_WARN(!(pll->active_mask & crtc_mask),
 				"pll active mismatch (expected pipe %c in active mask 0x%02x)\n",
-				pipe_name(drm_crtc_index(&crtc->base)), pll->active_mask);
+				pipe_name(crtc->pipe), pll->active_mask);
 	else
 		I915_STATE_WARN(pll->active_mask & crtc_mask,
 				"pll active mismatch (didn't expect pipe %c in active mask 0x%02x)\n",
-				pipe_name(drm_crtc_index(&crtc->base)), pll->active_mask);
+				pipe_name(crtc->pipe), pll->active_mask);
 
 	I915_STATE_WARN(!(pll->state.crtc_mask & crtc_mask),
 			"pll enabled crtcs mismatch (expected 0x%x in 0x%02x)\n",
@@ -14332,10 +14341,10 @@ verify_shared_dpll_state(struct intel_crtc *crtc,
 
 		I915_STATE_WARN(pll->active_mask & crtc_mask,
 				"pll active mismatch (didn't expect pipe %c in active mask)\n",
-				pipe_name(drm_crtc_index(&crtc->base)));
+				pipe_name(crtc->pipe));
 		I915_STATE_WARN(pll->state.crtc_mask & crtc_mask,
 				"pll enabled crtcs mismatch (found %x in enabled mask)\n",
-				pipe_name(drm_crtc_index(&crtc->base)));
+				pipe_name(crtc->pipe));
 	}
 }
 
@@ -15318,7 +15327,6 @@ static void skl_commit_modeset_enables(struct intel_atomic_state *state)
 	struct intel_crtc *crtc;
 	struct intel_crtc_state *old_crtc_state, *new_crtc_state;
 	struct skl_ddb_entry entries[I915_MAX_PIPES] = {};
-	const u8 num_pipes = INTEL_NUM_PIPES(dev_priv);
 	u8 update_pipes = 0, modeset_pipes = 0;
 	int i;
 
@@ -15355,7 +15363,7 @@ static void skl_commit_modeset_enables(struct intel_atomic_state *state)
 				continue;
 
 			if (skl_ddb_allocation_overlaps(&new_crtc_state->wm.skl.ddb,
-							entries, num_pipes, pipe))
+							entries, I915_MAX_PIPES, pipe))
 				continue;
 
 			entries[pipe] = new_crtc_state->wm.skl.ddb;
@@ -15393,7 +15401,7 @@ static void skl_commit_modeset_enables(struct intel_atomic_state *state)
 			continue;
 
 		drm_WARN_ON(&dev_priv->drm, skl_ddb_allocation_overlaps(&new_crtc_state->wm.skl.ddb,
-									entries, num_pipes, pipe));
+									entries, I915_MAX_PIPES, pipe));
 
 		entries[pipe] = new_crtc_state->wm.skl.ddb;
 		modeset_pipes &= ~BIT(pipe);
@@ -15428,7 +15436,7 @@ static void skl_commit_modeset_enables(struct intel_atomic_state *state)
 			continue;
 
 		drm_WARN_ON(&dev_priv->drm, skl_ddb_allocation_overlaps(&new_crtc_state->wm.skl.ddb,
-									entries, num_pipes, pipe));
+									entries, I915_MAX_PIPES, pipe));
 
 		entries[pipe] = new_crtc_state->wm.skl.ddb;
 		modeset_pipes &= ~BIT(pipe);
@@ -17785,11 +17793,9 @@ static void plane_config_fini(struct intel_initial_plane_config *plane_config)
 		i915_vma_put(plane_config->vma);
 }
 
-int intel_modeset_init(struct drm_i915_private *i915)
+/* part #1: call before irq install */
+int intel_modeset_init_noirq(struct drm_i915_private *i915)
 {
-	struct drm_device *dev = &i915->drm;
-	enum pipe pipe;
-	struct intel_crtc *crtc;
 	int ret;
 
 	i915->modeset_wq = alloc_ordered_workqueue("i915_modeset", 0);
@@ -17813,6 +17819,17 @@ int intel_modeset_init(struct drm_i915_private *i915)
 	intel_init_quirks(i915);
 
 	intel_fbc_init(i915);
+
+	return 0;
+}
+
+/* part #2: call after irq install */
+int intel_modeset_init(struct drm_i915_private *i915)
+{
+	struct drm_device *dev = &i915->drm;
+	enum pipe pipe;
+	struct intel_crtc *crtc;
+	int ret;
 
 	intel_init_pm(i915);
 
@@ -18928,7 +18945,7 @@ intel_display_capture_error_state(struct drm_i915_private *dev_priv)
 	for (i = 0; i < ARRAY_SIZE(error->transcoder); i++) {
 		enum transcoder cpu_transcoder = transcoders[i];
 
-		if (!INTEL_INFO(dev_priv)->trans_offsets[cpu_transcoder])
+		if (!has_transcoder(dev_priv, cpu_transcoder))
 			continue;
 
 		error->transcoder[i].available = true;

@@ -1448,6 +1448,7 @@ assert_pending_valid(const struct intel_engine_execlists *execlists,
 {
 	struct i915_request * const *port, *rq;
 	struct intel_context *ce = NULL;
+	bool sentinel = false;
 
 	trace_ports(execlists, msg, execlists->pending);
 
@@ -1480,6 +1481,26 @@ assert_pending_valid(const struct intel_engine_execlists *execlists,
 			return false;
 		}
 		ce = rq->context;
+
+		/*
+		 * Sentinels are supposed to be lonely so they flush the
+		 * current exection off the HW. Check that they are the
+		 * only request in the pending submission.
+		 */
+		if (sentinel) {
+			GEM_TRACE_ERR("context:%llx after sentinel in pending[%zd]\n",
+				      ce->timeline->fence_context,
+				      port - execlists->pending);
+			return false;
+		}
+
+		sentinel = i915_request_has_sentinel(rq);
+		if (sentinel && port != execlists->pending) {
+			GEM_TRACE_ERR("sentinel context:%llx not in prime position[%zd]\n",
+				      ce->timeline->fence_context,
+				      port - execlists->pending);
+			return false;
+		}
 
 		/* Hold tightly onto the lock to prevent concurrent retires! */
 		if (!spin_trylock_irqsave(&rq->lock, flags))
@@ -2966,6 +2987,7 @@ __execlists_update_reg_state(const struct intel_context *ce,
 	regs[CTX_RING_START] = i915_ggtt_offset(ring->vma);
 	regs[CTX_RING_HEAD] = head;
 	regs[CTX_RING_TAIL] = ring->tail;
+	regs[CTX_RING_CTL] = RING_CTL_SIZE(ring->size) | RING_VALID;
 
 	/* RPCS */
 	if (engine->class == RENDER_CLASS) {
@@ -3636,9 +3658,6 @@ static void __execlists_reset(struct intel_engine_cs *engine, bool stalled)
 	if (!rq)
 		goto unwind;
 
-	/* We still have requests in-flight; the engine should be active */
-	GEM_BUG_ON(!intel_engine_pm_is_awake(engine));
-
 	ce = rq->context;
 	GEM_BUG_ON(!i915_vma_is_pinned(ce->state));
 
@@ -3648,8 +3667,12 @@ static void __execlists_reset(struct intel_engine_cs *engine, bool stalled)
 		goto out_replay;
 	}
 
+	/* We still have requests in-flight; the engine should be active */
+	GEM_BUG_ON(!intel_engine_pm_is_awake(engine));
+
 	/* Context has requests still in-flight; it should not be idle! */
 	GEM_BUG_ON(i915_active_is_idle(&ce->active));
+
 	rq = active_request(ce->timeline, rq);
 	head = intel_ring_wrap(ce->ring, rq->head);
 	GEM_BUG_ON(head == ce->ring->tail);
@@ -3723,7 +3746,10 @@ static void execlists_reset_rewind(struct intel_engine_cs *engine, bool stalled)
 
 static void nop_submission_tasklet(unsigned long data)
 {
+	struct intel_engine_cs * const engine = (struct intel_engine_cs *)data;
+
 	/* The driver is wedged; don't process any more events. */
+	WRITE_ONCE(engine->execlists.queue_priority_hint, INT_MIN);
 }
 
 static void execlists_reset_cancel(struct intel_engine_cs *engine)

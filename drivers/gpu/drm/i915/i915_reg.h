@@ -4860,16 +4860,6 @@ enum {
 #define _PP_STATUS			0x61200
 #define PP_STATUS(pps_idx)		_MMIO_PPS(pps_idx, _PP_STATUS)
 #define   PP_ON				REG_BIT(31)
-
-#define _PP_CONTROL_1			0xc7204
-#define _PP_CONTROL_2			0xc7304
-#define ICP_PP_CONTROL(x)		_MMIO(((x) == 1) ? _PP_CONTROL_1 : \
-					      _PP_CONTROL_2)
-#define  POWER_CYCLE_DELAY_MASK		REG_GENMASK(8, 4)
-#define  VDD_OVERRIDE_FORCE		REG_BIT(3)
-#define  BACKLIGHT_ENABLE		REG_BIT(2)
-#define  PWR_DOWN_ON_RESET		REG_BIT(1)
-#define  PWR_STATE_TARGET		REG_BIT(0)
 /*
  * Indicates that all dependencies of the panel are on:
  *
@@ -5889,6 +5879,7 @@ enum {
 #define   PIPEMISC_YUV420_MODE_FULL_BLEND (1 << 26) /* glk+ */
 #define   PIPEMISC_HDR_MODE_PRECISION	(1 << 23) /* icl+ */
 #define   PIPEMISC_OUTPUT_COLORSPACE_YUV  (1 << 11)
+#define   PIPEMISC_PIXEL_ROUNDING_TRUNC	REG_BIT(8) /* tgl+ */
 #define   PIPEMISC_DITHER_BPC_MASK	(7 << 5)
 #define   PIPEMISC_DITHER_8_BPC		(0 << 5)
 #define   PIPEMISC_DITHER_10_BPC	(1 << 5)
@@ -9149,13 +9140,17 @@ enum {
 #define   THROTTLE_12_5				(7 << 2)
 #define   DISABLE_EARLY_EOT			(1 << 1)
 
-#define GEN7_ROW_CHICKEN2		_MMIO(0xe4f4)
-#define GEN12_DISABLE_EARLY_READ	BIT(14)
+#define GEN7_ROW_CHICKEN2			_MMIO(0xe4f4)
+#define   GEN12_DISABLE_EARLY_READ		REG_BIT(14)
+#define   GEN12_PUSH_CONST_DEREF_HOLD_DIS	REG_BIT(8)
 
 #define GEN7_ROW_CHICKEN2_GT2		_MMIO(0xf4f4)
 #define   DOP_CLOCK_GATING_DISABLE	(1 << 0)
 #define   PUSH_CONSTANT_DEREF_DISABLE	(1 << 8)
 #define   GEN11_TDL_CLOCK_GATING_FIX_DISABLE	(1 << 1)
+
+#define GEN9_ROW_CHICKEN4		_MMIO(0xe48c)
+#define   GEN12_DISABLE_TDL_PUSH	REG_BIT(9)
 
 #define HSW_ROW_CHICKEN3		_MMIO(0xe49c)
 #define  HSW_ROW_CHICKEN3_L3_GLOBAL_ATOMICS_DISABLE    (1 << 6)

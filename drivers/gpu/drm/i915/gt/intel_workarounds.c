@@ -580,7 +580,15 @@ static void icl_ctx_workarounds_init(struct intel_engine_cs *engine,
 static void tgl_ctx_workarounds_init(struct intel_engine_cs *engine,
 				     struct i915_wa_list *wal)
 {
-	/* Wa_1409142259:tgl */
+	/*
+	 * Wa_1409142259:tgl
+	 * Wa_1409347922:tgl
+	 * Wa_1409252684:tgl
+	 * Wa_1409217633:tgl
+	 * Wa_1409207793:tgl
+	 * Wa_1409178076:tgl
+	 * Wa_1408979724:tgl
+	 */
 	WA_SET_BIT_MASKED(GEN11_COMMON_SLICE_CHICKEN3,
 			  GEN12_DISABLE_CPS_AWARE_COLOR_PIPE);
 
@@ -931,7 +939,7 @@ tgl_gt_workarounds_init(struct drm_i915_private *i915, struct i915_wa_list *wal)
 			    SUBSLICE_UNIT_LEVEL_CLKGATE2,
 			    CPSSUNIT_CLKGATE_DIS);
 
-	/* Wa_1409180338:tgl */
+	/* Wa_1607087056:tgl also know as BUG:1409180338 */
 	if (IS_TGL_REVID(i915, TGL_REVID_A0, TGL_REVID_A0))
 		wa_write_or(wal,
 			    SLICE_UNIT_LEVEL_CLKGATE,
@@ -1246,6 +1254,7 @@ static void tgl_whitelist_build(struct intel_engine_cs *engine)
 	case RENDER_CLASS:
 		/*
 		 * WaAllowPMDepthAndInvocationCountAccessFromUMD:tgl
+		 * Wa_1408556865:tgl
 		 *
 		 * This covers 4 registers which are next to one another :
 		 *   - PS_INVOCATION_COUNT
@@ -1259,6 +1268,9 @@ static void tgl_whitelist_build(struct intel_engine_cs *engine)
 
 		/* Wa_1808121037:tgl */
 		whitelist_reg(w, GEN7_COMMON_SLICE_CHICKEN1);
+
+		/* Wa_1806527549:tgl */
+		whitelist_reg(w, HIZ_CHICKEN);
 		break;
 	default:
 		break;
@@ -1330,14 +1342,21 @@ rcs_engine_wa_init(struct intel_engine_cs *engine, struct i915_wa_list *wal)
 			     GEN9_CS_DEBUG_MODE1,
 			     FF_DOP_CLOCK_GATE_DISABLE);
 
-		/* Wa_1607138336:tgl */
+		/*
+		 * Wa_1607138336:tgl
+		 * Wa_1607063988:tgl
+		 */
 		wa_write_or(wal,
 			    GEN9_CTX_PREEMPT_REG,
 			    GEN12_DISABLE_POSH_BUSY_FF_DOP_CG);
 
-		/* Wa_1607030317:tgl */
-		/* Wa_1607186500:tgl */
-		/* Wa_1607297627:tgl */
+		/*
+		 * Wa_1607030317:tgl
+		 * Wa_1607186500:tgl
+		 * Wa_1607297627:tgl there is 3 entries for this WA on BSpec, 2
+		 * of then says it is fixed on B0 the other one says it is
+		 * permanent
+		 */
 		wa_masked_en(wal,
 			     GEN6_RC_SLEEP_PSMI_CONTROL,
 			     GEN12_WAIT_FOR_EVENT_POWER_DOWN_DISABLE |
@@ -1356,10 +1375,20 @@ rcs_engine_wa_init(struct intel_engine_cs *engine, struct i915_wa_list *wal)
 			    GEN7_FF_THREAD_MODE,
 			    GEN12_FF_TESSELATION_DOP_GATE_DISABLE);
 
+		/*
+		 * Wa_1409085225:tgl
+		 * Wa_14010229206:tgl
+		 */
+		wa_masked_en(wal, GEN9_ROW_CHICKEN4, GEN12_DISABLE_TDL_PUSH);
+	}
+
+	if (IS_TIGERLAKE(i915)) {
 		/* Wa_1606931601:tgl */
-		wa_masked_en(wal,
-			     GEN7_ROW_CHICKEN2,
-			     GEN12_DISABLE_EARLY_READ);
+		wa_masked_en(wal, GEN7_ROW_CHICKEN2, GEN12_DISABLE_EARLY_READ);
+
+		/* Wa_1409804808:tgl */
+		wa_masked_en(wal, GEN7_ROW_CHICKEN2,
+			     GEN12_PUSH_CONST_DEREF_HOLD_DIS);
 	}
 
 	if (IS_GEN(i915, 11)) {

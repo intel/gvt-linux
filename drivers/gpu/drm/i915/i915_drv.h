@@ -822,32 +822,6 @@ struct skl_wm_params {
 	u32 dbuf_block_size;
 };
 
-enum intel_pipe_crc_source {
-	INTEL_PIPE_CRC_SOURCE_NONE,
-	INTEL_PIPE_CRC_SOURCE_PLANE1,
-	INTEL_PIPE_CRC_SOURCE_PLANE2,
-	INTEL_PIPE_CRC_SOURCE_PLANE3,
-	INTEL_PIPE_CRC_SOURCE_PLANE4,
-	INTEL_PIPE_CRC_SOURCE_PLANE5,
-	INTEL_PIPE_CRC_SOURCE_PLANE6,
-	INTEL_PIPE_CRC_SOURCE_PLANE7,
-	INTEL_PIPE_CRC_SOURCE_PIPE,
-	/* TV/DP on pre-gen5/vlv can't use the pipe source. */
-	INTEL_PIPE_CRC_SOURCE_TV,
-	INTEL_PIPE_CRC_SOURCE_DP_B,
-	INTEL_PIPE_CRC_SOURCE_DP_C,
-	INTEL_PIPE_CRC_SOURCE_DP_D,
-	INTEL_PIPE_CRC_SOURCE_AUTO,
-	INTEL_PIPE_CRC_SOURCE_MAX,
-};
-
-#define INTEL_PIPE_CRC_ENTRIES_NR	128
-struct intel_pipe_crc {
-	spinlock_t lock;
-	int skipped;
-	enum intel_pipe_crc_source source;
-};
-
 struct i915_frontbuffer_tracking {
 	spinlock_t lock;
 
@@ -1043,21 +1017,24 @@ struct drm_i915_private {
 	struct intel_crtc *plane_to_crtc_mapping[I915_MAX_PIPES];
 	struct intel_crtc *pipe_to_crtc_mapping[I915_MAX_PIPES];
 
-#ifdef CONFIG_DEBUG_FS
-	struct intel_pipe_crc pipe_crc[I915_MAX_PIPES];
-#endif
-
-	/* dpll and cdclk state is protected by connection_mutex */
-	int num_shared_dpll;
-	struct intel_shared_dpll shared_dplls[I915_NUM_PLLS];
-	const struct intel_dpll_mgr *dpll_mgr;
-
-	/*
-	 * dpll_lock serializes intel_{prepare,enable,disable}_shared_dpll.
-	 * Must be global rather than per dpll, because on some platforms
-	 * plls share registers.
+	/**
+	 * dpll and cdclk state is protected by connection_mutex
+	 * dpll.lock serializes intel_{prepare,enable,disable}_shared_dpll.
+	 * Must be global rather than per dpll, because on some platforms plls
+	 * share registers.
 	 */
-	struct mutex dpll_lock;
+	struct {
+		struct mutex lock;
+
+		int num_shared_dpll;
+		struct intel_shared_dpll shared_dplls[I915_NUM_PLLS];
+		const struct intel_dpll_mgr *mgr;
+
+		struct {
+			int nssc;
+			int ssc;
+		} ref_clks;
+	} dpll;
 
 	struct list_head global_obj_list;
 
@@ -1077,8 +1054,6 @@ struct drm_i915_private {
 		struct llist_head free_list;
 		struct work_struct free_work;
 	} atomic_helper;
-
-	u16 orig_clock;
 
 	bool mchbar_need_disable;
 
@@ -1272,16 +1247,6 @@ struct drm_i915_private {
 	 * NOTE: This is the dri1/ums dungeon, don't add stuff here. Your patch
 	 * will be rejected. Instead look for a better place.
 	 */
-};
-
-struct dram_dimm_info {
-	u8 size, width, ranks;
-};
-
-struct dram_channel_info {
-	struct dram_dimm_info dimm_l, dimm_s;
-	u8 ranks;
-	bool is_16gb_dimm;
 };
 
 static inline struct drm_i915_private *to_i915(const struct drm_device *dev)
@@ -1554,6 +1519,8 @@ IS_SUBPLATFORM(const struct drm_i915_private *i915,
 
 #define GLK_REVID_A0		0x0
 #define GLK_REVID_A1		0x1
+#define GLK_REVID_A2		0x2
+#define GLK_REVID_B0		0x3
 
 #define IS_GLK_REVID(dev_priv, since, until) \
 	(IS_GEMINILAKE(dev_priv) && IS_REVID(dev_priv, since, until))
@@ -1737,11 +1704,6 @@ intel_ggtt_update_needs_vtd_wa(struct drm_i915_private *dev_priv)
 }
 
 /* i915_drv.c */
-#ifdef CONFIG_COMPAT
-long i915_compat_ioctl(struct file *filp, unsigned int cmd, unsigned long arg);
-#else
-#define i915_compat_ioctl NULL
-#endif
 extern const struct dev_pm_ops i915_pm_ops;
 
 int i915_driver_probe(struct pci_dev *pdev, const struct pci_device_id *ent);

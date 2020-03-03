@@ -40,7 +40,6 @@
 #include <drm/drm_edid.h>
 #include <drm/drm_hdcp.h>
 #include <drm/drm_probe_helper.h>
-#include <drm/i915_drm.h>
 
 #include "i915_debugfs.h"
 #include "i915_drv.h"
@@ -7609,9 +7608,8 @@ static bool intel_edp_init_connector(struct intel_dp *intel_dp,
 	intel_panel_setup_backlight(connector, pipe);
 
 	if (fixed_mode) {
-		/* We do not know the orientation, but their might be a quirk */
 		drm_connector_set_panel_orientation_with_quirk(connector,
-				DRM_MODE_PANEL_ORIENTATION_UNKNOWN,
+				dev_priv->vbt.orientation,
 				fixed_mode->hdisplay, fixed_mode->vdisplay);
 	}
 

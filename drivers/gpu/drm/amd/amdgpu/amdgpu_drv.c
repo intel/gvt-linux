@@ -1021,6 +1021,7 @@ static int amdgpu_pci_probe(struct pci_dev *pdev,
 			    const struct pci_device_id *ent)
 {
 	struct drm_device *dev;
+	struct amdgpu_device *adev;
 	unsigned long flags = ent->driver_data;
 	int ret, retry = 0;
 	bool supports_atomic = false;
@@ -1090,6 +1091,8 @@ static int amdgpu_pci_probe(struct pci_dev *pdev,
 
 	pci_set_drvdata(pdev, dev);
 
+	amdgpu_driver_load_kms(dev, ent->driver_data);
+
 retry_init:
 	ret = drm_dev_register(dev, ent->driver_data);
 	if (ret == -EAGAIN && ++retry <= 3) {
@@ -1099,6 +1102,11 @@ retry_init:
 		goto retry_init;
 	} else if (ret)
 		goto err_pci;
+
+	adev = dev->dev_private;
+	ret = amdgpu_debugfs_init(adev);
+	if (ret)
+		DRM_ERROR("Creating debugfs files failed (%d).\n", ret);
 
 	return 0;
 
@@ -1113,6 +1121,7 @@ static void
 amdgpu_pci_remove(struct pci_dev *pdev)
 {
 	struct drm_device *dev = pci_get_drvdata(pdev);
+	struct amdgpu_device *adev = dev->dev_private;
 
 #ifdef MODULE
 	if (THIS_MODULE->state != MODULE_STATE_GOING)
@@ -1120,6 +1129,8 @@ amdgpu_pci_remove(struct pci_dev *pdev)
 		DRM_ERROR("Hotplug removal is not supported\n");
 	drm_dev_unplug(dev);
 	drm_dev_put(dev);
+	amdgpu_debugfs_fini(adev);
+	amdgpu_driver_unload_kms(dev);
 	pci_disable_device(pdev);
 	pci_set_drvdata(pdev, NULL);
 }
@@ -1220,11 +1231,15 @@ static int amdgpu_pmops_runtime_suspend(struct device *dev)
 		}
 	}
 
+	adev->in_runpm = true;
 	if (amdgpu_device_supports_boco(drm_dev))
 		drm_dev->switch_power_state = DRM_SWITCH_POWER_CHANGING;
 	drm_kms_helper_poll_disable(drm_dev);
 
 	ret = amdgpu_device_suspend(drm_dev, false);
+	if (ret)
+		return ret;
+
 	if (amdgpu_device_supports_boco(drm_dev)) {
 		/* Only need to handle PCI state in the driver for ATPX
 		 * PCI core handles it for _PR3.
@@ -1278,6 +1293,7 @@ static int amdgpu_pmops_runtime_resume(struct device *dev)
 	drm_kms_helper_poll_enable(drm_dev);
 	if (amdgpu_device_supports_boco(drm_dev))
 		drm_dev->switch_power_state = DRM_SWITCH_POWER_ON;
+	adev->in_runpm = false;
 	return 0;
 }
 
@@ -1377,32 +1393,15 @@ int amdgpu_file_to_fpriv(struct file *filp, struct amdgpu_fpriv **fpriv)
 	return 0;
 }
 
-static bool
-amdgpu_get_crtc_scanout_position(struct drm_device *dev, unsigned int pipe,
-				 bool in_vblank_irq, int *vpos, int *hpos,
-				 ktime_t *stime, ktime_t *etime,
-				 const struct drm_display_mode *mode)
-{
-	return amdgpu_display_get_crtc_scanoutpos(dev, pipe, 0, vpos, hpos,
-						  stime, etime, mode);
-}
-
 static struct drm_driver kms_driver = {
 	.driver_features =
 	    DRIVER_ATOMIC |
 	    DRIVER_GEM |
 	    DRIVER_RENDER | DRIVER_MODESET | DRIVER_SYNCOBJ |
 	    DRIVER_SYNCOBJ_TIMELINE,
-	.load = amdgpu_driver_load_kms,
 	.open = amdgpu_driver_open_kms,
 	.postclose = amdgpu_driver_postclose_kms,
 	.lastclose = amdgpu_driver_lastclose_kms,
-	.unload = amdgpu_driver_unload_kms,
-	.get_vblank_counter = amdgpu_get_vblank_counter_kms,
-	.enable_vblank = amdgpu_enable_vblank_kms,
-	.disable_vblank = amdgpu_disable_vblank_kms,
-	.get_vblank_timestamp = drm_calc_vbltimestamp_from_scanoutpos,
-	.get_scanout_position = amdgpu_get_crtc_scanout_position,
 	.irq_handler = amdgpu_irq_handler,
 	.ioctls = amdgpu_ioctls_kms,
 	.gem_free_object_unlocked = amdgpu_gem_object_free,

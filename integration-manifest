@@ -1,0 +1,32 @@
+drm drm-fixes f091bf39700dd086ab244c823f389556fed0c513
+	Merge tag 'drm-intel-fixes-2020-02-27' of git://anongit.freedesktop.org/drm/drm-intel into drm-fixes
+drm-misc drm-misc-fixes 852d7655ea4395a1deb7070abe37962a7d0662e4
+	drm/shmem: drop pgprot_decrypted()
+drm-intel drm-intel-fixes f4aaa44e8b20f7e0d4ea68d3bca4968b6ae5aaff
+	drm/i915/selftests: Fix return in assert_mmap_offset()
+drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
+	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
+drm drm-next 60347451ddb0646c1a9cc5b9581e5bcf648ad1aa
+	Merge tag 'drm-misc-next-2020-02-27' of git://anongit.freedesktop.org/drm/drm-misc into drm-next
+drm-misc drm-misc-next-fixes e1cf35b94c5fd122a8780587559fc6da9fc2dd12
+	drm/edid: fix building error
+drm-intel drm-intel-next-fixes 11a48a5a18c63fd7621bb050228cebf13566e4d8
+	Linux 5.6-rc2
+drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
+	Linux 4.14-rc1
+drm-misc drm-misc-next 451787d3e2ac3a25abae91792b7154ee533b65c6
+	video: Replace zero-length array with flexible-array member
+drm-intel drm-intel-next-queued 69f5c87cf43cbf679202f430d1d19286e6af300e
+	drm/i915/huc: update TGL HuC to v7.0.12
+drm-intel drm-intel-next 53e3ca6749186b5c147964bddc4eb47ba8b5f69e
+	drm/i915: Update DRIVER_DATE to 20200225
+drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
+	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
+sound-upstream for-linus c37c0ab029569a75fd180edb03d411e7a28a936f
+	ALSA: hda/realtek - Fix a regression for mute led on Lenovo Carbon X1
+sound-upstream for-next 2948f4a4e583a4d283a4b57b7b1101761daee5cc
+	Merge branch 'topic/usb-uac2-effect-unit' into for-next
+drm-intel topic/core-for-CI 6f0978c5ea6525b6b19b78d18bb1f04cbd5f49fd
+	rtc/cmos: Protect rtc_lock from interrupts
+drm drm-vmwgfx-coherent 0a6cad5df541108cfd3fbd79eef48eb824c89bdc
+	Merge branch 'vmwgfx-coherent' of git://people.freedesktop.org/~thomash/linux into drm-next

@@ -969,6 +969,7 @@ struct amdgpu_device {
 	int				pstate;
 	/* enable runtime pm on the device */
 	bool                            runpm;
+	bool                            in_runpm;
 
 	bool                            pm_sysfs_en;
 	bool                            ucode_sysfs_en;
@@ -1174,9 +1175,9 @@ void amdgpu_driver_postclose_kms(struct drm_device *dev,
 int amdgpu_device_ip_suspend(struct amdgpu_device *adev);
 int amdgpu_device_suspend(struct drm_device *dev, bool fbcon);
 int amdgpu_device_resume(struct drm_device *dev, bool fbcon);
-u32 amdgpu_get_vblank_counter_kms(struct drm_device *dev, unsigned int pipe);
-int amdgpu_enable_vblank_kms(struct drm_device *dev, unsigned int pipe);
-void amdgpu_disable_vblank_kms(struct drm_device *dev, unsigned int pipe);
+u32 amdgpu_get_vblank_counter_kms(struct drm_crtc *crtc);
+int amdgpu_enable_vblank_kms(struct drm_crtc *crtc);
+void amdgpu_disable_vblank_kms(struct drm_crtc *crtc);
 long amdgpu_kms_compat_ioctl(struct file *filp, unsigned int cmd,
 			     unsigned long arg);
 

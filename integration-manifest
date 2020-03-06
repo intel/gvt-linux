@@ -1,32 +1,12 @@
-drm drm-fixes 2ac4853e295bba53209917e14af701c45c99ce04
-	Merge tag 'amd-drm-fixes-5.6-2020-03-05' of git://people.freedesktop.org/~agd5f/linux into drm-fixes
-drm-misc drm-misc-fixes e8dca30f7118461d47e1c3510d0e31b277439151
-	drm/bridge: dw-hdmi: fix AVI frame colorimetry
-drm-intel drm-intel-fixes 169c0aa4bc17d37370f55188d9327b99d60fd9d7
-	drm/i915/gt: Drop the timeline->mutex as we wait for retirement
-drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
-	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
-drm drm-next 60347451ddb0646c1a9cc5b9581e5bcf648ad1aa
-	Merge tag 'drm-misc-next-2020-02-27' of git://anongit.freedesktop.org/drm/drm-misc into drm-next
-drm-misc drm-misc-next-fixes e1cf35b94c5fd122a8780587559fc6da9fc2dd12
-	drm/edid: fix building error
-drm-intel drm-intel-next-fixes 11a48a5a18c63fd7621bb050228cebf13566e4d8
-	Linux 5.6-rc2
-drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
-	Linux 4.14-rc1
-drm-misc drm-misc-next 5b6603360c122e5b40ae9baf9130fb90f3cfc522
-	drm/panel: add panel driver for Elida KD35T133 panels
-drm-intel drm-intel-next-queued 81dcef4ceebf58d30f674a5426d959d1d0fc13cd
-	drm/i915/execlists: Show the "switch priority hint" in dumps
-drm-intel drm-intel-next 53e3ca6749186b5c147964bddc4eb47ba8b5f69e
-	drm/i915: Update DRIVER_DATE to 20200225
-drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
-	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
-sound-upstream for-linus 8b33a134a9cc2a501f8fc731d91caef39237d495
-	ALSA: hda/realtek - Enable the headset of ASUS B9450FA with ALC294
-sound-upstream for-next 2948f4a4e583a4d283a4b57b7b1101761daee5cc
-	Merge branch 'topic/usb-uac2-effect-unit' into for-next
-drm-intel topic/core-for-CI 6f0978c5ea6525b6b19b78d18bb1f04cbd5f49fd
-	rtc/cmos: Protect rtc_lock from interrupts
-drm drm-vmwgfx-coherent 0a6cad5df541108cfd3fbd79eef48eb824c89bdc
-	Merge branch 'vmwgfx-coherent' of git://people.freedesktop.org/~thomash/linux into drm-next
+drm-tip/drm-tip 04042aee59126471bb37cec526ccaf44b4e8d506
+	drm-tip: 2020y-03m-06d-01h-39m-10s UTC integration manifest
+vfio-upstream/for-linus 95f89e090618efca63918b658c2002e57d393036
+	vfio/type1: Initialize resv_msi_base
+intel-iommu/x86/vt-d 857f081426e5aa38313426c13373730f1345fe95
+	iommu/vt-d: Remove unnecessary WARN_ON_ONCE()
+origin/gvt-fixes 2fa7e15c5f466fdd0c0b196b1dc4a65d191efd96
+	drm/i915/gvt: Fix emulated vbt size issue
+origin/gvt-next-fixes 60de2d236db2874d6bcf831e98a03df6dcc97ee4
+	drm/i915/gvt: Fix dma-buf display blur issue on CFL
+origin/gvt-next a61ac1e75105a077ec1efd6923ae3c619f862304
+	drm/i915/gvt: Wean gvt off using dev_priv

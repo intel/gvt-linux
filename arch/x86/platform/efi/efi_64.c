@@ -572,16 +572,16 @@ static efi_status_t efi_thunk_get_time(efi_time_t *tm, efi_time_cap_t *tc)
 	u32 phys_tm, phys_tc;
 	unsigned long flags;
 
-	spin_lock(&rtc_lock);
-	spin_lock_irqsave(&efi_runtime_lock, flags);
+	spin_lock_irqsave(&rtc_lock, flags);
+	spin_lock(&efi_runtime_lock);
 
 	phys_tm = virt_to_phys_or_null(tm);
 	phys_tc = virt_to_phys_or_null(tc);
 
 	status = efi_thunk(get_time, phys_tm, phys_tc);
 
-	spin_unlock_irqrestore(&efi_runtime_lock, flags);
-	spin_unlock(&rtc_lock);
+	spin_unlock(&efi_runtime_lock);
+	spin_unlock_irqrestore(&rtc_lock, flags);
 
 	return status;
 }
@@ -592,15 +592,15 @@ static efi_status_t efi_thunk_set_time(efi_time_t *tm)
 	u32 phys_tm;
 	unsigned long flags;
 
-	spin_lock(&rtc_lock);
-	spin_lock_irqsave(&efi_runtime_lock, flags);
+	spin_lock_irqsave(&rtc_lock, flags);
+	spin_lock(&efi_runtime_lock);
 
 	phys_tm = virt_to_phys_or_null(tm);
 
 	status = efi_thunk(set_time, phys_tm);
 
-	spin_unlock_irqrestore(&efi_runtime_lock, flags);
-	spin_unlock(&rtc_lock);
+	spin_unlock(&efi_runtime_lock);
+	spin_unlock_irqrestore(&rtc_lock, flags);
 
 	return status;
 }
@@ -613,8 +613,8 @@ efi_thunk_get_wakeup_time(efi_bool_t *enabled, efi_bool_t *pending,
 	u32 phys_enabled, phys_pending, phys_tm;
 	unsigned long flags;
 
-	spin_lock(&rtc_lock);
-	spin_lock_irqsave(&efi_runtime_lock, flags);
+	spin_lock_irqsave(&rtc_lock, flags);
+	spin_lock(&efi_runtime_lock);
 
 	phys_enabled = virt_to_phys_or_null(enabled);
 	phys_pending = virt_to_phys_or_null(pending);
@@ -623,8 +623,8 @@ efi_thunk_get_wakeup_time(efi_bool_t *enabled, efi_bool_t *pending,
 	status = efi_thunk(get_wakeup_time, phys_enabled,
 			     phys_pending, phys_tm);
 
-	spin_unlock_irqrestore(&efi_runtime_lock, flags);
-	spin_unlock(&rtc_lock);
+	spin_unlock(&efi_runtime_lock);
+	spin_unlock_irqrestore(&rtc_lock, flags);
 
 	return status;
 }
@@ -636,15 +636,15 @@ efi_thunk_set_wakeup_time(efi_bool_t enabled, efi_time_t *tm)
 	u32 phys_tm;
 	unsigned long flags;
 
-	spin_lock(&rtc_lock);
-	spin_lock_irqsave(&efi_runtime_lock, flags);
+	spin_lock_irqsave(&rtc_lock, flags);
+	spin_lock(&efi_runtime_lock);
 
 	phys_tm = virt_to_phys_or_null(tm);
 
 	status = efi_thunk(set_wakeup_time, enabled, phys_tm);
 
-	spin_unlock_irqrestore(&efi_runtime_lock, flags);
-	spin_unlock(&rtc_lock);
+	spin_unlock(&efi_runtime_lock);
+	spin_unlock_irqrestore(&rtc_lock, flags);
 
 	return status;
 }

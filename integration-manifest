@@ -1,0 +1,32 @@
+drm drm-fixes 513dc792d6060d5ef572e43852683097a8420f56
+	vgacon: Fix a UAF in vgacon_invert_region
+drm-misc drm-misc-fixes 9803aac7b5508718989e4cde11b854fc01037b01
+	drm/komeda: mark PM functions as __maybe_unused
+drm-intel drm-intel-fixes b74f241d71c251fef074e58ff767b47d1aff901d
+	Merge tag 'gvt-fixes-2020-03-10' of https://github.com/intel/gvt-linux into drm-intel-fixes
+drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
+	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
+drm drm-next 60347451ddb0646c1a9cc5b9581e5bcf648ad1aa
+	Merge tag 'drm-misc-next-2020-02-27' of git://anongit.freedesktop.org/drm/drm-misc into drm-next
+drm-misc drm-misc-next-fixes e1cf35b94c5fd122a8780587559fc6da9fc2dd12
+	drm/edid: fix building error
+drm-intel drm-intel-next-fixes 11a48a5a18c63fd7621bb050228cebf13566e4d8
+	Linux 5.6-rc2
+drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
+	Linux 4.14-rc1
+drm-misc drm-misc-next 7cd7943dc55e0f75a8e51af2bbdb2b0415cc3eb7
+	drm/rockchip: rgb: don't count non-existent devices when determining subdrivers
+drm-intel drm-intel-next-queued a813ccb88b3b393aa85e9d66e99e98e834bd4e46
+	drm/i915: Remove debugfs i915_drpc_info and i915_forcewake_domains
+drm-intel drm-intel-next 53e3ca6749186b5c147964bddc4eb47ba8b5f69e
+	drm/i915: Update DRIVER_DATE to 20200225
+drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
+	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
+sound-upstream for-linus 3b36b13d5e69d6f51ff1c55d1b404a74646c9757
+	ALSA: hda/realtek: Fix pop noise on ALC225
+sound-upstream for-next 3db1b00f2122bfe259bdb19f7c0bfcaec54568e3
+	ALSA: firewire-tascam: Add missing annotation for tscm_hwdep_read_locked()
+drm-intel topic/core-for-CI 5b39064d452ac9739d59c5183c8a7c90a5982acb
+	rtc/cmos: Protect rtc_lock from interrupts
+drm drm-vmwgfx-coherent 0a6cad5df541108cfd3fbd79eef48eb824c89bdc
+	Merge branch 'vmwgfx-coherent' of git://people.freedesktop.org/~thomash/linux into drm-next

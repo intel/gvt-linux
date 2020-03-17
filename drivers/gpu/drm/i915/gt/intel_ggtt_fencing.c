@@ -21,10 +21,9 @@
  * IN THE SOFTWARE.
  */
 
-#include <drm/i915_drm.h>
-
 #include "i915_drv.h"
 #include "i915_scatterlist.h"
+#include "i915_pvinfo.h"
 #include "i915_vgpu.h"
 
 /**
@@ -234,15 +233,10 @@ static int fence_update(struct i915_fence_reg *fence,
 	int ret;
 
 	if (vma) {
-		if (!i915_vma_is_map_and_fenceable(vma))
-			return -EINVAL;
+		GEM_BUG_ON(!i915_gem_object_get_stride(vma->obj) ||
+			   !i915_gem_object_get_tiling(vma->obj));
 
-		if (drm_WARN(&uncore->i915->drm,
-			     !i915_gem_object_get_stride(vma->obj) ||
-			     !i915_gem_object_get_tiling(vma->obj),
-			     "bogus fence setup with stride: 0x%x, tiling mode: %i\n",
-			     i915_gem_object_get_stride(vma->obj),
-			     i915_gem_object_get_tiling(vma->obj)))
+		if (!i915_vma_is_map_and_fenceable(vma))
 			return -EINVAL;
 
 		ret = i915_vma_sync(vma);
@@ -277,7 +271,7 @@ static int fence_update(struct i915_fence_reg *fence,
 	/*
 	 * We only need to update the register itself if the device is awake.
 	 * If the device is currently powered down, we will defer the write
-	 * to the runtime resume, see i915_gem_restore_fences().
+	 * to the runtime resume, see intel_ggtt_restore_fences().
 	 *
 	 * This only works for removing the fence register, on acquisition
 	 * the caller must hold the rpm wakeref. The fence register must
@@ -488,14 +482,14 @@ void i915_unreserve_fence(struct i915_fence_reg *fence)
 }
 
 /**
- * i915_gem_restore_fences - restore fence state
+ * intel_ggtt_restore_fences - restore fence state
  * @ggtt: Global GTT
  *
  * Restore the hw fence state to match the software tracking again, to be called
  * after a gpu reset and on resume. Note that on runtime suspend we only cancel
  * the fences, to be reacquired by the user later.
  */
-void i915_gem_restore_fences(struct i915_ggtt *ggtt)
+void intel_ggtt_restore_fences(struct i915_ggtt *ggtt)
 {
 	int i;
 
@@ -747,7 +741,7 @@ static void detect_bit_6_swizzle(struct i915_ggtt *ggtt)
  * bit 17 of its physical address and therefore being interpreted differently
  * by the GPU.
  */
-static void i915_gem_swizzle_page(struct page *page)
+static void swizzle_page(struct page *page)
 {
 	char temp[64];
 	char *vaddr;
@@ -792,7 +786,7 @@ i915_gem_object_do_bit_17_swizzle(struct drm_i915_gem_object *obj,
 	for_each_sgt_page(page, sgt_iter, pages) {
 		char new_bit_17 = page_to_phys(page) >> 17;
 		if ((new_bit_17 & 0x1) != (test_bit(i, obj->bit_17) != 0)) {
-			i915_gem_swizzle_page(page);
+			swizzle_page(page);
 			set_page_dirty(page);
 		}
 		i++;
@@ -837,7 +831,7 @@ i915_gem_object_save_bit_17_swizzle(struct drm_i915_gem_object *obj,
 	}
 }
 
-void i915_ggtt_init_fences(struct i915_ggtt *ggtt)
+void intel_ggtt_init_fences(struct i915_ggtt *ggtt)
 {
 	struct drm_i915_private *i915 = ggtt->vm.i915;
 	struct intel_uncore *uncore = ggtt->vm.gt->uncore;
@@ -865,6 +859,11 @@ void i915_ggtt_init_fences(struct i915_ggtt *ggtt)
 	if (intel_vgpu_active(i915))
 		num_fences = intel_uncore_read(uncore,
 					       vgtif_reg(avail_rs.fence_num));
+	ggtt->fence_regs = kcalloc(num_fences,
+				   sizeof(*ggtt->fence_regs),
+				   GFP_KERNEL);
+	if (!ggtt->fence_regs)
+		num_fences = 0;
 
 	/* Initialize fence registers to zero */
 	for (i = 0; i < num_fences; i++) {
@@ -876,7 +875,12 @@ void i915_ggtt_init_fences(struct i915_ggtt *ggtt)
 	}
 	ggtt->num_fences = num_fences;
 
-	i915_gem_restore_fences(ggtt);
+	intel_ggtt_restore_fences(ggtt);
+}
+
+void intel_ggtt_fini_fences(struct i915_ggtt *ggtt)
+{
+	kfree(ggtt->fence_regs);
 }
 
 void intel_gt_init_swizzling(struct intel_gt *gt)

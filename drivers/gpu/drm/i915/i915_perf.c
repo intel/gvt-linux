@@ -204,21 +204,6 @@
 
 #include "i915_drv.h"
 #include "i915_perf.h"
-#include "oa/i915_oa_hsw.h"
-#include "oa/i915_oa_bdw.h"
-#include "oa/i915_oa_chv.h"
-#include "oa/i915_oa_sklgt2.h"
-#include "oa/i915_oa_sklgt3.h"
-#include "oa/i915_oa_sklgt4.h"
-#include "oa/i915_oa_bxt.h"
-#include "oa/i915_oa_kblgt2.h"
-#include "oa/i915_oa_kblgt3.h"
-#include "oa/i915_oa_glk.h"
-#include "oa/i915_oa_cflgt2.h"
-#include "oa/i915_oa_cflgt3.h"
-#include "oa/i915_oa_cnl.h"
-#include "oa/i915_oa_icl.h"
-#include "oa/i915_oa_tgl.h"
 
 /* HW requires this to be a power of two, between 128k and 16M, though driver
  * is currently generally designed assuming the largest 16M size is used such
@@ -359,6 +344,10 @@ static const struct i915_oa_format gen12_oa_formats[I915_OA_FORMAT_MAX] = {
  * @oa_periodic: Whether to enable periodic OA unit sampling
  * @oa_period_exponent: The OA unit sampling period is derived from this
  * @engine: The engine (typically rcs0) being monitored by the OA unit
+ * @has_sseu: Whether @sseu was specified by userspace
+ * @sseu: internal SSEU configuration computed either from the userspace
+ *        specified configuration in the opening parameters or a default value
+ *        (see get_default_sseu_config())
  *
  * As read_properties_unlocked() enumerates and validates the properties given
  * to open a stream of metrics the configuration is built up in the structure
@@ -378,6 +367,9 @@ struct perf_open_properties {
 	int oa_period_exponent;
 
 	struct intel_engine_cs *engine;
+
+	bool has_sseu;
+	struct intel_sseu sseu;
 };
 
 struct i915_oa_config_bo {
@@ -409,10 +401,7 @@ i915_perf_get_oa_config(struct i915_perf *perf, int metrics_set)
 	struct i915_oa_config *oa_config;
 
 	rcu_read_lock();
-	if (metrics_set == 1)
-		oa_config = &perf->test_config;
-	else
-		oa_config = idr_find(&perf->metrics_idr, metrics_set);
+	oa_config = idr_find(&perf->metrics_idr, metrics_set);
 	if (oa_config)
 		oa_config = i915_oa_config_get(oa_config);
 	rcu_read_unlock();
@@ -1405,8 +1394,10 @@ static void i915_oa_stream_destroy(struct i915_perf_stream *stream)
 	/*
 	 * Unset exclusive_stream first, it will be checked while disabling
 	 * the metric set on gen8+.
+	 *
+	 * See i915_oa_init_reg_state() and lrc_configure_all_contexts()
 	 */
-	perf->exclusive_stream = NULL;
+	WRITE_ONCE(perf->exclusive_stream, NULL);
 	perf->ops.disable_metric_set(stream);
 
 	free_oa_buffer(stream);
@@ -2114,9 +2105,6 @@ gen8_update_reg_state_unlocked(const struct intel_context *ce,
 	for (i = 0; i < ARRAY_SIZE(flex_regs); i++)
 		reg_state[ctx_flexeu0 + i * 2 + 1] =
 			oa_config_flex_reg(stream->oa_config, flex_regs[i]);
-
-	reg_state[CTX_R_PWR_CLK_STATE] =
-		intel_sseu_make_rpcs(ce->engine->i915, &ce->sseu);
 }
 
 struct flex {
@@ -2200,7 +2188,9 @@ static int gen8_modify_self(struct intel_context *ce,
 	struct i915_request *rq;
 	int err;
 
+	intel_engine_pm_get(ce->engine);
 	rq = i915_request_create(ce);
+	intel_engine_pm_put(ce->engine);
 	if (IS_ERR(rq))
 		return PTR_ERR(rq);
 
@@ -2696,6 +2686,14 @@ static void gen12_oa_disable(struct i915_perf_stream *stream)
 				    50))
 		drm_err(&stream->perf->i915->drm,
 			"wait for OA to be disabled timed out\n");
+
+	intel_uncore_write(uncore, GEN12_OA_TLB_INV_CR, 1);
+	if (intel_wait_for_register(uncore,
+				    GEN12_OA_TLB_INV_CR,
+				    1, 0,
+				    50))
+		drm_err(&stream->perf->i915->drm,
+			"wait for OA tlb invalidate timed out\n");
 }
 
 /**
@@ -2735,6 +2733,39 @@ static int i915_perf_stream_enable_sync(struct i915_perf_stream *stream)
 	i915_request_put(rq);
 
 	return 0;
+}
+
+static void
+get_default_sseu_config(struct intel_sseu *out_sseu,
+			struct intel_engine_cs *engine)
+{
+	const struct sseu_dev_info *devinfo_sseu =
+		&RUNTIME_INFO(engine->i915)->sseu;
+
+	*out_sseu = intel_sseu_from_device_info(devinfo_sseu);
+
+	if (IS_GEN(engine->i915, 11)) {
+		/*
+		 * We only need subslice count so it doesn't matter which ones
+		 * we select - just turn off low bits in the amount of half of
+		 * all available subslices per slice.
+		 */
+		out_sseu->subslice_mask =
+			~(~0 << (hweight8(out_sseu->subslice_mask) / 2));
+		out_sseu->slice_mask = 0x1;
+	}
+}
+
+static int
+get_sseu_config(struct intel_sseu *out_sseu,
+		struct intel_engine_cs *engine,
+		const struct drm_i915_gem_context_param_sseu *drm_sseu)
+{
+	if (drm_sseu->engine.engine_class != engine->uabi_class ||
+	    drm_sseu->engine.engine_instance != engine->uabi_instance)
+		return -EINVAL;
+
+	return i915_gem_user_to_context_sseu(engine->i915, drm_sseu, out_sseu);
 }
 
 /**
@@ -2869,7 +2900,9 @@ static int i915_oa_stream_init(struct i915_perf_stream *stream,
 		goto err_oa_buf_alloc;
 
 	stream->ops = &i915_oa_stream_ops;
-	perf->exclusive_stream = stream;
+
+	perf->sseu = props->sseu;
+	WRITE_ONCE(perf->exclusive_stream, stream);
 
 	ret = i915_perf_stream_enable_sync(stream);
 	if (ret) {
@@ -2889,7 +2922,7 @@ static int i915_oa_stream_init(struct i915_perf_stream *stream,
 	return 0;
 
 err_enable:
-	perf->exclusive_stream = NULL;
+	WRITE_ONCE(perf->exclusive_stream, NULL);
 	perf->ops.disable_metric_set(stream);
 
 	free_oa_buffer(stream);
@@ -2915,16 +2948,11 @@ void i915_oa_init_reg_state(const struct intel_context *ce,
 {
 	struct i915_perf_stream *stream;
 
-	/* perf.exclusive_stream serialised by lrc_configure_all_contexts() */
-
 	if (engine->class != RENDER_CLASS)
 		return;
 
-	stream = engine->i915->perf.exclusive_stream;
-	/*
-	 * For gen12, only CTX_R_PWR_CLK_STATE needs update, but the caller
-	 * is already doing that, so nothing to be done for gen12 here.
-	 */
+	/* perf.exclusive_stream serialised by lrc_configure_all_contexts() */
+	stream = READ_ONCE(engine->i915->perf.exclusive_stream);
 	if (stream && INTEL_GEN(stream->perf->i915) < 12)
 		gen8_update_reg_state_unlocked(ce, stream);
 }
@@ -3419,6 +3447,14 @@ i915_perf_open_ioctl_locked(struct i915_perf *perf,
 		privileged_op = true;
 	}
 
+	/*
+	 * Asking for SSEU configuration is a priviliged operation.
+	 */
+	if (props->has_sseu)
+		privileged_op = true;
+	else
+		get_default_sseu_config(&props->sseu, props->engine);
+
 	/* Similar to perf's kernel.perf_paranoid_cpu sysctl option
 	 * we check a dev.i915.perf_stream_paranoid sysctl option
 	 * to determine if it's ok to access system wide OA counters
@@ -3514,6 +3550,7 @@ static int read_properties_unlocked(struct i915_perf *perf,
 {
 	u64 __user *uprop = uprops;
 	u32 i;
+	int ret;
 
 	memset(props, 0, sizeof(struct perf_open_properties));
 
@@ -3545,7 +3582,6 @@ static int read_properties_unlocked(struct i915_perf *perf,
 	for (i = 0; i < n_props; i++) {
 		u64 oa_period, oa_freq_hz;
 		u64 id, value;
-		int ret;
 
 		ret = get_user(id, uprop);
 		if (ret)
@@ -3631,6 +3667,24 @@ static int read_properties_unlocked(struct i915_perf *perf,
 		case DRM_I915_PERF_PROP_HOLD_PREEMPTION:
 			props->hold_preemption = !!value;
 			break;
+		case DRM_I915_PERF_PROP_GLOBAL_SSEU: {
+			struct drm_i915_gem_context_param_sseu user_sseu;
+
+			if (copy_from_user(&user_sseu,
+					   u64_to_user_ptr(value),
+					   sizeof(user_sseu))) {
+				DRM_DEBUG("Unable to copy global sseu parameter\n");
+				return -EFAULT;
+			}
+
+			ret = get_sseu_config(&props->sseu, props->engine, &user_sseu);
+			if (ret) {
+				DRM_DEBUG("Invalid SSEU configuration\n");
+				return ret;
+			}
+			props->has_sseu = true;
+			break;
+		}
 		case DRM_I915_PERF_PROP_MAX:
 			MISSING_CASE(id);
 			return -EINVAL;
@@ -3713,7 +3767,6 @@ int i915_perf_open_ioctl(struct drm_device *dev, void *data,
 void i915_perf_register(struct drm_i915_private *i915)
 {
 	struct i915_perf *perf = &i915->perf;
-	int ret;
 
 	if (!perf->i915)
 		return;
@@ -3727,64 +3780,7 @@ void i915_perf_register(struct drm_i915_private *i915)
 	perf->metrics_kobj =
 		kobject_create_and_add("metrics",
 				       &i915->drm.primary->kdev->kobj);
-	if (!perf->metrics_kobj)
-		goto exit;
 
-	sysfs_attr_init(&perf->test_config.sysfs_metric_id.attr);
-
-	if (IS_TIGERLAKE(i915)) {
-		i915_perf_load_test_config_tgl(i915);
-	} else if (INTEL_GEN(i915) >= 11) {
-		i915_perf_load_test_config_icl(i915);
-	} else if (IS_CANNONLAKE(i915)) {
-		i915_perf_load_test_config_cnl(i915);
-	} else if (IS_COFFEELAKE(i915)) {
-		if (IS_CFL_GT2(i915))
-			i915_perf_load_test_config_cflgt2(i915);
-		if (IS_CFL_GT3(i915))
-			i915_perf_load_test_config_cflgt3(i915);
-	} else if (IS_GEMINILAKE(i915)) {
-		i915_perf_load_test_config_glk(i915);
-	} else if (IS_KABYLAKE(i915)) {
-		if (IS_KBL_GT2(i915))
-			i915_perf_load_test_config_kblgt2(i915);
-		else if (IS_KBL_GT3(i915))
-			i915_perf_load_test_config_kblgt3(i915);
-	} else if (IS_BROXTON(i915)) {
-		i915_perf_load_test_config_bxt(i915);
-	} else if (IS_SKYLAKE(i915)) {
-		if (IS_SKL_GT2(i915))
-			i915_perf_load_test_config_sklgt2(i915);
-		else if (IS_SKL_GT3(i915))
-			i915_perf_load_test_config_sklgt3(i915);
-		else if (IS_SKL_GT4(i915))
-			i915_perf_load_test_config_sklgt4(i915);
-	} else if (IS_CHERRYVIEW(i915)) {
-		i915_perf_load_test_config_chv(i915);
-	} else if (IS_BROADWELL(i915)) {
-		i915_perf_load_test_config_bdw(i915);
-	} else if (IS_HASWELL(i915)) {
-		i915_perf_load_test_config_hsw(i915);
-	}
-
-	if (perf->test_config.id == 0)
-		goto sysfs_error;
-
-	ret = sysfs_create_group(perf->metrics_kobj,
-				 &perf->test_config.sysfs_metric);
-	if (ret)
-		goto sysfs_error;
-
-	perf->test_config.perf = perf;
-	kref_init(&perf->test_config.ref);
-
-	goto exit;
-
-sysfs_error:
-	kobject_put(perf->metrics_kobj);
-	perf->metrics_kobj = NULL;
-
-exit:
 	mutex_unlock(&perf->lock);
 }
 
@@ -3803,9 +3799,6 @@ void i915_perf_unregister(struct drm_i915_private *i915)
 
 	if (!perf->metrics_kobj)
 		return;
-
-	sysfs_remove_group(perf->metrics_kobj,
-			   &perf->test_config.sysfs_metric);
 
 	kobject_put(perf->metrics_kobj);
 	perf->metrics_kobj = NULL;
@@ -4465,8 +4458,12 @@ int i915_perf_ioctl_version(void)
 	 *    preemption on a particular context so that performance data is
 	 *    accessible from a delta of MI_RPC reports without looking at the
 	 *    OA buffer.
+	 *
+	 * 4: Add DRM_I915_PERF_PROP_ALLOWED_SSEU to limit what contexts can
+	 *    be run for the duration of the performance recording based on
+	 *    their SSEU configuration.
 	 */
-	return 3;
+	return 4;
 }
 
 #if IS_ENABLED(CONFIG_DRM_I915_SELFTEST)

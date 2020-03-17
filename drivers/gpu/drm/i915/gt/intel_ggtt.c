@@ -8,6 +8,8 @@
 #include <asm/set_memory.h>
 #include <asm/smp.h>
 
+#include <drm/i915_drm.h>
+
 #include "intel_gt.h"
 #include "i915_drv.h"
 #include "i915_scatterlist.h"
@@ -63,7 +65,7 @@ static int ggtt_init_hw(struct i915_ggtt *ggtt)
 					      ggtt->mappable_end);
 	}
 
-	i915_ggtt_init_fences(ggtt);
+	intel_ggtt_init_fences(ggtt);
 
 	return 0;
 }
@@ -157,6 +159,13 @@ static void gmch_ggtt_invalidate(struct i915_ggtt *ggtt)
 	intel_gtt_chipset_flush();
 }
 
+static u64 gen8_ggtt_pte_encode(dma_addr_t addr,
+				enum i915_cache_level level,
+				u32 flags)
+{
+	return addr | _PAGE_PRESENT;
+}
+
 static void gen8_set_pte(void __iomem *addr, gen8_pte_t pte)
 {
 	writeq(pte, addr);
@@ -172,7 +181,7 @@ static void gen8_ggtt_insert_page(struct i915_address_space *vm,
 	gen8_pte_t __iomem *pte =
 		(gen8_pte_t __iomem *)ggtt->gsm + offset / I915_GTT_PAGE_SIZE;
 
-	gen8_set_pte(pte, gen8_pte_encode(addr, level, 0));
+	gen8_set_pte(pte, gen8_ggtt_pte_encode(addr, level, 0));
 
 	ggtt->invalidate(ggtt);
 }
@@ -185,7 +194,7 @@ static void gen8_ggtt_insert_entries(struct i915_address_space *vm,
 	struct i915_ggtt *ggtt = i915_vm_to_ggtt(vm);
 	struct sgt_iter sgt_iter;
 	gen8_pte_t __iomem *gtt_entries;
-	const gen8_pte_t pte_encode = gen8_pte_encode(0, level, 0);
+	const gen8_pte_t pte_encode = gen8_ggtt_pte_encode(0, level, 0);
 	dma_addr_t addr;
 
 	/*
@@ -689,11 +698,13 @@ static void ggtt_cleanup_hw(struct i915_ggtt *ggtt)
  */
 void i915_ggtt_driver_release(struct drm_i915_private *i915)
 {
+	struct i915_ggtt *ggtt = &i915->ggtt;
 	struct pagevec *pvec;
 
-	fini_aliasing_ppgtt(&i915->ggtt);
+	fini_aliasing_ppgtt(ggtt);
 
-	ggtt_cleanup_hw(&i915->ggtt);
+	intel_ggtt_fini_fences(ggtt);
+	ggtt_cleanup_hw(ggtt);
 
 	pvec = &i915->mm.wc_stash.pvec;
 	if (pvec->nr) {
@@ -857,7 +868,7 @@ static int gen8_gmch_probe(struct i915_ggtt *ggtt)
 	ggtt->vm.vma_ops.set_pages   = ggtt_set_pages;
 	ggtt->vm.vma_ops.clear_pages = clear_pages;
 
-	ggtt->vm.pte_encode = gen8_pte_encode;
+	ggtt->vm.pte_encode = gen8_ggtt_pte_encode;
 
 	setup_private_pat(ggtt->vm.gt->uncore);
 
@@ -1186,6 +1197,8 @@ void i915_ggtt_resume(struct i915_ggtt *ggtt)
 
 	if (INTEL_GEN(ggtt->vm.i915) >= 8)
 		setup_private_pat(ggtt->vm.gt->uncore);
+
+	intel_ggtt_restore_fences(ggtt);
 }
 
 static struct scatterlist *

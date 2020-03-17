@@ -78,11 +78,14 @@ void dp_set_panel_mode(struct dc_link *link, enum dp_panel_mode panel_mode);
 
 bool dp_overwrite_extended_receiver_cap(struct dc_link *link);
 
+void dpcd_set_source_specific_data(struct dc_link *link);
+
 void dp_set_fec_ready(struct dc_link *link, bool ready);
 void dp_set_fec_enable(struct dc_link *link, bool enable);
 bool dp_set_dsc_enable(struct pipe_ctx *pipe_ctx, bool enable);
 bool dp_set_dsc_pps_sdp(struct pipe_ctx *pipe_ctx, bool enable);
 void dp_set_dsc_on_stream(struct pipe_ctx *pipe_ctx, bool enable);
+bool dp_set_dsc_on_rx(struct pipe_ctx *pipe_ctx, bool enable);
 bool dp_update_dsc_config(struct pipe_ctx *pipe_ctx);
 
 #endif /* __DC_LINK_DP_H__ */

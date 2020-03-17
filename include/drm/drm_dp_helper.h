@@ -392,6 +392,8 @@
 # define DP_DS_12BPC		            2
 # define DP_DS_16BPC		            3
 
+#define DP_MAX_DOWNSTREAM_PORTS		    0x10
+
 /* DP Forward error Correction Registers */
 #define DP_FEC_CAPABILITY		    0x090    /* 1.4 */
 # define DP_FEC_CAPABLE			    (1 << 0)
@@ -1456,6 +1458,9 @@ static inline ssize_t drm_dp_dpcd_writeb(struct drm_dp_aux *aux,
 
 int drm_dp_dpcd_read_link_status(struct drm_dp_aux *aux,
 				 u8 status[DP_LINK_STATUS_SIZE]);
+
+bool drm_dp_send_real_edid_checksum(struct drm_dp_aux *aux,
+				    u8 real_edid_checksum);
 
 int drm_dp_downstream_max_clock(const u8 dpcd[DP_RECEIVER_CAP_SIZE],
 				const u8 port_cap[4]);

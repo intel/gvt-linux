@@ -1,34 +1,12 @@
-drm drm-fixes 16b78f052d0129cd2998305480da6c4e3ac220a8
-	Merge tag 'topic/mst-bw-check-fixes-for-airlied-2020-03-12-2' of git://anongit.freedesktop.org/drm/drm-misc into drm-fixes
-drm-misc drm-misc-fixes 8c34cd1a7f089dc03933289c5d4a4d1489549828
-	drm/bochs: downgrade pci_request_region failure from error to warning
-drm-intel drm-intel-fixes fe8b7085cac3b0db03cdbb26d9309bc27325df0a
-	drm/i915: Handle all MCR ranges
-drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
-	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
-drm drm-next 69ddce0970d9d1de63bed9c24eefa0814db29a5a
-	Merge tag 'amd-drm-next-5.7-2020-03-10' of git://people.freedesktop.org/~agd5f/linux into drm-next
-drm-misc drm-misc-next-fixes e1cf35b94c5fd122a8780587559fc6da9fc2dd12
-	drm/edid: fix building error
-drm-intel drm-intel-next-fixes 11a48a5a18c63fd7621bb050228cebf13566e4d8
-	Linux 5.6-rc2
-drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
-	Linux 4.14-rc1
-drm-misc drm-misc-next 51b8479ab20ba3804348824c63abdb3f35b0aaeb
-	Merge drm/drm-next into drm-misc-next
-drm-intel drm-intel-next-queued a639b0c15065df930467695b76ef38d5edaed049
-	drm/i915/perf: Invalidate OA TLB on when closing perf stream
-drm-intel drm-intel-next 217a485c8399634abacd2f138b3524d2e78e8aad
-	drm/i915: Update DRIVER_DATE to 20200313
-drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
-	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
-sound-upstream for-linus a124458a127ccd7629e20cd7bae3e1f758ed32aa
-	ALSA: hda/realtek - Enable the headset of Acer N50-600 with ALC662
-sound-upstream for-next 55f7326170d9e83e2d828591938e1101982a679c
-	ALSA: usb-audio: Create a registration quirk for Kingston HyperX Amp (0951:16d8)
-drm-intel topic/core-for-CI 5b39064d452ac9739d59c5183c8a7c90a5982acb
-	rtc/cmos: Protect rtc_lock from interrupts
-drm drm-vmwgfx-coherent 0a6cad5df541108cfd3fbd79eef48eb824c89bdc
-	Merge branch 'vmwgfx-coherent' of git://people.freedesktop.org/~thomash/linux into drm-next
-drm-misc topic/mst-bw-check-fixes-for-airlied 047d4cd2067b028e7bca906c5ce20f4c89b65386
-	drm/dp_mst: Rewrite and fix bandwidth limit checks
+drm-tip/drm-tip 5e893da0b8c2bfec015c5eaa7981e1ffab1d7c9c
+	drm-tip: 2020y-03m-17d-22h-32m-44s UTC integration manifest
+vfio-upstream/for-linus 95f89e090618efca63918b658c2002e57d393036
+	vfio/type1: Initialize resv_msi_base
+intel-iommu/x86/vt-d 857f081426e5aa38313426c13373730f1345fe95
+	iommu/vt-d: Remove unnecessary WARN_ON_ONCE()
+origin/gvt-fixes 2fa7e15c5f466fdd0c0b196b1dc4a65d191efd96
+	drm/i915/gvt: Fix emulated vbt size issue
+origin/gvt-next-fixes dbafc67307ec06036b25b223a251af03fe07969a
+	drm/i915/gvt: do not check len & max_len for lri
+origin/gvt-next a61ac1e75105a077ec1efd6923ae3c619f862304
+	drm/i915/gvt: Wean gvt off using dev_priv

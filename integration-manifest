@@ -1,0 +1,34 @@
+drm drm-fixes c4b979ebcafe978338cad1df4c77cdc8f84bd51c
+	Merge tag 'amd-drm-fixes-5.6-2020-03-26' of git://people.freedesktop.org/~agd5f/linux into drm-fixes
+drm-misc drm-misc-fixes 83a196773b8bc6702f49df1eddc848180e350340
+	drm/bridge: analogix_dp: Split bind() into probe() and real bind()
+drm-intel drm-intel-fixes 16fbf79b0f83bc752cee8589279f1ebfe57b3b6e
+	Linux 5.6-rc7
+drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
+	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
+drm drm-next c2556238120bce8be37670e145226c12870a9e5a
+	Merge branch 'feature/staging_sm5' of git://people.freedesktop.org/~sroland/linux into drm-next
+drm-misc drm-misc-next-fixes a65a97b48694d34248195eb89bf3687403261056
+	drm/vboxvideo: Add missing remove_conflicting_pci_framebuffers call, v2
+drm-intel drm-intel-next-fixes 2bdd4c28baff29163808677a70942de2b45f17dc
+	drm/i915/display: Fix mode private_flags comparison at atomic_check
+drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
+	Linux 4.14-rc1
+drm-misc drm-misc-next 9e1ed9fb1eb0a4bc43a26365c592d3095286038b
+	drm: Add docs for managed resources
+drm-intel drm-intel-next-queued 7bf03e7504e433da274963c447648876902b86df
+	drm/i915: Cast remain to unsigned long in eb_relocate_vma
+drm-intel drm-intel-next 217a485c8399634abacd2f138b3524d2e78e8aad
+	drm/i915: Update DRIVER_DATE to 20200313
+drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
+	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
+sound-upstream for-linus e9097e47e349b747dee50f935216de0ffb662962
+	ALSA: hda/ca0132 - Add Recon3Di quirk to handle integrated sound on EVGA X99 Classified motherboard
+sound-upstream for-next 2ceb65cd04a9b7d694188b72807f2e1fead16d9c
+	ALSA: usb-audio: Update the documentation for the new delayed_register option
+drm-intel topic/core-for-CI 5b39064d452ac9739d59c5183c8a7c90a5982acb
+	rtc/cmos: Protect rtc_lock from interrupts
+drm drm-vmwgfx-coherent 0a6cad5df541108cfd3fbd79eef48eb824c89bdc
+	Merge branch 'vmwgfx-coherent' of git://people.freedesktop.org/~thomash/linux into drm-next
+drm-misc topic/mst-bw-check-fixes-for-airlied 047d4cd2067b028e7bca906c5ce20f4c89b65386
+	drm/dp_mst: Rewrite and fix bandwidth limit checks

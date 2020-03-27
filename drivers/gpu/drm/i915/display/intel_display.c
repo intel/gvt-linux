@@ -620,45 +620,43 @@ int chv_calc_dpll_params(int refclk, struct dpll *clock)
 	return clock->dot / 5;
 }
 
-#define INTELPllInvalid(s)   do { /* DRM_DEBUG(s); */ return false; } while (0)
-
 /*
  * Returns whether the given set of divisors are valid for a given refclk with
  * the given connectors.
  */
-static bool intel_PLL_is_valid(struct drm_i915_private *dev_priv,
+static bool intel_pll_is_valid(struct drm_i915_private *dev_priv,
 			       const struct intel_limit *limit,
 			       const struct dpll *clock)
 {
-	if (clock->n   < limit->n.min   || limit->n.max   < clock->n)
-		INTELPllInvalid("n out of range\n");
-	if (clock->p1  < limit->p1.min  || limit->p1.max  < clock->p1)
-		INTELPllInvalid("p1 out of range\n");
-	if (clock->m2  < limit->m2.min  || limit->m2.max  < clock->m2)
-		INTELPllInvalid("m2 out of range\n");
-	if (clock->m1  < limit->m1.min  || limit->m1.max  < clock->m1)
-		INTELPllInvalid("m1 out of range\n");
+	if (clock->n < limit->n.min || limit->n.max < clock->n)
+		return false;
+	if (clock->p1 < limit->p1.min || limit->p1.max < clock->p1)
+		return false;
+	if (clock->m2 < limit->m2.min || limit->m2.max < clock->m2)
+		return false;
+	if (clock->m1 < limit->m1.min || limit->m1.max < clock->m1)
+		return false;
 
 	if (!IS_PINEVIEW(dev_priv) && !IS_VALLEYVIEW(dev_priv) &&
 	    !IS_CHERRYVIEW(dev_priv) && !IS_GEN9_LP(dev_priv))
 		if (clock->m1 <= clock->m2)
-			INTELPllInvalid("m1 <= m2\n");
+			return false;
 
 	if (!IS_VALLEYVIEW(dev_priv) && !IS_CHERRYVIEW(dev_priv) &&
 	    !IS_GEN9_LP(dev_priv)) {
 		if (clock->p < limit->p.min || limit->p.max < clock->p)
-			INTELPllInvalid("p out of range\n");
+			return false;
 		if (clock->m < limit->m.min || limit->m.max < clock->m)
-			INTELPllInvalid("m out of range\n");
+			return false;
 	}
 
 	if (clock->vco < limit->vco.min || limit->vco.max < clock->vco)
-		INTELPllInvalid("vco out of range\n");
+		return false;
 	/* XXX: We may need to be checking "Dot clock" depending on the multiplier,
 	 * connector, etc., rather than just a single range.
 	 */
 	if (clock->dot < limit->dot.min || limit->dot.max < clock->dot)
-		INTELPllInvalid("dot out of range\n");
+		return false;
 
 	return true;
 }
@@ -725,7 +723,7 @@ i9xx_find_best_dpll(const struct intel_limit *limit,
 					int this_err;
 
 					i9xx_calc_dpll_params(refclk, &clock);
-					if (!intel_PLL_is_valid(to_i915(dev),
+					if (!intel_pll_is_valid(to_i915(dev),
 								limit,
 								&clock))
 						continue;
@@ -781,7 +779,7 @@ pnv_find_best_dpll(const struct intel_limit *limit,
 					int this_err;
 
 					pnv_calc_dpll_params(refclk, &clock);
-					if (!intel_PLL_is_valid(to_i915(dev),
+					if (!intel_pll_is_valid(to_i915(dev),
 								limit,
 								&clock))
 						continue;
@@ -842,7 +840,7 @@ g4x_find_best_dpll(const struct intel_limit *limit,
 					int this_err;
 
 					i9xx_calc_dpll_params(refclk, &clock);
-					if (!intel_PLL_is_valid(to_i915(dev),
+					if (!intel_pll_is_valid(to_i915(dev),
 								limit,
 								&clock))
 						continue;
@@ -939,7 +937,7 @@ vlv_find_best_dpll(const struct intel_limit *limit,
 
 					vlv_calc_dpll_params(refclk, &clock);
 
-					if (!intel_PLL_is_valid(to_i915(dev),
+					if (!intel_pll_is_valid(to_i915(dev),
 								limit,
 								&clock))
 						continue;
@@ -1008,7 +1006,7 @@ chv_find_best_dpll(const struct intel_limit *limit,
 
 			chv_calc_dpll_params(refclk, &clock);
 
-			if (!intel_PLL_is_valid(to_i915(dev), limit, &clock))
+			if (!intel_pll_is_valid(to_i915(dev), limit, &clock))
 				continue;
 
 			if (!vlv_PLL_is_optimal(dev, target, &clock, best_clock,
@@ -2910,6 +2908,7 @@ intel_fb_plane_get_subsampling(int *hsub, int *vsub,
 static int
 intel_fb_check_ccs_xy(struct drm_framebuffer *fb, int ccs_plane, int x, int y)
 {
+	struct drm_i915_private *i915 = to_i915(fb->dev);
 	struct intel_framebuffer *intel_fb = to_intel_framebuffer(fb);
 	int main_plane;
 	int hsub, vsub;
@@ -2938,7 +2937,8 @@ intel_fb_check_ccs_xy(struct drm_framebuffer *fb, int ccs_plane, int x, int y)
 	 * x/y offsets must match between CCS and the main surface.
 	 */
 	if (main_x != ccs_x || main_y != ccs_y) {
-		DRM_DEBUG_KMS("Bad CCS x/y (main %d,%d ccs %d,%d) full (main %d,%d ccs %d,%d)\n",
+		drm_dbg_kms(&i915->drm,
+			      "Bad CCS x/y (main %d,%d ccs %d,%d) full (main %d,%d ccs %d,%d)\n",
 			      main_x, main_y,
 			      ccs_x, ccs_y,
 			      intel_fb->normal[main_plane].x,
@@ -12377,10 +12377,8 @@ int intel_plane_atomic_calc_changes(const struct intel_crtc_state *old_crtc_stat
 	 * only combine the results from all planes in the current place?
 	 */
 	if (!is_crtc_enabled) {
-		plane_state->uapi.visible = visible = false;
-		crtc_state->active_planes &= ~BIT(plane->id);
-		crtc_state->data_rate[plane->id] = 0;
-		crtc_state->min_cdclk[plane->id] = 0;
+		intel_plane_set_invisible(crtc_state, plane_state);
+		visible = false;
 	}
 
 	if (!was_visible && !visible)
@@ -12886,16 +12884,17 @@ compute_baseline_pipe_bpp(struct intel_crtc *crtc,
 	return 0;
 }
 
-static void intel_dump_crtc_timings(const struct drm_display_mode *mode)
+static void intel_dump_crtc_timings(struct drm_i915_private *i915,
+				    const struct drm_display_mode *mode)
 {
-	DRM_DEBUG_KMS("crtc timings: %d %d %d %d %d %d %d %d %d, "
-		      "type: 0x%x flags: 0x%x\n",
-		      mode->crtc_clock,
-		      mode->crtc_hdisplay, mode->crtc_hsync_start,
-		      mode->crtc_hsync_end, mode->crtc_htotal,
-		      mode->crtc_vdisplay, mode->crtc_vsync_start,
-		      mode->crtc_vsync_end, mode->crtc_vtotal,
-		      mode->type, mode->flags);
+	drm_dbg_kms(&i915->drm, "crtc timings: %d %d %d %d %d %d %d %d %d, "
+		    "type: 0x%x flags: 0x%x\n",
+		    mode->crtc_clock,
+		    mode->crtc_hdisplay, mode->crtc_hsync_start,
+		    mode->crtc_hsync_end, mode->crtc_htotal,
+		    mode->crtc_vdisplay, mode->crtc_vsync_start,
+		    mode->crtc_vsync_end, mode->crtc_vtotal,
+		    mode->type, mode->flags);
 }
 
 static inline void
@@ -13079,7 +13078,7 @@ static void intel_dump_pipe_config(const struct intel_crtc_state *pipe_config,
 	drm_mode_debug_printmodeline(&pipe_config->hw.mode);
 	drm_dbg_kms(&dev_priv->drm, "adjusted mode:\n");
 	drm_mode_debug_printmodeline(&pipe_config->hw.adjusted_mode);
-	intel_dump_crtc_timings(&pipe_config->hw.adjusted_mode);
+	intel_dump_crtc_timings(dev_priv, &pipe_config->hw.adjusted_mode);
 	drm_dbg_kms(&dev_priv->drm,
 		    "port clock: %d, pipe src size: %dx%d, pixel rate %d\n",
 		    pipe_config->port_clock,

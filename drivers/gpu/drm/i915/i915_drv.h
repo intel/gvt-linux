@@ -92,7 +92,6 @@
 #include "intel_wopcm.h"
 
 #include "i915_gem.h"
-#include "i915_gem_fence_reg.h"
 #include "i915_gem_gtt.h"
 #include "i915_gpu_error.h"
 #include "i915_perf_types.h"
@@ -417,6 +416,7 @@ struct intel_fbc {
 		struct {
 			const struct drm_format_info *format;
 			unsigned int stride;
+			u64 modifier;
 		} fb;
 		u16 gen9_wa_cfb_stride;
 		s8 fence_id;
@@ -540,7 +540,6 @@ struct i915_suspend_saved_registers {
 	u32 saveSWF0[16];
 	u32 saveSWF1[16];
 	u32 saveSWF3[3];
-	u64 saveFENCE[I915_MAX_NUM_FENCES];
 	u32 savePCH_PORT_HOTPLUG;
 	u16 saveGCDGMBUS;
 };
@@ -888,7 +887,6 @@ struct drm_i915_private {
 
 	struct pci_dev *bridge_dev;
 
-	struct intel_engine_cs *engine[I915_NUM_ENGINES];
 	struct rb_root uabi_engines;
 
 	struct resource mch_res;

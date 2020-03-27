@@ -2901,10 +2901,14 @@ static void __submit_queue_imm(struct intel_engine_cs *engine)
 	if (reset_in_progress(execlists))
 		return; /* defer until we restart the engine following reset */
 
-	if (execlists->tasklet.func == execlists_submission_tasklet)
-		__execlists_submission_tasklet(engine);
-	else
-		tasklet_hi_schedule(&execlists->tasklet);
+	/* Hopefully we clear execlists->pending[] to let us through */
+	if (READ_ONCE(execlists->pending[0]) &&
+	    tasklet_trylock(&execlists->tasklet)) {
+		process_csb(engine);
+		tasklet_unlock(&execlists->tasklet);
+	}
+
+	__execlists_submission_tasklet(engine);
 }
 
 static void submit_queue(struct intel_engine_cs *engine,
@@ -3442,7 +3446,8 @@ static int intel_init_workaround_bb(struct intel_engine_cs *engine)
 
 	ret = lrc_setup_wa_ctx(engine);
 	if (ret) {
-		DRM_DEBUG_DRIVER("Failed to setup context WA page: %d\n", ret);
+		drm_dbg(&engine->i915->drm,
+			"Failed to setup context WA page: %d\n", ret);
 		return ret;
 	}
 
@@ -3549,7 +3554,8 @@ static bool unexpected_starting_state(struct intel_engine_cs *engine)
 	bool unexpected = false;
 
 	if (ENGINE_READ_FW(engine, RING_MI_MODE) & STOP_RING) {
-		DRM_DEBUG_DRIVER("STOP_RING still set in RING_MI_MODE\n");
+		drm_dbg(&engine->i915->drm,
+			"STOP_RING still set in RING_MI_MODE\n");
 		unexpected = true;
 	}
 
@@ -4493,7 +4499,7 @@ int intel_execlists_submission_setup(struct intel_engine_cs *engine)
 		 * because we only expect rare glitches but nothing
 		 * critical to prevent us from using GPU
 		 */
-		DRM_ERROR("WA batch buffer initialization failed\n");
+		drm_err(&i915->drm, "WA batch buffer initialization failed\n");
 
 	if (HAS_LOGICAL_RING_ELSQ(i915)) {
 		execlists->submit_reg = uncore->regs +
@@ -4668,7 +4674,8 @@ populate_lr_context(struct intel_context *ce,
 	vaddr = i915_gem_object_pin_map(ctx_obj, I915_MAP_WB);
 	if (IS_ERR(vaddr)) {
 		ret = PTR_ERR(vaddr);
-		DRM_DEBUG_DRIVER("Could not map object pages! (%d)\n", ret);
+		drm_dbg(&engine->i915->drm,
+			"Could not map object pages! (%d)\n", ret);
 		return ret;
 	}
 
@@ -4761,7 +4768,8 @@ static int __execlists_context_alloc(struct intel_context *ce,
 
 	ret = populate_lr_context(ce, ctx_obj, engine, ring);
 	if (ret) {
-		DRM_DEBUG_DRIVER("Failed to populate LRC: %d\n", ret);
+		drm_dbg(&engine->i915->drm,
+			"Failed to populate LRC: %d\n", ret);
 		goto error_ring_free;
 	}
 
@@ -4994,10 +5002,8 @@ static void virtual_submission_tasklet(unsigned long data)
 submit_engine:
 		GEM_BUG_ON(RB_EMPTY_NODE(&node->rb));
 		node->prio = prio;
-		if (first && prio > sibling->execlists.queue_priority_hint) {
-			sibling->execlists.queue_priority_hint = prio;
+		if (first && prio > sibling->execlists.queue_priority_hint)
 			tasklet_hi_schedule(&sibling->execlists.tasklet);
-		}
 
 		spin_unlock(&sibling->active.lock);
 	}

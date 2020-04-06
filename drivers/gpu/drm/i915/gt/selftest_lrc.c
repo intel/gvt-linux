@@ -68,26 +68,41 @@ static void engine_heartbeat_enable(struct intel_engine_cs *engine,
 	engine->props.heartbeat_interval_ms = saved;
 }
 
+static bool is_active(struct i915_request *rq)
+{
+	if (i915_request_is_active(rq))
+		return true;
+
+	if (i915_request_on_hold(rq))
+		return true;
+
+	if (i915_request_started(rq))
+		return true;
+
+	return false;
+}
+
 static int wait_for_submit(struct intel_engine_cs *engine,
 			   struct i915_request *rq,
 			   unsigned long timeout)
 {
 	timeout += jiffies;
 	do {
-		cond_resched();
+		bool done = time_after(jiffies, timeout);
+
+		if (i915_request_completed(rq)) /* that was quick! */
+			return 0;
+
+		/* Wait until the HW has acknowleged the submission (or err) */
 		intel_engine_flush_submission(engine);
-
-		if (READ_ONCE(engine->execlists.pending[0]))
-			continue;
-
-		if (i915_request_is_active(rq))
+		if (!READ_ONCE(engine->execlists.pending[0]) && is_active(rq))
 			return 0;
 
-		if (i915_request_started(rq)) /* that was quick! */
-			return 0;
-	} while (time_before(jiffies, timeout));
+		if (done)
+			return -ETIME;
 
-	return -ETIME;
+		cond_resched();
+	} while (1);
 }
 
 static int wait_for_reset(struct intel_engine_cs *engine,
@@ -634,9 +649,9 @@ static int live_error_interrupt(void *arg)
 						 error_repr(p->error[i]));
 
 				if (!i915_request_started(client[i])) {
-					pr_debug("%s: %s request not stated!\n",
-						 engine->name,
-						 error_repr(p->error[i]));
+					pr_err("%s: %s request not started!\n",
+					       engine->name,
+					       error_repr(p->error[i]));
 					err = -ETIME;
 					goto out;
 				}
@@ -644,9 +659,10 @@ static int live_error_interrupt(void *arg)
 				/* Kick the tasklet to process the error */
 				intel_engine_flush_submission(engine);
 				if (client[i]->fence.error != p->error[i]) {
-					pr_err("%s: %s request completed with wrong error code: %d\n",
+					pr_err("%s: %s request (%s) with wrong error code: %d\n",
 					       engine->name,
 					       error_repr(p->error[i]),
+					       i915_request_completed(client[i]) ? "completed" : "running",
 					       client[i]->fence.error);
 					err = -EINVAL;
 					goto out;
@@ -1228,7 +1244,12 @@ static int live_timeslice_queue(void *arg)
 		if (err)
 			goto err_rq;
 
-		intel_engine_flush_submission(engine);
+		/* Wait until we ack the release_queue and start timeslicing */
+		do {
+			cond_resched();
+			intel_engine_flush_submission(engine);
+		} while (READ_ONCE(engine->execlists.pending[0]));
+
 		if (!READ_ONCE(engine->execlists.timer.expires) &&
 		    !i915_request_completed(rq)) {
 			struct drm_printer p =
@@ -2028,6 +2049,9 @@ static int __cancel_hostile(struct live_preempt_cancel *arg)
 
 	/* Preempt cancel non-preemptible spinner in ELSP0 */
 	if (!IS_ACTIVE(CONFIG_DRM_I915_PREEMPT_TIMEOUT))
+		return 0;
+
+	if (!intel_has_reset_engine(arg->engine->gt))
 		return 0;
 
 	GEM_TRACE("%s(%s)\n", __func__, arg->engine->name);
@@ -5155,7 +5179,6 @@ static int compare_isolation(struct intel_engine_cs *engine,
 					       A[0][x], B[0][x], B[1][x],
 					       poison, lrc[dw + 1]);
 					err = -EINVAL;
-					break;
 				}
 			}
 			dw += 2;
@@ -5294,6 +5317,7 @@ static int live_lrc_isolation(void *arg)
 		0xffffffff,
 		0xffff0000,
 	};
+	int err = 0;
 
 	/*
 	 * Our goal is try and verify that per-context state cannot be
@@ -5304,7 +5328,6 @@ static int live_lrc_isolation(void *arg)
 	 */
 
 	for_each_engine(engine, gt, id) {
-		int err = 0;
 		int i;
 
 		/* Just don't even ask */
@@ -5315,23 +5338,25 @@ static int live_lrc_isolation(void *arg)
 		intel_engine_pm_get(engine);
 		if (engine->pinned_default_state) {
 			for (i = 0; i < ARRAY_SIZE(poison); i++) {
-				err = __lrc_isolation(engine, poison[i]);
-				if (err)
-					break;
+				int result;
 
-				err = __lrc_isolation(engine, ~poison[i]);
-				if (err)
-					break;
+				result = __lrc_isolation(engine, poison[i]);
+				if (result && !err)
+					err = result;
+
+				result = __lrc_isolation(engine, ~poison[i]);
+				if (result && !err)
+					err = result;
 			}
 		}
 		intel_engine_pm_put(engine);
-		if (igt_flush_test(gt->i915))
+		if (igt_flush_test(gt->i915)) {
 			err = -EIO;
-		if (err)
-			return err;
+			break;
+		}
 	}
 
-	return 0;
+	return err;
 }
 
 static void garbage_reset(struct intel_engine_cs *engine,

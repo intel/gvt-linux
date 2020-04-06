@@ -1,0 +1,34 @@
+drm drm-fixes c4b979ebcafe978338cad1df4c77cdc8f84bd51c
+	Merge tag 'amd-drm-fixes-5.6-2020-03-26' of git://people.freedesktop.org/~agd5f/linux into drm-fixes
+drm-misc drm-misc-fixes 83a196773b8bc6702f49df1eddc848180e350340
+	drm/bridge: analogix_dp: Split bind() into probe() and real bind()
+drm-intel drm-intel-fixes 7111951b8d4973bda27ff663f2cf18b663d15b48
+	Linux 5.6
+drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
+	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
+drm drm-next 0e7e6198af28c1573267aba1be33dd0b7fb35691
+	Merge branch 'ttm-transhuge' of git://people.freedesktop.org/~thomash/linux into drm-next
+drm-misc drm-misc-next-fixes b513b0d4563ab70a0a25e7a0ed94afaf88ac28bf
+	drm/virtio: fix OOB in virtio_gpu_object_create
+drm-intel drm-intel-next-fixes 1aaea8476d9f014667d2cb24819f9bcaf3ebb7a4
+	drm/i915/gem: Flush all the reloc_gpu batch
+drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
+	Linux 4.14-rc1
+drm-misc drm-misc-next 61272e47c18cd05c0c5e5a4a2bee736bf37d765d
+	drm/dp_mst: Don't drop NAKs for down responses
+drm-intel drm-intel-next-queued e68296259cf34f5ef86f8db16e036ec6c7b41315
+	drm/i915/gem: Wait until the context is finally retired before releasing engines
+drm-intel drm-intel-next 217a485c8399634abacd2f138b3524d2e78e8aad
+	drm/i915: Update DRIVER_DATE to 20200313
+drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
+	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
+sound-upstream for-linus 73d8c94084341e2895169a0462dbc18167f01683
+	ALSA: usb-audio: Add Pioneer DJ DJM-250MK2 quirk
+sound-upstream for-next 73d8c94084341e2895169a0462dbc18167f01683
+	ALSA: usb-audio: Add Pioneer DJ DJM-250MK2 quirk
+drm-intel topic/core-for-CI 5b39064d452ac9739d59c5183c8a7c90a5982acb
+	rtc/cmos: Protect rtc_lock from interrupts
+drm drm-vmwgfx-coherent 0a6cad5df541108cfd3fbd79eef48eb824c89bdc
+	Merge branch 'vmwgfx-coherent' of git://people.freedesktop.org/~thomash/linux into drm-next
+drm-misc topic/mst-bw-check-fixes-for-airlied 047d4cd2067b028e7bca906c5ce20f4c89b65386
+	drm/dp_mst: Rewrite and fix bandwidth limit checks

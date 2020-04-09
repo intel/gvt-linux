@@ -615,7 +615,14 @@ static const struct debug_obj_descr timer_debug_descr;
 
 static void *timer_debug_hint(void *addr)
 {
-	return ((struct timer_list *) addr)->function;
+	struct timer_list *timer = addr;
+
+	if (timer->function == delayed_work_timer_fn) {
+		struct delayed_work *work = from_timer(work, timer, timer);
+		return work->work.func;
+	}
+
+	return timer->function;
 }
 
 static bool timer_is_static_object(void *addr)

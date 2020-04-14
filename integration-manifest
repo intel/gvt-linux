@@ -1,0 +1,36 @@
+drm drm-fixes 8f3d9f354286745c751374f5f1fcafee6b3f3136
+	Linux 5.7-rc1
+drm-misc drm-misc-fixes a4721ced760684d1776bf31f7925aa41bb3f4846
+	Merge v5.7-rc1 into drm-misc-fixes
+drm-intel drm-intel-fixes bcad588dea538a4fc173d16a90a005536ec8dbf2
+	drm/i915/perf: Do not clear pollin for small user read buffers
+drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
+	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
+drm drm-next 74bd4f0c921cc9cf5f99ba4129dafe35496de6f3
+	Merge tag 'amd-drm-fixes-5.7-2020-04-08' of git://people.freedesktop.org/~agd5f/linux into drm-next
+drm-misc drm-misc-next-fixes 152cce0006abf7e17dfb7dc94896b044bda4e588
+	drm/bridge: analogix_dp: Split bind() into probe() and real bind()
+drm-intel drm-intel-next-fixes 74bd4f0c921cc9cf5f99ba4129dafe35496de6f3
+	Merge tag 'amd-drm-fixes-5.7-2020-04-08' of git://people.freedesktop.org/~agd5f/linux into drm-next
+drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
+	Linux 4.14-rc1
+drm-misc drm-misc-next b97b6a1f6e14a25d1e1ca2a46c5fa3e2ca374e22
+	drm: bridge: adv7511: Extend list of audio sample rates
+drm-intel drm-intel-next-queued f30d3ced9fafa03e4855508929b5b6334907f45e
+	agp/intel: Reinforce the barrier after GTT updates
+drm-intel drm-intel-next 217a485c8399634abacd2f138b3524d2e78e8aad
+	drm/i915: Update DRIVER_DATE to 20200313
+drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
+	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
+sound-upstream for-linus f8e4ae10de43fbb7ce85f79e04eca2988b6b2c40
+	ALSA: hda: Allow setting preallocation again for x86
+sound-upstream for-next d94541fa8ae87f916ac5f6546972afb4a19acbc9
+	Merge branch 'topic/for-5.8' into for-next
+drm-intel topic/core-for-CI d0435a9b45070b945578c093dcd363b6b73a502c
+	cpufreq/pstate: Only mention the BIOS disabling turbo mode once
+drm drm-vmwgfx-coherent 0a6cad5df541108cfd3fbd79eef48eb824c89bdc
+	Merge branch 'vmwgfx-coherent' of git://people.freedesktop.org/~thomash/linux into drm-next
+drm-misc topic/mst-bw-check-fixes-for-airlied 047d4cd2067b028e7bca906c5ce20f4c89b65386
+	drm/dp_mst: Rewrite and fix bandwidth limit checks
+drm-misc topic/phy-compliance 8cdf727119289db3a98835662eb28e1c5ad835f1
+	drm/i915/dp: Program vswing, pre-emphasis, test-pattern

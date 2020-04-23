@@ -1071,8 +1071,10 @@ static int __pci_enable_msi_range(struct pci_dev *dev, int minvec, int maxvec,
 	if (maxvec < minvec)
 		return -ERANGE;
 
-	if (WARN_ON_ONCE(dev->msi_enabled))
+	if (dev->msi_enabled) {
+		pci_info(dev, "can't enable MSI, already enabled\n");
 		return -EINVAL;
+	}
 
 	nvec = pci_msi_vec_count(dev);
 	if (nvec < 0)

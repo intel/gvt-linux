@@ -290,7 +290,7 @@ static void
 shadow_context_descriptor_update(struct intel_context *ce,
 				 struct intel_vgpu_workload *workload)
 {
-	u64 desc = ce->lrc_desc;
+	u64 desc = ce->lrc.desc;
 
 	/*
 	 * Update bits 0-11 of the context descriptor which includes flags
@@ -300,7 +300,7 @@ shadow_context_descriptor_update(struct intel_context *ce,
 	desc |= (u64)workload->ctx_desc.addressing_mode <<
 		GEN8_CTX_ADDRESSING_MODE_SHIFT;
 
-	ce->lrc_desc = desc;
+	ce->lrc.desc = desc;
 }
 
 static int copy_workload_to_ring_buffer(struct intel_vgpu_workload *workload)
@@ -595,10 +595,9 @@ static void release_shadow_batch_buffer(struct intel_vgpu_workload *workload)
 			if (bb->va && !IS_ERR(bb->va))
 				i915_gem_object_unpin_map(bb->obj);
 
-			if (bb->vma && !IS_ERR(bb->vma)) {
+			if (bb->vma && !IS_ERR(bb->vma))
 				i915_vma_unpin(bb->vma);
-				i915_vma_close(bb->vma);
-			}
+
 			i915_gem_object_put(bb->obj);
 		}
 		list_del(&bb->list);

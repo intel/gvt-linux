@@ -43,6 +43,7 @@
 #include <drm/drm_atomic_helper.h>
 #include <drm/drm_ioctl.h>
 #include <drm/drm_irq.h>
+#include <drm/drm_managed.h>
 #include <drm/drm_probe_helper.h>
 
 #include "display/intel_acpi.h"
@@ -888,6 +889,8 @@ i915_driver_create(struct pci_dev *pdev, const struct pci_device_id *ent)
 		return ERR_PTR(err);
 	}
 
+	drmm_add_final_kfree(&i915->drm, i915);
+
 	i915->drm.pdev = pdev;
 	pci_set_drvdata(pdev, i915);
 
@@ -899,17 +902,6 @@ i915_driver_create(struct pci_dev *pdev, const struct pci_device_id *ent)
 	BUG_ON(device_info->gen > BITS_PER_TYPE(device_info->gen_mask));
 
 	return i915;
-}
-
-static void i915_driver_destroy(struct drm_i915_private *i915)
-{
-	struct pci_dev *pdev = i915->drm.pdev;
-
-	drm_dev_fini(&i915->drm);
-	kfree(i915);
-
-	/* And make sure we never chase our dangling pointer from pci_dev */
-	pci_set_drvdata(pdev, NULL);
 }
 
 /**
@@ -993,6 +985,8 @@ int i915_driver_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 
 	i915_welcome_messages(i915);
 
+	i915->do_release = true;
+
 	return 0;
 
 out_cleanup_irq:
@@ -1012,7 +1006,7 @@ out_pci_disable:
 	pci_disable_device(pdev);
 out_fini:
 	i915_probe_error(i915, "Device initialization failed (%d)\n", ret);
-	i915_driver_destroy(i915);
+	drm_dev_put(&i915->drm);
 	return ret;
 }
 
@@ -1052,6 +1046,9 @@ static void i915_driver_release(struct drm_device *dev)
 	struct drm_i915_private *dev_priv = to_i915(dev);
 	struct intel_runtime_pm *rpm = &dev_priv->runtime_pm;
 
+	if (!dev_priv->do_release)
+		return;
+
 	disable_rpm_wakeref_asserts(rpm);
 
 	i915_gem_driver_release(dev_priv);
@@ -1065,7 +1062,6 @@ static void i915_driver_release(struct drm_device *dev)
 	intel_runtime_pm_driver_release(rpm);
 
 	i915_driver_late_release(dev_priv);
-	i915_driver_destroy(dev_priv);
 }
 
 static int i915_driver_open(struct drm_device *dev, struct drm_file *file)
@@ -1286,7 +1282,6 @@ static int i915_drm_resume(struct drm_device *dev)
 		drm_err(&dev_priv->drm, "failed to re-enable GGTT\n");
 
 	i915_ggtt_resume(&dev_priv->ggtt);
-	i915_gem_restore_fences(&dev_priv->ggtt);
 
 	intel_csr_ucode_resume(dev_priv);
 
@@ -1604,8 +1599,6 @@ static int intel_runtime_suspend(struct device *kdev)
 
 		intel_gt_runtime_resume(&dev_priv->gt);
 
-		i915_gem_restore_fences(&dev_priv->ggtt);
-
 		enable_rpm_wakeref_asserts(rpm);
 
 		return ret;
@@ -1685,7 +1678,6 @@ static int intel_runtime_resume(struct device *kdev)
 	 * we can do is to hope that things will still work (and disable RPM).
 	 */
 	intel_gt_runtime_resume(&dev_priv->gt);
-	i915_gem_restore_fences(&dev_priv->ggtt);
 
 	/*
 	 * On VLV/CHV display interrupts are part of the display

@@ -514,6 +514,124 @@ static void hsw_audio_codec_disable(struct intel_encoder *encoder,
 	mutex_unlock(&dev_priv->av_mutex);
 }
 
+static unsigned int calc_hblank_early_prog(struct intel_encoder *encoder,
+					   const struct intel_crtc_state *crtc_state)
+{
+	struct drm_i915_private *i915 = to_i915(encoder->base.dev);
+	unsigned int link_clks_available, link_clks_required;
+	unsigned int tu_data, tu_line, link_clks_active;
+	unsigned int h_active, h_total, hblank_delta, pixel_clk;
+	unsigned int fec_coeff, cdclk, vdsc_bpp;
+	unsigned int link_clk, lanes;
+	unsigned int hblank_rise;
+
+	h_active = crtc_state->hw.adjusted_mode.crtc_hdisplay;
+	h_total = crtc_state->hw.adjusted_mode.crtc_htotal;
+	pixel_clk = crtc_state->hw.adjusted_mode.crtc_clock;
+	vdsc_bpp = crtc_state->dsc.compressed_bpp;
+	cdclk = i915->cdclk.hw.cdclk;
+	/* fec= 0.972261, using rounding multiplier of 1000000 */
+	fec_coeff = 972261;
+	link_clk = crtc_state->port_clock;
+	lanes = crtc_state->lane_count;
+
+	drm_dbg_kms(&i915->drm, "h_active = %u link_clk = %u :"
+		    "lanes = %u vdsc_bpp = %u cdclk = %u\n",
+		    h_active, link_clk, lanes, vdsc_bpp, cdclk);
+
+	if (WARN_ON(!link_clk || !pixel_clk || !lanes || !vdsc_bpp || !cdclk))
+		return 0;
+
+	link_clks_available = (h_total - h_active) * link_clk / pixel_clk - 28;
+	link_clks_required = DIV_ROUND_UP(192000 * h_total, 1000 * pixel_clk) * (48 / lanes + 2);
+
+	if (link_clks_available > link_clks_required)
+		hblank_delta = 32;
+	else
+		hblank_delta = DIV64_U64_ROUND_UP(mul_u32_u32(5 * (link_clk + cdclk), pixel_clk),
+						  mul_u32_u32(link_clk, cdclk));
+
+	tu_data = div64_u64(mul_u32_u32(pixel_clk * vdsc_bpp * 8, 1000000),
+			    mul_u32_u32(link_clk * lanes, fec_coeff));
+	tu_line = div64_u64(h_active * mul_u32_u32(link_clk, fec_coeff),
+			    mul_u32_u32(64 * pixel_clk, 1000000));
+	link_clks_active  = (tu_line - 1) * 64 + tu_data;
+
+	hblank_rise = (link_clks_active + 6 * DIV_ROUND_UP(link_clks_active, 250) + 4) * pixel_clk / link_clk;
+
+	return h_active - hblank_rise + hblank_delta;
+}
+
+static unsigned int calc_samples_room(const struct intel_crtc_state *crtc_state)
+{
+	unsigned int h_active, h_total, pixel_clk;
+	unsigned int link_clk, lanes;
+
+	h_active = crtc_state->hw.adjusted_mode.hdisplay;
+	h_total = crtc_state->hw.adjusted_mode.htotal;
+	pixel_clk = crtc_state->hw.adjusted_mode.clock;
+	link_clk = crtc_state->port_clock;
+	lanes = crtc_state->lane_count;
+
+	return ((h_total - h_active) * link_clk - 12 * pixel_clk) /
+		(pixel_clk * (48 / lanes + 2));
+}
+
+static void enable_audio_dsc_wa(struct intel_encoder *encoder,
+				const struct intel_crtc_state *crtc_state)
+{
+	struct drm_i915_private *i915 = to_i915(encoder->base.dev);
+	struct intel_crtc *crtc = to_intel_crtc(crtc_state->uapi.crtc);
+	enum pipe pipe = crtc->pipe;
+	unsigned int hblank_early_prog, samples_room;
+	unsigned int val;
+
+	if (INTEL_GEN(i915) < 11)
+		return;
+
+	val = intel_de_read(i915, AUD_CONFIG_BE);
+
+	if (INTEL_GEN(i915) == 11)
+		val |= HBLANK_EARLY_ENABLE_ICL(pipe);
+	else if (INTEL_GEN(i915) >= 12)
+		val |= HBLANK_EARLY_ENABLE_TGL(pipe);
+
+	if (crtc_state->dsc.compression_enable &&
+	    (crtc_state->hw.adjusted_mode.hdisplay >= 3840 &&
+	    crtc_state->hw.adjusted_mode.vdisplay >= 2160)) {
+		/* Get hblank early enable value required */
+		hblank_early_prog = calc_hblank_early_prog(encoder, crtc_state);
+		if (hblank_early_prog < 32) {
+			val &= ~HBLANK_START_COUNT_MASK(pipe);
+			val |= HBLANK_START_COUNT(pipe, HBLANK_START_COUNT_32);
+		} else if (hblank_early_prog < 64) {
+			val &= ~HBLANK_START_COUNT_MASK(pipe);
+			val |= HBLANK_START_COUNT(pipe, HBLANK_START_COUNT_64);
+		} else if (hblank_early_prog < 96) {
+			val &= ~HBLANK_START_COUNT_MASK(pipe);
+			val |= HBLANK_START_COUNT(pipe, HBLANK_START_COUNT_96);
+		} else {
+			val &= ~HBLANK_START_COUNT_MASK(pipe);
+			val |= HBLANK_START_COUNT(pipe, HBLANK_START_COUNT_128);
+		}
+
+		/* Get samples room value required */
+		samples_room = calc_samples_room(crtc_state);
+		if (samples_room < 3) {
+			val &= ~NUMBER_SAMPLES_PER_LINE_MASK(pipe);
+			val |= NUMBER_SAMPLES_PER_LINE(pipe, samples_room);
+		} else {
+			/* Program 0 i.e "All Samples available in buffer" */
+			val &= ~NUMBER_SAMPLES_PER_LINE_MASK(pipe);
+			val |= NUMBER_SAMPLES_PER_LINE(pipe, 0x0);
+		}
+	}
+
+	intel_de_write(i915, AUD_CONFIG_BE, val);
+}
+
+#undef ROUNDING_FACTOR
+
 static void hsw_audio_codec_enable(struct intel_encoder *encoder,
 				   const struct intel_crtc_state *crtc_state,
 				   const struct drm_connector_state *conn_state)
@@ -530,6 +648,10 @@ static void hsw_audio_codec_enable(struct intel_encoder *encoder,
 		     transcoder_name(cpu_transcoder), drm_eld_size(eld));
 
 	mutex_lock(&dev_priv->av_mutex);
+
+	/* Enable Audio WA for 4k DSC usecases */
+	if (intel_crtc_has_type(crtc_state, INTEL_OUTPUT_DP))
+		enable_audio_dsc_wa(encoder, crtc_state);
 
 	/* Enable audio presence detect, invalidate ELD */
 	tmp = intel_de_read(dev_priv, HSW_AUD_PIN_ELD_CP_VLD);
@@ -1138,6 +1260,10 @@ static void i915_audio_component_unbind(struct device *i915_kdev,
 	drm_modeset_unlock_all(&dev_priv->drm);
 
 	device_link_remove(hda_kdev, i915_kdev);
+
+	if (dev_priv->audio_power_refcount)
+		drm_err(&dev_priv->drm, "audio power refcount %d after unbind\n",
+			dev_priv->audio_power_refcount);
 }
 
 static const struct component_ops i915_audio_component_bind_ops = {

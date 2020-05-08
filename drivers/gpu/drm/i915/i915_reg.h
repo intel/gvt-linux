@@ -561,6 +561,8 @@ static inline bool i915_mmio_reg_valid(i915_reg_t reg)
  * Registers used only by the command parser
  */
 #define BCS_SWCTRL _MMIO(0x22200)
+#define   BCS_SRC_Y REG_BIT(0)
+#define   BCS_DST_Y REG_BIT(1)
 
 /* There are 16 GPR registers */
 #define BCS_GPR(n)	_MMIO(0x22600 + (n) * 8)
@@ -2555,6 +2557,14 @@ static inline bool i915_mmio_reg_valid(i915_reg_t reg)
 #define GEN10_PAT_INDEX(index)	_MMIO(0x40e0 + (index) * 4)
 #define GEN12_PAT_INDEX(index)	_MMIO(0x4800 + (index) * 4)
 #define BSD_HWS_PGA_GEN7	_MMIO(0x04180)
+#define GEN12_GFX_CCS_AUX_NV	_MMIO(0x4208)
+#define GEN12_VD0_AUX_NV	_MMIO(0x4218)
+#define GEN12_VD1_AUX_NV	_MMIO(0x4228)
+#define GEN12_VD2_AUX_NV	_MMIO(0x4298)
+#define GEN12_VD3_AUX_NV	_MMIO(0x42A8)
+#define GEN12_VE0_AUX_NV	_MMIO(0x4238)
+#define GEN12_VE1_AUX_NV	_MMIO(0x42B8)
+#define   AUX_INV		REG_BIT(0)
 #define BLT_HWS_PGA_GEN7	_MMIO(0x04280)
 #define VEBOX_HWS_PGA_GEN7	_MMIO(0x04380)
 #define RING_ACTHD(base)	_MMIO((base) + 0x74)
@@ -2657,6 +2667,7 @@ static inline bool i915_mmio_reg_valid(i915_reg_t reg)
 #define RING_DMA_FADD_UDW(base)	_MMIO((base) + 0x60) /* gen8+ */
 #define RING_INSTPM(base)	_MMIO((base) + 0xc0)
 #define RING_MI_MODE(base)	_MMIO((base) + 0x9c)
+#define RING_CMD_BUF_CCTL(base) _MMIO((base) + 0x84)
 #define INSTPS		_MMIO(0x2070) /* 965+ only */
 #define GEN4_INSTDONE1	_MMIO(0x207c) /* 965+ only, aka INSTDONE_2 on SNB */
 #define ACTHD_I965	_MMIO(0x2074)
@@ -4013,31 +4024,7 @@ static inline bool i915_mmio_reg_valid(i915_reg_t reg)
 #define GEN6_RP_STATE_LIMITS	_MMIO(MCHBAR_MIRROR_BASE_SNB + 0x5994)
 #define GEN6_RP_STATE_CAP	_MMIO(MCHBAR_MIRROR_BASE_SNB + 0x5998)
 #define BXT_RP_STATE_CAP        _MMIO(0x138170)
-
-/*
- * Make these a multiple of magic 25 to avoid SNB (eg. Dell XPS
- * 8300) freezing up around GPU hangs. Looks as if even
- * scheduling/timer interrupts start misbehaving if the RPS
- * EI/thresholds are "bad", leading to a very sluggish or even
- * frozen machine.
- */
-#define INTERVAL_1_28_US(us)	roundup(((us) * 100) >> 7, 25)
-#define INTERVAL_1_33_US(us)	(((us) * 3)   >> 2)
-#define INTERVAL_0_833_US(us)	(((us) * 6) / 5)
-#define GT_INTERVAL_FROM_US(dev_priv, us) (INTEL_GEN(dev_priv) >= 9 ? \
-				(IS_GEN9_LP(dev_priv) ? \
-				INTERVAL_0_833_US(us) : \
-				INTERVAL_1_33_US(us)) : \
-				INTERVAL_1_28_US(us))
-
-#define INTERVAL_1_28_TO_US(interval)  (((interval) << 7) / 100)
-#define INTERVAL_1_33_TO_US(interval)  (((interval) << 2) / 3)
-#define INTERVAL_0_833_TO_US(interval) (((interval) * 5)  / 6)
-#define GT_PM_INTERVAL_TO_US(dev_priv, interval) (INTEL_GEN(dev_priv) >= 9 ? \
-                           (IS_GEN9_LP(dev_priv) ? \
-                           INTERVAL_0_833_TO_US(interval) : \
-                           INTERVAL_1_33_TO_US(interval)) : \
-                           INTERVAL_1_28_TO_US(interval))
+#define GEN9_RP_STATE_LIMITS	_MMIO(0x138148)
 
 /*
  * Logical Context regs
@@ -8594,6 +8581,7 @@ enum {
 #define  FDI_BC_BIFURCATION_SELECT	(1 << 12)
 #define  CHASSIS_CLK_REQ_DURATION_MASK	(0xf << 8)
 #define  CHASSIS_CLK_REQ_DURATION(x)	((x) << 8)
+#define  SBCLK_RUN_REFCLK_DIS		(1 << 7)
 #define  SPT_PWM_GRANULARITY		(1 << 0)
 #define SOUTH_CHICKEN2		_MMIO(0xc2004)
 #define  FDI_MPHY_IOSFSB_RESET_STATUS	(1 << 13)
@@ -9085,6 +9073,7 @@ enum {
 #define     GEN7_PCODE_ILLEGAL_DATA		0x3
 #define     GEN11_PCODE_ILLEGAL_SUBCOMMAND	0x4
 #define     GEN11_PCODE_LOCKED			0x6
+#define     GEN11_PCODE_REJECTED		0x11
 #define     GEN7_PCODE_MIN_FREQ_TABLE_GT_RATIO_OUT_OF_RANGE 0x10
 #define   GEN6_PCODE_WRITE_RC6VIDS		0x4
 #define   GEN6_PCODE_READ_RC6VIDS		0x5
@@ -9106,10 +9095,18 @@ enum {
 #define   ICL_PCODE_MEM_SUBSYSYSTEM_INFO	0xd
 #define     ICL_PCODE_MEM_SS_READ_GLOBAL_INFO	(0x0 << 8)
 #define     ICL_PCODE_MEM_SS_READ_QGV_POINT_INFO(point)	(((point) << 16) | (0x1 << 8))
+#define   ICL_PCODE_SAGV_DE_MEM_SS_CONFIG	0xe
+#define     ICL_PCODE_POINTS_RESTRICTED		0x0
+#define     ICL_PCODE_POINTS_RESTRICTED_MASK	0x1
 #define   GEN6_PCODE_READ_D_COMP		0x10
 #define   GEN6_PCODE_WRITE_D_COMP		0x11
+#define   ICL_PCODE_EXIT_TCCOLD			0x12
 #define   HSW_PCODE_DE_WRITE_FREQ_REQ		0x17
 #define   DISPLAY_IPS_CONTROL			0x19
+#define   TGL_PCODE_TCCOLD			0x26
+#define     TGL_PCODE_EXIT_TCCOLD_DATA_L_EXIT_FAILED	REG_BIT(0)
+#define     TGL_PCODE_EXIT_TCCOLD_DATA_H_BLOCK_REQ	0
+#define     TGL_PCODE_EXIT_TCCOLD_DATA_H_UNBLOCK_REQ	REG_BIT(0)
             /* See also IPS_CTL */
 #define     IPS_PCODE_CONTROL			(1 << 30)
 #define   HSW_PCODE_DYNAMIC_DUTY_CYCLE_CONTROL	0x1A
@@ -9395,6 +9392,22 @@ enum {
 #define AUD_FREQ_CNTRL			_MMIO(0x65900)
 #define AUD_PIN_BUF_CTL		_MMIO(0x48414)
 #define   AUD_PIN_BUF_ENABLE		REG_BIT(31)
+
+/* Display Audio Config Reg */
+#define AUD_CONFIG_BE			_MMIO(0x65ef0)
+#define HBLANK_EARLY_ENABLE_ICL(pipe)		(0x1 << (20 - (pipe)))
+#define HBLANK_EARLY_ENABLE_TGL(pipe)		(0x1 << (24 + (pipe)))
+#define HBLANK_START_COUNT_MASK(pipe)		(0x7 << (3 + ((pipe) * 6)))
+#define HBLANK_START_COUNT(pipe, val)		(((val) & 0x7) << (3 + ((pipe)) * 6))
+#define NUMBER_SAMPLES_PER_LINE_MASK(pipe)	(0x3 << ((pipe) * 6))
+#define NUMBER_SAMPLES_PER_LINE(pipe, val)	(((val) & 0x3) << ((pipe) * 6))
+
+#define HBLANK_START_COUNT_8	0
+#define HBLANK_START_COUNT_16	1
+#define HBLANK_START_COUNT_32	2
+#define HBLANK_START_COUNT_64	3
+#define HBLANK_START_COUNT_96	4
+#define HBLANK_START_COUNT_128	5
 
 /*
  * HSW - ICL power wells

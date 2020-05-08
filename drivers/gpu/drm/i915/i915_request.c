@@ -23,6 +23,7 @@
  */
 
 #include <linux/dma-fence-array.h>
+#include <linux/dma-fence-chain.h>
 #include <linux/irq_work.h>
 #include <linux/prefetch.h>
 #include <linux/sched.h>
@@ -1002,6 +1003,15 @@ emit_semaphore_wait(struct i915_request *to,
 	if (!rcu_access_pointer(from->hwsp_cacheline))
 		goto await_fence;
 
+	/*
+	 * If this or its dependents are waiting on an external fence
+	 * that may fail catastrophically, then we want to avoid using
+	 * sempahores as they bypass the fence signaling metadata, and we
+	 * lose the fence->error propagation.
+	 */
+	if (from->sched.flags & I915_SCHED_HAS_EXTERNAL_CHAIN)
+		goto await_fence;
+
 	/* Just emit the first semaphore we see as request space is limited. */
 	if (already_busywaiting(to) & mask)
 		goto await_fence;
@@ -1034,11 +1044,15 @@ i915_request_await_request(struct i915_request *to, struct i915_request *from)
 	GEM_BUG_ON(to == from);
 	GEM_BUG_ON(to->timeline == from->timeline);
 
-	if (i915_request_completed(from))
+	if (i915_request_completed(from)) {
+		i915_sw_fence_set_error_once(&to->submit, from->fence.error);
 		return 0;
+	}
 
 	if (to->engine->schedule) {
-		ret = i915_sched_node_add_dependency(&to->sched, &from->sched);
+		ret = i915_sched_node_add_dependency(&to->sched,
+						     &from->sched,
+						     I915_DEPENDENCY_EXTERNAL);
 		if (ret < 0)
 			return ret;
 	}
@@ -1060,7 +1074,58 @@ i915_request_await_request(struct i915_request *to, struct i915_request *from)
 			return ret;
 	}
 
+	if (from->sched.flags & I915_SCHED_HAS_EXTERNAL_CHAIN)
+		to->sched.flags |= I915_SCHED_HAS_EXTERNAL_CHAIN;
+
 	return 0;
+}
+
+static void mark_external(struct i915_request *rq)
+{
+	/*
+	 * The downside of using semaphores is that we lose metadata passing
+	 * along the signaling chain. This is particularly nasty when we
+	 * need to pass along a fatal error such as EFAULT or EDEADLK. For
+	 * fatal errors we want to scrub the request before it is executed,
+	 * which means that we cannot preload the request onto HW and have
+	 * it wait upon a semaphore.
+	 */
+	rq->sched.flags |= I915_SCHED_HAS_EXTERNAL_CHAIN;
+}
+
+static int
+__i915_request_await_external(struct i915_request *rq, struct dma_fence *fence)
+{
+	mark_external(rq);
+	return i915_sw_fence_await_dma_fence(&rq->submit, fence,
+					     fence->context ? I915_FENCE_TIMEOUT : 0,
+					     I915_FENCE_GFP);
+}
+
+static int
+i915_request_await_external(struct i915_request *rq, struct dma_fence *fence)
+{
+	struct dma_fence *iter;
+	int err = 0;
+
+	if (!to_dma_fence_chain(fence))
+		return __i915_request_await_external(rq, fence);
+
+	dma_fence_chain_for_each(iter, fence) {
+		struct dma_fence_chain *chain = to_dma_fence_chain(iter);
+
+		if (!dma_fence_is_i915(chain->fence)) {
+			err = __i915_request_await_external(rq, iter);
+			break;
+		}
+
+		err = i915_request_await_dma_fence(rq, chain->fence);
+		if (err < 0)
+			break;
+	}
+
+	dma_fence_put(iter);
+	return err;
 }
 
 int
@@ -1110,9 +1175,7 @@ i915_request_await_dma_fence(struct i915_request *rq, struct dma_fence *fence)
 		if (dma_fence_is_i915(fence))
 			ret = i915_request_await_request(rq, to_request(fence));
 		else
-			ret = i915_sw_fence_await_dma_fence(&rq->submit, fence,
-							    fence->context ? I915_FENCE_TIMEOUT : 0,
-							    I915_FENCE_GFP);
+			ret = i915_request_await_external(rq, fence);
 		if (ret < 0)
 			return ret;
 
@@ -1200,7 +1263,9 @@ __i915_request_await_execution(struct i915_request *to,
 
 	/* Couple the dependency tree for PI on this exposed to->fence */
 	if (to->engine->schedule) {
-		err = i915_sched_node_add_dependency(&to->sched, &from->sched);
+		err = i915_sched_node_add_dependency(&to->sched,
+						     &from->sched,
+						     I915_DEPENDENCY_WEAK);
 		if (err < 0)
 			return err;
 	}
@@ -1236,6 +1301,9 @@ i915_request_await_execution(struct i915_request *rq,
 			continue;
 		}
 
+		if (fence->context == rq->fence.context)
+			continue;
+
 		/*
 		 * We don't squash repeated fence dependencies here as we
 		 * want to run our callback in all cases.
@@ -1246,9 +1314,7 @@ i915_request_await_execution(struct i915_request *rq,
 							     to_request(fence),
 							     hook);
 		else
-			ret = i915_sw_fence_await_dma_fence(&rq->submit, fence,
-							    I915_FENCE_TIMEOUT,
-							    GFP_KERNEL);
+			ret = i915_request_await_external(rq, fence);
 		if (ret < 0)
 			return ret;
 	} while (--nchild);
@@ -1458,8 +1524,6 @@ void i915_request_add(struct i915_request *rq)
 
 	if (!(rq->sched.flags & I915_SCHED_HAS_SEMAPHORE_CHAIN))
 		attr.priority |= I915_PRIORITY_NOSEMAPHORE;
-	if (list_empty(&rq->sched.signalers_list))
-		attr.priority |= I915_PRIORITY_WAIT;
 
 	__i915_request_queue(rq, &attr);
 
@@ -1645,7 +1709,6 @@ long i915_request_wait(struct i915_request *rq,
 	if (flags & I915_WAIT_PRIORITY) {
 		if (!i915_request_started(rq) && INTEL_GEN(rq->i915) >= 6)
 			intel_rps_boost(rq);
-		i915_schedule_bump_priority(rq, I915_PRIORITY_WAIT);
 	}
 
 	wait.tsk = current;

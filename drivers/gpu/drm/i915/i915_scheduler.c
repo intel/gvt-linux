@@ -174,7 +174,7 @@ sched_lock_engine(const struct i915_sched_node *node,
 
 static inline int rq_prio(const struct i915_request *rq)
 {
-	return rq->sched.attr.priority | __NO_PREEMPTION;
+	return rq->sched.attr.priority;
 }
 
 static inline bool need_preempt(int prio, int active)
@@ -443,16 +443,6 @@ bool __i915_sched_node_add_dependency(struct i915_sched_node *node,
 		list_add_rcu(&dep->signal_link, &node->signalers_list);
 		list_add_rcu(&dep->wait_link, &signal->waiters_list);
 
-		/*
-		 * As we do not allow WAIT to preempt inflight requests,
-		 * once we have executed a request, along with triggering
-		 * any execution callbacks, we must preserve its ordering
-		 * within the non-preemptible FIFO.
-		 */
-		BUILD_BUG_ON(__NO_PREEMPTION & ~I915_PRIORITY_MASK);
-		if (flags & I915_DEPENDENCY_EXTERNAL)
-			__bump_priority(signal, __NO_PREEMPTION);
-
 		ret = true;
 	}
 
@@ -462,7 +452,8 @@ bool __i915_sched_node_add_dependency(struct i915_sched_node *node,
 }
 
 int i915_sched_node_add_dependency(struct i915_sched_node *node,
-				   struct i915_sched_node *signal)
+				   struct i915_sched_node *signal,
+				   unsigned long flags)
 {
 	struct i915_dependency *dep;
 
@@ -473,8 +464,7 @@ int i915_sched_node_add_dependency(struct i915_sched_node *node,
 	local_bh_disable();
 
 	if (!__i915_sched_node_add_dependency(node, signal, dep,
-					      I915_DEPENDENCY_EXTERNAL |
-					      I915_DEPENDENCY_ALLOC))
+					      flags | I915_DEPENDENCY_ALLOC))
 		i915_dependency_free(dep);
 
 	local_bh_enable(); /* kick submission tasklet */

@@ -55,7 +55,7 @@
 
 #define MCP_DISABLE_ABM_IMMEDIATELY 255
 
-static bool dce_abm_set_pipe(struct abm *abm, uint32_t controller_id)
+static bool dce_abm_set_pipe(struct abm *abm, uint32_t controller_id, uint32_t panel_inst)
 {
 	struct dce_abm *abm_dce = TO_DCE_ABM(abm);
 	uint32_t rampingBoundary = 0xFFFF;
@@ -201,7 +201,8 @@ static void dmcu_set_backlight_level(
 	struct dce_abm *abm_dce,
 	uint32_t backlight_pwm_u16_16,
 	uint32_t frame_ramp,
-	uint32_t controller_id)
+	uint32_t controller_id,
+	uint32_t panel_id)
 {
 	unsigned int backlight_8_bit = 0;
 	uint32_t s2;
@@ -213,7 +214,7 @@ static void dmcu_set_backlight_level(
 		// Take MSB of fractional part since backlight is not max
 		backlight_8_bit = (backlight_pwm_u16_16 >> 8) & 0xFF;
 
-	dce_abm_set_pipe(&abm_dce->base, controller_id);
+	dce_abm_set_pipe(&abm_dce->base, controller_id, panel_id);
 
 	/* waitDMCUReadyForCmd */
 	REG_WAIT(MASTER_COMM_CNTL_REG, MASTER_COMM_INTERRUPT,
@@ -331,14 +332,14 @@ static bool dce_abm_set_level(struct abm *abm, uint32_t level)
 	return true;
 }
 
-static bool dce_abm_immediate_disable(struct abm *abm)
+static bool dce_abm_immediate_disable(struct abm *abm, uint32_t panel_inst)
 {
 	struct dce_abm *abm_dce = TO_DCE_ABM(abm);
 
 	if (abm->dmcu_is_running == false)
 		return true;
 
-	dce_abm_set_pipe(abm, MCP_DISABLE_ABM_IMMEDIATELY);
+	dce_abm_set_pipe(abm, MCP_DISABLE_ABM_IMMEDIATELY, panel_inst);
 
 	abm->stored_backlight_registers.BL_PWM_CNTL =
 		REG_READ(BL_PWM_CNTL);
@@ -420,7 +421,8 @@ static bool dce_abm_set_backlight_level_pwm(
 		unsigned int backlight_pwm_u16_16,
 		unsigned int frame_ramp,
 		unsigned int controller_id,
-		bool use_smooth_brightness)
+		unsigned int panel_inst,
+		bool fw_set_brightness)
 {
 	struct dce_abm *abm_dce = TO_DCE_ABM(abm);
 
@@ -428,11 +430,12 @@ static bool dce_abm_set_backlight_level_pwm(
 			backlight_pwm_u16_16, backlight_pwm_u16_16);
 
 	/* If DMCU is in reset state, DMCU is uninitialized */
-	if (use_smooth_brightness)
+	if (fw_set_brightness)
 		dmcu_set_backlight_level(abm_dce,
 				backlight_pwm_u16_16,
 				frame_ramp,
-				controller_id);
+				controller_id,
+				panel_inst);
 	else
 		driver_set_backlight_level(abm_dce, backlight_pwm_u16_16);
 
@@ -447,6 +450,7 @@ static const struct abm_funcs dce_funcs = {
 	.set_backlight_level_pwm = dce_abm_set_backlight_level_pwm,
 	.get_current_backlight = dce_abm_get_current_backlight,
 	.get_target_backlight = dce_abm_get_target_backlight,
+	.init_abm_config = NULL,
 	.set_abm_immediate_disable = dce_abm_immediate_disable
 };
 

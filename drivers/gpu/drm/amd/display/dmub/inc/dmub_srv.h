@@ -75,7 +75,6 @@ extern "C" {
 
 /* Forward declarations */
 struct dmub_srv;
-struct dmub_cmd_header;
 struct dmub_srv_common_regs;
 
 /* enum dmub_status - return code for dmcub functions */
@@ -151,6 +150,7 @@ struct dmub_srv_region_params {
 	uint32_t inst_const_size;
 	uint32_t bss_data_size;
 	uint32_t vbios_size;
+	const uint8_t *fw_inst_const;
 	const uint8_t *fw_bss_data;
 };
 
@@ -457,7 +457,7 @@ enum dmub_status dmub_srv_hw_reset(struct dmub_srv *dmub);
  *   DMUB_STATUS_INVALID - unspecified error
  */
 enum dmub_status dmub_srv_cmd_queue(struct dmub_srv *dmub,
-				    const struct dmub_cmd_header *cmd);
+				    const union dmub_rb_cmd *cmd);
 
 /**
  * dmub_srv_cmd_execute() - Executes a queued sequence to the dmub
@@ -564,6 +564,16 @@ dmub_srv_send_gpint_command(struct dmub_srv *dmub,
  */
 enum dmub_status dmub_srv_get_gpint_response(struct dmub_srv *dmub,
 					     uint32_t *response);
+
+/**
+ * dmub_flush_buffer_mem() - Read back entire frame buffer region.
+ * This ensures that the write from x86 has been flushed and will not
+ * hang the DMCUB.
+ * @fb: frame buffer to flush
+ *
+ * Can be called after software initialization.
+ */
+void dmub_flush_buffer_mem(const struct dmub_fb *fb);
 
 #if defined(__cplusplus)
 }

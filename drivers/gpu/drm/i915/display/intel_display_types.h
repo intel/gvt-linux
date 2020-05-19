@@ -479,16 +479,6 @@ struct intel_atomic_state {
 
 	bool dpll_set, modeset;
 
-	/*
-	 * Does this transaction change the pipes that are active?  This mask
-	 * tracks which CRTC's have changed their active state at the end of
-	 * the transaction (not counting the temporary disable during modesets).
-	 * This mask should only be non-zero when intel_state->modeset is true,
-	 * but the converse is not necessarily true; simply changing a mode may
-	 * not flip the final active status of any CRTC's
-	 */
-	u8 active_pipe_changes;
-
 	u8 active_pipes;
 
 	struct intel_shared_dpll_state shared_dpll[I915_NUM_PLLS];
@@ -505,9 +495,6 @@ struct intel_atomic_state {
 	 * active_pipes
 	 */
 	bool global_state_changed;
-
-	/* Number of enabled DBuf slices */
-	u8 enabled_dbuf_slices_mask;
 
 	struct i915_sw_fence commit_ready;
 
@@ -688,11 +675,13 @@ struct skl_plane_wm {
 	struct skl_wm_level wm[8];
 	struct skl_wm_level uv_wm[8];
 	struct skl_wm_level trans_wm;
+	struct skl_wm_level sagv_wm0;
 	bool is_planar;
 };
 
 struct skl_pipe_wm {
 	struct skl_plane_wm planes[I915_MAX_PLANES];
+	bool use_sagv_wm;
 };
 
 enum vlv_wm_level {
@@ -1424,6 +1413,7 @@ struct intel_digital_port {
 			       const struct drm_connector_state *conn_state);
 	u32 (*infoframes_enabled)(struct intel_encoder *encoder,
 				  const struct intel_crtc_state *pipe_config);
+	bool (*connected)(struct intel_encoder *encoder);
 };
 
 struct intel_dp_mst_encoder {

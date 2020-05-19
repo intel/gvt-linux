@@ -1760,7 +1760,8 @@ static void defer_active(struct intel_engine_cs *engine)
 
 static bool
 need_timeslice(const struct intel_engine_cs *engine,
-	       const struct i915_request *rq)
+	       const struct i915_request *rq,
+	       const struct rb_node *rb)
 {
 	int hint;
 
@@ -1768,6 +1769,24 @@ need_timeslice(const struct intel_engine_cs *engine,
 		return false;
 
 	hint = engine->execlists.queue_priority_hint;
+
+	if (rb) {
+		const struct virtual_engine *ve =
+			rb_entry(rb, typeof(*ve), nodes[engine->id].rb);
+		const struct intel_engine_cs *inflight =
+			intel_context_inflight(&ve->context);
+
+		if (!inflight || inflight == engine) {
+			struct i915_request *next;
+
+			rcu_read_lock();
+			next = READ_ONCE(ve->request);
+			if (next)
+				hint = max(hint, rq_prio(next));
+			rcu_read_unlock();
+		}
+	}
+
 	if (!list_is_last(&rq->sched.link, &engine->active.requests))
 		hint = max(hint, rq_prio(list_next_entry(rq, sched.link)));
 
@@ -1837,10 +1856,9 @@ static void set_timeslice(struct intel_engine_cs *engine)
 	set_timer_ms(&engine->execlists.timer, active_timeslice(engine));
 }
 
-static void start_timeslice(struct intel_engine_cs *engine)
+static void start_timeslice(struct intel_engine_cs *engine, int prio)
 {
 	struct intel_engine_execlists *execlists = &engine->execlists;
-	int prio = queue_prio(execlists);
 
 	WRITE_ONCE(execlists->switch_priority_hint, prio);
 	if (prio == INT_MIN)
@@ -1976,7 +1994,7 @@ static void execlists_dequeue(struct intel_engine_cs *engine)
 			__unwind_incomplete_requests(engine);
 
 			last = NULL;
-		} else if (need_timeslice(engine, last) &&
+		} else if (need_timeslice(engine, last, rb) &&
 			   timeslice_expired(execlists, last)) {
 			ENGINE_TRACE(engine,
 				     "expired last=%llx:%lld, prio=%d, hint=%d, yield?=%s\n",
@@ -2019,7 +2037,7 @@ static void execlists_dequeue(struct intel_engine_cs *engine)
 				 * Even if ELSP[1] is occupied and not worthy
 				 * of timeslices, our queue might be.
 				 */
-				start_timeslice(engine);
+				start_timeslice(engine, queue_prio(execlists));
 				return;
 			}
 		}
@@ -2054,7 +2072,7 @@ static void execlists_dequeue(struct intel_engine_cs *engine)
 
 			if (last && !can_merge_rq(last, rq)) {
 				spin_unlock(&ve->base.active.lock);
-				start_timeslice(engine);
+				start_timeslice(engine, rq_prio(rq));
 				return; /* leave this for another sibling */
 			}
 

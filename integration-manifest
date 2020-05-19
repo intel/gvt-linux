@@ -1,34 +1,12 @@
-drm drm-fixes 1d2a1eb13610a9c8ec95f6f1e02cef55000f28e3
-	Merge tag 'drm-misc-fixes-2020-05-14' of git://anongit.freedesktop.org/drm/drm-misc into drm-fixes
-drm-misc drm-misc-fixes abf56fadf0e208abfb13ad1ac0094416058da0ad
-	gpu/drm: Ingenic: Fix opaque pointer casted to wrong type
-drm-intel drm-intel-fixes 955da9d77435acac066139e9d7f7723ce7204a1d
-	drm/i915: Handle idling during i915_gem_evict_something busy loops
-drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
-	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
-drm drm-next 1493bddcca4d601ca6f3dd27f2226f37a0f39732
-	Merge tag 'drm-misc-next-2020-05-14' of git://anongit.freedesktop.org/drm/drm-misc into drm-next
-drm-misc drm-misc-next-fixes 152cce0006abf7e17dfb7dc94896b044bda4e588
-	drm/bridge: analogix_dp: Split bind() into probe() and real bind()
-drm-intel drm-intel-next-fixes 74bd4f0c921cc9cf5f99ba4129dafe35496de6f3
-	Merge tag 'amd-drm-fixes-5.7-2020-04-08' of git://people.freedesktop.org/~agd5f/linux into drm-next
-drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
-	Linux 4.14-rc1
-drm-misc drm-misc-next 913ec479bb5cc27f99f24d5fd111b3ef29a4deb9
-	drm/mgag200: Replace VRAM helpers with SHMEM helpers
-drm-intel drm-intel-next-queued cba597ac45170469a9a60c06d20d64b5af5dc48c
-	drm/i915/display: Return error from dbuf allocation failure
-drm-intel drm-intel-next 3a36aa237e4ed04553c0998cf5f47eda3e206e4f
-	drm/i915: Update DRIVER_DATE to 20200515
-drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
-	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
-sound-upstream for-linus 259eb82475316672a5d682a94dc8bdd53cf8d8c3
-	ALSA: hda/realtek - Add more fixup entries for Clevo machines
-sound-upstream for-next b9f2d35f05308813c4c887d5c530004f01e1829c
-	ALSA: hda: Unexport some local helper functions
-drm-intel topic/core-for-CI 26145957338c07613fa603bbec798034aa8b56dc
-	perf/core: Only copy-to-user after completely unlocking all locks, v3.
-drm drm-vmwgfx-coherent 0a6cad5df541108cfd3fbd79eef48eb824c89bdc
-	Merge branch 'vmwgfx-coherent' of git://people.freedesktop.org/~thomash/linux into drm-next
-drm-misc topic/phy-compliance 8cdf727119289db3a98835662eb28e1c5ad835f1
-	drm/i915/dp: Program vswing, pre-emphasis, test-pattern
+drm-tip/drm-tip c39d7055bc4dc2f29dc1e8b0c35cfa11805f1df1
+	drm-tip: 2020y-05m-19d-07h-42m-00s UTC integration manifest
+vfio-upstream/next f44efca0493ddc1e8731047c234ec8e475943077
+	vfio: Ignore -ENODEV when getting MSI cookie
+intel-iommu/x86/vt-d 69cf449166987d9a041020be6422ee7bf94a7228
+	iommu: Remove functions that support private domain
+origin/gvt-fixes 72a7a9925e2beea09b109dffb3384c9bf920d9da
+	drm/i915/gvt: Fix kernel oops for 3-level ppgtt guest
+origin/gvt-next-fixes cb7ee52284a244fd14caec73df0d49e02891aac4
+	drm/i915/gvt: Use ARRAY_SIZE for vgpu_types
+origin/gvt-next 47e51832ae93534d872511ba557115722582d94c
+	drm/i915/gvt: use context lrc_reg_state for shadow ppgtt override

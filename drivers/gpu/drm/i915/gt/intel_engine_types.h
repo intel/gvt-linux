@@ -321,6 +321,9 @@ struct intel_engine_cs {
 		struct list_head hold; /* ready requests, but on hold */
 	} active;
 
+	/* keep a request in reserve for a [pm] barrier under oom */
+	struct i915_request *request_pool;
+
 	struct llist_head barrier_tasks;
 
 	struct intel_context *kernel_context; /* pinned */
@@ -336,7 +339,7 @@ struct intel_engine_cs {
 
 	unsigned long wakeref_serial;
 	struct intel_wakeref wakeref;
-	struct drm_i915_gem_object *default_state;
+	struct file *default_state;
 	void *pinned_default_state;
 
 	struct {
@@ -420,6 +423,7 @@ struct intel_engine_cs {
 	void		(*irq_enable)(struct intel_engine_cs *engine);
 	void		(*irq_disable)(struct intel_engine_cs *engine);
 
+	void		(*sanitize)(struct intel_engine_cs *engine);
 	int		(*resume)(struct intel_engine_cs *engine);
 
 	struct {
@@ -529,27 +533,15 @@ struct intel_engine_cs {
 
 	struct {
 		/**
+		 * @active: Number of contexts currently scheduled in.
+		 */
+		atomic_t active;
+
+		/**
 		 * @lock: Lock protecting the below fields.
 		 */
 		seqlock_t lock;
-		/**
-		 * @enabled: Reference count indicating number of listeners.
-		 */
-		unsigned int enabled;
-		/**
-		 * @active: Number of contexts currently scheduled in.
-		 */
-		unsigned int active;
-		/**
-		 * @enabled_at: Timestamp when busy stats were enabled.
-		 */
-		ktime_t enabled_at;
-		/**
-		 * @start: Timestamp of the last idle to active transition.
-		 *
-		 * Idle is defined as active == 0, active is active > 0.
-		 */
-		ktime_t start;
+
 		/**
 		 * @total: Total time this engine was busy.
 		 *
@@ -557,6 +549,18 @@ struct intel_engine_cs {
 		 * where engine is currently busy (active > 0).
 		 */
 		ktime_t total;
+
+		/**
+		 * @start: Timestamp of the last idle to active transition.
+		 *
+		 * Idle is defined as active == 0, active is active > 0.
+		 */
+		ktime_t start;
+
+		/**
+		 * @rps: Utilisation at last RPS sampling.
+		 */
+		ktime_t rps;
 	} stats;
 
 	struct {

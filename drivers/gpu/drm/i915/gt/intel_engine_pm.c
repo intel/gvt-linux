@@ -15,6 +15,7 @@
 #include "intel_gt_pm.h"
 #include "intel_rc6.h"
 #include "intel_ring.h"
+#include "shmem_utils.h"
 
 static int __engine_unpark(struct intel_wakeref *wf)
 {
@@ -30,10 +31,8 @@ static int __engine_unpark(struct intel_wakeref *wf)
 	/* Pin the default state for fast resets from atomic context. */
 	map = NULL;
 	if (engine->default_state)
-		map = i915_gem_object_pin_map(engine->default_state,
-					      I915_MAP_WB);
-	if (!IS_ERR_OR_NULL(map))
-		engine->pinned_default_state = map;
+		map = shmem_pin_map(engine->default_state);
+	engine->pinned_default_state = map;
 
 	/* Discard stale context state from across idling */
 	ce = engine->kernel_context;
@@ -181,7 +180,7 @@ static bool switch_to_kernel_context(struct intel_engine_cs *engine)
 	 * Ergo, if we put ourselves on the timelines.active_list
 	 * (se intel_timeline_enter()) before we increment the
 	 * engine->wakeref.count, we may see the request completion and retire
-	 * it causing an undeflow of the engine->wakeref.
+	 * it causing an underflow of the engine->wakeref.
 	 */
 	flags = __timeline_mark_lock(ce);
 	GEM_BUG_ON(atomic_read(&ce->timeline->active_count) < 0);
@@ -264,7 +263,8 @@ static int __engine_park(struct intel_wakeref *wf)
 		engine->park(engine);
 
 	if (engine->pinned_default_state) {
-		i915_gem_object_unpin_map(engine->default_state);
+		shmem_unpin_map(engine->default_state,
+				engine->pinned_default_state);
 		engine->pinned_default_state = NULL;
 	}
 

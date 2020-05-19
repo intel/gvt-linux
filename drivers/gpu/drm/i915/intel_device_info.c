@@ -98,6 +98,7 @@ void intel_device_info_print_static(const struct intel_device_info *info,
 	drm_printf(p, "platform: %s\n", intel_platform_name(info->platform));
 	drm_printf(p, "ppgtt-size: %d\n", info->ppgtt_size);
 	drm_printf(p, "ppgtt-type: %d\n", info->ppgtt_type);
+	drm_printf(p, "dma_mask_size: %u\n", info->dma_mask_size);
 
 #define PRINT_FLAG(name) drm_printf(p, "%s: %s\n", #name, yesno(info->name));
 	DEV_INFO_FOR_EACH_FLAG(PRINT_FLAG);
@@ -980,35 +981,32 @@ void intel_device_info_runtime_init(struct drm_i915_private *dev_priv)
 			drm_info(&dev_priv->drm,
 				 "Display fused off, disabling\n");
 			info->pipe_mask = 0;
+			info->cpu_transcoder_mask = 0;
 		} else if (fuse_strap & IVB_PIPE_C_DISABLE) {
 			drm_info(&dev_priv->drm, "PipeC fused off\n");
 			info->pipe_mask &= ~BIT(PIPE_C);
+			info->cpu_transcoder_mask &= ~BIT(TRANSCODER_C);
 		}
 	} else if (HAS_DISPLAY(dev_priv) && INTEL_GEN(dev_priv) >= 9) {
 		u32 dfsm = I915_READ(SKL_DFSM);
-		u8 enabled_mask = info->pipe_mask;
 
-		if (dfsm & SKL_DFSM_PIPE_A_DISABLE)
-			enabled_mask &= ~BIT(PIPE_A);
-		if (dfsm & SKL_DFSM_PIPE_B_DISABLE)
-			enabled_mask &= ~BIT(PIPE_B);
-		if (dfsm & SKL_DFSM_PIPE_C_DISABLE)
-			enabled_mask &= ~BIT(PIPE_C);
+		if (dfsm & SKL_DFSM_PIPE_A_DISABLE) {
+			info->pipe_mask &= ~BIT(PIPE_A);
+			info->cpu_transcoder_mask &= ~BIT(TRANSCODER_A);
+		}
+		if (dfsm & SKL_DFSM_PIPE_B_DISABLE) {
+			info->pipe_mask &= ~BIT(PIPE_B);
+			info->cpu_transcoder_mask &= ~BIT(TRANSCODER_B);
+		}
+		if (dfsm & SKL_DFSM_PIPE_C_DISABLE) {
+			info->pipe_mask &= ~BIT(PIPE_C);
+			info->cpu_transcoder_mask &= ~BIT(TRANSCODER_C);
+		}
 		if (INTEL_GEN(dev_priv) >= 12 &&
-		    (dfsm & TGL_DFSM_PIPE_D_DISABLE))
-			enabled_mask &= ~BIT(PIPE_D);
-
-		/*
-		 * At least one pipe should be enabled and if there are
-		 * disabled pipes, they should be the last ones, with no holes
-		 * in the mask.
-		 */
-		if (enabled_mask == 0 || !is_power_of_2(enabled_mask + 1))
-			drm_err(&dev_priv->drm,
-				"invalid pipe fuse configuration: enabled_mask=0x%x\n",
-				enabled_mask);
-		else
-			info->pipe_mask = enabled_mask;
+		    (dfsm & TGL_DFSM_PIPE_D_DISABLE)) {
+			info->pipe_mask &= ~BIT(PIPE_D);
+			info->cpu_transcoder_mask &= ~BIT(TRANSCODER_D);
+		}
 
 		if (dfsm & SKL_DFSM_DISPLAY_HDCP_DISABLE)
 			info->display.has_hdcp = 0;

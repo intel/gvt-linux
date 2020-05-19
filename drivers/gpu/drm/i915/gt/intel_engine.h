@@ -199,6 +199,8 @@ void intel_engine_cleanup(struct intel_engine_cs *engine);
 int intel_engines_init_mmio(struct intel_gt *gt);
 int intel_engines_init(struct intel_gt *gt);
 
+void intel_engine_free_request_pool(struct intel_engine_cs *engine);
+
 void intel_engines_release(struct intel_gt *gt);
 void intel_engines_free(struct intel_gt *gt);
 
@@ -307,9 +309,6 @@ __printf(3, 4)
 void intel_engine_dump(struct intel_engine_cs *engine,
 		       struct drm_printer *m,
 		       const char *header, ...);
-
-int intel_enable_engine_stats(struct intel_engine_cs *engine);
-void intel_disable_engine_stats(struct intel_engine_cs *engine);
 
 ktime_t intel_engine_get_busy_time(struct intel_engine_cs *engine);
 

@@ -1687,7 +1687,6 @@ static int read_from_scratch(struct i915_gem_context *ctx,
 		goto skip_request;
 
 	i915_vma_unpin(vma);
-	i915_vma_close(vma);
 
 	i915_request_add(rq);
 
@@ -1925,7 +1924,7 @@ static int mock_context_barrier(void *arg)
 		goto out;
 	}
 
-	rq = igt_request_alloc(ctx, i915->engine[RCS0]);
+	rq = igt_request_alloc(ctx, i915->gt.engine[RCS0]);
 	if (IS_ERR(rq)) {
 		pr_err("Request allocation failed!\n");
 		goto out;

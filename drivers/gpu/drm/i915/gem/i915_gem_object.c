@@ -135,9 +135,7 @@ void i915_gem_close_object(struct drm_gem_object *gem, struct drm_file *file)
 		if (vma) {
 			GEM_BUG_ON(vma->obj != obj);
 			GEM_BUG_ON(!atomic_read(&vma->open_count));
-			if (atomic_dec_and_test(&vma->open_count) &&
-			    !i915_vma_is_ggtt(vma))
-				i915_vma_close(vma);
+			i915_vma_close(vma);
 		}
 		mutex_unlock(&ctx->mutex);
 
@@ -206,7 +204,6 @@ static void __i915_gem_free_objects(struct drm_i915_private *i915,
 		}
 		obj->mmo.offsets = RB_ROOT;
 
-		GEM_BUG_ON(atomic_read(&obj->bind_count));
 		GEM_BUG_ON(obj->userfault_count);
 		GEM_BUG_ON(!list_empty(&obj->lut_list));
 

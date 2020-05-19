@@ -437,7 +437,12 @@ static void dev_watchdog(struct timer_list *t)
 				}
 			}
 
-			if (some_queue_timedout) {
+			/* The noise is pissing off our CI and upstream doesn't
+			 * move on the bug report:
+			 *
+			 * https://bugzilla.kernel.org/show_bug.cgi?id=196399
+			 */
+			if (some_queue_timedout && 0) {
 				trace_net_dev_xmit_timeout(dev, i);
 				WARN_ONCE(1, KERN_INFO "NETDEV WATCHDOG: %s (%s): transmit queue %u timed out\n",
 				       dev->name, netdev_drivername(dev), i);

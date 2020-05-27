@@ -328,20 +328,10 @@ struct drm_driver {
 	void (*debugfs_init)(struct drm_minor *minor);
 
 	/**
-	 * @gem_free_object: deconstructor for drm_gem_objects
-	 *
-	 * This is deprecated and should not be used by new drivers. Use
-	 * &drm_gem_object_funcs.free instead.
-	 */
-	void (*gem_free_object) (struct drm_gem_object *obj);
-
-	/**
 	 * @gem_free_object_unlocked: deconstructor for drm_gem_objects
 	 *
 	 * This is deprecated and should not be used by new drivers. Use
 	 * &drm_gem_object_funcs.free instead.
-	 * Compared to @gem_free_object this is not encumbered with
-	 * &drm_device.struct_mutex legacy locking schemes.
 	 */
 	void (*gem_free_object_unlocked) (struct drm_gem_object *obj);
 

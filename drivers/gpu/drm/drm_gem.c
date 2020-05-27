@@ -235,7 +235,7 @@ drm_gem_object_handle_put_unlocked(struct drm_gem_object *obj)
 	mutex_unlock(&dev->object_name_lock);
 
 	if (final)
-		drm_gem_object_put_unlocked(obj);
+		drm_gem_object_put(obj);
 }
 
 /*
@@ -331,7 +331,7 @@ int drm_gem_dumb_map_offset(struct drm_file *file, struct drm_device *dev,
 
 	*offset = drm_vma_node_offset_addr(&obj->vma_node);
 out:
-	drm_gem_object_put_unlocked(obj);
+	drm_gem_object_put(obj);
 
 	return ret;
 }
@@ -709,6 +709,8 @@ int drm_gem_objects_lookup(struct drm_file *filp, void __user *bo_handles,
 	if (!objs)
 		return -ENOMEM;
 
+	*objs_out = objs;
+
 	handles = kvmalloc_array(count, sizeof(u32), GFP_KERNEL);
 	if (!handles) {
 		ret = -ENOMEM;
@@ -722,8 +724,6 @@ int drm_gem_objects_lookup(struct drm_file *filp, void __user *bo_handles,
 	}
 
 	ret = objects_lookup(filp, handles, count, objs);
-	*objs_out = objs;
-
 out:
 	kvfree(handles);
 	return ret;
@@ -785,7 +785,7 @@ long drm_gem_dma_resv_wait(struct drm_file *filep, u32 handle,
 	else if (ret > 0)
 		ret = 0;
 
-	drm_gem_object_put_unlocked(obj);
+	drm_gem_object_put(obj);
 
 	return ret;
 }
@@ -860,7 +860,7 @@ drm_gem_flink_ioctl(struct drm_device *dev, void *data,
 
 err:
 	mutex_unlock(&dev->object_name_lock);
-	drm_gem_object_put_unlocked(obj);
+	drm_gem_object_put(obj);
 	return ret;
 }
 
@@ -898,7 +898,7 @@ drm_gem_open_ioctl(struct drm_device *dev, void *data,
 
 	/* drm_gem_handle_create_tail unlocks dev->object_name_lock. */
 	ret = drm_gem_handle_create_tail(file_priv, obj, &handle);
-	drm_gem_object_put_unlocked(obj);
+	drm_gem_object_put(obj);
 	if (ret)
 		return ret;
 
@@ -965,7 +965,6 @@ EXPORT_SYMBOL(drm_gem_object_release);
  * @kref: kref of the object to free
  *
  * Called after the last reference to the object has been lost.
- * Must be called holding &drm_device.struct_mutex.
  *
  * Frees the object
  */
@@ -976,50 +975,15 @@ drm_gem_object_free(struct kref *kref)
 		container_of(kref, struct drm_gem_object, refcount);
 	struct drm_device *dev = obj->dev;
 
-	if (obj->funcs) {
+	if (obj->funcs)
 		obj->funcs->free(obj);
-	} else if (dev->driver->gem_free_object_unlocked) {
+	else if (dev->driver->gem_free_object_unlocked)
 		dev->driver->gem_free_object_unlocked(obj);
-	} else if (dev->driver->gem_free_object) {
-		WARN_ON(!mutex_is_locked(&dev->struct_mutex));
-
-		dev->driver->gem_free_object(obj);
-	}
 }
 EXPORT_SYMBOL(drm_gem_object_free);
 
 /**
- * drm_gem_object_put_unlocked - drop a GEM buffer object reference
- * @obj: GEM buffer object
- *
- * This releases a reference to @obj. Callers must not hold the
- * &drm_device.struct_mutex lock when calling this function.
- *
- * See also __drm_gem_object_put().
- */
-void
-drm_gem_object_put_unlocked(struct drm_gem_object *obj)
-{
-	struct drm_device *dev;
-
-	if (!obj)
-		return;
-
-	dev = obj->dev;
-
-	if (dev->driver->gem_free_object) {
-		might_lock(&dev->struct_mutex);
-		if (kref_put_mutex(&obj->refcount, drm_gem_object_free,
-				&dev->struct_mutex))
-			mutex_unlock(&dev->struct_mutex);
-	} else {
-		kref_put(&obj->refcount, drm_gem_object_free);
-	}
-}
-EXPORT_SYMBOL(drm_gem_object_put_unlocked);
-
-/**
- * drm_gem_object_put - release a GEM buffer object reference
+ * drm_gem_object_put_locked - release a GEM buffer object reference
  * @obj: GEM buffer object
  *
  * This releases a reference to @obj. Callers must hold the
@@ -1027,10 +991,10 @@ EXPORT_SYMBOL(drm_gem_object_put_unlocked);
  * driver doesn't use &drm_device.struct_mutex for anything.
  *
  * For drivers not encumbered with legacy locking use
- * drm_gem_object_put_unlocked() instead.
+ * drm_gem_object_put() instead.
  */
 void
-drm_gem_object_put(struct drm_gem_object *obj)
+drm_gem_object_put_locked(struct drm_gem_object *obj)
 {
 	if (obj) {
 		WARN_ON(!mutex_is_locked(&obj->dev->struct_mutex));
@@ -1038,7 +1002,7 @@ drm_gem_object_put(struct drm_gem_object *obj)
 		kref_put(&obj->refcount, drm_gem_object_free);
 	}
 }
-EXPORT_SYMBOL(drm_gem_object_put);
+EXPORT_SYMBOL(drm_gem_object_put_locked);
 
 /**
  * drm_gem_vm_open - vma->ops->open implementation for GEM
@@ -1066,7 +1030,7 @@ void drm_gem_vm_close(struct vm_area_struct *vma)
 {
 	struct drm_gem_object *obj = vma->vm_private_data;
 
-	drm_gem_object_put_unlocked(obj);
+	drm_gem_object_put(obj);
 }
 EXPORT_SYMBOL(drm_gem_vm_close);
 
@@ -1115,7 +1079,7 @@ int drm_gem_mmap_obj(struct drm_gem_object *obj, unsigned long obj_size,
 	if (obj->funcs && obj->funcs->mmap) {
 		ret = obj->funcs->mmap(obj, vma);
 		if (ret) {
-			drm_gem_object_put_unlocked(obj);
+			drm_gem_object_put(obj);
 			return ret;
 		}
 		WARN_ON(!(vma->vm_flags & VM_DONTEXPAND));
@@ -1125,7 +1089,7 @@ int drm_gem_mmap_obj(struct drm_gem_object *obj, unsigned long obj_size,
 		else if (dev->driver->gem_vm_ops)
 			vma->vm_ops = dev->driver->gem_vm_ops;
 		else {
-			drm_gem_object_put_unlocked(obj);
+			drm_gem_object_put(obj);
 			return -EINVAL;
 		}
 
@@ -1191,13 +1155,13 @@ int drm_gem_mmap(struct file *filp, struct vm_area_struct *vma)
 		return -EINVAL;
 
 	if (!drm_vma_node_is_allowed(node, priv)) {
-		drm_gem_object_put_unlocked(obj);
+		drm_gem_object_put(obj);
 		return -EACCES;
 	}
 
 	if (node->readonly) {
 		if (vma->vm_flags & VM_WRITE) {
-			drm_gem_object_put_unlocked(obj);
+			drm_gem_object_put(obj);
 			return -EINVAL;
 		}
 
@@ -1207,7 +1171,7 @@ int drm_gem_mmap(struct file *filp, struct vm_area_struct *vma)
 	ret = drm_gem_mmap_obj(obj, drm_vma_node_size(node) << PAGE_SHIFT,
 			       vma);
 
-	drm_gem_object_put_unlocked(obj);
+	drm_gem_object_put(obj);
 
 	return ret;
 }

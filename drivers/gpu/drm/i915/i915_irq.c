@@ -2254,7 +2254,9 @@ static u32 gen8_de_port_aux_mask(struct drm_i915_private *dev_priv)
 
 static u32 gen8_de_pipe_fault_mask(struct drm_i915_private *dev_priv)
 {
-	if (INTEL_GEN(dev_priv) >= 11)
+	if (IS_ROCKETLAKE(dev_priv))
+		return RKL_DE_PIPE_IRQ_FAULT_ERRORS;
+	else if (INTEL_GEN(dev_priv) >= 11)
 		return GEN11_DE_PIPE_IRQ_FAULT_ERRORS;
 	else if (INTEL_GEN(dev_priv) >= 9)
 		return GEN9_DE_PIPE_IRQ_FAULT_ERRORS;
@@ -2902,8 +2904,10 @@ static void gen11_display_irq_reset(struct drm_i915_private *dev_priv)
 	if (INTEL_PCH_TYPE(dev_priv) >= PCH_ICP)
 		GEN3_IRQ_RESET(uncore, SDE);
 
-	/* Wa_14010685332:icl */
-	if (INTEL_PCH_TYPE(dev_priv) == PCH_ICP) {
+	/* Wa_14010685332:icl,jsl,ehl */
+	if (INTEL_PCH_TYPE(dev_priv) == PCH_ICP ||
+	    INTEL_PCH_TYPE(dev_priv) == PCH_JSP ||
+	    INTEL_PCH_TYPE(dev_priv) == PCH_MCC) {
 		intel_uncore_rmw(uncore, SOUTH_CHICKEN1,
 				 SBCLK_RUN_REFCLK_DIS, SBCLK_RUN_REFCLK_DIS);
 		intel_uncore_rmw(uncore, SOUTH_CHICKEN1,

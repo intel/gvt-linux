@@ -51,22 +51,20 @@ static struct i915_vma *create_scratch(struct intel_gt *gt)
 	return vma;
 }
 
-static void engine_heartbeat_disable(struct intel_engine_cs *engine,
-				     unsigned long *saved)
+static void engine_heartbeat_disable(struct intel_engine_cs *engine)
 {
-	*saved = engine->props.heartbeat_interval_ms;
 	engine->props.heartbeat_interval_ms = 0;
 
 	intel_engine_pm_get(engine);
 	intel_engine_park_heartbeat(engine);
 }
 
-static void engine_heartbeat_enable(struct intel_engine_cs *engine,
-				    unsigned long saved)
+static void engine_heartbeat_enable(struct intel_engine_cs *engine)
 {
 	intel_engine_pm_put(engine);
 
-	engine->props.heartbeat_interval_ms = saved;
+	engine->props.heartbeat_interval_ms =
+		engine->defaults.heartbeat_interval_ms;
 }
 
 static bool is_active(struct i915_request *rq)
@@ -77,7 +75,7 @@ static bool is_active(struct i915_request *rq)
 	if (i915_request_on_hold(rq))
 		return true;
 
-	if (i915_request_started(rq))
+	if (i915_request_has_initial_breadcrumb(rq) && i915_request_started(rq))
 		return true;
 
 	return false;
@@ -224,7 +222,6 @@ static int live_unlite_restore(struct intel_gt *gt, int prio)
 		struct intel_context *ce[2] = {};
 		struct i915_request *rq[2];
 		struct igt_live_test t;
-		unsigned long saved;
 		int n;
 
 		if (prio && !intel_engine_has_preemption(engine))
@@ -237,7 +234,7 @@ static int live_unlite_restore(struct intel_gt *gt, int prio)
 			err = -EIO;
 			break;
 		}
-		engine_heartbeat_disable(engine, &saved);
+		engine_heartbeat_disable(engine);
 
 		for (n = 0; n < ARRAY_SIZE(ce); n++) {
 			struct intel_context *tmp;
@@ -335,7 +332,7 @@ static int live_unlite_restore(struct intel_gt *gt, int prio)
 		i915_request_put(rq[0]);
 
 err_ce:
-		tasklet_kill(&engine->execlists.tasklet); /* flush submission */
+		intel_engine_flush_submission(engine);
 		igt_spinner_end(&spin);
 		for (n = 0; n < ARRAY_SIZE(ce); n++) {
 			if (IS_ERR_OR_NULL(ce[n]))
@@ -345,7 +342,7 @@ err_ce:
 			intel_context_put(ce[n]);
 		}
 
-		engine_heartbeat_enable(engine, saved);
+		engine_heartbeat_enable(engine);
 		if (igt_live_test_end(&t))
 			err = -EIO;
 		if (err)
@@ -466,7 +463,6 @@ static int live_hold_reset(void *arg)
 
 	for_each_engine(engine, gt, id) {
 		struct intel_context *ce;
-		unsigned long heartbeat;
 		struct i915_request *rq;
 
 		ce = intel_context_create(engine);
@@ -475,7 +471,7 @@ static int live_hold_reset(void *arg)
 			break;
 		}
 
-		engine_heartbeat_disable(engine, &heartbeat);
+		engine_heartbeat_disable(engine);
 
 		rq = igt_spinner_create_request(&spin, ce, MI_ARB_CHECK);
 		if (IS_ERR(rq)) {
@@ -535,7 +531,7 @@ static int live_hold_reset(void *arg)
 		i915_request_put(rq);
 
 out:
-		engine_heartbeat_enable(engine, heartbeat);
+		engine_heartbeat_enable(engine);
 		intel_context_put(ce);
 		if (err)
 			break;
@@ -580,10 +576,9 @@ static int live_error_interrupt(void *arg)
 
 	for_each_engine(engine, gt, id) {
 		const struct error_phase *p;
-		unsigned long heartbeat;
 		int err = 0;
 
-		engine_heartbeat_disable(engine, &heartbeat);
+		engine_heartbeat_disable(engine);
 
 		for (p = phases; p->error[0] != GOOD; p++) {
 			struct i915_request *client[ARRAY_SIZE(phases->error)];
@@ -682,7 +677,7 @@ out:
 			}
 		}
 
-		engine_heartbeat_enable(engine, heartbeat);
+		engine_heartbeat_enable(engine);
 		if (err) {
 			intel_gt_set_wedged(gt);
 			return err;
@@ -895,16 +890,14 @@ static int live_timeslice_preempt(void *arg)
 		enum intel_engine_id id;
 
 		for_each_engine(engine, gt, id) {
-			unsigned long saved;
-
 			if (!intel_engine_has_preemption(engine))
 				continue;
 
 			memset(vaddr, 0, PAGE_SIZE);
 
-			engine_heartbeat_disable(engine, &saved);
+			engine_heartbeat_disable(engine);
 			err = slice_semaphore_queue(engine, vma, count);
-			engine_heartbeat_enable(engine, saved);
+			engine_heartbeat_enable(engine);
 			if (err)
 				goto err_pin;
 
@@ -1009,7 +1002,6 @@ static int live_timeslice_rewind(void *arg)
 		enum { X = 1, Z, Y };
 		struct i915_request *rq[3] = {};
 		struct intel_context *ce;
-		unsigned long heartbeat;
 		unsigned long timeslice;
 		int i, err = 0;
 		u32 *slot;
@@ -1028,7 +1020,7 @@ static int live_timeslice_rewind(void *arg)
 		 * Expect execution/evaluation order XZY
 		 */
 
-		engine_heartbeat_disable(engine, &heartbeat);
+		engine_heartbeat_disable(engine);
 		timeslice = xchg(&engine->props.timeslice_duration_ms, 1);
 
 		slot = memset32(engine->status_page.addr + 1000, 0, 4);
@@ -1122,7 +1114,7 @@ err:
 		wmb();
 
 		engine->props.timeslice_duration_ms = timeslice;
-		engine_heartbeat_enable(engine, heartbeat);
+		engine_heartbeat_enable(engine);
 		for (i = 0; i < 3; i++)
 			i915_request_put(rq[i]);
 		if (igt_flush_test(gt->i915))
@@ -1202,12 +1194,11 @@ static int live_timeslice_queue(void *arg)
 			.priority = I915_USER_PRIORITY(I915_PRIORITY_MAX),
 		};
 		struct i915_request *rq, *nop;
-		unsigned long saved;
 
 		if (!intel_engine_has_preemption(engine))
 			continue;
 
-		engine_heartbeat_disable(engine, &saved);
+		engine_heartbeat_disable(engine);
 		memset(vaddr, 0, PAGE_SIZE);
 
 		/* ELSP[0]: semaphore wait */
@@ -1284,7 +1275,7 @@ static int live_timeslice_queue(void *arg)
 err_rq:
 		i915_request_put(rq);
 err_heartbeat:
-		engine_heartbeat_enable(engine, saved);
+		engine_heartbeat_enable(engine);
 		if (err)
 			break;
 	}
@@ -2735,11 +2726,11 @@ static int live_preempt_gang(void *arg)
 			/* Submit each spinner at increasing priority */
 			engine->schedule(rq, &attr);
 
+			if (prio < attr.priority)
+				break;
+
 			if (prio <= I915_PRIORITY_MAX)
 				continue;
-
-			if (prio > (INT_MAX >> I915_USER_PRIORITY_SHIFT))
-				break;
 
 			if (__igt_timeout(end_time, NULL))
 				break;
@@ -3600,13 +3591,43 @@ out:
 	return err;
 }
 
+static unsigned int
+__select_siblings(struct intel_gt *gt,
+		  unsigned int class,
+		  struct intel_engine_cs **siblings,
+		  bool (*filter)(const struct intel_engine_cs *))
+{
+	unsigned int n = 0;
+	unsigned int inst;
+
+	for (inst = 0; inst <= MAX_ENGINE_INSTANCE; inst++) {
+		if (!gt->engine_class[class][inst])
+			continue;
+
+		if (filter && !filter(gt->engine_class[class][inst]))
+			continue;
+
+		siblings[n++] = gt->engine_class[class][inst];
+	}
+
+	return n;
+}
+
+static unsigned int
+select_siblings(struct intel_gt *gt,
+		unsigned int class,
+		struct intel_engine_cs **siblings)
+{
+	return __select_siblings(gt, class, siblings, NULL);
+}
+
 static int live_virtual_engine(void *arg)
 {
 	struct intel_gt *gt = arg;
 	struct intel_engine_cs *siblings[MAX_ENGINE_INSTANCE + 1];
 	struct intel_engine_cs *engine;
 	enum intel_engine_id id;
-	unsigned int class, inst;
+	unsigned int class;
 	int err;
 
 	if (intel_uc_uses_guc_submission(&gt->uc))
@@ -3624,13 +3645,7 @@ static int live_virtual_engine(void *arg)
 	for (class = 0; class <= MAX_ENGINE_CLASS; class++) {
 		int nsibling, n;
 
-		nsibling = 0;
-		for (inst = 0; inst <= MAX_ENGINE_INSTANCE; inst++) {
-			if (!gt->engine_class[class][inst])
-				continue;
-
-			siblings[nsibling++] = gt->engine_class[class][inst];
-		}
+		nsibling = select_siblings(gt, class, siblings);
 		if (nsibling < 2)
 			continue;
 
@@ -3739,7 +3754,7 @@ static int live_virtual_mask(void *arg)
 {
 	struct intel_gt *gt = arg;
 	struct intel_engine_cs *siblings[MAX_ENGINE_INSTANCE + 1];
-	unsigned int class, inst;
+	unsigned int class;
 	int err;
 
 	if (intel_uc_uses_guc_submission(&gt->uc))
@@ -3748,17 +3763,191 @@ static int live_virtual_mask(void *arg)
 	for (class = 0; class <= MAX_ENGINE_CLASS; class++) {
 		unsigned int nsibling;
 
-		nsibling = 0;
-		for (inst = 0; inst <= MAX_ENGINE_INSTANCE; inst++) {
-			if (!gt->engine_class[class][inst])
-				break;
-
-			siblings[nsibling++] = gt->engine_class[class][inst];
-		}
+		nsibling = select_siblings(gt, class, siblings);
 		if (nsibling < 2)
 			continue;
 
 		err = mask_virtual_engine(gt, siblings, nsibling);
+		if (err)
+			return err;
+	}
+
+	return 0;
+}
+
+static long slice_timeout(struct intel_engine_cs *engine)
+{
+	long timeout;
+
+	/* Enough time for a timeslice to kick in, and kick out */
+	timeout = 2 * msecs_to_jiffies_timeout(timeslice(engine));
+
+	/* Enough time for the nop request to complete */
+	timeout += HZ / 5;
+
+	return timeout;
+}
+
+static int slicein_virtual_engine(struct intel_gt *gt,
+				  struct intel_engine_cs **siblings,
+				  unsigned int nsibling)
+{
+	const long timeout = slice_timeout(siblings[0]);
+	struct intel_context *ce;
+	struct i915_request *rq;
+	struct igt_spinner spin;
+	unsigned int n;
+	int err = 0;
+
+	/*
+	 * Virtual requests must take part in timeslicing on the target engines.
+	 */
+
+	if (igt_spinner_init(&spin, gt))
+		return -ENOMEM;
+
+	for (n = 0; n < nsibling; n++) {
+		ce = intel_context_create(siblings[n]);
+		if (IS_ERR(ce)) {
+			err = PTR_ERR(ce);
+			goto out;
+		}
+
+		rq = igt_spinner_create_request(&spin, ce, MI_ARB_CHECK);
+		intel_context_put(ce);
+		if (IS_ERR(rq)) {
+			err = PTR_ERR(rq);
+			goto out;
+		}
+
+		i915_request_add(rq);
+	}
+
+	ce = intel_execlists_create_virtual(siblings, nsibling);
+	if (IS_ERR(ce)) {
+		err = PTR_ERR(ce);
+		goto out;
+	}
+
+	rq = intel_context_create_request(ce);
+	intel_context_put(ce);
+	if (IS_ERR(rq)) {
+		err = PTR_ERR(rq);
+		goto out;
+	}
+
+	i915_request_get(rq);
+	i915_request_add(rq);
+	if (i915_request_wait(rq, 0, timeout) < 0) {
+		GEM_TRACE_ERR("%s(%s) failed to slice in virtual request\n",
+			      __func__, rq->engine->name);
+		GEM_TRACE_DUMP();
+		intel_gt_set_wedged(gt);
+		err = -EIO;
+	}
+	i915_request_put(rq);
+
+out:
+	igt_spinner_end(&spin);
+	if (igt_flush_test(gt->i915))
+		err = -EIO;
+	igt_spinner_fini(&spin);
+	return err;
+}
+
+static int sliceout_virtual_engine(struct intel_gt *gt,
+				   struct intel_engine_cs **siblings,
+				   unsigned int nsibling)
+{
+	const long timeout = slice_timeout(siblings[0]);
+	struct intel_context *ce;
+	struct i915_request *rq;
+	struct igt_spinner spin;
+	unsigned int n;
+	int err = 0;
+
+	/*
+	 * Virtual requests must allow others a fair timeslice.
+	 */
+
+	if (igt_spinner_init(&spin, gt))
+		return -ENOMEM;
+
+	/* XXX We do not handle oversubscription and fairness with normal rq */
+	for (n = 0; n < nsibling; n++) {
+		ce = intel_execlists_create_virtual(siblings, nsibling);
+		if (IS_ERR(ce)) {
+			err = PTR_ERR(ce);
+			goto out;
+		}
+
+		rq = igt_spinner_create_request(&spin, ce, MI_ARB_CHECK);
+		intel_context_put(ce);
+		if (IS_ERR(rq)) {
+			err = PTR_ERR(rq);
+			goto out;
+		}
+
+		i915_request_add(rq);
+	}
+
+	for (n = 0; !err && n < nsibling; n++) {
+		ce = intel_context_create(siblings[n]);
+		if (IS_ERR(ce)) {
+			err = PTR_ERR(ce);
+			goto out;
+		}
+
+		rq = intel_context_create_request(ce);
+		intel_context_put(ce);
+		if (IS_ERR(rq)) {
+			err = PTR_ERR(rq);
+			goto out;
+		}
+
+		i915_request_get(rq);
+		i915_request_add(rq);
+		if (i915_request_wait(rq, 0, timeout) < 0) {
+			GEM_TRACE_ERR("%s(%s) failed to slice out virtual request\n",
+				      __func__, siblings[n]->name);
+			GEM_TRACE_DUMP();
+			intel_gt_set_wedged(gt);
+			err = -EIO;
+		}
+		i915_request_put(rq);
+	}
+
+out:
+	igt_spinner_end(&spin);
+	if (igt_flush_test(gt->i915))
+		err = -EIO;
+	igt_spinner_fini(&spin);
+	return err;
+}
+
+static int live_virtual_slice(void *arg)
+{
+	struct intel_gt *gt = arg;
+	struct intel_engine_cs *siblings[MAX_ENGINE_INSTANCE + 1];
+	unsigned int class;
+	int err;
+
+	if (intel_uc_uses_guc_submission(&gt->uc))
+		return 0;
+
+	for (class = 0; class <= MAX_ENGINE_CLASS; class++) {
+		unsigned int nsibling;
+
+		nsibling = __select_siblings(gt, class, siblings,
+					     intel_engine_has_timeslices);
+		if (nsibling < 2)
+			continue;
+
+		err = slicein_virtual_engine(gt, siblings, nsibling);
+		if (err)
+			return err;
+
+		err = sliceout_virtual_engine(gt, siblings, nsibling);
 		if (err)
 			return err;
 	}
@@ -3876,7 +4065,7 @@ static int live_virtual_preserved(void *arg)
 {
 	struct intel_gt *gt = arg;
 	struct intel_engine_cs *siblings[MAX_ENGINE_INSTANCE + 1];
-	unsigned int class, inst;
+	unsigned int class;
 
 	/*
 	 * Check that the context image retains non-privileged (user) registers
@@ -3894,13 +4083,7 @@ static int live_virtual_preserved(void *arg)
 	for (class = 0; class <= MAX_ENGINE_CLASS; class++) {
 		int nsibling, err;
 
-		nsibling = 0;
-		for (inst = 0; inst <= MAX_ENGINE_INSTANCE; inst++) {
-			if (!gt->engine_class[class][inst])
-				continue;
-
-			siblings[nsibling++] = gt->engine_class[class][inst];
-		}
+		nsibling = select_siblings(gt, class, siblings);
 		if (nsibling < 2)
 			continue;
 
@@ -4111,7 +4294,7 @@ static int live_virtual_bond(void *arg)
 	};
 	struct intel_gt *gt = arg;
 	struct intel_engine_cs *siblings[MAX_ENGINE_INSTANCE + 1];
-	unsigned int class, inst;
+	unsigned int class;
 	int err;
 
 	if (intel_uc_uses_guc_submission(&gt->uc))
@@ -4121,14 +4304,7 @@ static int live_virtual_bond(void *arg)
 		const struct phase *p;
 		int nsibling;
 
-		nsibling = 0;
-		for (inst = 0; inst <= MAX_ENGINE_INSTANCE; inst++) {
-			if (!gt->engine_class[class][inst])
-				break;
-
-			GEM_BUG_ON(nsibling == ARRAY_SIZE(siblings));
-			siblings[nsibling++] = gt->engine_class[class][inst];
-		}
+		nsibling = select_siblings(gt, class, siblings);
 		if (nsibling < 2)
 			continue;
 
@@ -4153,7 +4329,6 @@ static int reset_virtual_engine(struct intel_gt *gt,
 {
 	struct intel_engine_cs *engine;
 	struct intel_context *ve;
-	unsigned long *heartbeat;
 	struct igt_spinner spin;
 	struct i915_request *rq;
 	unsigned int n;
@@ -4165,14 +4340,8 @@ static int reset_virtual_engine(struct intel_gt *gt,
 	 * descendents are not executed while the capture is in progress.
 	 */
 
-	heartbeat = kmalloc_array(nsibling, sizeof(*heartbeat), GFP_KERNEL);
-	if (!heartbeat)
+	if (igt_spinner_init(&spin, gt))
 		return -ENOMEM;
-
-	if (igt_spinner_init(&spin, gt)) {
-		err = -ENOMEM;
-		goto out_free;
-	}
 
 	ve = intel_execlists_create_virtual(siblings, nsibling);
 	if (IS_ERR(ve)) {
@@ -4181,7 +4350,7 @@ static int reset_virtual_engine(struct intel_gt *gt,
 	}
 
 	for (n = 0; n < nsibling; n++)
-		engine_heartbeat_disable(siblings[n], &heartbeat[n]);
+		engine_heartbeat_disable(siblings[n]);
 
 	rq = igt_spinner_create_request(&spin, ve, MI_ARB_CHECK);
 	if (IS_ERR(rq)) {
@@ -4252,13 +4421,11 @@ out_rq:
 	i915_request_put(rq);
 out_heartbeat:
 	for (n = 0; n < nsibling; n++)
-		engine_heartbeat_enable(siblings[n], heartbeat[n]);
+		engine_heartbeat_enable(siblings[n]);
 
 	intel_context_put(ve);
 out_spin:
 	igt_spinner_fini(&spin);
-out_free:
-	kfree(heartbeat);
 	return err;
 }
 
@@ -4266,7 +4433,7 @@ static int live_virtual_reset(void *arg)
 {
 	struct intel_gt *gt = arg;
 	struct intel_engine_cs *siblings[MAX_ENGINE_INSTANCE + 1];
-	unsigned int class, inst;
+	unsigned int class;
 
 	/*
 	 * Check that we handle a reset event within a virtual engine.
@@ -4284,13 +4451,7 @@ static int live_virtual_reset(void *arg)
 	for (class = 0; class <= MAX_ENGINE_CLASS; class++) {
 		int nsibling, err;
 
-		nsibling = 0;
-		for (inst = 0; inst <= MAX_ENGINE_INSTANCE; inst++) {
-			if (!gt->engine_class[class][inst])
-				continue;
-
-			siblings[nsibling++] = gt->engine_class[class][inst];
-		}
+		nsibling = select_siblings(gt, class, siblings);
 		if (nsibling < 2)
 			continue;
 
@@ -4329,6 +4490,7 @@ int intel_execlists_live_selftests(struct drm_i915_private *i915)
 		SUBTEST(live_virtual_engine),
 		SUBTEST(live_virtual_mask),
 		SUBTEST(live_virtual_preserved),
+		SUBTEST(live_virtual_slice),
 		SUBTEST(live_virtual_bond),
 		SUBTEST(live_virtual_reset),
 	};
@@ -4932,9 +5094,7 @@ static int live_lrc_gpr(void *arg)
 		return PTR_ERR(scratch);
 
 	for_each_engine(engine, gt, id) {
-		unsigned long heartbeat;
-
-		engine_heartbeat_disable(engine, &heartbeat);
+		engine_heartbeat_disable(engine);
 
 		err = __live_lrc_gpr(engine, scratch, false);
 		if (err)
@@ -4945,7 +5105,7 @@ static int live_lrc_gpr(void *arg)
 			goto err;
 
 err:
-		engine_heartbeat_enable(engine, heartbeat);
+		engine_heartbeat_enable(engine);
 		if (igt_flush_test(gt->i915))
 			err = -EIO;
 		if (err)
@@ -5092,10 +5252,9 @@ static int live_lrc_timestamp(void *arg)
 	 */
 
 	for_each_engine(data.engine, gt, id) {
-		unsigned long heartbeat;
 		int i, err = 0;
 
-		engine_heartbeat_disable(data.engine, &heartbeat);
+		engine_heartbeat_disable(data.engine);
 
 		for (i = 0; i < ARRAY_SIZE(data.ce); i++) {
 			struct intel_context *tmp;
@@ -5128,7 +5287,7 @@ static int live_lrc_timestamp(void *arg)
 		}
 
 err:
-		engine_heartbeat_enable(data.engine, heartbeat);
+		engine_heartbeat_enable(data.engine);
 		for (i = 0; i < ARRAY_SIZE(data.ce); i++) {
 			if (!data.ce[i])
 				break;

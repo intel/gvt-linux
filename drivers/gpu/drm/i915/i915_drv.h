@@ -273,6 +273,7 @@ struct drm_i915_display_funcs {
 	void (*set_cdclk)(struct drm_i915_private *dev_priv,
 			  const struct intel_cdclk_config *cdclk_config,
 			  enum pipe pipe);
+	int (*bw_calc_min_cdclk)(struct intel_atomic_state *state);
 	int (*get_fifo_size)(struct drm_i915_private *dev_priv,
 			     enum i9xx_plane_id i9xx_plane);
 	int (*compute_pipe_wm)(struct intel_crtc_state *crtc_state);
@@ -950,6 +951,13 @@ struct drm_i915_private {
 		struct intel_global_obj obj;
 	} cdclk;
 
+	struct {
+		/* The current hardware dbuf configuration */
+		u8 enabled_slices;
+
+		struct intel_global_obj obj;
+	} dbuf;
+
 	/**
 	 * wq - Driver workqueue for GEM.
 	 *
@@ -1126,11 +1134,11 @@ struct drm_i915_private {
 		 * Set during HW readout of watermarks/DDB.  Some platforms
 		 * need to know when we're still using BIOS-provided values
 		 * (which we don't fully trust).
+		 *
+		 * FIXME get rid of this.
 		 */
 		bool distrust_bios_wm;
 	} wm;
-
-	u8 enabled_dbuf_slices_mask; /* GEN11 has configurable 2 slices */
 
 	struct dram_info {
 		bool valid;
@@ -1410,6 +1418,7 @@ IS_SUBPLATFORM(const struct drm_i915_private *i915,
 #define IS_ICELAKE(dev_priv)	IS_PLATFORM(dev_priv, INTEL_ICELAKE)
 #define IS_ELKHARTLAKE(dev_priv)	IS_PLATFORM(dev_priv, INTEL_ELKHARTLAKE)
 #define IS_TIGERLAKE(dev_priv)	IS_PLATFORM(dev_priv, INTEL_TIGERLAKE)
+#define IS_ROCKETLAKE(dev_priv)	IS_PLATFORM(dev_priv, INTEL_ROCKETLAKE)
 #define IS_HSW_EARLY_SDV(dev_priv) (IS_HASWELL(dev_priv) && \
 				    (INTEL_DEVID(dev_priv) & 0xFF00) == 0x0C00)
 #define IS_BDW_ULT(dev_priv) \
@@ -1522,6 +1531,13 @@ IS_SUBPLATFORM(const struct drm_i915_private *i915,
 
 #define IS_TGL_REVID(p, since, until) \
 	(IS_TIGERLAKE(p) && IS_REVID(p, since, until))
+
+#define RKL_REVID_A0		0x0
+#define RKL_REVID_B0		0x1
+#define RKL_REVID_C0		0x4
+
+#define IS_RKL_REVID(p, since, until) \
+	(IS_ROCKETLAKE(p) && IS_REVID(p, since, until))
 
 #define IS_LP(dev_priv)	(INTEL_INFO(dev_priv)->is_lp)
 #define IS_GEN9_LP(dev_priv)	(IS_GEN(dev_priv, 9) && IS_LP(dev_priv))
@@ -1658,7 +1674,8 @@ IS_SUBPLATFORM(const struct drm_i915_private *i915,
 #define HAS_DISPLAY(dev_priv) (INTEL_INFO(dev_priv)->pipe_mask != 0)
 
 /* Only valid when HAS_DISPLAY() is true */
-#define INTEL_DISPLAY_ENABLED(dev_priv) (WARN_ON(!HAS_DISPLAY(dev_priv)), !i915_modparams.disable_display)
+#define INTEL_DISPLAY_ENABLED(dev_priv) \
+		(drm_WARN_ON(&(dev_priv)->drm, !HAS_DISPLAY(dev_priv)), !i915_modparams.disable_display)
 
 static inline bool intel_vtd_active(void)
 {

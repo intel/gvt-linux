@@ -1,34 +1,12 @@
-drm drm-fixes 9cb1fd0efd195590b828b9b865421ad345a4a145
-	Linux 5.7-rc7
-drm-misc drm-misc-fixes abf56fadf0e208abfb13ad1ac0094416058da0ad
-	gpu/drm: Ingenic: Fix opaque pointer casted to wrong type
-drm-intel drm-intel-fixes 00febf644648f430593a8b8675ad4bc97c33a07b
-	drm/i915/gt: Incorporate the virtual engine into timeslicing
-drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
-	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
-drm drm-next 7dbbdd37f2ae7dd4175ba3f86f4335c463b18403
-	drm/nouveau: use correct conflicting framebuffer API
-drm-misc drm-misc-next-fixes 6f27e4c287d7bdcad1f24efcaace044617aac2f3
-	drm/vblank: Fix -Wformat compile warnings on some arches
-drm-intel drm-intel-next-fixes 757a9395f33c51c4e6eff2c7c0fbd50226a58224
-	drm/i915/gem: Avoid iterating an empty list
-drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
-	Linux 4.14-rc1
-drm-misc drm-misc-next 269cb04a40231a9a37e43f67cdfcdd7171c6bbc2
-	drm/gma500: Stop using mode->private_flags
-drm-intel drm-intel-next-queued cc649a9eafc1ef5c40db023084cb94422d08aa84
-	drm/i915: work around false-positive maybe-uninitialized warning
-drm-intel drm-intel-next 3a36aa237e4ed04553c0998cf5f47eda3e206e4f
-	drm/i915: Update DRIVER_DATE to 20200515
-drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
-	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
-sound-upstream for-linus 630e36126e420e1756378b3427b42711ce0b9ddd
-	ALSA: hda/realtek - Add new codec supported for ALC287
-sound-upstream for-next e0b2db351bc708037571deb3fc82c7d9043b4ea8
-	ALSA: firewire-motu: add support for MOTU UltraLite-mk3 (FireWire only model)
-drm-intel topic/core-for-CI 26145957338c07613fa603bbec798034aa8b56dc
-	perf/core: Only copy-to-user after completely unlocking all locks, v3.
-drm drm-vmwgfx-coherent 0a6cad5df541108cfd3fbd79eef48eb824c89bdc
-	Merge branch 'vmwgfx-coherent' of git://people.freedesktop.org/~thomash/linux into drm-next
-drm-misc topic/phy-compliance 8cdf727119289db3a98835662eb28e1c5ad835f1
-	drm/i915/dp: Program vswing, pre-emphasis, test-pattern
+drm-tip/drm-tip c6c0a18e985d7a3fd4451e0e786e6522371ea9ee
+	drm-tip: 2020y-05m-27d-16h-08m-27s UTC integration manifest
+vfio-upstream/next cd34b82e6ef09aaf789eb9c040e3d0f92d28c969
+	Merge branches 'v5.8/vfio/alex-block-mmio-v3', 'v5.8/vfio/alex-zero-cap-v2' and 'v5.8/vfio/qian-leak-fixes' into v5.8/vfio/next
+intel-iommu/x86/vt-d 7809c4d5805b1d331acfe0047dd9695691d428d4
+	iommu/vt-d: fix a GCC warning
+origin/gvt-fixes 72a7a9925e2beea09b109dffb3384c9bf920d9da
+	drm/i915/gvt: Fix kernel oops for 3-level ppgtt guest
+origin/gvt-next-fixes cb7ee52284a244fd14caec73df0d49e02891aac4
+	drm/i915/gvt: Use ARRAY_SIZE for vgpu_types
+origin/gvt-next 47e51832ae93534d872511ba557115722582d94c
+	drm/i915/gvt: use context lrc_reg_state for shadow ppgtt override

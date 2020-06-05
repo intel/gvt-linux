@@ -349,11 +349,11 @@ malidp_verify_afbc_framebuffer_size(struct drm_device *dev,
 	if (objs->size < afbc_size) {
 		DRM_DEBUG_KMS("buffer size (%zu) too small for AFBC buffer size = %u\n",
 			      objs->size, afbc_size);
-		drm_gem_object_put_unlocked(objs);
+		drm_gem_object_put(objs);
 		return false;
 	}
 
-	drm_gem_object_put_unlocked(objs);
+	drm_gem_object_put(objs);
 
 	return true;
 }
@@ -929,11 +929,10 @@ static void malidp_unbind(struct device *dev)
 	drm_dev_unregister(drm);
 	drm_kms_helper_poll_fini(drm);
 	pm_runtime_get_sync(dev);
-	drm_crtc_vblank_off(&malidp->crtc);
+	drm_atomic_helper_shutdown(drm);
 	malidp_se_irq_fini(hwdev);
 	malidp_de_irq_fini(hwdev);
 	drm->irq_enabled = false;
-	drm_atomic_helper_shutdown(drm);
 	component_unbind_all(dev, drm);
 	of_node_put(malidp->crtc.port);
 	malidp->crtc.port = NULL;

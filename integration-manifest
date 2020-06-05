@@ -1,34 +1,12 @@
-drm drm-fixes 3d77e6a8804abcc0504c904bd6e5cdf3a5cf8162
-	Linux 5.7
-drm-misc drm-misc-fixes abf56fadf0e208abfb13ad1ac0094416058da0ad
-	gpu/drm: Ingenic: Fix opaque pointer casted to wrong type
-drm-intel drm-intel-fixes 822d6bd1890dbeaedf661d30d2c5280e127ef4b3
-	drm/i915: work around false-positive maybe-uninitialized warning
-drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
-	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
-drm drm-next 9ca1f474cea0edc14a1d7ec933e5472c0ff115d3
-	Merge tag 'amd-drm-next-5.8-2020-05-27' of git://people.freedesktop.org/~agd5f/linux into drm-next
-drm-misc drm-misc-next-fixes 968d81a64a883af2d16dd3f8a6ad6b67db2fde58
-	drm/connector: notify userspace on hotplug after register complete
-drm-intel drm-intel-next-fixes f8665d797b1ce9bd81f7ed7744ef3a18d6b186ea
-	Merge tag 'gvt-next-fixes-2020-05-28' of https://github.com/intel/gvt-linux into drm-intel-next-fixes
-drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
-	Linux 4.14-rc1
-drm-misc drm-misc-next cb62cdec6d48ccd029d144380ce9cc09a54092be
-	drm/panel: simple: Set connector type for DSI panels
-drm-intel drm-intel-next-queued 2d3879950f8ac1eb5638958a01ff0abeba5427d9
-	drm/i915: Add psr_safest_params
-drm-intel drm-intel-next 3a36aa237e4ed04553c0998cf5f47eda3e206e4f
-	drm/i915: Update DRIVER_DATE to 20200515
-drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
-	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
-sound-upstream for-linus 3398e5c7b0383a1795090d76545884091636644c
-	ALSA: usb-audio: Manage auto-pm of all bundled interfaces
-sound-upstream for-next 3398e5c7b0383a1795090d76545884091636644c
-	ALSA: usb-audio: Manage auto-pm of all bundled interfaces
-drm-intel topic/core-for-CI 26145957338c07613fa603bbec798034aa8b56dc
-	perf/core: Only copy-to-user after completely unlocking all locks, v3.
-drm drm-vmwgfx-coherent 0a6cad5df541108cfd3fbd79eef48eb824c89bdc
-	Merge branch 'vmwgfx-coherent' of git://people.freedesktop.org/~thomash/linux into drm-next
-drm-misc topic/phy-compliance 8cdf727119289db3a98835662eb28e1c5ad835f1
-	drm/i915/dp: Program vswing, pre-emphasis, test-pattern
+drm-tip/drm-tip e733c03b2d8ddb126895e8073f17fe88ce4d9287
+	drm-tip: 2020y-06m-05d-02h-39m-24s UTC integration manifest
+vfio-upstream/next 4f085ca2f5a8047845ab2d6bbe97089daed28655
+	Merge branch 'v5.8/vfio/kirti-migration-fixes' into v5.8/vfio/next
+intel-iommu/x86/vt-d 71974cfb6737d45cba66189cdc0f8ba3397e8fe0
+	iommu/vt-d: Fix compile warning
+origin/gvt-fixes 72a7a9925e2beea09b109dffb3384c9bf920d9da
+	drm/i915/gvt: Fix kernel oops for 3-level ppgtt guest
+origin/gvt-next-fixes b1fc96ef69af3af9d5ee70485728ce42a6defd80
+	drm/i915/gvt: Use GFP_ATOMIC instead of GFP_KERNEL in atomic context
+origin/gvt-next 47e51832ae93534d872511ba557115722582d94c
+	drm/i915/gvt: use context lrc_reg_state for shadow ppgtt override

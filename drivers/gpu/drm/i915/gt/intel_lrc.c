@@ -446,6 +446,9 @@ static int queue_prio(const struct intel_engine_execlists *execlists)
 	 * we have to flip the index value to become priority.
 	 */
 	p = to_priolist(rb);
+	if (!I915_USER_PRIORITY_SHIFT)
+		return p->priority;
+
 	return ((p->priority + 1) << I915_USER_PRIORITY_SHIFT) - ffs(p->used);
 }
 
@@ -1134,6 +1137,13 @@ __unwind_incomplete_requests(struct intel_engine_cs *engine)
 			list_move(&rq->sched.link, pl);
 			set_bit(I915_FENCE_FLAG_PQUEUE, &rq->fence.flags);
 
+			/* Check in case we rollback so far we wrap [size/2] */
+			if (intel_ring_direction(rq->ring,
+						 intel_ring_wrap(rq->ring,
+								 rq->tail),
+						 rq->ring->tail) > 0)
+				rq->context->lrc.desc |= CTX_DESC_FORCE_RESTORE;
+
 			active = rq;
 		} else {
 			struct intel_engine_cs *owner = rq->context->engine;
@@ -1370,6 +1380,8 @@ __execlists_schedule_in(struct i915_request *rq)
 	ce->lrc.ccid |= engine->execlists.ccid;
 
 	__intel_gt_pm_get(engine->gt);
+	if (engine->fw_domain && !atomic_fetch_inc(&engine->fw_active))
+		intel_uncore_forcewake_get(engine->uncore, engine->fw_domain);
 	execlists_context_status_change(rq, INTEL_CONTEXT_SCHEDULE_IN);
 	intel_engine_context_in(engine);
 
@@ -1402,8 +1414,8 @@ static void kick_siblings(struct i915_request *rq, struct intel_context *ce)
 	struct virtual_engine *ve = container_of(ce, typeof(*ve), context);
 	struct i915_request *next = READ_ONCE(ve->request);
 
-	if (next && next->execution_mask & ~rq->execution_mask)
-		tasklet_schedule(&ve->base.execlists.tasklet);
+	if (next == rq || (next && next->execution_mask & ~rq->execution_mask))
+		tasklet_hi_schedule(&ve->base.execlists.tasklet);
 }
 
 static inline void
@@ -1438,6 +1450,8 @@ __execlists_schedule_out(struct i915_request *rq,
 	intel_context_update_runtime(ce);
 	intel_engine_context_out(engine);
 	execlists_context_status_change(rq, INTEL_CONTEXT_SCHEDULE_OUT);
+	if (engine->fw_domain && !atomic_dec_return(&engine->fw_active))
+		intel_uncore_forcewake_put(engine->uncore, engine->fw_domain);
 	intel_gt_pm_put_async(engine->gt);
 
 	/*
@@ -1498,8 +1512,9 @@ static u64 execlists_update_context(struct i915_request *rq)
 	 * HW has a tendency to ignore us rewinding the TAIL to the end of
 	 * an earlier request.
 	 */
+	GEM_BUG_ON(ce->lrc_reg_state[CTX_RING_TAIL] != rq->ring->tail);
+	prev = rq->ring->tail;
 	tail = intel_ring_set_tail(rq->ring, rq->tail);
-	prev = ce->lrc_reg_state[CTX_RING_TAIL];
 	if (unlikely(intel_ring_direction(rq->ring, tail, prev) <= 0))
 		desc |= CTX_DESC_FORCE_RESTORE;
 	ce->lrc_reg_state[CTX_RING_TAIL] = tail;
@@ -1628,9 +1643,9 @@ assert_pending_valid(const struct intel_engine_execlists *execlists,
 		ccid = ce->lrc.ccid;
 
 		/*
-		 * Sentinels are supposed to be lonely so they flush the
-		 * current exection off the HW. Check that they are the
-		 * only request in the pending submission.
+		 * Sentinels are supposed to be the last request so they flush
+		 * the current execution off the HW. Check that they are the only
+		 * request in the pending submission.
 		 */
 		if (sentinel) {
 			GEM_TRACE_ERR("%s: context:%llx after sentinel in pending[%zd]\n",
@@ -1639,15 +1654,7 @@ assert_pending_valid(const struct intel_engine_execlists *execlists,
 				      port - execlists->pending);
 			return false;
 		}
-
 		sentinel = i915_request_has_sentinel(rq);
-		if (sentinel && port != execlists->pending) {
-			GEM_TRACE_ERR("%s: sentinel context:%llx not in prime position[%zd]\n",
-				      engine->name,
-				      ce->timeline->fence_context,
-				      port - execlists->pending);
-			return false;
-		}
 
 		/* Hold tightly onto the lock to prevent concurrent retires! */
 		if (!spin_trylock_irqsave(&rq->lock, flags))
@@ -1925,6 +1932,7 @@ need_timeslice(const struct intel_engine_cs *engine,
 	if (!list_is_last(&rq->sched.link, &engine->active.requests))
 		hint = max(hint, rq_prio(list_next_entry(rq, sched.link)));
 
+	GEM_BUG_ON(hint >= I915_PRIORITY_UNPREEMPTABLE);
 	return hint >= effective_prio(rq);
 }
 
@@ -1958,7 +1966,7 @@ static int
 switch_prio(struct intel_engine_cs *engine, const struct i915_request *rq)
 {
 	if (list_is_last(&rq->sched.link, &engine->active.requests))
-		return INT_MIN;
+		return engine->execlists.queue_priority_hint;
 
 	return rq_prio(list_next_entry(rq, sched.link));
 }
@@ -2436,6 +2444,7 @@ done:
 		set_preempt_timeout(engine, *active);
 		execlists_submit_ports(engine);
 	} else {
+		start_timeslice(engine, execlists->queue_priority_hint);
 skip_submit:
 		ring_set_paused(engine, 0);
 	}
@@ -3527,7 +3536,7 @@ static int emit_pdps(struct i915_request *rq)
 	int err, i;
 	u32 *cs;
 
-	GEM_BUG_ON(intel_vgpu_active(rq->i915));
+	GEM_BUG_ON(intel_vgpu_active(rq->engine->i915));
 
 	/*
 	 * Beware ye of the dragons, this sequence is magic!
@@ -4506,11 +4515,11 @@ static int gen8_emit_flush_render(struct i915_request *request,
 		 * On GEN9: before VF_CACHE_INVALIDATE we need to emit a NULL
 		 * pipe control.
 		 */
-		if (IS_GEN(request->i915, 9))
+		if (IS_GEN(request->engine->i915, 9))
 			vf_flush_wa = true;
 
 		/* WaForGAMHang:kbl */
-		if (IS_KBL_REVID(request->i915, 0, KBL_REVID_B0))
+		if (IS_KBL_REVID(request->engine->i915, 0, KBL_REVID_B0))
 			dc_flush_wa = true;
 	}
 
@@ -4757,6 +4766,14 @@ static int gen12_emit_flush(struct i915_request *request, u32 mode)
 	return 0;
 }
 
+static void assert_request_valid(struct i915_request *rq)
+{
+	struct intel_ring *ring __maybe_unused = rq->ring;
+
+	/* Can we unwind this request without appearing to go forwards? */
+	GEM_BUG_ON(intel_ring_direction(ring, rq->wa_tail, rq->head) <= 0);
+}
+
 /*
  * Reserve space for 2 NOOPs at the end of each request to be
  * used as a workaround for not being allowed to do lite
@@ -4768,6 +4785,9 @@ static u32 *gen8_emit_wa_tail(struct i915_request *request, u32 *cs)
 	*cs++ = MI_ARB_CHECK;
 	*cs++ = MI_NOOP;
 	request->wa_tail = intel_ring_offset(request, cs);
+
+	/* Check that entire request is less than half the ring */
+	assert_request_valid(request);
 
 	return cs;
 }
@@ -5578,7 +5598,7 @@ static void virtual_submit_request(struct i915_request *rq)
 		GEM_BUG_ON(!list_empty(virtual_queue(ve)));
 		list_move_tail(&rq->sched.link, virtual_queue(ve));
 
-		tasklet_schedule(&ve->base.execlists.tasklet);
+		tasklet_hi_schedule(&ve->base.execlists.tasklet);
 	}
 
 	spin_unlock_irqrestore(&ve->base.active.lock, flags);

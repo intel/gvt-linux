@@ -1,0 +1,36 @@
+drm drm-fixes 3d77e6a8804abcc0504c904bd6e5cdf3a5cf8162
+	Linux 5.7
+drm-misc drm-misc-fixes b48fd568ac649f0fd750e89487eaa4a0ef8d2835
+	drm: mcde: Fix forgotten user of drm->dev_private
+drm-intel drm-intel-fixes 8e68c6340d5833077b3753eabedab40755571383
+	drm/i915/display: Fix the encoder type check
+drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
+	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
+drm drm-next 66057dd1d1cf2149e0f5fdaee58d6ea69bc98048
+	Merge tag 'drm-misc-next-fixes-2020-06-11' of git://anongit.freedesktop.org/drm/drm-misc into drm-next
+drm-misc drm-misc-next-fixes 291ddeb621e4a9f1ced8302a777fbd7fbda058c6
+	drm/ast: fix missing break in switch statement for format->cpp[0] case 4
+drm-intel drm-intel-next-fixes 3680c2e9f4254d1f033bf00f540e47a51f8f996b
+	drm/i915/display: Only query DP state of a DDI encoder
+drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
+	Linux 4.14-rc1
+drm-misc drm-misc-next cfe28f909ddd6ca854568870a7a9b46454e52b6f
+	drm/shmem-helper: Only dma-buf imports are private obj
+drm-intel drm-intel-next-queued dfdfbd382348d53aeedaeee10eeea9a5958a3977
+	drm/i915/selftests: Check preemption rollback of different ring queue depths
+drm-intel drm-intel-next 3a36aa237e4ed04553c0998cf5f47eda3e206e4f
+	drm/i915: Update DRIVER_DATE to 20200515
+drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
+	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
+sound-upstream for-linus a0b03952a797591d4b6d6fa7b9b7872e27783729
+	ALSA: hda/realtek - Add quirk for MSI GE63 laptop
+sound-upstream for-next 675398674c4edc2058a1dd632abd5d748b4653c3
+	ALSA: firewire-motu: wait for notification when changing clock configuration for protocol v3
+drm-intel topic/core-for-CI 7baab4e528ef38546a32f0a368285289aa2c981f
+	ext4: mballoc: Use this_cpu_read instead of this_cpu_ptr
+drm drm-vmwgfx-coherent 0a6cad5df541108cfd3fbd79eef48eb824c89bdc
+	Merge branch 'vmwgfx-coherent' of git://people.freedesktop.org/~thomash/linux into drm-next
+drm-misc topic/phy-compliance 8cdf727119289db3a98835662eb28e1c5ad835f1
+	drm/i915/dp: Program vswing, pre-emphasis, test-pattern
+drm drm-next-msm-5.8 efe792f39ddbc6396b9142afff97855ee357b492
+	Merge https://gitlab.freedesktop.org/drm/msm into drm-next-msm-5.8

@@ -426,6 +426,12 @@ static u32 intel_psr1_get_tp_time(struct intel_dp *intel_dp)
 	if (INTEL_GEN(dev_priv) >= 11)
 		val |= EDP_PSR_TP4_TIME_0US;
 
+	if (i915_modparams.psr_safest_params) {
+		val |= EDP_PSR_TP1_TIME_2500us;
+		val |= EDP_PSR_TP2_TP3_TIME_2500us;
+		goto check_tp3_sel;
+	}
+
 	if (dev_priv->vbt.psr.tp1_wakeup_time_us == 0)
 		val |= EDP_PSR_TP1_TIME_0us;
 	else if (dev_priv->vbt.psr.tp1_wakeup_time_us <= 100)
@@ -444,6 +450,7 @@ static u32 intel_psr1_get_tp_time(struct intel_dp *intel_dp)
 	else
 		val |= EDP_PSR_TP2_TP3_TIME_2500us;
 
+check_tp3_sel:
 	if (intel_dp_source_supports_hbr2(intel_dp) &&
 	    drm_dp_tps3_supported(intel_dp->dpcd))
 		val |= EDP_PSR_TP1_TP3_SEL;
@@ -495,6 +502,27 @@ static void hsw_activate_psr1(struct intel_dp *intel_dp)
 	intel_de_write(dev_priv, EDP_PSR_CTL(dev_priv->psr.transcoder), val);
 }
 
+static u32 intel_psr2_get_tp_time(struct intel_dp *intel_dp)
+{
+	struct drm_i915_private *dev_priv = dp_to_i915(intel_dp);
+	u32 val = 0;
+
+	if (i915_modparams.psr_safest_params)
+		return EDP_PSR2_TP2_TIME_2500us;
+
+	if (dev_priv->vbt.psr.psr2_tp2_tp3_wakeup_time_us >= 0 &&
+	    dev_priv->vbt.psr.psr2_tp2_tp3_wakeup_time_us <= 50)
+		val |= EDP_PSR2_TP2_TIME_50us;
+	else if (dev_priv->vbt.psr.psr2_tp2_tp3_wakeup_time_us <= 100)
+		val |= EDP_PSR2_TP2_TIME_100us;
+	else if (dev_priv->vbt.psr.psr2_tp2_tp3_wakeup_time_us <= 500)
+		val |= EDP_PSR2_TP2_TIME_500us;
+	else
+		val |= EDP_PSR2_TP2_TIME_2500us;
+
+	return val;
+}
+
 static void hsw_activate_psr2(struct intel_dp *intel_dp)
 {
 	struct drm_i915_private *dev_priv = dp_to_i915(intel_dp);
@@ -507,16 +535,23 @@ static void hsw_activate_psr2(struct intel_dp *intel_dp)
 		val |= EDP_Y_COORDINATE_ENABLE;
 
 	val |= EDP_PSR2_FRAME_BEFORE_SU(dev_priv->psr.sink_sync_latency + 1);
+	val |= intel_psr2_get_tp_time(intel_dp);
 
-	if (dev_priv->vbt.psr.psr2_tp2_tp3_wakeup_time_us >= 0 &&
-	    dev_priv->vbt.psr.psr2_tp2_tp3_wakeup_time_us <= 50)
-		val |= EDP_PSR2_TP2_TIME_50us;
-	else if (dev_priv->vbt.psr.psr2_tp2_tp3_wakeup_time_us <= 100)
-		val |= EDP_PSR2_TP2_TIME_100us;
-	else if (dev_priv->vbt.psr.psr2_tp2_tp3_wakeup_time_us <= 500)
-		val |= EDP_PSR2_TP2_TIME_500us;
-	else
-		val |= EDP_PSR2_TP2_TIME_2500us;
+	if (INTEL_GEN(dev_priv) >= 12) {
+		/*
+		 * TODO: 7 lines of IO_BUFFER_WAKE and FAST_WAKE are default
+		 * values from BSpec. In order to setting an optimal power
+		 * consumption, lower than 4k resoluition mode needs to decrese
+		 * IO_BUFFER_WAKE and FAST_WAKE. And higher than 4K resolution
+		 * mode needs to increase IO_BUFFER_WAKE and FAST_WAKE.
+		 */
+		val |= TGL_EDP_PSR2_BLOCK_COUNT_NUM_2;
+		val |= TGL_EDP_PSR2_IO_BUFFER_WAKE(7);
+		val |= TGL_EDP_PSR2_FAST_WAKE(7);
+	} else if (INTEL_GEN(dev_priv) >= 9) {
+		val |= EDP_PSR2_IO_BUFFER_WAKE(7);
+		val |= EDP_PSR2_FAST_WAKE(7);
+	}
 
 	/*
 	 * PSR2 HW is incorrectly using EDP_PSR_TP1_TP3_SEL and BSpec is
@@ -643,6 +678,21 @@ static bool intel_psr2_config_valid(struct intel_dp *intel_dp,
 		drm_dbg_kms(&dev_priv->drm,
 			    "PSR2 not supported in transcoder %s\n",
 			    transcoder_name(crtc_state->cpu_transcoder));
+		return false;
+	}
+
+	/*
+	 * Some platforms lack PSR2 HW tracking and instead require manual
+	 * tracking by software.  In this case, the driver is required to track
+	 * the areas that need updates and program hardware to send selective
+	 * updates.
+	 *
+	 * So until the software tracking is implemented, PSR2 needs to be
+	 * disabled for platforms without PSR2 HW tracking.
+	 */
+	if (!HAS_PSR_HW_TRACKING(dev_priv)) {
+		drm_dbg_kms(&dev_priv->drm,
+			    "No PSR2 HW tracking in the platform\n");
 		return false;
 	}
 

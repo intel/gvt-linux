@@ -1,0 +1,36 @@
+drm drm-fixes 48778464bb7d346b47157d21ffde2af6b2d39110
+	Linux 5.8-rc2
+drm-misc drm-misc-fixes 7f757cb6b2fc0ad704d0ca0b7b5a2729aca35580
+	video: fbdev: uvesafb: fix "noblank" option handling
+drm-intel drm-intel-fixes 48778464bb7d346b47157d21ffde2af6b2d39110
+	Linux 5.8-rc2
+drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
+	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
+drm drm-next 66057dd1d1cf2149e0f5fdaee58d6ea69bc98048
+	Merge tag 'drm-misc-next-fixes-2020-06-11' of git://anongit.freedesktop.org/drm/drm-misc into drm-next
+drm-misc drm-misc-next-fixes 291ddeb621e4a9f1ced8302a777fbd7fbda058c6
+	drm/ast: fix missing break in switch statement for format->cpp[0] case 4
+drm-intel drm-intel-next-fixes 3680c2e9f4254d1f033bf00f540e47a51f8f996b
+	drm/i915/display: Only query DP state of a DDI encoder
+drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
+	Linux 4.14-rc1
+drm-misc drm-misc-next b3bfcdf8a3b623aee3fc40a3e6b17d8ec1f14b50
+	drm/panel: simple: add Tianma TM070JVHG33
+drm-intel drm-intel-next-queued cf46143fe2c90d08554031b64529c8c1c0f9cb08
+	drm/i915/gt: Replace manual kmap_atomic() with pin_map for renderstate
+drm-intel drm-intel-next 3a36aa237e4ed04553c0998cf5f47eda3e206e4f
+	drm/i915: Update DRIVER_DATE to 20200515
+drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
+	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
+sound-upstream for-linus d50313a5a0d803bcf55121a2b82086633060d05e
+	ALSA: hda: Intel: add missing PCI IDs for ICL-H, TGL-H and EKL
+sound-upstream for-next c7440acc859778eed74b223fc41f094133aeaaf0
+	Merge branch 'topic/hda-micmute-led' into for-next
+drm-intel topic/core-for-CI 7baab4e528ef38546a32f0a368285289aa2c981f
+	ext4: mballoc: Use this_cpu_read instead of this_cpu_ptr
+drm drm-vmwgfx-coherent 0a6cad5df541108cfd3fbd79eef48eb824c89bdc
+	Merge branch 'vmwgfx-coherent' of git://people.freedesktop.org/~thomash/linux into drm-next
+drm-misc topic/phy-compliance 8cdf727119289db3a98835662eb28e1c5ad835f1
+	drm/i915/dp: Program vswing, pre-emphasis, test-pattern
+drm drm-next-msm-5.8 efe792f39ddbc6396b9142afff97855ee357b492
+	Merge https://gitlab.freedesktop.org/drm/msm into drm-next-msm-5.8

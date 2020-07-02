@@ -1,32 +1,10 @@
-drm drm-fixes 80e89901e5a5ef0688a3ba457ed37bc2e625eb79
-	Merge tag 'amd-drm-fixes-5.8-2020-07-01' of git://people.freedesktop.org/~agd5f/linux into drm-fixes
-drm-misc drm-misc-fixes bda8eaa6dee7525f4dac950810a85a88bf6c2ba0
-	drm: sun4i: hdmi: Remove extra HPD polling
-drm-intel drm-intel-fixes 55fd7e0222ea01246ef3e6aae28b5721fdfb790f
-	drm/i915: Include asm sources for {ivb, hsw}_clear_kernel.c
-drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
-	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
-drm drm-next 9555152beb1143c85c03f9b9de59863cbbe89f4b
-	Merge tag 'amd-drm-next-5.9-2020-07-01' of git://people.freedesktop.org/~agd5f/linux into drm-next
-drm-misc drm-misc-next-fixes 291ddeb621e4a9f1ced8302a777fbd7fbda058c6
-	drm/ast: fix missing break in switch statement for format->cpp[0] case 4
-drm-intel drm-intel-next-fixes 3680c2e9f4254d1f033bf00f540e47a51f8f996b
-	drm/i915/display: Only query DP state of a DDI encoder
-drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
-	Linux 4.14-rc1
-drm-misc drm-misc-next c8a753484066a6382d2539d3dca1428164a682bf
-	drm/panel: st7703: Assert reset prior to powering down the regulators
-drm-intel drm-intel-next-queued 680c45c767f63e35f063d3ea04f388a9f7ae7079
-	drm/i915/dp: Correctly advertise HBR3 for GEN11+
-drm-intel drm-intel-next 3a36aa237e4ed04553c0998cf5f47eda3e206e4f
-	drm/i915: Update DRIVER_DATE to 20200515
-drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
-	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
-sound-upstream for-linus d02b10590953429a6dd2d6245df4d8a0a869df66
-	Merge tag 'asoc-fix-v5.8-rc3' of https://git.kernel.org/pub/scm/linux/kernel/git/broonie/sound into for-linus
-sound-upstream for-next 5ff40e6d0f8ae2f711b0e97d4c0a4d081fdd0dc1
-	ALSA: usb-audio: Fix some typos
-drm-intel topic/core-for-CI 7baab4e528ef38546a32f0a368285289aa2c981f
-	ext4: mballoc: Use this_cpu_read instead of this_cpu_ptr
-drm-misc topic/phy-compliance 8cdf727119289db3a98835662eb28e1c5ad835f1
-	drm/i915/dp: Program vswing, pre-emphasis, test-pattern
+drm-tip/drm-tip 65f4b41f875158ce36b3571700c0f39e8321332a
+	drm-tip: 2020y-07m-02d-05h-22m-26s UTC integration manifest
+vfio-upstream/next 4f085ca2f5a8047845ab2d6bbe97089daed28655
+	Merge branch 'v5.8/vfio/kirti-migration-fixes' into v5.8/vfio/next
+intel-iommu/x86/vt-d 9ebcfadb0610322ac537dd7aa5d9cbc2b2894c68
+	Linux 5.8-rc3
+origin/gvt-fixes a291e4fba259a56a6a274c1989997acb6f0bb03a
+	drm/i915/gvt: Use GFP_ATOMIC instead of GFP_KERNEL in atomic context
+origin/gvt-next 47e51832ae93534d872511ba557115722582d94c
+	drm/i915/gvt: use context lrc_reg_state for shadow ppgtt override

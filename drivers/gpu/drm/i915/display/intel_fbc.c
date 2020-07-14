@@ -132,14 +132,13 @@ static void i8xx_fbc_activate(struct drm_i915_private *dev_priv)
 	}
 
 	/* enable it... */
-	fbc_ctl = intel_de_read(dev_priv, FBC_CONTROL);
-	fbc_ctl &= 0x3fff << FBC_CTL_INTERVAL_SHIFT;
+	fbc_ctl = FBC_CTL_INTERVAL(params->interval);
 	fbc_ctl |= FBC_CTL_EN | FBC_CTL_PERIODIC;
 	if (IS_I945GM(dev_priv))
 		fbc_ctl |= FBC_CTL_C3_IDLE; /* 945 needs special SR handling */
-	fbc_ctl |= (cfb_pitch & 0xff) << FBC_CTL_STRIDE_SHIFT;
+	fbc_ctl |= FBC_CTL_STRIDE(cfb_pitch & 0xff);
 	if (params->fence_id >= 0)
-		fbc_ctl |= params->fence_id;
+		fbc_ctl |= FBC_CTL_FENCENO(params->fence_id);
 	intel_de_write(dev_priv, FBC_CONTROL, fbc_ctl);
 }
 
@@ -699,6 +698,9 @@ static void intel_fbc_update_state_cache(struct intel_crtc *crtc,
 	cache->fb.stride = fb->pitches[0];
 	cache->fb.modifier = fb->modifier;
 
+	/* FBC1 compression interval: arbitrary choice of 1 second */
+	cache->interval = drm_mode_vrefresh(&crtc_state->hw.adjusted_mode);
+
 	cache->fence_y_offset = intel_plane_fence_y_offset(plane_state);
 
 	drm_WARN_ON(&dev_priv->drm, plane_state->flags & PLANE_HAS_FENCE &&
@@ -728,7 +730,7 @@ static bool intel_fbc_can_enable(struct drm_i915_private *dev_priv)
 		return false;
 	}
 
-	if (!i915_modparams.enable_fbc) {
+	if (!dev_priv->params.enable_fbc) {
 		fbc->no_fbc_reason = "disabled per module param or by default";
 		return false;
 	}
@@ -873,6 +875,8 @@ static void intel_fbc_get_reg_params(struct intel_crtc *crtc,
 	params->fence_id = cache->fence_id;
 	params->fence_y_offset = cache->fence_y_offset;
 
+	params->interval = cache->interval;
+
 	params->crtc.pipe = crtc->pipe;
 	params->crtc.i9xx_plane = to_intel_plane(crtc->base.primary)->i9xx_plane;
 
@@ -1005,7 +1009,7 @@ static void __intel_fbc_post_update(struct intel_crtc *crtc)
 
 	fbc->flip_pending = false;
 
-	if (!i915_modparams.enable_fbc) {
+	if (!dev_priv->params.enable_fbc) {
 		intel_fbc_deactivate(dev_priv, "disabled at runtime per module param");
 		__intel_fbc_disable(dev_priv);
 
@@ -1078,11 +1082,19 @@ void intel_fbc_flush(struct drm_i915_private *dev_priv,
 	if (!HAS_FBC(dev_priv))
 		return;
 
+	/*
+	 * GTT tracking does not nuke the entire cfb
+	 * so don't clear busy_bits set for some other
+	 * reason.
+	 */
+	if (origin == ORIGIN_GTT)
+		return;
+
 	mutex_lock(&fbc->lock);
 
 	fbc->busy_bits &= ~frontbuffer_bits;
 
-	if (origin == ORIGIN_GTT || origin == ORIGIN_FLIP)
+	if (origin == ORIGIN_FLIP)
 		goto out;
 
 	if (!fbc->busy_bits && fbc->crtc &&
@@ -1358,8 +1370,8 @@ void intel_fbc_handle_fifo_underrun_irq(struct drm_i915_private *dev_priv)
  */
 static int intel_sanitize_fbc_option(struct drm_i915_private *dev_priv)
 {
-	if (i915_modparams.enable_fbc >= 0)
-		return !!i915_modparams.enable_fbc;
+	if (dev_priv->params.enable_fbc >= 0)
+		return !!dev_priv->params.enable_fbc;
 
 	if (!HAS_FBC(dev_priv))
 		return 0;
@@ -1403,19 +1415,14 @@ void intel_fbc_init(struct drm_i915_private *dev_priv)
 	if (need_fbc_vtd_wa(dev_priv))
 		mkwrite_device_info(dev_priv)->display.has_fbc = false;
 
-	i915_modparams.enable_fbc = intel_sanitize_fbc_option(dev_priv);
+	dev_priv->params.enable_fbc = intel_sanitize_fbc_option(dev_priv);
 	drm_dbg_kms(&dev_priv->drm, "Sanitized enable_fbc value: %d\n",
-		    i915_modparams.enable_fbc);
+		    dev_priv->params.enable_fbc);
 
 	if (!HAS_FBC(dev_priv)) {
 		fbc->no_fbc_reason = "unsupported by this chipset";
 		return;
 	}
-
-	/* This value was pulled out of someone's hat */
-	if (INTEL_GEN(dev_priv) <= 4 && !IS_GM45(dev_priv))
-		intel_de_write(dev_priv, FBC_CONTROL,
-		               500 << FBC_CTL_INTERVAL_SHIFT);
 
 	/* We still don't have any sort of hardware state readout for FBC, so
 	 * deactivate it in case the BIOS activated it to make sure software

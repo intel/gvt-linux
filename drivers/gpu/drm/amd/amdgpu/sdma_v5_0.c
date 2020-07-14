@@ -40,6 +40,7 @@
 #include "soc15.h"
 #include "navi10_sdma_pkt_open.h"
 #include "nbio_v2_3.h"
+#include "sdma_common.h"
 #include "sdma_v5_0.h"
 
 MODULE_FIRMWARE("amdgpu/navi10_sdma.bin");
@@ -1299,8 +1300,8 @@ static int sdma_v5_0_sw_fini(void *handle)
 	int i;
 
 	for (i = 0; i < adev->sdma.num_instances; i++) {
-		if (adev->sdma.instance[i].fw != NULL)
-			release_firmware(adev->sdma.instance[i].fw);
+		release_firmware(adev->sdma.instance[i].fw);
+		adev->sdma.instance[i].fw = NULL;
 
 		amdgpu_ring_fini(&adev->sdma.instance[i].ring);
 	}

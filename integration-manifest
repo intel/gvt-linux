@@ -1,32 +1,10 @@
-drm drm-fixes 38794a5465b752118098e36cf95c59083f9f1f88
-	Merge tag 'amd-drm-fixes-5.8-2020-07-09' of git://people.freedesktop.org/~agd5f/linux into drm-fixes
-drm-misc drm-misc-fixes 6348dd291e3653534a9e28e6917569bc9967b35b
-	dmabuf: use spinlock to access dmabuf->name
-drm-intel drm-intel-fixes 5a383d443b29a140094430f3ad1d02fa1acc2b80
-	drm/i915/gt: Pin the rings before marking active
-drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
-	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
-drm drm-next 1cc4af412f40bfe33f4b7e2b014a8d4b140bd8d3
-	Merge tag 'drm-intel-next-2020-07-02' of git://anongit.freedesktop.org/drm/drm-intel into drm-next
-drm-misc drm-misc-next-fixes 291ddeb621e4a9f1ced8302a777fbd7fbda058c6
-	drm/ast: fix missing break in switch statement for format->cpp[0] case 4
-drm-intel drm-intel-next-fixes 3680c2e9f4254d1f033bf00f540e47a51f8f996b
-	drm/i915/display: Only query DP state of a DDI encoder
-drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
-	Linux 4.14-rc1
-drm-misc drm-misc-next 895a479039e0ee4c540d34f0848360ef21d10421
-	drm/mgag200: Inline mga_crtc_{prepare, commit}() into enable function
-drm-intel drm-intel-next-queued a133c6988f7080fb8baf86ecf5161065bec65fb6
-	drm/i915: WARN if max vswing/pre-emphasis violates the DP spec
-drm-intel drm-intel-next d524b87f77364db096855d7eb714ffacec974ddf
-	drm/i915: Update DRIVER_DATE to 20200702
-drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
-	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
-sound-upstream for-linus f50a121d2f32bccc1d6b94df925a1ce44ea7eff7
-	ALSA: hda/realtek: Enable headset mic of Acer TravelMate B311R-31 with ALC256
-sound-upstream for-next b91c9cb9d4b378fda65c3196034ecd09ee1493ef
-	ALSA: echoaudio: re-enable IRQs on failure path
-drm-intel topic/core-for-CI 7baab4e528ef38546a32f0a368285289aa2c981f
-	ext4: mballoc: Use this_cpu_read instead of this_cpu_ptr
-drm-misc topic/phy-compliance 8cdf727119289db3a98835662eb28e1c5ad835f1
-	drm/i915/dp: Program vswing, pre-emphasis, test-pattern
+drm-tip/drm-tip 91eb8c9eebcf41f7368745d05c7f178903752ddd
+	drm-tip: 2020y-07m-14d-07h-42m-17s UTC integration manifest
+vfio-upstream/next 4f085ca2f5a8047845ab2d6bbe97089daed28655
+	Merge branch 'v5.8/vfio/kirti-migration-fixes' into v5.8/vfio/next
+intel-iommu/x86/vt-d 9ebcfadb0610322ac537dd7aa5d9cbc2b2894c68
+	Linux 5.8-rc3
+origin/gvt-fixes a291e4fba259a56a6a274c1989997acb6f0bb03a
+	drm/i915/gvt: Use GFP_ATOMIC instead of GFP_KERNEL in atomic context
+origin/gvt-next 02b5fc1527c0bb26a1012c6a806dc033f3b125a6
+	drm/i915/gvt: Remove intel_vgpu_reset_gtt() since no one use it.

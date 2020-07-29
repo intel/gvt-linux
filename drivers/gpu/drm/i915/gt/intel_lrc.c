@@ -2060,6 +2060,14 @@ static inline void clear_ports(struct i915_request **ports, int count)
 	memset_p((void **)ports, NULL, count);
 }
 
+static inline void
+copy_ports(struct i915_request **dst, struct i915_request **src, int count)
+{
+	/* A memcpy_p() would be very useful here! */
+	while (count--)
+		WRITE_ONCE(*dst++, *src++); /* avoid write tearing */
+}
+
 static void execlists_dequeue(struct intel_engine_cs *engine)
 {
 	struct intel_engine_execlists * const execlists = &engine->execlists;
@@ -2648,10 +2656,9 @@ static void process_csb(struct intel_engine_cs *engine)
 
 			/* switch pending to inflight */
 			GEM_BUG_ON(!assert_pending_valid(execlists, "promote"));
-			memcpy(execlists->inflight,
-			       execlists->pending,
-			       execlists_num_ports(execlists) *
-			       sizeof(*execlists->pending));
+			copy_ports(execlists->inflight,
+				   execlists->pending,
+				   execlists_num_ports(execlists));
 			smp_wmb(); /* complete the seqlock */
 			WRITE_ONCE(execlists->active, execlists->inflight);
 
@@ -4757,13 +4764,20 @@ static int gen12_emit_flush(struct i915_request *request, u32 mode)
 	intel_engine_mask_t aux_inv = 0;
 	u32 cmd, *cs;
 
+	cmd = 4;
+	if (mode & EMIT_INVALIDATE)
+		cmd += 2;
 	if (mode & EMIT_INVALIDATE)
 		aux_inv = request->engine->mask & ~BIT(BCS0);
+	if (aux_inv)
+		cmd += 2 * hweight8(aux_inv) + 2;
 
-	cs = intel_ring_begin(request,
-			      4 + (aux_inv ? 2 * hweight8(aux_inv) + 2 : 0));
+	cs = intel_ring_begin(request, cmd);
 	if (IS_ERR(cs))
 		return PTR_ERR(cs);
+
+	if (mode & EMIT_INVALIDATE)
+		*cs++ = preparser_disable(true);
 
 	cmd = MI_FLUSH_DW + 1;
 
@@ -4797,6 +4811,10 @@ static int gen12_emit_flush(struct i915_request *request, u32 mode)
 		}
 		*cs++ = MI_NOOP;
 	}
+
+	if (mode & EMIT_INVALIDATE)
+		*cs++ = preparser_disable(false);
+
 	intel_ring_advance(request, cs);
 
 	return 0;

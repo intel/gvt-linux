@@ -203,11 +203,6 @@ struct drm_i915_file_private {
 		struct rcu_head rcu;
 	};
 
-	struct {
-		spinlock_t lock;
-		struct list_head request_list;
-	} mm;
-
 	struct xarray context_xa;
 	struct xarray vm_xa;
 
@@ -1045,6 +1040,14 @@ struct drm_i915_private {
 	struct intel_l3_parity l3_parity;
 
 	/*
+	 * HTI (aka HDPORT) state read during initial hw readout.  Most
+	 * platforms don't have HTI, so this will just stay 0.  Those that do
+	 * will use this later to figure out which PLLs and PHYs are unavailable
+	 * for driver usage.
+	 */
+	u32 hti_state;
+
+	/*
 	 * edram size in MB.
 	 * Cannot be determined by PCIID. You must always read a register.
 	 */
@@ -1831,7 +1834,6 @@ void i915_gem_suspend_late(struct drm_i915_private *dev_priv);
 void i915_gem_resume(struct drm_i915_private *dev_priv);
 
 int i915_gem_open(struct drm_i915_private *i915, struct drm_file *file);
-void i915_gem_release(struct drm_device *dev, struct drm_file *file);
 
 int i915_gem_object_set_cache_level(struct drm_i915_gem_object *obj,
 				    enum i915_cache_level cache_level);

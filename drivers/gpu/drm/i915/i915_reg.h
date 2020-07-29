@@ -1898,6 +1898,8 @@ static inline bool i915_mmio_reg_valid(i915_reg_t reg)
 #define  PWR_DOWN_LN_3_1_0		(0xb << 4)
 #define  PWR_DOWN_LN_MASK		(0xf << 4)
 #define  PWR_DOWN_LN_SHIFT		4
+#define  EDP4K2K_MODE_OVRD_EN		(1 << 3)
+#define  EDP4K2K_MODE_OVRD_OPTIMIZED	(1 << 2)
 
 #define ICL_PORT_CL_DW12(phy)		_MMIO(_ICL_PORT_CL_DW(12, phy))
 #define   ICL_LANE_ENABLE_AUX		(1 << 0)
@@ -1909,10 +1911,15 @@ static inline bool i915_mmio_reg_valid(i915_reg_t reg)
 
 #define CNL_PORT_COMP_DW0		_MMIO(0x162100)
 #define ICL_PORT_COMP_DW0(phy)		_MMIO(_ICL_PORT_COMP_DW(0, phy))
-#define   COMP_INIT			(1 << 31)
+#define   COMP_INIT			REG_BIT(31)
+#define   GRCCODE_LDO			REG_GENMASK(7, 0)
 
 #define CNL_PORT_COMP_DW1		_MMIO(0x162104)
 #define ICL_PORT_COMP_DW1(phy)		_MMIO(_ICL_PORT_COMP_DW(1, phy))
+
+#define ICL_PORT_COMP_DW2(phy)		_MMIO(_ICL_PORT_COMP_DW(2, phy))
+#define   IREF_RCAL_ORD_EN		REG_BIT(7)
+#define   IREF_RCAL_ORD			REG_GENMASK(6, 0)
 
 #define CNL_PORT_COMP_DW3		_MMIO(0x16210c)
 #define ICL_PORT_COMP_DW3(phy)		_MMIO(_ICL_PORT_COMP_DW(3, phy))
@@ -1926,6 +1933,12 @@ static inline bool i915_mmio_reg_valid(i915_reg_t reg)
 #define   VOLTAGE_INFO_1_05V		(2 << 24)
 #define   VOLTAGE_INFO_MASK		(3 << 24)
 #define   VOLTAGE_INFO_SHIFT		24
+#define   FIRST_COMP_DONE		REG_BIT(22)
+
+#define ICL_PORT_COMP_DW6(phy)		_MMIO(_ICL_PORT_COMP_DW(6, phy))
+#define   GRCCODE			REG_GENMASK(30, 24)
+#define   RCOMPCODEOVEN_LDO_SYNC	REG_BIT(23)
+#define   RCOMPCODE_LD_CAP_OV		REG_GENMASK(22, 16)
 
 #define ICL_PORT_COMP_DW8(phy)		_MMIO(_ICL_PORT_COMP_DW(8, phy))
 #define   IREFGEN			(1 << 24)
@@ -2918,6 +2931,12 @@ static inline bool i915_mmio_reg_valid(i915_reg_t reg)
 #define MBUS_UBOX_CTL			_MMIO(0x4503C)
 #define MBUS_BBOX_CTL_S1		_MMIO(0x45040)
 #define MBUS_BBOX_CTL_S2		_MMIO(0x45044)
+
+#define HDPORT_STATE			_MMIO(0x45050)
+#define   HDPORT_DPLL_USED_MASK		REG_GENMASK(14, 12)
+#define   HDPORT_PHY_USED_DP(phy)	REG_BIT(2 * (phy) + 2)
+#define   HDPORT_PHY_USED_HDMI(phy)	REG_BIT(2 * (phy) + 1)
+#define   HDPORT_ENABLED		REG_BIT(0)
 
 /* Make render/texture TLB fetches lower priorty than associated data
  *   fetches. This is not turned on by default
@@ -8711,6 +8730,7 @@ enum {
 #define  PCH_GMBUSUNIT_CLOCK_GATE_DISABLE (1 << 31)
 #define  PCH_DPLUNIT_CLOCK_GATE_DISABLE (1 << 30)
 #define  PCH_DPLSUNIT_CLOCK_GATE_DISABLE (1 << 29)
+#define  PCH_DPMGUNIT_CLOCK_GATE_DISABLE (1 << 15)
 #define  PCH_CPUNIT_CLOCK_GATE_DISABLE (1 << 14)
 #define  CNP_PWM_CGE_GATING_DISABLE (1 << 13)
 #define  PCH_LP_PARTITION_LEVEL_DISABLE  (1 << 12)
@@ -10277,12 +10297,18 @@ enum skl_power_gate {
 
 #define ICL_DPCLKA_CFGCR0			_MMIO(0x164280)
 #define  ICL_DPCLKA_CFGCR0_DDI_CLK_OFF(phy)	(1 << _PICK(phy, 10, 11, 24))
+#define  RKL_DPCLKA_CFGCR0_DDI_CLK_OFF(phy)	REG_BIT((phy) + 10)
 #define  ICL_DPCLKA_CFGCR0_TC_CLK_OFF(tc_port)	(1 << ((tc_port) < PORT_TC4 ? \
 						       (tc_port) + 12 : \
 						       (tc_port) - PORT_TC4 + 21))
 #define  ICL_DPCLKA_CFGCR0_DDI_CLK_SEL_SHIFT(phy)	((phy) * 2)
 #define  ICL_DPCLKA_CFGCR0_DDI_CLK_SEL_MASK(phy)	(3 << ICL_DPCLKA_CFGCR0_DDI_CLK_SEL_SHIFT(phy))
 #define  ICL_DPCLKA_CFGCR0_DDI_CLK_SEL(pll, phy)	((pll) << ICL_DPCLKA_CFGCR0_DDI_CLK_SEL_SHIFT(phy))
+#define  RKL_DPCLKA_CFGCR0_DDI_CLK_SEL_SHIFT(phy)	_PICK(phy, 0, 2, 4, 27)
+#define  RKL_DPCLKA_CFGCR0_DDI_CLK_SEL_MASK(phy) \
+	(3 << RKL_DPCLKA_CFGCR0_DDI_CLK_SEL_SHIFT(phy))
+#define  RKL_DPCLKA_CFGCR0_DDI_CLK_SEL(pll, phy) \
+	((pll) << RKL_DPCLKA_CFGCR0_DDI_CLK_SEL_SHIFT(phy))
 
 /* CNL PLL */
 #define DPLL0_ENABLE		0x46010
@@ -10503,19 +10529,21 @@ enum skl_power_gate {
 
 #define _TGL_DPLL0_CFGCR0		0x164284
 #define _TGL_DPLL1_CFGCR0		0x16428C
-/* TODO: add DPLL4 */
 #define _TGL_TBTPLL_CFGCR0		0x16429C
 #define TGL_DPLL_CFGCR0(pll)		_MMIO_PLL3(pll, _TGL_DPLL0_CFGCR0, \
 						  _TGL_DPLL1_CFGCR0, \
 						  _TGL_TBTPLL_CFGCR0)
+#define RKL_DPLL_CFGCR0(pll)		_MMIO_PLL(pll, _TGL_DPLL0_CFGCR0, \
+						  _TGL_DPLL1_CFGCR0)
 
 #define _TGL_DPLL0_CFGCR1		0x164288
 #define _TGL_DPLL1_CFGCR1		0x164290
-/* TODO: add DPLL4 */
 #define _TGL_TBTPLL_CFGCR1		0x1642A0
 #define TGL_DPLL_CFGCR1(pll)		_MMIO_PLL3(pll, _TGL_DPLL0_CFGCR1, \
 						   _TGL_DPLL1_CFGCR1, \
 						   _TGL_TBTPLL_CFGCR1)
+#define RKL_DPLL_CFGCR1(pll)		_MMIO_PLL(pll, _TGL_DPLL0_CFGCR1, \
+						  _TGL_DPLL1_CFGCR1)
 
 #define _DKL_PHY1_BASE			0x168000
 #define _DKL_PHY2_BASE			0x169000

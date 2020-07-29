@@ -1,32 +1,12 @@
-drm drm-fixes a4a2739beb8933a19281bca077fdb852598803ed
-	Merge tag 'drm-misc-fixes-2020-07-28' of git://anongit.freedesktop.org/drm/drm-misc into drm-fixes
-drm-misc drm-misc-fixes f4a1692491b5cce8978cea19cb8946bc2c6f14bc
-	Merge remote-tracking branch 'drm/drm-fixes' into drm-misc-fixes
-drm-intel drm-intel-fixes 92ed301919932f777713b9172e525674157e983d
-	Linux 5.8-rc7
-drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
-	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
-drm drm-next 5de5b6ecf97a021f29403aa272cb4e03318ef586
-	drm/ttm/nouveau: don't call tt destroy callback on alloc failure.
-drm-misc drm-misc-next-fixes 175233f92e80d09f78be51e5b9abf5ca1fc9dc26
-	drm: Remove redundant NULL check
-drm-intel drm-intel-next-fixes e57bd05ec0d2d82d63725dedf9f5a063f879de25
-	drm/i915: Update DRIVER_DATE to 20200715
-drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
-	Linux 4.14-rc1
-drm-misc drm-misc-next 639abb72f189a9df1033cbe5eaf1c0508021f699
-	drm/ingenic: Validate mode in a .mode_valid callback
-drm-intel drm-intel-next-queued a66557cff6204cb376f51e2b240b2be710e599a0
-	drm/i915: Filter wake_flags passed to default_wake_function
-drm-intel drm-intel-next e57bd05ec0d2d82d63725dedf9f5a063f879de25
-	drm/i915: Update DRIVER_DATE to 20200715
-drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
-	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
-sound-upstream for-linus c2c3657f0aedb8736a0fb7b2b1985adfb86e7802
-	ALSA: hda/hdmi: Fix keep_power assignment for non-component devices
-sound-upstream for-next 2e5a8e1527a8cea26c973ee4aa1840ceb674101e
-	ALSA: usb-audio: endpoint : remove needless check before usb_free_coherent()
-drm-intel topic/core-for-CI 5a88ca3607993082ad90cac768d50c3b1e2b458e
-	HAX sched/core: Paper over the ttwu() race
-drm-misc topic/phy-compliance 8cdf727119289db3a98835662eb28e1c5ad835f1
-	drm/i915/dp: Program vswing, pre-emphasis, test-pattern
+drm-tip/drm-tip 8d05cefe38178802cf38e3556ccc8b08477eaa0f
+	drm-tip: 2020y-07m-29d-04h-34m-07s UTC integration manifest
+vfio-upstream/next ccd59dce1a21f473518bf273bdf5b182bab955b3
+	vfio/type1: Refactor vfio_iommu_type1_ioctl()
+intel-iommu/iommu/next a593472591a5cf2d91244bc3f319c9dd91119343
+	Merge branches 'iommu/fixes', 'arm/omap', 'arm/exynos', 'x86/amd', 'x86/vt-d' and 'core' into next
+origin/gvt-fixes a291e4fba259a56a6a274c1989997acb6f0bb03a
+	drm/i915/gvt: Use GFP_ATOMIC instead of GFP_KERNEL in atomic context
+origin/gvt-next 02b5fc1527c0bb26a1012c6a806dc033f3b125a6
+	drm/i915/gvt: Remove intel_vgpu_reset_gtt() since no one use it.
+origin/gvt-next-fixes 9e7c0efadb86ddb58965561bbca638d44792d78f
+	drm/i915/gvt: Do not reset pv_notified when vGPU transit from D3->D0

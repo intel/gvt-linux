@@ -304,11 +304,12 @@ bool i915_request_retire(struct i915_request *rq)
 		dma_fence_signal_locked(&rq->fence);
 	if (test_bit(DMA_FENCE_FLAG_ENABLE_SIGNAL_BIT, &rq->fence.flags))
 		i915_request_cancel_breadcrumb(rq);
+	spin_unlock_irq(&rq->lock);
+
 	if (i915_request_has_waitboost(rq)) {
 		GEM_BUG_ON(!atomic_read(&rq->engine->gt->rps.num_waiters));
 		atomic_dec(&rq->engine->gt->rps.num_waiters);
 	}
-	spin_unlock_irq(&rq->lock);
 
 	/*
 	 * We only loosely track inflight requests across preemption,
@@ -591,17 +592,9 @@ xfer:
 	 */
 	__notify_execute_cb_irq(request);
 
-	/* We may be recursing from the signal callback of another i915 fence */
-	if (!i915_request_signaled(request)) {
-		spin_lock_nested(&request->lock, SINGLE_DEPTH_NESTING);
-
-		if (test_bit(DMA_FENCE_FLAG_ENABLE_SIGNAL_BIT,
-			     &request->fence.flags) &&
-		    !i915_request_enable_breadcrumb(request))
-			intel_engine_signal_breadcrumbs(engine);
-
-		spin_unlock(&request->lock);
-	}
+	if (test_bit(DMA_FENCE_FLAG_ENABLE_SIGNAL_BIT, &request->fence.flags) &&
+	    !i915_request_enable_breadcrumb(request))
+		intel_engine_signal_breadcrumbs(engine);
 
 	return result;
 }
@@ -623,26 +616,26 @@ void __i915_request_unsubmit(struct i915_request *request)
 {
 	struct intel_engine_cs *engine = request->engine;
 
+	/*
+	 * Only unwind in reverse order, required so that the per-context list
+	 * is kept in seqno/ring order.
+	 */
 	RQ_TRACE(request, "\n");
 
 	GEM_BUG_ON(!irqs_disabled());
 	lockdep_assert_held(&engine->active.lock);
 
 	/*
-	 * Only unwind in reverse order, required so that the per-context list
-	 * is kept in seqno/ring order.
+	 * Before we remove this breadcrumb from the signal list, we have
+	 * to ensure that a concurrent dma_fence_enable_signaling() does not
+	 * attach itself. We first mark the request as no longer active and
+	 * make sure that is visible to other cores, and then remove the
+	 * breadcrumb if attached.
 	 */
-
-	/* We may be recursing from the signal callback of another i915 fence */
-	spin_lock_nested(&request->lock, SINGLE_DEPTH_NESTING);
-
+	GEM_BUG_ON(!test_bit(I915_FENCE_FLAG_ACTIVE, &request->fence.flags));
+	clear_bit_unlock(I915_FENCE_FLAG_ACTIVE, &request->fence.flags);
 	if (test_bit(DMA_FENCE_FLAG_ENABLE_SIGNAL_BIT, &request->fence.flags))
 		i915_request_cancel_breadcrumb(request);
-
-	GEM_BUG_ON(!test_bit(I915_FENCE_FLAG_ACTIVE, &request->fence.flags));
-	clear_bit(I915_FENCE_FLAG_ACTIVE, &request->fence.flags);
-
-	spin_unlock(&request->lock);
 
 	/* We've already spun, don't charge on resubmitting. */
 	if (request->sched.semaphores && i915_request_started(request))

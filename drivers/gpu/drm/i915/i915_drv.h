@@ -203,11 +203,6 @@ struct drm_i915_file_private {
 		struct rcu_head rcu;
 	};
 
-	struct {
-		spinlock_t lock;
-		struct list_head request_list;
-	} mm;
-
 	struct xarray context_xa;
 	struct xarray vm_xa;
 
@@ -591,11 +586,6 @@ struct i915_gem_mm {
 	 * waiting on an RCU barrier if no objects are waiting to be freed.
 	 */
 	atomic_t free_count;
-
-	/**
-	 * Small stash of WC pages
-	 */
-	struct pagestash wc_stash;
 
 	/**
 	 * tmpfs instance used for shmem backed objects
@@ -1867,7 +1857,6 @@ void i915_gem_suspend_late(struct drm_i915_private *dev_priv);
 void i915_gem_resume(struct drm_i915_private *dev_priv);
 
 int i915_gem_open(struct drm_i915_private *i915, struct drm_file *file);
-void i915_gem_release(struct drm_device *dev, struct drm_file *file);
 
 int i915_gem_object_set_cache_level(struct drm_i915_gem_object *obj,
 				    enum i915_cache_level cache_level);

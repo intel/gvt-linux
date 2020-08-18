@@ -1741,7 +1741,7 @@ __parser_mark_active(struct i915_vma *vma,
 {
 	struct intel_gt_buffer_pool_node *node = vma->private;
 
-	return i915_active_ref(&node->active, tl, fence);
+	return i915_active_ref(&node->active, tl->fence_context, fence);
 }
 
 static int
@@ -1926,18 +1926,6 @@ err_shadow:
 err:
 	intel_gt_buffer_pool_put(pool);
 	return err;
-}
-
-static void
-add_to_client(struct i915_request *rq, struct drm_file *file)
-{
-	struct drm_i915_file_private *file_priv = file->driver_priv;
-
-	rq->file_priv = file_priv;
-
-	spin_lock(&file_priv->mm.lock);
-	list_add_tail(&rq->client_link, &file_priv->mm.request_list);
-	spin_unlock(&file_priv->mm.lock);
 }
 
 static int eb_submit(struct i915_execbuffer *eb, struct i915_vma *batch)
@@ -2301,6 +2289,7 @@ add_timeline_fence_array(struct i915_execbuffer *eb,
 
 		if (err && !(user_fence.flags & I915_EXEC_FENCE_SIGNAL)) {
 			DRM_DEBUG("Syncobj handle missing requested point %llu\n", point);
+			dma_fence_put(fence);
 			drm_syncobj_put(syncobj);
 			return err;
 		}
@@ -2772,7 +2761,6 @@ i915_gem_do_execbuffer(struct drm_device *dev,
 	trace_i915_request_queue(eb.request, eb.batch_flags);
 	err = eb_submit(&eb, batch);
 err_request:
-	add_to_client(eb.request, file);
 	i915_request_get(eb.request);
 	eb_request_add(&eb);
 

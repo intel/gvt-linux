@@ -152,8 +152,7 @@ static int mock_context_alloc(struct intel_context *ce)
 	if (!ce->ring)
 		return -ENOMEM;
 
-	GEM_BUG_ON(ce->timeline);
-	ce->timeline = intel_timeline_create(ce->engine->gt, NULL);
+	ce->timeline = intel_timeline_create(ce->engine->gt);
 	if (IS_ERR(ce->timeline)) {
 		kfree(ce->engine);
 		return PTR_ERR(ce->timeline);
@@ -261,11 +260,12 @@ static void mock_engine_release(struct intel_engine_cs *engine)
 
 	GEM_BUG_ON(timer_pending(&mock->hw_delay));
 
+	intel_breadcrumbs_free(engine->breadcrumbs);
+
 	intel_context_unpin(engine->kernel_context);
 	intel_context_put(engine->kernel_context);
 
 	intel_engine_fini_retire(engine);
-	intel_engine_fini_breadcrumbs(engine);
 }
 
 struct intel_engine_cs *mock_engine(struct drm_i915_private *i915,
@@ -323,20 +323,26 @@ int mock_engine_init(struct intel_engine_cs *engine)
 	struct intel_context *ce;
 
 	intel_engine_init_active(engine, ENGINE_MOCK);
-	intel_engine_init_breadcrumbs(engine);
 	intel_engine_init_execlists(engine);
 	intel_engine_init__pm(engine);
 	intel_engine_init_retire(engine);
+
+	engine->breadcrumbs = intel_breadcrumbs_create(NULL);
+	if (!engine->breadcrumbs)
+		return -ENOMEM;
 
 	ce = create_kernel_context(engine);
 	if (IS_ERR(ce))
 		goto err_breadcrumbs;
 
+	/* We insist the kernel context is using the status_page */
+	engine->status_page.vma = ce->timeline->hwsp_ggtt;
+
 	engine->kernel_context = ce;
 	return 0;
 
 err_breadcrumbs:
-	intel_engine_fini_breadcrumbs(engine);
+	intel_breadcrumbs_free(engine->breadcrumbs);
 	return -ENOMEM;
 }
 

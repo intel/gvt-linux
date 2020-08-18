@@ -186,30 +186,34 @@ static void irq_execute_cb_hook(struct irq_work *wrk)
 	irq_execute_cb(wrk);
 }
 
-static void __notify_execute_cb(struct i915_request *rq)
+static __always_inline void
+__notify_execute_cb(struct i915_request *rq, bool (*fn)(struct irq_work *wrk))
 {
 	struct execute_cb *cb, *cn;
 
-	lockdep_assert_held(&rq->lock);
-
-	GEM_BUG_ON(!i915_request_is_active(rq));
 	if (llist_empty(&rq->execute_cb))
 		return;
 
-	llist_for_each_entry_safe(cb, cn, rq->execute_cb.first, work.llnode)
-		irq_work_queue(&cb->work);
+	llist_for_each_entry_safe(cb, cn,
+				  llist_del_all(&rq->execute_cb),
+				  work.llnode)
+		fn(&cb->work);
+}
 
-	/*
-	 * XXX Rollback on __i915_request_unsubmit()
-	 *
-	 * In the future, perhaps when we have an active time-slicing scheduler,
-	 * it will be interesting to unsubmit parallel execution and remove
-	 * busywaits from the GPU until their master is restarted. This is
-	 * quite hairy, we have to carefully rollback the fence and do a
-	 * preempt-to-idle cycle on the target engine, all the while the
-	 * master execute_cb may refire.
-	 */
-	init_llist_head(&rq->execute_cb);
+static void __notify_execute_cb_irq(struct i915_request *rq)
+{
+	__notify_execute_cb(rq, irq_work_queue);
+}
+
+static bool irq_work_imm(struct irq_work *wrk)
+{
+	wrk->func(wrk);
+	return false;
+}
+
+static void __notify_execute_cb_imm(struct i915_request *rq)
+{
+	__notify_execute_cb(rq, irq_work_imm);
 }
 
 static inline void
@@ -274,9 +278,16 @@ static void remove_from_engine(struct i915_request *rq)
 		locked = engine;
 	}
 	list_del_init(&rq->sched.link);
+
 	clear_bit(I915_FENCE_FLAG_PQUEUE, &rq->fence.flags);
 	clear_bit(I915_FENCE_FLAG_HOLD, &rq->fence.flags);
+
+	/* Prevent further __await_execution() registering a cb, then flush */
+	set_bit(I915_FENCE_FLAG_ACTIVE, &rq->fence.flags);
+
 	spin_unlock_irq(&locked->active.lock);
+
+	__notify_execute_cb_imm(rq);
 }
 
 bool i915_request_retire(struct i915_request *rq)
@@ -288,6 +299,7 @@ bool i915_request_retire(struct i915_request *rq)
 
 	GEM_BUG_ON(!i915_sw_fence_signaled(&rq->submit));
 	trace_i915_request_retire(rq);
+	i915_request_mark_complete(rq);
 
 	/*
 	 * We know the GPU must have read the request to have
@@ -305,16 +317,7 @@ bool i915_request_retire(struct i915_request *rq)
 		__i915_request_fill(rq, POISON_FREE);
 	rq->ring->head = rq->postfix;
 
-	/*
-	 * We only loosely track inflight requests across preemption,
-	 * and so we may find ourselves attempting to retire a _completed_
-	 * request that we have removed from the HW and put back on a run
-	 * queue.
-	 */
-	remove_from_engine(rq);
-
 	spin_lock_irq(&rq->lock);
-	i915_request_mark_complete(rq);
 	if (!i915_request_signaled(rq))
 		dma_fence_signal_locked(&rq->fence);
 	if (test_bit(DMA_FENCE_FLAG_ENABLE_SIGNAL_BIT, &rq->fence.flags))
@@ -323,12 +326,20 @@ bool i915_request_retire(struct i915_request *rq)
 		GEM_BUG_ON(!atomic_read(&rq->engine->gt->rps.num_waiters));
 		atomic_dec(&rq->engine->gt->rps.num_waiters);
 	}
-	if (!test_bit(I915_FENCE_FLAG_ACTIVE, &rq->fence.flags)) {
-		set_bit(I915_FENCE_FLAG_ACTIVE, &rq->fence.flags);
-		__notify_execute_cb(rq);
-	}
-	GEM_BUG_ON(!llist_empty(&rq->execute_cb));
 	spin_unlock_irq(&rq->lock);
+
+	/*
+	 * We only loosely track inflight requests across preemption,
+	 * and so we may find ourselves attempting to retire a _completed_
+	 * request that we have removed from the HW and put back on a run
+	 * queue.
+	 *
+	 * As we set I915_FENCE_FLAG_ACTIVE on the request, this should be
+	 * after removing the breadcrumb and signaling it, so that we do not
+	 * inadvertently attach the breadcrumb to a completed request.
+	 */
+	remove_from_engine(rq);
+	GEM_BUG_ON(!llist_empty(&rq->execute_cb));
 
 	remove_from_client(rq);
 	__list_del_entry(&rq->link); /* poison neither prev/next (RCU walks) */
@@ -357,12 +368,6 @@ void i915_request_retire_upto(struct i915_request *rq)
 	} while (i915_request_retire(tmp) && tmp != rq);
 }
 
-static void __llist_add(struct llist_node *node, struct llist_head *head)
-{
-	node->next = head->first;
-	head->first = node;
-}
-
 static struct i915_request * const *
 __engine_active(struct intel_engine_cs *engine)
 {
@@ -388,17 +393,38 @@ static bool __request_in_flight(const struct i915_request *signal)
 	 * As we know that there are always preemption points between
 	 * requests, we know that only the currently executing request
 	 * may be still active even though we have cleared the flag.
-	 * However, we can't rely on our tracking of ELSP[0] to known
+	 * However, we can't rely on our tracking of ELSP[0] to know
 	 * which request is currently active and so maybe stuck, as
 	 * the tracking maybe an event behind. Instead assume that
 	 * if the context is still inflight, then it is still active
 	 * even if the active flag has been cleared.
+	 *
+	 * To further complicate matters, if there a pending promotion, the HW
+	 * may either perform a context switch to the second inflight execlists,
+	 * or it may switch to the pending set of execlists. In the case of the
+	 * latter, it may send the ACK and we process the event copying the
+	 * pending[] over top of inflight[], _overwriting_ our *active. Since
+	 * this implies the HW is arbitrating and not struck in *active, we do
+	 * not worry about complete accuracy, but we do require no read/write
+	 * tearing of the pointer [the read of the pointer must be valid, even
+	 * as the array is being overwritten, for which we require the writes
+	 * to avoid tearing.]
+	 *
+	 * Note that the read of *execlists->active may race with the promotion
+	 * of execlists->pending[] to execlists->inflight[], overwritting
+	 * the value at *execlists->active. This is fine. The promotion implies
+	 * that we received an ACK from the HW, and so the context is not
+	 * stuck -- if we do not see ourselves in *active, the inflight status
+	 * is valid. If instead we see ourselves being copied into *active,
+	 * we are inflight and may signal the callback.
 	 */
 	if (!intel_context_inflight(signal->context))
 		return false;
 
 	rcu_read_lock();
-	for (port = __engine_active(signal->engine); (rq = *port); port++) {
+	for (port = __engine_active(signal->engine);
+	     (rq = READ_ONCE(*port)); /* may race with promotion of pending[] */
+	     port++) {
 		if (rq->context == signal->context) {
 			inflight = i915_seqno_passed(rq->fence.seqno,
 						     signal->fence.seqno);
@@ -439,18 +465,24 @@ __await_execution(struct i915_request *rq,
 		cb->work.func = irq_execute_cb_hook;
 	}
 
-	spin_lock_irq(&signal->lock);
-	if (i915_request_is_active(signal) || __request_in_flight(signal)) {
-		if (hook) {
-			hook(rq, &signal->fence);
-			i915_request_put(signal);
-		}
-		i915_sw_fence_complete(cb->fence);
-		kmem_cache_free(global.slab_execute_cbs, cb);
-	} else {
-		__llist_add(&cb->work.llnode, &signal->execute_cb);
+	/*
+	 * Register the callback first, then see if the signaler is already
+	 * active. This ensures that if we race with the
+	 * __notify_execute_cb from i915_request_submit() and we are not
+	 * included in that list, we get a second bite of the cherry and
+	 * execute it ourselves. After this point, a future
+	 * i915_request_submit() will notify us.
+	 *
+	 * In i915_request_retire() we set the ACTIVE bit on a completed
+	 * request (then flush the execute_cb). So by registering the
+	 * callback first, then checking the ACTIVE bit, we serialise with
+	 * the completed/retired request.
+	 */
+	if (llist_add(&cb->work.llnode, &signal->execute_cb)) {
+		if (i915_request_is_active(signal) ||
+		    __request_in_flight(signal))
+			__notify_execute_cb_imm(signal);
 	}
-	spin_unlock_irq(&signal->lock);
 
 	return 0;
 }
@@ -566,18 +598,28 @@ xfer:
 		clear_bit(I915_FENCE_FLAG_PQUEUE, &request->fence.flags);
 	}
 
+	/*
+	 * XXX Rollback bonded-execution on __i915_request_unsubmit()?
+	 *
+	 * In the future, perhaps when we have an active time-slicing scheduler,
+	 * it will be interesting to unsubmit parallel execution and remove
+	 * busywaits from the GPU until their master is restarted. This is
+	 * quite hairy, we have to carefully rollback the fence and do a
+	 * preempt-to-idle cycle on the target engine, all the while the
+	 * master execute_cb may refire.
+	 */
+	__notify_execute_cb_irq(request);
+
 	/* We may be recursing from the signal callback of another i915 fence */
 	if (!i915_request_signaled(request)) {
 		spin_lock_nested(&request->lock, SINGLE_DEPTH_NESTING);
 
-		__notify_execute_cb(request);
 		if (test_bit(DMA_FENCE_FLAG_ENABLE_SIGNAL_BIT,
 			     &request->fence.flags) &&
 		    !i915_request_enable_breadcrumb(request))
 			intel_engine_signal_breadcrumbs(engine);
 
 		spin_unlock(&request->lock);
-		GEM_BUG_ON(!llist_empty(&request->execute_cb));
 	}
 
 	return result;

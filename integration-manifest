@@ -1,0 +1,34 @@
+drm drm-fixes 887c909dd5d557c203a233ebbe238c18438a680a
+	Merge tag 'amd-drm-fixes-5.8-2020-07-30' of git://people.freedesktop.org/~agd5f/linux into drm-fixes
+drm-misc drm-misc-fixes 77ef38574beb3e0b414db48e9c0f04633df68ba6
+	drm/modeset-lock: Take the modeset BKL for legacy drivers
+drm-intel drm-intel-fixes 9123e3a74ec7b934a4a099e98af6a61c2f80bbf5
+	Linux 5.9-rc1
+drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
+	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
+drm drm-next 62975d27d647a40c58d3b96c29b911fc4f33c310
+	drm/ttm: revert "drm/ttm: make TT creation purely optional v3"
+drm-misc drm-misc-next-fixes 62975d27d647a40c58d3b96c29b911fc4f33c310
+	drm/ttm: revert "drm/ttm: make TT creation purely optional v3"
+drm-intel drm-intel-next-fixes 3a3d26153c81402b8ef4cfd7c201c97cda05c6c9
+	Merge tag 'gvt-next-fixes-2020-08-05' of https://github.com/intel/gvt-linux into drm-intel-next-fixes
+drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
+	Linux 4.14-rc1
+drm-misc drm-misc-next f13478c9da834f2d092192c0097587bd07ab8928
+	drm/sun4i: Constify static structs
+drm-intel drm-intel-next-queued 25a322fde74f8ca3368f4ff28b452af7cb5fa0dc
+	drm/i915: Update TGL and RKL HuC firmware versions
+drm-intel drm-intel-next e57bd05ec0d2d82d63725dedf9f5a063f879de25
+	drm/i915: Update DRIVER_DATE to 20200715
+drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
+	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
+sound-upstream for-linus d8d0db7bb358ef65d60726a61bfcd08eccff0bc0
+	ALSA: usb-audio: ignore broken processing/extension unit
+sound-upstream for-next d8d0db7bb358ef65d60726a61bfcd08eccff0bc0
+	ALSA: usb-audio: ignore broken processing/extension unit
+drm-intel topic/core-for-CI 5a88ca3607993082ad90cac768d50c3b1e2b458e
+	HAX sched/core: Paper over the ttwu() race
+drm-misc topic/phy-compliance 8cdf727119289db3a98835662eb28e1c5ad835f1
+	drm/i915/dp: Program vswing, pre-emphasis, test-pattern
+drm-intel topic/drm-intel-gem-next 450e07833c3cd6bb226885787caa91ec4ec7989d
+	drm/i915/gem: Free the fence after a fence-chain lookup failure

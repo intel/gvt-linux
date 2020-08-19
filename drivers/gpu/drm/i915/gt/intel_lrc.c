@@ -3303,7 +3303,10 @@ static void execlists_context_unpin(struct intel_context *ce)
 {
 	check_redzone((void *)ce->lrc_reg_state - LRC_STATE_OFFSET,
 		      ce->engine);
+}
 
+static void execlists_context_post_unpin(struct intel_context *ce)
+{
 	i915_gem_object_unpin_map(ce->state->obj);
 }
 
@@ -3465,20 +3468,23 @@ __execlists_update_reg_state(const struct intel_context *ce,
 }
 
 static int
-__execlists_context_pin(struct intel_context *ce,
-			struct intel_engine_cs *engine)
+execlists_context_pre_pin(struct intel_context *ce, void **vaddr)
 {
-	void *vaddr;
-
 	GEM_BUG_ON(!ce->state);
 	GEM_BUG_ON(!i915_vma_is_pinned(ce->state));
 
-	vaddr = i915_gem_object_pin_map(ce->state->obj,
-					i915_coherent_map_type(engine->i915) |
+	*vaddr = i915_gem_object_pin_map(ce->state->obj,
+					i915_coherent_map_type(ce->engine->i915) |
 					I915_MAP_OVERRIDE);
-	if (IS_ERR(vaddr))
-		return PTR_ERR(vaddr);
 
+	return PTR_ERR_OR_ZERO(*vaddr);
+}
+
+static int
+__execlists_context_pin(struct intel_context *ce,
+			struct intel_engine_cs *engine,
+			void *vaddr)
+{
 	ce->lrc.lrca = lrc_descriptor(ce, engine) | CTX_DESC_FORCE_RESTORE;
 	ce->lrc_reg_state = vaddr + LRC_STATE_OFFSET;
 	__execlists_update_reg_state(ce, engine, ce->ring->tail);
@@ -3486,9 +3492,9 @@ __execlists_context_pin(struct intel_context *ce,
 	return 0;
 }
 
-static int execlists_context_pin(struct intel_context *ce)
+static int execlists_context_pin(struct intel_context *ce, void *vaddr)
 {
-	return __execlists_context_pin(ce, ce->engine);
+	return __execlists_context_pin(ce, ce->engine, vaddr);
 }
 
 static int execlists_context_alloc(struct intel_context *ce)
@@ -3514,8 +3520,10 @@ static void execlists_context_reset(struct intel_context *ce)
 static const struct intel_context_ops execlists_context_ops = {
 	.alloc = execlists_context_alloc,
 
+	.pre_pin = execlists_context_pre_pin,
 	.pin = execlists_context_pin,
 	.unpin = execlists_context_unpin,
+	.post_unpin = execlists_context_post_unpin,
 
 	.enter = intel_context_enter_engine,
 	.exit = intel_context_exit_engine,
@@ -5454,12 +5462,12 @@ static int virtual_context_alloc(struct intel_context *ce)
 	return __execlists_context_alloc(ce, ve->siblings[0]);
 }
 
-static int virtual_context_pin(struct intel_context *ce)
+static int virtual_context_pin(struct intel_context *ce, void *vaddr)
 {
 	struct virtual_engine *ve = container_of(ce, typeof(*ve), context);
 
 	/* Note: we must use a real engine class for setting up reg state */
-	return __execlists_context_pin(ce, ve->siblings[0]);
+	return __execlists_context_pin(ce, ve->siblings[0], vaddr);
 }
 
 static void virtual_context_enter(struct intel_context *ce)
@@ -5487,8 +5495,10 @@ static void virtual_context_exit(struct intel_context *ce)
 static const struct intel_context_ops virtual_context_ops = {
 	.alloc = virtual_context_alloc,
 
+	.pre_pin = execlists_context_pre_pin,
 	.pin = virtual_context_pin,
 	.unpin = execlists_context_unpin,
+	.post_unpin = execlists_context_post_unpin,
 
 	.enter = virtual_context_enter,
 	.exit = virtual_context_exit,

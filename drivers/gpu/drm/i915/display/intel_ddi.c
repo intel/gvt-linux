@@ -572,13 +572,13 @@ static const struct cnl_ddi_buf_trans ehl_combo_phy_ddi_translations_dp[] = {
 						/* NT mV Trans mV db    */
 	{ 0xA, 0x33, 0x3F, 0x00, 0x00 },	/* 350   350      0.0   */
 	{ 0xA, 0x47, 0x36, 0x00, 0x09 },	/* 350   500      3.1   */
-	{ 0xC, 0x64, 0x30, 0x00, 0x0F },	/* 350   700      6.0   */
-	{ 0x6, 0x7F, 0x2C, 0x00, 0x13 },	/* 350   900      8.2   */
+	{ 0xC, 0x64, 0x34, 0x00, 0x0B },	/* 350   700      6.0   */
+	{ 0x6, 0x7F, 0x30, 0x00, 0x0F },	/* 350   900      8.2   */
 	{ 0xA, 0x46, 0x3F, 0x00, 0x00 },	/* 500   500      0.0   */
-	{ 0xC, 0x64, 0x36, 0x00, 0x09 },	/* 500   700      2.9   */
-	{ 0x6, 0x7F, 0x30, 0x00, 0x0F },	/* 500   900      5.1   */
+	{ 0xC, 0x64, 0x38, 0x00, 0x07 },	/* 500   700      2.9   */
+	{ 0x6, 0x7F, 0x32, 0x00, 0x0D },	/* 500   900      5.1   */
 	{ 0xC, 0x61, 0x3F, 0x00, 0x00 },	/* 650   700      0.6   */
-	{ 0x6, 0x7F, 0x37, 0x00, 0x08 },	/* 600   900      3.5   */
+	{ 0x6, 0x7F, 0x38, 0x00, 0x07 },	/* 600   900      3.5   */
 	{ 0x6, 0x7F, 0x3F, 0x00, 0x00 },	/* 900   900      0.0   */
 };
 
@@ -1074,12 +1074,28 @@ static const struct cnl_ddi_buf_trans *
 ehl_get_combo_buf_trans(struct intel_encoder *encoder, int type, int rate,
 			int *n_entries)
 {
-	if (type != INTEL_OUTPUT_HDMI && type != INTEL_OUTPUT_EDP) {
+	struct drm_i915_private *dev_priv = to_i915(encoder->base.dev);
+
+	switch (type) {
+	case INTEL_OUTPUT_HDMI:
+		*n_entries = ARRAY_SIZE(icl_combo_phy_ddi_translations_hdmi);
+		return icl_combo_phy_ddi_translations_hdmi;
+	case INTEL_OUTPUT_EDP:
+		if (dev_priv->vbt.edp.low_vswing) {
+			if (rate > 540000) {
+				*n_entries = ARRAY_SIZE(icl_combo_phy_ddi_translations_edp_hbr3);
+				return icl_combo_phy_ddi_translations_edp_hbr3;
+			} else {
+				*n_entries = ARRAY_SIZE(icl_combo_phy_ddi_translations_edp_hbr2);
+				return icl_combo_phy_ddi_translations_edp_hbr2;
+			}
+		}
+		/* fall through */
+	default:
+		/* All combo DP and eDP ports that do not support low_vswing */
 		*n_entries = ARRAY_SIZE(ehl_combo_phy_ddi_translations_dp);
 		return ehl_combo_phy_ddi_translations_dp;
 	}
-
-	return icl_get_combo_buf_trans(encoder, type, rate, n_entries);
 }
 
 static const struct cnl_ddi_buf_trans *
@@ -1088,30 +1104,44 @@ tgl_get_combo_buf_trans(struct intel_encoder *encoder, int type, int rate,
 {
 	struct drm_i915_private *dev_priv = to_i915(encoder->base.dev);
 
-	if (type == INTEL_OUTPUT_EDP && dev_priv->vbt.edp.hobl) {
-		struct intel_dp *intel_dp = enc_to_intel_dp(encoder);
+	switch (type) {
+	case INTEL_OUTPUT_HDMI:
+		*n_entries = ARRAY_SIZE(icl_combo_phy_ddi_translations_hdmi);
+		return icl_combo_phy_ddi_translations_hdmi;
+	case INTEL_OUTPUT_EDP:
+		if (dev_priv->vbt.edp.hobl) {
+			struct intel_dp *intel_dp = enc_to_intel_dp(encoder);
 
-		if (!intel_dp->hobl_failed && rate <= 540000) {
-			/* Same table applies to TGL, RKL and DG1 */
-			*n_entries = ARRAY_SIZE(tgl_combo_phy_ddi_translations_edp_hbr2_hobl);
-			return tgl_combo_phy_ddi_translations_edp_hbr2_hobl;
-		}
-	}
-
-	if (type == INTEL_OUTPUT_HDMI || type == INTEL_OUTPUT_EDP) {
-		return icl_get_combo_buf_trans(encoder, type, rate, n_entries);
-	} else if (rate > 270000) {
-		if (IS_TGL_U(dev_priv) || IS_TGL_Y(dev_priv)) {
-			*n_entries = ARRAY_SIZE(tgl_uy_combo_phy_ddi_translations_dp_hbr2);
-			return tgl_uy_combo_phy_ddi_translations_dp_hbr2;
+			if (!intel_dp->hobl_failed && rate <= 540000) {
+				/* Same table applies to TGL, RKL and DG1 */
+				*n_entries = ARRAY_SIZE(tgl_combo_phy_ddi_translations_edp_hbr2_hobl);
+				return tgl_combo_phy_ddi_translations_edp_hbr2_hobl;
+			}
 		}
 
-		*n_entries = ARRAY_SIZE(tgl_combo_phy_ddi_translations_dp_hbr2);
-		return tgl_combo_phy_ddi_translations_dp_hbr2;
-	}
+		if (rate > 540000) {
+			*n_entries = ARRAY_SIZE(icl_combo_phy_ddi_translations_edp_hbr3);
+			return icl_combo_phy_ddi_translations_edp_hbr3;
+		} else if (dev_priv->vbt.edp.low_vswing) {
+			*n_entries = ARRAY_SIZE(icl_combo_phy_ddi_translations_edp_hbr2);
+			return icl_combo_phy_ddi_translations_edp_hbr2;
+		}
+		/* fall through */
+	default:
+		/* All combo DP and eDP ports that do not support low_vswing */
+		if (rate > 270000) {
+			if (IS_TGL_U(dev_priv) || IS_TGL_Y(dev_priv)) {
+				*n_entries = ARRAY_SIZE(tgl_uy_combo_phy_ddi_translations_dp_hbr2);
+				return tgl_uy_combo_phy_ddi_translations_dp_hbr2;
+			}
 
-	*n_entries = ARRAY_SIZE(tgl_combo_phy_ddi_translations_dp_hbr);
-	return tgl_combo_phy_ddi_translations_dp_hbr;
+			*n_entries = ARRAY_SIZE(tgl_combo_phy_ddi_translations_dp_hbr2);
+			return tgl_combo_phy_ddi_translations_dp_hbr2;
+		}
+
+		*n_entries = ARRAY_SIZE(tgl_combo_phy_ddi_translations_dp_hbr);
+		return tgl_combo_phy_ddi_translations_dp_hbr;
+	}
 }
 
 static const struct tgl_dkl_phy_ddi_buf_trans *
@@ -1791,6 +1821,8 @@ void intel_ddi_disable_transcoder_func(const struct intel_crtc_state *crtc_state
 
 	ctl = intel_de_read(dev_priv, TRANS_DDI_FUNC_CTL(cpu_transcoder));
 
+	drm_WARN_ON(crtc->base.dev, ctl & TRANS_DDI_HDCP_SIGNALLING);
+
 	ctl &= ~TRANS_DDI_FUNC_ENABLE;
 
 	if (IS_GEN_RANGE(dev_priv, 8, 10))
@@ -1818,12 +1850,12 @@ void intel_ddi_disable_transcoder_func(const struct intel_crtc_state *crtc_state
 }
 
 int intel_ddi_toggle_hdcp_signalling(struct intel_encoder *intel_encoder,
+				     enum transcoder cpu_transcoder,
 				     bool enable)
 {
 	struct drm_device *dev = intel_encoder->base.dev;
 	struct drm_i915_private *dev_priv = to_i915(dev);
 	intel_wakeref_t wakeref;
-	enum pipe pipe = 0;
 	int ret = 0;
 	u32 tmp;
 
@@ -1832,19 +1864,12 @@ int intel_ddi_toggle_hdcp_signalling(struct intel_encoder *intel_encoder,
 	if (drm_WARN_ON(dev, !wakeref))
 		return -ENXIO;
 
-	if (drm_WARN_ON(dev,
-			!intel_encoder->get_hw_state(intel_encoder, &pipe))) {
-		ret = -EIO;
-		goto out;
-	}
-
-	tmp = intel_de_read(dev_priv, TRANS_DDI_FUNC_CTL(pipe));
+	tmp = intel_de_read(dev_priv, TRANS_DDI_FUNC_CTL(cpu_transcoder));
 	if (enable)
 		tmp |= TRANS_DDI_HDCP_SIGNALLING;
 	else
 		tmp &= ~TRANS_DDI_HDCP_SIGNALLING;
-	intel_de_write(dev_priv, TRANS_DDI_FUNC_CTL(pipe), tmp);
-out:
+	intel_de_write(dev_priv, TRANS_DDI_FUNC_CTL(cpu_transcoder), tmp);
 	intel_display_power_put(dev_priv, intel_encoder->power_domain, wakeref);
 	return ret;
 }
@@ -4012,18 +4037,19 @@ static void intel_ddi_update_pipe_dp(struct intel_atomic_state *state,
 
 	intel_psr_update(intel_dp, crtc_state, conn_state);
 	intel_dp_set_infoframes(encoder, true, crtc_state, conn_state);
-	intel_edp_drrs_enable(intel_dp, crtc_state);
+	intel_edp_drrs_update(intel_dp, crtc_state);
 
 	intel_panel_update_backlight(state, encoder, crtc_state, conn_state);
 }
 
-static void intel_ddi_update_pipe(struct intel_atomic_state *state,
-				  struct intel_encoder *encoder,
-				  const struct intel_crtc_state *crtc_state,
-				  const struct drm_connector_state *conn_state)
+void intel_ddi_update_pipe(struct intel_atomic_state *state,
+			   struct intel_encoder *encoder,
+			   const struct intel_crtc_state *crtc_state,
+			   const struct drm_connector_state *conn_state)
 {
 
-	if (!intel_crtc_has_type(crtc_state, INTEL_OUTPUT_HDMI))
+	if (!intel_crtc_has_type(crtc_state, INTEL_OUTPUT_HDMI) &&
+	    !intel_encoder_is_mst(encoder))
 		intel_ddi_update_pipe_dp(state, encoder, crtc_state,
 					 conn_state);
 
@@ -5000,6 +5026,9 @@ void intel_ddi_init(struct drm_i915_private *dev_priv, enum port port)
 
 	drm_encoder_init(&dev_priv->drm, &encoder->base, &intel_ddi_funcs,
 			 DRM_MODE_ENCODER_TMDS, "DDI %c", port_name(port));
+
+	mutex_init(&dig_port->hdcp_mutex);
+	dig_port->num_hdcp_streams = 0;
 
 	encoder->hotplug = intel_ddi_hotplug;
 	encoder->compute_output_type = intel_ddi_compute_output_type;

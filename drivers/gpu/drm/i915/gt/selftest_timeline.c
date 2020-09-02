@@ -72,7 +72,7 @@ static int __mock_hwsp_timeline(struct mock_hwsp_freelist *state,
 		unsigned long cacheline;
 		int err;
 
-		tl = intel_timeline_create(state->gt, NULL);
+		tl = intel_timeline_create(state->gt);
 		if (IS_ERR(tl))
 			return PTR_ERR(tl);
 
@@ -455,7 +455,7 @@ tl_write(struct intel_timeline *tl, struct intel_engine_cs *engine, u32 value)
 	struct i915_request *rq;
 	int err;
 
-	err = intel_timeline_pin(tl);
+	err = intel_timeline_pin(tl, NULL);
 	if (err) {
 		rq = ERR_PTR(err);
 		goto out;
@@ -487,7 +487,7 @@ checked_intel_timeline_create(struct intel_gt *gt)
 {
 	struct intel_timeline *tl;
 
-	tl = intel_timeline_create(gt, NULL);
+	tl = intel_timeline_create(gt);
 	if (IS_ERR(tl))
 		return tl;
 
@@ -660,14 +660,14 @@ static int live_hwsp_wrap(void *arg)
 	 * foreign GPU references.
 	 */
 
-	tl = intel_timeline_create(gt, NULL);
+	tl = intel_timeline_create(gt);
 	if (IS_ERR(tl))
 		return PTR_ERR(tl);
 
-	if (!tl->has_initial_breadcrumb || !tl->hwsp_cacheline)
+	if (!tl->has_initial_breadcrumb)
 		goto out_free;
 
-	err = intel_timeline_pin(tl);
+	err = intel_timeline_pin(tl, NULL);
 	if (err)
 		goto out_free;
 
@@ -780,9 +780,7 @@ static int live_hwsp_rollover_kernel(void *arg)
 		}
 
 		GEM_BUG_ON(i915_active_fence_isset(&tl->last_request));
-		tl->seqno = 0;
-		timeline_rollback(tl);
-		timeline_rollback(tl);
+		tl->seqno = -2u;
 		WRITE_ONCE(*(u32 *)tl->hwsp_seqno, tl->seqno);
 
 		for (i = 0; i < ARRAY_SIZE(rq); i++) {
@@ -862,11 +860,10 @@ static int live_hwsp_rollover_user(void *arg)
 			goto out;
 
 		tl = ce->timeline;
-		if (!tl->has_initial_breadcrumb || !tl->hwsp_cacheline)
+		if (!tl->has_initial_breadcrumb)
 			goto out;
 
-		timeline_rollback(tl);
-		timeline_rollback(tl);
+		tl->seqno = -4u;
 		WRITE_ONCE(*(u32 *)tl->hwsp_seqno, tl->seqno);
 
 		for (i = 0; i < ARRAY_SIZE(rq); i++) {

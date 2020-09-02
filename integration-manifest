@@ -1,0 +1,36 @@
+drm drm-fixes 2a3f9da32de4616f0104209194e9bd3dfae092c9
+	Merge tag 'drm-intel-fixes-2020-08-27' of git://anongit.freedesktop.org/drm/drm-intel into drm-fixes
+drm-misc drm-misc-fixes c6016c6e39c3ee8fd671532520be3cc13e439db2
+	drm/virtio: fix unblank
+drm-intel drm-intel-fixes 57537b4e1d37002ed8cbd0a9be082104749e9d8f
+	drm/i915: Clear the repeater bit on HDCP disable
+drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
+	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
+drm drm-next 3393649977f9a8847c659e282ea290d4b703295c
+	Merge tag 'drm-intel-next-2020-08-24-1' of git://anongit.freedesktop.org/drm/drm-intel into drm-next
+drm-misc drm-misc-next-fixes 62975d27d647a40c58d3b96c29b911fc4f33c310
+	drm/ttm: revert "drm/ttm: make TT creation purely optional v3"
+drm-intel drm-intel-next-fixes 9123e3a74ec7b934a4a099e98af6a61c2f80bbf5
+	Linux 5.9-rc1
+drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
+	Linux 4.14-rc1
+drm-misc drm-misc-next 1174c8a0f33c1e5c442ac40381fe124248c08b3a
+	drm/virtio: drop virtio_gpu_output->enabled
+drm-intel drm-intel-next-queued 1fa0140956e72a47781af74ef704413b31411e95
+	drm/i915: Add HDCP 1.4 support for MST connectors
+drm-intel drm-intel-next ced026e959bec5046afa310d6474e147b6294da2
+	drm/i915: Update DRIVER_DATE to 20200824
+drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
+	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
+sound-upstream for-linus 949a1ebe8cea7b342085cb6a4946b498306b9493
+	ALSA: pcm: oss: Remove superfluous WARN_ON() for mulaw sanity check
+sound-upstream for-next 685a04a53747d07d22f5139c04ae35745200a91d
+	ALSA: hda/ca0132 - Add AE-7 exit commands.
+drm-intel topic/core-for-CI 5a88ca3607993082ad90cac768d50c3b1e2b458e
+	HAX sched/core: Paper over the ttwu() race
+drm-misc topic/phy-compliance 8cdf727119289db3a98835662eb28e1c5ad835f1
+	drm/i915/dp: Program vswing, pre-emphasis, test-pattern
+drm-intel topic/drm-intel-gem-next 19029a5b66d0e1f01dcfa5b70a3ab57e7bf538f5
+	drm/i915: Do not share hwsp across contexts any more
+drm-misc topic/nouveau-i915-dp-helpers-and-cleanup 79416e97dda0118b137302575a70a14259a27d7d
+	drm/nouveau/kms: Start using drm_dp_read_dpcd_caps()

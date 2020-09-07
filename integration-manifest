@@ -1,0 +1,36 @@
+drm drm-fixes d37d56920004cae612fa32d1f92aaacca5e145f7
+	Merge branch 'linux-5.9' of git://github.com/skeggsb/linux into drm-fixes
+drm-misc drm-misc-fixes fc7f148feb8975784bd40e41fff875d33f698be8
+	drm/virtio: drop virtio_gpu_output->enabled
+drm-intel drm-intel-fixes f4d51dffc6c01a9e94650d95ce0104964f8ae822
+	Linux 5.9-rc4
+drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
+	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
+drm drm-next 3393649977f9a8847c659e282ea290d4b703295c
+	Merge tag 'drm-intel-next-2020-08-24-1' of git://anongit.freedesktop.org/drm/drm-intel into drm-next
+drm-misc drm-misc-next-fixes 62975d27d647a40c58d3b96c29b911fc4f33c310
+	drm/ttm: revert "drm/ttm: make TT creation purely optional v3"
+drm-intel drm-intel-next-fixes 9123e3a74ec7b934a4a099e98af6a61c2f80bbf5
+	Linux 5.9-rc1
+drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
+	Linux 4.14-rc1
+drm-misc drm-misc-next d4a197f4047e01d1e0b06e0390d513f253350c62
+	udmabuf: Add missing compact_ioctl
+drm-intel drm-intel-next-queued f8bd54d2190469e2244ade66cc1551b2a8f4f138
+	drm/i915: panel: Use atomic PWM API for devs with an external PWM controller
+drm-intel drm-intel-next ced026e959bec5046afa310d6474e147b6294da2
+	drm/i915: Update DRIVER_DATE to 20200824
+drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
+	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
+sound-upstream for-linus 6a6660d049f88b89fd9a4b9db3581b245f7782fa
+	ALSA: hda/realtek - Improved routing for Thinkpad X1 7th/8th Gen
+sound-upstream for-next b248b9dd5975c1e16b7918c1dc7eaef7eccfde5f
+	ALSA: vx: vx_pcm: remove redundant assignment
+drm-intel topic/core-for-CI 5a88ca3607993082ad90cac768d50c3b1e2b458e
+	HAX sched/core: Paper over the ttwu() race
+drm-misc topic/phy-compliance 8cdf727119289db3a98835662eb28e1c5ad835f1
+	drm/i915/dp: Program vswing, pre-emphasis, test-pattern
+drm-misc topic/nouveau-i915-dp-helpers-and-cleanup 79416e97dda0118b137302575a70a14259a27d7d
+	drm/nouveau/kms: Start using drm_dp_read_dpcd_caps()
+drm-intel drm-intel-gt-next 6def22519ffabee69499d2314fabc86b9a013376
+	drm/i915: Unlock the shared hwsp_gtt object after pinning

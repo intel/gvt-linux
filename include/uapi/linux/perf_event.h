@@ -145,9 +145,9 @@ enum perf_event_sample_format {
 	PERF_SAMPLE_CGROUP			= 1U << 21,
 
 	PERF_SAMPLE_MAX = 1U << 22,		/* non-ABI */
-
-	__PERF_SAMPLE_CALLCHAIN_EARLY		= 1ULL << 63, /* non-ABI; internal use */
 };
+
+#define __PERF_SAMPLE_CALLCHAIN_EARLY	(1ULL << 63) /* non-ABI; internal use */
 
 /*
  * values to program into branch_sample_type when PERF_SAMPLE_BRANCH is set

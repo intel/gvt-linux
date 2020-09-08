@@ -47,6 +47,7 @@
 #include "display/intel_ddi.h"
 #include "display/intel_dp.h"
 #include "display/intel_dp_mst.h"
+#include "display/intel_dpll_mgr.h"
 #include "display/intel_dsi.h"
 #include "display/intel_dvo.h"
 #include "display/intel_gmbus.h"
@@ -1612,13 +1613,13 @@ static void chv_disable_pll(struct drm_i915_private *dev_priv, enum pipe pipe)
 }
 
 void vlv_wait_port_ready(struct drm_i915_private *dev_priv,
-			 struct intel_digital_port *dport,
+			 struct intel_digital_port *dig_port,
 			 unsigned int expected_mask)
 {
 	u32 port_mask;
 	i915_reg_t dpll_reg;
 
-	switch (dport->base.port) {
+	switch (dig_port->base.port) {
 	case PORT_B:
 		port_mask = DPLL_PORTB_READY_MASK;
 		dpll_reg = DPLL(0);
@@ -1640,7 +1641,7 @@ void vlv_wait_port_ready(struct drm_i915_private *dev_priv,
 				       port_mask, expected_mask, 1000))
 		drm_WARN(&dev_priv->drm, 1,
 			 "timed out waiting for [ENCODER:%d:%s] port ready: got 0x%x, expected 0x%x\n",
-			 dport->base.base.base.id, dport->base.base.name,
+			 dig_port->base.base.base.id, dig_port->base.base.name,
 			 intel_de_read(dev_priv, dpll_reg) & port_mask,
 			 expected_mask);
 }
@@ -3761,6 +3762,44 @@ static int glk_max_plane_width(const struct drm_framebuffer *fb,
 	}
 }
 
+static int icl_min_plane_width(const struct drm_framebuffer *fb)
+{
+	/* Wa_14011264657, Wa_14011050563: gen11+ */
+	switch (fb->format->format) {
+	case DRM_FORMAT_C8:
+		return 18;
+	case DRM_FORMAT_RGB565:
+		return 10;
+	case DRM_FORMAT_XRGB8888:
+	case DRM_FORMAT_XBGR8888:
+	case DRM_FORMAT_ARGB8888:
+	case DRM_FORMAT_ABGR8888:
+	case DRM_FORMAT_XRGB2101010:
+	case DRM_FORMAT_XBGR2101010:
+	case DRM_FORMAT_ARGB2101010:
+	case DRM_FORMAT_ABGR2101010:
+	case DRM_FORMAT_XVYU2101010:
+	case DRM_FORMAT_Y212:
+	case DRM_FORMAT_Y216:
+		return 6;
+	case DRM_FORMAT_NV12:
+		return 20;
+	case DRM_FORMAT_P010:
+	case DRM_FORMAT_P012:
+	case DRM_FORMAT_P016:
+		return 12;
+	case DRM_FORMAT_XRGB16161616F:
+	case DRM_FORMAT_XBGR16161616F:
+	case DRM_FORMAT_ARGB16161616F:
+	case DRM_FORMAT_ABGR16161616F:
+	case DRM_FORMAT_XVYU12_16161616:
+	case DRM_FORMAT_XVYU16161616:
+		return 4;
+	default:
+		return 1;
+	}
+}
+
 static int icl_max_plane_width(const struct drm_framebuffer *fb,
 			       int color_plane,
 			       unsigned int rotation)
@@ -3843,29 +3882,31 @@ static int skl_check_main_surface(struct intel_plane_state *plane_state)
 	int y = plane_state->uapi.src.y1 >> 16;
 	int w = drm_rect_width(&plane_state->uapi.src) >> 16;
 	int h = drm_rect_height(&plane_state->uapi.src) >> 16;
-	int max_width;
-	int max_height;
-	u32 alignment;
-	u32 offset;
+	int max_width, min_width, max_height;
+	u32 alignment, offset;
 	int aux_plane = intel_main_to_aux_plane(fb, 0);
 	u32 aux_offset = plane_state->color_plane[aux_plane].offset;
 
-	if (INTEL_GEN(dev_priv) >= 11)
+	if (INTEL_GEN(dev_priv) >= 11) {
 		max_width = icl_max_plane_width(fb, 0, rotation);
-	else if (INTEL_GEN(dev_priv) >= 10 || IS_GEMINILAKE(dev_priv))
+		min_width = icl_min_plane_width(fb);
+	} else if (INTEL_GEN(dev_priv) >= 10 || IS_GEMINILAKE(dev_priv)) {
 		max_width = glk_max_plane_width(fb, 0, rotation);
-	else
+		min_width = 1;
+	} else {
 		max_width = skl_max_plane_width(fb, 0, rotation);
+		min_width = 1;
+	}
 
 	if (INTEL_GEN(dev_priv) >= 11)
 		max_height = icl_max_plane_height();
 	else
 		max_height = skl_max_plane_height();
 
-	if (w > max_width || h > max_height) {
+	if (w > max_width || w < min_width || h > max_height) {
 		drm_dbg_kms(&dev_priv->drm,
-			    "requested Y/RGB source size %dx%d too big (limit %dx%d)\n",
-			    w, h, max_width, max_height);
+			    "requested Y/RGB source size %dx%d outside limits (min: %dx1 max: %dx%d)\n",
+			    w, h, min_width, max_width, max_height);
 		return -EINVAL;
 	}
 
@@ -10073,7 +10114,8 @@ static void ilk_set_pipeconf(const struct intel_crtc_state *crtc_state)
 	drm_WARN_ON(&dev_priv->drm, crtc_state->limited_color_range &&
 		    crtc_state->output_format != INTEL_OUTPUT_FORMAT_RGB);
 
-	if (crtc_state->limited_color_range)
+	if (crtc_state->limited_color_range &&
+	    !intel_crtc_has_type(crtc_state, INTEL_OUTPUT_SDVO))
 		val |= PIPECONF_COLOR_RANGE_SELECT;
 
 	if (crtc_state->output_format != INTEL_OUTPUT_FORMAT_RGB)
@@ -10801,9 +10843,18 @@ static void icl_get_ddi_pll(struct drm_i915_private *dev_priv, enum port port,
 	u32 temp;
 
 	if (intel_phy_is_combo(dev_priv, phy)) {
-		temp = intel_de_read(dev_priv, ICL_DPCLKA_CFGCR0) &
-			ICL_DPCLKA_CFGCR0_DDI_CLK_SEL_MASK(phy);
-		id = temp >> ICL_DPCLKA_CFGCR0_DDI_CLK_SEL_SHIFT(phy);
+		u32 mask, shift;
+
+		if (IS_ROCKETLAKE(dev_priv)) {
+			mask = RKL_DPCLKA_CFGCR0_DDI_CLK_SEL_MASK(phy);
+			shift = RKL_DPCLKA_CFGCR0_DDI_CLK_SEL_SHIFT(phy);
+		} else {
+			mask = ICL_DPCLKA_CFGCR0_DDI_CLK_SEL_MASK(phy);
+			shift = ICL_DPCLKA_CFGCR0_DDI_CLK_SEL_SHIFT(phy);
+		}
+
+		temp = intel_de_read(dev_priv, ICL_DPCLKA_CFGCR0) & mask;
+		id = temp >> shift;
 		port_dpll_id = ICL_PORT_DPLL_DEFAULT;
 	} else if (intel_phy_is_tc(dev_priv, phy)) {
 		u32 clk_sel = intel_de_read(dev_priv, DDI_CLK_SEL(port)) & DDI_CLK_SEL_MASK;
@@ -12758,6 +12809,9 @@ static int intel_crtc_atomic_check(struct intel_atomic_state *state,
 			return ret;
 
 	}
+
+	if (!mode_changed)
+		intel_psr2_sel_fetch_update(state, crtc);
 
 	return 0;
 }
@@ -14929,7 +14983,7 @@ static int intel_atomic_check(struct drm_device *dev,
 	if (any_ms && !check_digital_port_conflicts(state)) {
 		drm_dbg_kms(&dev_priv->drm,
 			    "rejecting conflicting digital port configuration\n");
-		ret = EINVAL;
+		ret = -EINVAL;
 		goto fail;
 	}
 
@@ -15135,6 +15189,8 @@ static void commit_pipe_config(struct intel_atomic_state *state,
 
 		if (new_crtc_state->update_pipe)
 			intel_pipe_fastset(old_crtc_state, new_crtc_state);
+
+		intel_psr2_program_trans_man_trk_ctl(new_crtc_state);
 	}
 
 	if (dev_priv->display.atomic_update_watermarks)
@@ -16332,7 +16388,8 @@ intel_primary_plane_create(struct drm_i915_private *dev_priv, enum pipe pipe)
 	 * On gen2/3 only plane A can do FBC, but the panel fitter and LVDS
 	 * port is hooked to pipe B. Hence we want plane A feeding pipe B.
 	 */
-	if (HAS_FBC(dev_priv) && INTEL_GEN(dev_priv) < 4)
+	if (HAS_FBC(dev_priv) && INTEL_GEN(dev_priv) < 4 &&
+	    INTEL_NUM_PIPES(dev_priv) == 2)
 		plane->i9xx_plane = (enum i9xx_plane_id) !pipe;
 	else
 		plane->i9xx_plane = (enum i9xx_plane_id) pipe;
@@ -17891,6 +17948,13 @@ int intel_modeset_init(struct drm_i915_private *i915)
 
 	if (i915->max_cdclk_freq == 0)
 		intel_update_max_cdclk(i915);
+
+	/*
+	 * If the platform has HTI, we need to find out whether it has reserved
+	 * any display resources before we create our display outputs.
+	 */
+	if (INTEL_INFO(i915)->display.has_hti)
+		i915->hti_state = intel_de_read(i915, HDPORT_STATE);
 
 	/* Just disable it once at startup */
 	intel_vga_disable(i915);

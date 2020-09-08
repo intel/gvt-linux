@@ -2080,8 +2080,15 @@ int intel_crtc_compute_min_cdclk(const struct intel_crtc_state *crtc_state)
 	 * Explicitly stating here that this seems to be currently
 	 * rather a Hack, than final solution.
 	 */
-	if (IS_TIGERLAKE(dev_priv))
-		min_cdclk = max(min_cdclk, (int)crtc_state->pixel_rate);
+	if (IS_TIGERLAKE(dev_priv)) {
+		/*
+		 * Clamp to max_cdclk_freq in case pixel rate is higher,
+		 * in order not to break an 8K, but still leave W/A at place.
+		 */
+		min_cdclk = max_t(int, min_cdclk,
+				  min_t(int, crtc_state->pixel_rate,
+					dev_priv->max_cdclk_freq));
+	}
 
 	if (min_cdclk > dev_priv->max_cdclk_freq) {
 		drm_dbg_kms(&dev_priv->drm,
@@ -2670,7 +2677,7 @@ void intel_update_cdclk(struct drm_i915_private *dev_priv)
 	 */
 	if (IS_VALLEYVIEW(dev_priv) || IS_CHERRYVIEW(dev_priv))
 		intel_de_write(dev_priv, GMBUSFREQ_VLV,
-		               DIV_ROUND_UP(dev_priv->cdclk.hw.cdclk, 1000));
+			       DIV_ROUND_UP(dev_priv->cdclk.hw.cdclk, 1000));
 }
 
 static int cnp_rawclk(struct drm_i915_private *dev_priv)
@@ -2896,9 +2903,10 @@ void intel_init_cdclk_hooks(struct drm_i915_private *dev_priv)
 		dev_priv->display.get_cdclk = i85x_get_cdclk;
 	else if (IS_I845G(dev_priv))
 		dev_priv->display.get_cdclk = fixed_200mhz_get_cdclk;
-	else { /* 830 */
-		drm_WARN(&dev_priv->drm, !IS_I830(dev_priv),
-			 "Unknown platform. Assuming 133 MHz CDCLK\n");
+	else if (IS_I830(dev_priv))
 		dev_priv->display.get_cdclk = fixed_133mhz_get_cdclk;
-	}
+
+	if (drm_WARN(&dev_priv->drm, !dev_priv->display.get_cdclk,
+		     "Unknown platform. Assuming 133 MHz CDCLK\n"))
+		dev_priv->display.get_cdclk = fixed_133mhz_get_cdclk;
 }

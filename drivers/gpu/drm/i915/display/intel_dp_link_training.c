@@ -52,6 +52,7 @@ static u8 dp_voltage_max(u8 preemph)
 void intel_dp_get_adjust_train(struct intel_dp *intel_dp,
 			       const u8 link_status[DP_LINK_STATUS_SIZE])
 {
+	struct drm_i915_private *i915 = dp_to_i915(intel_dp);
 	u8 v = 0;
 	u8 p = 0;
 	int lane;
@@ -64,12 +65,20 @@ void intel_dp_get_adjust_train(struct intel_dp *intel_dp,
 	}
 
 	preemph_max = intel_dp->preemph_max(intel_dp);
+	drm_WARN_ON_ONCE(&i915->drm,
+			 preemph_max != DP_TRAIN_PRE_EMPH_LEVEL_2 &&
+			 preemph_max != DP_TRAIN_PRE_EMPH_LEVEL_3);
+
 	if (p >= preemph_max)
 		p = preemph_max | DP_TRAIN_MAX_PRE_EMPHASIS_REACHED;
 
 	v = min(v, dp_voltage_max(p));
 
 	voltage_max = intel_dp->voltage_max(intel_dp);
+	drm_WARN_ON_ONCE(&i915->drm,
+			 voltage_max != DP_TRAIN_VOLTAGE_SWING_LEVEL_2 &&
+			 voltage_max != DP_TRAIN_VOLTAGE_SWING_LEVEL_3);
+
 	if (v >= voltage_max)
 		v = voltage_max | DP_TRAIN_MAX_SWING_REACHED;
 
@@ -401,10 +410,17 @@ intel_dp_start_link_train(struct intel_dp *intel_dp)
 		    intel_connector->base.base.id,
 		    intel_connector->base.name,
 		    intel_dp->link_rate, intel_dp->lane_count);
-	if (!intel_dp_get_link_train_fallback_values(intel_dp,
-						     intel_dp->link_rate,
-						     intel_dp->lane_count))
-		/* Schedule a Hotplug Uevent to userspace to start modeset */
-		schedule_work(&intel_connector->modeset_retry_work);
-	return;
+
+	if (intel_dp->hobl_active) {
+		drm_dbg_kms(&dp_to_i915(intel_dp)->drm,
+			    "Link Training failed with HOBL active, not enabling it from now on");
+		intel_dp->hobl_failed = true;
+	} else if (intel_dp_get_link_train_fallback_values(intel_dp,
+							   intel_dp->link_rate,
+							   intel_dp->lane_count)) {
+		return;
+	}
+
+	/* Schedule a Hotplug Uevent to userspace to start modeset */
+	schedule_work(&intel_connector->modeset_retry_work);
 }

@@ -29,9 +29,9 @@ static int cmp_u64(const void *A, const void *B)
 {
 	const u64 *a = A, *b = B;
 
-	if (a < b)
+	if (*a < *b)
 		return -1;
-	else if (a > b)
+	else if (*a > *b)
 		return 1;
 	else
 		return 0;
@@ -41,9 +41,9 @@ static int cmp_u32(const void *A, const void *B)
 {
 	const u32 *a = A, *b = B;
 
-	if (a < b)
+	if (*a < *b)
 		return -1;
-	else if (a > b)
+	else if (*a > *b)
 		return 1;
 	else
 		return 0;
@@ -700,7 +700,7 @@ int live_rps_frequency_cs(void *arg)
 				f = act; /* may skip ahead [pcu granularity] */
 			}
 
-			err = -EINVAL;
+			err = -EINTR; /* ignore error, continue on with test */
 		}
 
 err_vma:
@@ -841,7 +841,7 @@ int live_rps_frequency_srm(void *arg)
 				f = act; /* may skip ahead [pcu granularity] */
 			}
 
-			err = -EINVAL;
+			err = -EINTR; /* ignore error, continue on with test */
 		}
 
 err_vma:

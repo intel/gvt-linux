@@ -108,8 +108,8 @@
 
 #define DRIVER_NAME		"i915"
 #define DRIVER_DESC		"Intel Graphics"
-#define DRIVER_DATE		"20200702"
-#define DRIVER_TIMESTAMP	1593714328
+#define DRIVER_DATE		"20200824"
+#define DRIVER_TIMESTAMP	1598293597
 
 struct drm_i915_gem_object;
 
@@ -442,6 +442,7 @@ struct intel_fbc {
 		struct {
 			const struct drm_format_info *format;
 			unsigned int stride;
+			u64 modifier;
 		} fb;
 
 		int cfb_size;
@@ -505,6 +506,7 @@ struct i915_psr {
 	bool link_standby;
 	bool colorimetry_support;
 	bool psr2_enabled;
+	bool psr2_sel_fetch_enabled;
 	u8 sink_sync_latency;
 	ktime_t last_entry_attempt;
 	ktime_t last_exit;
@@ -692,6 +694,7 @@ struct intel_vbt_data {
 		bool initialized;
 		int bpp;
 		struct edp_power_seq pps;
+		bool hobl;
 	} edp;
 
 	struct {
@@ -1043,6 +1046,14 @@ struct drm_i915_private {
 	struct intel_l3_parity l3_parity;
 
 	/*
+	 * HTI (aka HDPORT) state read during initial hw readout.  Most
+	 * platforms don't have HTI, so this will just stay 0.  Those that do
+	 * will use this later to figure out which PLLs and PHYs are unavailable
+	 * for driver usage.
+	 */
+	u32 hti_state;
+
+	/*
 	 * edram size in MB.
 	 * Cannot be determined by PCIID. You must always read a register.
 	 */
@@ -1256,7 +1267,7 @@ static inline struct drm_i915_private *pdev_to_i915(struct pci_dev *pdev)
 
 /* Iterator over subset of engines selected by mask */
 #define for_each_engine_masked(engine__, gt__, mask__, tmp__) \
-	for ((tmp__) = (mask__) & INTEL_INFO((gt__)->i915)->engine_mask; \
+	for ((tmp__) = (mask__) & (gt__)->info.engine_mask; \
 	     (tmp__) ? \
 	     ((engine__) = (gt__)->engine[__mask_next_bit(tmp__)]), 1 : \
 	     0;)
@@ -1430,6 +1441,7 @@ IS_SUBPLATFORM(const struct drm_i915_private *i915,
 #define IS_ELKHARTLAKE(dev_priv)	IS_PLATFORM(dev_priv, INTEL_ELKHARTLAKE)
 #define IS_TIGERLAKE(dev_priv)	IS_PLATFORM(dev_priv, INTEL_TIGERLAKE)
 #define IS_ROCKETLAKE(dev_priv)	IS_PLATFORM(dev_priv, INTEL_ROCKETLAKE)
+#define IS_DG1(dev_priv)        IS_PLATFORM(dev_priv, INTEL_DG1)
 #define IS_HSW_EARLY_SDV(dev_priv) (IS_HASWELL(dev_priv) && \
 				    (INTEL_DEVID(dev_priv) & 0xFF00) == 0x0C00)
 #define IS_BDW_ULT(dev_priv) \
@@ -1486,6 +1498,12 @@ IS_SUBPLATFORM(const struct drm_i915_private *i915,
 #define IS_ICL_WITH_PORT_F(dev_priv) \
 	IS_SUBPLATFORM(dev_priv, INTEL_ICELAKE, INTEL_SUBPLATFORM_PORTF)
 
+#define IS_TGL_U(dev_priv) \
+	IS_SUBPLATFORM(dev_priv, INTEL_TIGERLAKE, INTEL_SUBPLATFORM_ULT)
+
+#define IS_TGL_Y(dev_priv) \
+	IS_SUBPLATFORM(dev_priv, INTEL_TIGERLAKE, INTEL_SUBPLATFORM_ULX)
+
 #define SKL_REVID_A0		0x0
 #define SKL_REVID_B0		0x1
 #define SKL_REVID_C0		0x2
@@ -1506,14 +1524,34 @@ IS_SUBPLATFORM(const struct drm_i915_private *i915,
 #define IS_BXT_REVID(dev_priv, since, until) \
 	(IS_BROXTON(dev_priv) && IS_REVID(dev_priv, since, until))
 
-#define KBL_REVID_A0		0x0
-#define KBL_REVID_B0		0x1
-#define KBL_REVID_C0		0x2
-#define KBL_REVID_D0		0x3
-#define KBL_REVID_E0		0x4
+enum {
+	KBL_REVID_A0,
+	KBL_REVID_B0,
+	KBL_REVID_B1,
+	KBL_REVID_C0,
+	KBL_REVID_D0,
+	KBL_REVID_D1,
+	KBL_REVID_E0,
+	KBL_REVID_F0,
+	KBL_REVID_G0,
+};
 
-#define IS_KBL_REVID(dev_priv, since, until) \
-	(IS_KABYLAKE(dev_priv) && IS_REVID(dev_priv, since, until))
+struct i915_rev_steppings {
+	u8 gt_stepping;
+	u8 disp_stepping;
+};
+
+/* Defined in intel_workarounds.c */
+extern const struct i915_rev_steppings kbl_revids[];
+
+#define IS_KBL_GT_REVID(dev_priv, since, until) \
+	(IS_KABYLAKE(dev_priv) && \
+	 kbl_revids[INTEL_REVID(dev_priv)].gt_stepping >= since && \
+	 kbl_revids[INTEL_REVID(dev_priv)].gt_stepping <= until)
+#define IS_KBL_DISP_REVID(dev_priv, since, until) \
+	(IS_KABYLAKE(dev_priv) && \
+	 kbl_revids[INTEL_REVID(dev_priv)].disp_stepping >= since && \
+	 kbl_revids[INTEL_REVID(dev_priv)].disp_stepping <= until)
 
 #define GLK_REVID_A0		0x0
 #define GLK_REVID_A1		0x1
@@ -1558,22 +1596,29 @@ IS_SUBPLATFORM(const struct drm_i915_private *i915,
 #define IS_RKL_REVID(p, since, until) \
 	(IS_ROCKETLAKE(p) && IS_REVID(p, since, until))
 
+#define DG1_REVID_A0		0x0
+#define DG1_REVID_B0		0x1
+
+#define IS_DG1_REVID(p, since, until) \
+	(IS_DG1(p) && IS_REVID(p, since, until))
+
 #define IS_LP(dev_priv)	(INTEL_INFO(dev_priv)->is_lp)
 #define IS_GEN9_LP(dev_priv)	(IS_GEN(dev_priv, 9) && IS_LP(dev_priv))
 #define IS_GEN9_BC(dev_priv)	(IS_GEN(dev_priv, 9) && !IS_LP(dev_priv))
 
-#define HAS_ENGINE(dev_priv, id) (INTEL_INFO(dev_priv)->engine_mask & BIT(id))
+#define __HAS_ENGINE(engine_mask, id) ((engine_mask) & BIT(id))
+#define HAS_ENGINE(gt, id) __HAS_ENGINE((gt)->info.engine_mask, id)
 
-#define ENGINE_INSTANCES_MASK(dev_priv, first, count) ({		\
+#define ENGINE_INSTANCES_MASK(gt, first, count) ({		\
 	unsigned int first__ = (first);					\
 	unsigned int count__ = (count);					\
-	(INTEL_INFO(dev_priv)->engine_mask &				\
+	((gt)->info.engine_mask &						\
 	 GENMASK(first__ + count__ - 1, first__)) >> first__;		\
 })
-#define VDBOX_MASK(dev_priv) \
-	ENGINE_INSTANCES_MASK(dev_priv, VCS0, I915_MAX_VCS)
-#define VEBOX_MASK(dev_priv) \
-	ENGINE_INSTANCES_MASK(dev_priv, VECS0, I915_MAX_VECS)
+#define VDBOX_MASK(gt) \
+	ENGINE_INSTANCES_MASK(gt, VCS0, I915_MAX_VCS)
+#define VEBOX_MASK(gt) \
+	ENGINE_INSTANCES_MASK(gt, VECS0, I915_MAX_VECS)
 
 /*
  * The Gen7 cmdparser copies the scanned buffer to the ggtt for execution
@@ -1596,6 +1641,8 @@ IS_SUBPLATFORM(const struct drm_i915_private *i915,
 		(INTEL_INFO(dev_priv)->has_logical_ring_elsq)
 #define HAS_LOGICAL_RING_PREEMPTION(dev_priv) \
 		(INTEL_INFO(dev_priv)->has_logical_ring_preemption)
+
+#define HAS_MASTER_UNIT_IRQ(dev_priv) (INTEL_INFO(dev_priv)->has_master_unit_irq)
 
 #define HAS_EXECLISTS(dev_priv) HAS_LOGICAL_RING_CONTEXTS(dev_priv)
 
@@ -1653,6 +1700,7 @@ IS_SUBPLATFORM(const struct drm_i915_private *i915,
 #define HAS_PSR(dev_priv)		 (INTEL_INFO(dev_priv)->display.has_psr)
 #define HAS_PSR_HW_TRACKING(dev_priv) \
 	(INTEL_INFO(dev_priv)->display.has_psr_hw_tracking)
+#define HAS_PSR2_SEL_FETCH(dev_priv)	 (INTEL_GEN(dev_priv) >= 12)
 #define HAS_TRANSCODER(dev_priv, trans)	 ((INTEL_INFO(dev_priv)->cpu_transcoder_mask & BIT(trans)) != 0)
 
 #define HAS_RC6(dev_priv)		 (INTEL_INFO(dev_priv)->has_rc6)

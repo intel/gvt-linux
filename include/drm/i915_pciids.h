@@ -258,9 +258,7 @@
 	INTEL_VGA_DEVICE(0x0f30, info), \
 	INTEL_VGA_DEVICE(0x0f31, info), \
 	INTEL_VGA_DEVICE(0x0f32, info), \
-	INTEL_VGA_DEVICE(0x0f33, info), \
-	INTEL_VGA_DEVICE(0x0157, info), \
-	INTEL_VGA_DEVICE(0x0155, info)
+	INTEL_VGA_DEVICE(0x0f33, info)
 
 #define INTEL_BDW_ULT_GT1_IDS(info) \
 	INTEL_VGA_DEVICE(0x1606, info), /* GT1 ULT */ \
@@ -588,7 +586,11 @@
 	INTEL_VGA_DEVICE(0x4551, info), \
 	INTEL_VGA_DEVICE(0x4541, info), \
 	INTEL_VGA_DEVICE(0x4E71, info), \
+	INTEL_VGA_DEVICE(0x4557, info), \
+	INTEL_VGA_DEVICE(0x4555, info), \
 	INTEL_VGA_DEVICE(0x4E61, info), \
+	INTEL_VGA_DEVICE(0x4E57, info), \
+	INTEL_VGA_DEVICE(0x4E55, info), \
 	INTEL_VGA_DEVICE(0x4E51, info)
 
 /* TGL */
@@ -613,5 +615,9 @@
 	INTEL_VGA_DEVICE(0x4C8C, info), \
 	INTEL_VGA_DEVICE(0x4C90, info), \
 	INTEL_VGA_DEVICE(0x4C9A, info)
+
+/* DG1 */
+#define INTEL_DG1_IDS(info) \
+	INTEL_VGA_DEVICE(0x4905, info)
 
 #endif /* _I915_PCIIDS_H */

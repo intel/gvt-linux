@@ -187,8 +187,30 @@ static bool g4x_fbc_is_active(struct drm_i915_private *dev_priv)
 	return intel_de_read(dev_priv, DPFC_CONTROL) & DPFC_CTL_EN;
 }
 
+static void i8xx_fbc_recompress(struct drm_i915_private *dev_priv)
+{
+	struct intel_fbc_reg_params *params = &dev_priv->fbc.params;
+	enum i9xx_plane_id i9xx_plane = params->crtc.i9xx_plane;
+
+	spin_lock_irq(&dev_priv->uncore.lock);
+	intel_de_write_fw(dev_priv, DSPADDR(i9xx_plane),
+			  intel_de_read_fw(dev_priv, DSPADDR(i9xx_plane)));
+	spin_unlock_irq(&dev_priv->uncore.lock);
+}
+
+static void i965_fbc_recompress(struct drm_i915_private *dev_priv)
+{
+	struct intel_fbc_reg_params *params = &dev_priv->fbc.params;
+	enum i9xx_plane_id i9xx_plane = params->crtc.i9xx_plane;
+
+	spin_lock_irq(&dev_priv->uncore.lock);
+	intel_de_write_fw(dev_priv, DSPSURF(i9xx_plane),
+			  intel_de_read_fw(dev_priv, DSPSURF(i9xx_plane)));
+	spin_unlock_irq(&dev_priv->uncore.lock);
+}
+
 /* This function forces a CFB recompression through the nuke operation. */
-static void intel_fbc_recompress(struct drm_i915_private *dev_priv)
+static void snb_fbc_recompress(struct drm_i915_private *dev_priv)
 {
 	struct intel_fbc *fbc = &dev_priv->fbc;
 
@@ -196,6 +218,16 @@ static void intel_fbc_recompress(struct drm_i915_private *dev_priv)
 
 	intel_de_write(dev_priv, MSG_FBC_REND_STATE, FBC_REND_NUKE);
 	intel_de_posting_read(dev_priv, MSG_FBC_REND_STATE);
+}
+
+static void intel_fbc_recompress(struct drm_i915_private *dev_priv)
+{
+	if (INTEL_GEN(dev_priv) >= 6)
+		snb_fbc_recompress(dev_priv);
+	else if (INTEL_GEN(dev_priv) >= 4)
+		i965_fbc_recompress(dev_priv);
+	else
+		i8xx_fbc_recompress(dev_priv);
 }
 
 static void ilk_fbc_activate(struct drm_i915_private *dev_priv)
@@ -315,21 +347,6 @@ static void gen7_fbc_activate(struct drm_i915_private *dev_priv)
 	if (dev_priv->fbc.false_color)
 		dpfc_ctl |= FBC_CTL_FALSE_COLOR;
 
-	if (IS_IVYBRIDGE(dev_priv)) {
-		/* WaFbcAsynchFlipDisableFbcQueue:ivb */
-		intel_de_write(dev_priv, ILK_DISPLAY_CHICKEN1,
-			       intel_de_read(dev_priv, ILK_DISPLAY_CHICKEN1) | ILK_FBCQ_DIS);
-	} else if (IS_HASWELL(dev_priv) || IS_BROADWELL(dev_priv)) {
-		/* WaFbcAsynchFlipDisableFbcQueue:hsw,bdw */
-		intel_de_write(dev_priv, CHICKEN_PIPESL_1(params->crtc.pipe),
-			       intel_de_read(dev_priv, CHICKEN_PIPESL_1(params->crtc.pipe)) | HSW_FBCQ_DIS);
-	}
-
-	if (INTEL_GEN(dev_priv) >= 11)
-		/* Wa_1409120013:icl,ehl,tgl */
-		intel_de_write(dev_priv, ILK_DPFC_CHICKEN,
-			       ILK_DPFC_CHICKEN_COMP_DUMMY_PIXEL);
-
 	intel_de_write(dev_priv, ILK_DPFC_CONTROL, dpfc_ctl | DPFC_CTL_EN);
 
 	intel_fbc_recompress(dev_priv);
@@ -407,6 +424,14 @@ static void intel_fbc_deactivate(struct drm_i915_private *dev_priv,
 	fbc->no_fbc_reason = reason;
 }
 
+static u64 intel_fbc_cfb_base_max(struct drm_i915_private *i915)
+{
+	if (INTEL_GEN(i915) >= 5 || IS_G4X(i915))
+		return BIT_ULL(28);
+	else
+		return BIT_ULL(32);
+}
+
 static int find_compression_threshold(struct drm_i915_private *dev_priv,
 				      struct drm_mm_node *node,
 				      unsigned int size,
@@ -424,6 +449,8 @@ static int find_compression_threshold(struct drm_i915_private *dev_priv,
 		end = resource_size(&dev_priv->dsm) - 8 * 1024 * 1024;
 	else
 		end = U64_MAX;
+
+	end = min(end, intel_fbc_cfb_base_max(dev_priv));
 
 	/* HACK: This code depends on what we will do in *_enable_fbc. If that
 	 * code changes, this code needs to change as well.
@@ -695,8 +722,12 @@ static void intel_fbc_update_state_cache(struct intel_crtc *crtc,
 	cache->plane.pixel_blend_mode = plane_state->hw.pixel_blend_mode;
 
 	cache->fb.format = fb->format;
-	cache->fb.stride = fb->pitches[0];
 	cache->fb.modifier = fb->modifier;
+
+	/* FIXME is this correct? */
+	cache->fb.stride = plane_state->color_plane[0].stride;
+	if (drm_rotation_90_or_270(plane_state->hw.rotation))
+		cache->fb.stride *= fb->format->cpp[0];
 
 	/* FBC1 compression interval: arbitrary choice of 1 second */
 	cache->interval = drm_mode_vrefresh(&crtc_state->hw.adjusted_mode);
@@ -719,6 +750,25 @@ static bool intel_fbc_cfb_size_changed(struct drm_i915_private *dev_priv)
 
 	return intel_fbc_calculate_cfb_size(dev_priv, &fbc->state_cache) >
 		fbc->compressed_fb.size * fbc->threshold;
+}
+
+static u16 intel_fbc_gen9_wa_cfb_stride(struct drm_i915_private *dev_priv)
+{
+	struct intel_fbc *fbc = &dev_priv->fbc;
+	struct intel_fbc_state_cache *cache = &fbc->state_cache;
+
+	if ((IS_GEN9_BC(dev_priv) || IS_BROXTON(dev_priv)) &&
+	    cache->fb.modifier != I915_FORMAT_MOD_X_TILED)
+		return DIV_ROUND_UP(cache->plane.src_w, 32 * fbc->threshold) * 8;
+	else
+		return 0;
+}
+
+static bool intel_fbc_gen9_wa_cfb_stride_changed(struct drm_i915_private *dev_priv)
+{
+	struct intel_fbc *fbc = &dev_priv->fbc;
+
+	return fbc->params.gen9_wa_cfb_stride != intel_fbc_gen9_wa_cfb_stride(dev_priv);
 }
 
 static bool intel_fbc_can_enable(struct drm_i915_private *dev_priv)
@@ -797,6 +847,11 @@ static bool intel_fbc_can_activate(struct intel_crtc *crtc)
 		return false;
 	}
 
+	if (!pixel_format_is_valid(dev_priv, cache->fb.format->format)) {
+		fbc->no_fbc_reason = "pixel format is invalid";
+		return false;
+	}
+
 	if (!rotation_is_valid(dev_priv, cache->fb.format->format,
 			       cache->plane.rotation)) {
 		fbc->no_fbc_reason = "rotation unsupported";
@@ -810,11 +865,6 @@ static bool intel_fbc_can_activate(struct intel_crtc *crtc)
 
 	if (!stride_is_valid(dev_priv, cache->fb.modifier, cache->fb.stride)) {
 		fbc->no_fbc_reason = "framebuffer stride not supported";
-		return false;
-	}
-
-	if (!pixel_format_is_valid(dev_priv, cache->fb.format->format)) {
-		fbc->no_fbc_reason = "pixel format is invalid";
 		return false;
 	}
 
@@ -881,6 +931,7 @@ static void intel_fbc_get_reg_params(struct intel_crtc *crtc,
 	params->crtc.i9xx_plane = to_intel_plane(crtc->base.primary)->i9xx_plane;
 
 	params->fb.format = cache->fb.format;
+	params->fb.modifier = cache->fb.modifier;
 	params->fb.stride = cache->fb.stride;
 
 	params->cfb_size = intel_fbc_calculate_cfb_size(dev_priv, cache);
@@ -908,6 +959,9 @@ static bool intel_fbc_can_flip_nuke(const struct intel_crtc_state *crtc_state)
 		return false;
 
 	if (params->fb.format != cache->fb.format)
+		return false;
+
+	if (params->fb.modifier != cache->fb.modifier)
 		return false;
 
 	if (params->fb.stride != cache->fb.stride)
@@ -1197,7 +1251,8 @@ void intel_fbc_enable(struct intel_atomic_state *state,
 
 	if (fbc->crtc) {
 		if (fbc->crtc != crtc ||
-		    !intel_fbc_cfb_size_changed(dev_priv))
+		    (!intel_fbc_cfb_size_changed(dev_priv) &&
+		     !intel_fbc_gen9_wa_cfb_stride_changed(dev_priv)))
 			goto out;
 
 		__intel_fbc_disable(dev_priv);
@@ -1219,12 +1274,7 @@ void intel_fbc_enable(struct intel_atomic_state *state,
 		goto out;
 	}
 
-	if ((IS_GEN9_BC(dev_priv) || IS_BROXTON(dev_priv)) &&
-	    plane_state->hw.fb->modifier != I915_FORMAT_MOD_X_TILED)
-		cache->gen9_wa_cfb_stride =
-			DIV_ROUND_UP(cache->plane.src_w, 32 * fbc->threshold) * 8;
-	else
-		cache->gen9_wa_cfb_stride = 0;
+	cache->gen9_wa_cfb_stride = intel_fbc_gen9_wa_cfb_stride(dev_priv);
 
 	drm_dbg_kms(&dev_priv->drm, "Enabling FBC on pipe %c\n",
 		    pipe_name(crtc->pipe));
@@ -1374,6 +1424,13 @@ static int intel_sanitize_fbc_option(struct drm_i915_private *dev_priv)
 		return !!dev_priv->params.enable_fbc;
 
 	if (!HAS_FBC(dev_priv))
+		return 0;
+
+	/*
+	 * Fbc is causing random underruns in CI execution on TGL platforms.
+	 * Disabling the same while the problem is being debugged and analyzed.
+	 */
+	if (IS_TIGERLAKE(dev_priv))
 		return 0;
 
 	if (IS_BROADWELL(dev_priv) || INTEL_GEN(dev_priv) >= 9)

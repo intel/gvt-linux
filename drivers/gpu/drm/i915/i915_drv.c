@@ -392,7 +392,7 @@ static void intel_detect_preproduction_hw(struct drm_i915_private *dev_priv)
 	pre |= IS_HSW_EARLY_SDV(dev_priv);
 	pre |= IS_SKL_REVID(dev_priv, 0, SKL_REVID_F0);
 	pre |= IS_BXT_REVID(dev_priv, 0, BXT_REVID_B_LAST);
-	pre |= IS_KBL_REVID(dev_priv, 0, KBL_REVID_A0);
+	pre |= IS_KBL_GT_REVID(dev_priv, 0, KBL_REVID_A0);
 	pre |= IS_GLK_REVID(dev_priv, 0, GLK_REVID_A2);
 
 	if (pre) {
@@ -531,13 +531,7 @@ static int i915_driver_mmio_probe(struct drm_i915_private *dev_priv)
 	/* Try to make sure MCHBAR is enabled before poking at it */
 	intel_setup_mchbar(dev_priv);
 
-	intel_device_info_init_mmio(dev_priv);
-
-	intel_uncore_prune_mmio_domains(&dev_priv->uncore);
-
-	intel_uc_init_mmio(&dev_priv->gt.uc);
-
-	ret = intel_engines_init_mmio(&dev_priv->gt);
+	ret = intel_gt_init_mmio(&dev_priv->gt);
 	if (ret)
 		goto err_uncore;
 
@@ -890,6 +884,7 @@ static void i915_welcome_messages(struct drm_i915_private *dev_priv)
 
 		intel_device_info_print_static(INTEL_INFO(dev_priv), &p);
 		intel_device_info_print_runtime(RUNTIME_INFO(dev_priv), &p);
+		intel_gt_info_print(&dev_priv->gt.info, &p);
 	}
 
 	if (IS_ENABLED(CONFIG_DRM_I915_DEBUG))
@@ -1851,7 +1846,8 @@ static struct drm_driver driver = {
 	 */
 	.driver_features =
 	    DRIVER_GEM |
-	    DRIVER_RENDER | DRIVER_MODESET | DRIVER_ATOMIC | DRIVER_SYNCOBJ,
+	    DRIVER_RENDER | DRIVER_MODESET | DRIVER_ATOMIC | DRIVER_SYNCOBJ |
+	    DRIVER_SYNCOBJ_TIMELINE,
 	.release = i915_driver_release,
 	.open = i915_driver_open,
 	.lastclose = i915_driver_lastclose,

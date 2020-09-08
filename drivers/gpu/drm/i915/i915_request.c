@@ -560,22 +560,25 @@ bool __i915_request_submit(struct i915_request *request)
 	engine->serial++;
 	result = true;
 
-xfer:	/* We may be recursing from the signal callback of another i915 fence */
-	spin_lock_nested(&request->lock, SINGLE_DEPTH_NESTING);
-
+xfer:
 	if (!test_and_set_bit(I915_FENCE_FLAG_ACTIVE, &request->fence.flags)) {
 		list_move_tail(&request->sched.link, &engine->active.requests);
 		clear_bit(I915_FENCE_FLAG_PQUEUE, &request->fence.flags);
-		__notify_execute_cb(request);
 	}
-	GEM_BUG_ON(!llist_empty(&request->execute_cb));
 
-	if (test_bit(DMA_FENCE_FLAG_ENABLE_SIGNAL_BIT, &request->fence.flags) &&
-	    !test_bit(DMA_FENCE_FLAG_SIGNALED_BIT, &request->fence.flags) &&
-	    !i915_request_enable_breadcrumb(request))
-		intel_engine_signal_breadcrumbs(engine);
+	/* We may be recursing from the signal callback of another i915 fence */
+	if (!i915_request_signaled(request)) {
+		spin_lock_nested(&request->lock, SINGLE_DEPTH_NESTING);
 
-	spin_unlock(&request->lock);
+		__notify_execute_cb(request);
+		if (test_bit(DMA_FENCE_FLAG_ENABLE_SIGNAL_BIT,
+			     &request->fence.flags) &&
+		    !i915_request_enable_breadcrumb(request))
+			intel_engine_signal_breadcrumbs(engine);
+
+		spin_unlock(&request->lock);
+		GEM_BUG_ON(!llist_empty(&request->execute_cb));
+	}
 
 	return result;
 }
@@ -1780,11 +1783,8 @@ long i915_request_wait(struct i915_request *rq,
 	 * but at a cost of spending more power processing the workload
 	 * (bad for battery).
 	 */
-	if (flags & I915_WAIT_PRIORITY) {
-		if (!i915_request_started(rq) &&
-		    INTEL_GEN(rq->engine->i915) >= 6)
-			intel_rps_boost(rq);
-	}
+	if (flags & I915_WAIT_PRIORITY && !i915_request_started(rq))
+		intel_rps_boost(rq);
 
 	wait.tsk = current;
 	if (dma_fence_add_callback(&rq->fence, &wait.cb, request_wait_wake))

@@ -263,11 +263,7 @@ static int ttm_bo_handle_move_mem(struct ttm_buffer_object *bo,
 	struct ttm_resource_manager *new_man = ttm_manager_type(bdev, mem->mem_type);
 	int ret;
 
-	ret = ttm_mem_io_lock(old_man, true);
-	if (unlikely(ret != 0))
-		goto out_err;
-	ttm_bo_unmap_virtual_locked(bo);
-	ttm_mem_io_unlock(old_man);
+	ttm_bo_unmap_virtual(bo);
 
 	/*
 	 * Create and bind a ttm if required.
@@ -286,7 +282,7 @@ static int ttm_bo_handle_move_mem(struct ttm_buffer_object *bo,
 			goto out_err;
 
 		if (mem->mem_type != TTM_PL_SYSTEM) {
-			ret = ttm_tt_bind(bo->ttm, mem, ctx);
+			ret = ttm_tt_bind(bdev, bo->ttm, mem, ctx);
 			if (ret)
 				goto out_err;
 		}
@@ -328,7 +324,7 @@ moved:
 out_err:
 	new_man = ttm_manager_type(bdev, bo->mem.mem_type);
 	if (!new_man->use_tt) {
-		ttm_tt_destroy(bo->ttm);
+		ttm_tt_destroy(bdev, bo->ttm);
 		bo->ttm = NULL;
 	}
 
@@ -348,7 +344,7 @@ static void ttm_bo_cleanup_memtype_use(struct ttm_buffer_object *bo)
 	if (bo->bdev->driver->move_notify)
 		bo->bdev->driver->move_notify(bo, false, NULL);
 
-	ttm_tt_destroy(bo->ttm);
+	ttm_tt_destroy(bo->bdev, bo->ttm);
 	bo->ttm = NULL;
 	ttm_resource_free(bo, &bo->mem);
 }
@@ -538,7 +534,6 @@ static void ttm_bo_release(struct kref *kref)
 	struct ttm_buffer_object *bo =
 	    container_of(kref, struct ttm_buffer_object, kref);
 	struct ttm_bo_device *bdev = bo->bdev;
-	struct ttm_resource_manager *man = ttm_manager_type(bdev, bo->mem.mem_type);
 	size_t acc_size = bo->acc_size;
 	int ret;
 
@@ -556,9 +551,7 @@ static void ttm_bo_release(struct kref *kref)
 			bo->bdev->driver->release_notify(bo);
 
 		drm_vma_offset_remove(bdev->vma_manager, &bo->base.vma_node);
-		ttm_mem_io_lock(man, false);
-		ttm_mem_io_free_vm(bo);
-		ttm_mem_io_unlock(man);
+		ttm_mem_io_free(bdev, &bo->mem);
 	}
 
 	if (!dma_resv_test_signaled_rcu(bo->base.resv, true) ||
@@ -648,8 +641,8 @@ static int ttm_bo_evict(struct ttm_buffer_object *bo,
 
 	evict_mem = bo->mem;
 	evict_mem.mm_node = NULL;
-	evict_mem.bus.io_reserved_vm = false;
-	evict_mem.bus.io_reserved_count = 0;
+	evict_mem.bus.offset = 0;
+	evict_mem.bus.addr = NULL;
 
 	ret = ttm_bo_mem_space(bo, &placement, &evict_mem, ctx);
 	if (ret) {
@@ -1082,8 +1075,8 @@ static int ttm_bo_move_buffer(struct ttm_buffer_object *bo,
 	mem.num_pages = bo->num_pages;
 	mem.size = mem.num_pages << PAGE_SHIFT;
 	mem.page_alignment = bo->mem.page_alignment;
-	mem.bus.io_reserved_vm = false;
-	mem.bus.io_reserved_count = 0;
+	mem.bus.offset = 0;
+	mem.bus.addr = NULL;
 	mem.mm_node = NULL;
 
 	/*
@@ -1232,7 +1225,6 @@ int ttm_bo_init_reserved(struct ttm_bo_device *bdev,
 	INIT_LIST_HEAD(&bo->lru);
 	INIT_LIST_HEAD(&bo->ddestroy);
 	INIT_LIST_HEAD(&bo->swap);
-	INIT_LIST_HEAD(&bo->io_reserve_lru);
 	bo->bdev = bdev;
 	bo->type = type;
 	bo->num_pages = num_pages;
@@ -1241,8 +1233,8 @@ int ttm_bo_init_reserved(struct ttm_bo_device *bdev,
 	bo->mem.num_pages = bo->num_pages;
 	bo->mem.mm_node = NULL;
 	bo->mem.page_alignment = page_alignment;
-	bo->mem.bus.io_reserved_vm = false;
-	bo->mem.bus.io_reserved_count = 0;
+	bo->mem.bus.offset = 0;
+	bo->mem.bus.addr = NULL;
 	bo->moving = NULL;
 	bo->mem.placement = (TTM_PL_FLAG_SYSTEM | TTM_PL_FLAG_CACHED);
 	bo->acc_size = acc_size;
@@ -1545,25 +1537,13 @@ EXPORT_SYMBOL(ttm_bo_device_init);
  * buffer object vm functions.
  */
 
-void ttm_bo_unmap_virtual_locked(struct ttm_buffer_object *bo)
+void ttm_bo_unmap_virtual(struct ttm_buffer_object *bo)
 {
 	struct ttm_bo_device *bdev = bo->bdev;
 
 	drm_vma_node_unmap(&bo->base.vma_node, bdev->dev_mapping);
-	ttm_mem_io_free_vm(bo);
+	ttm_mem_io_free(bdev, &bo->mem);
 }
-
-void ttm_bo_unmap_virtual(struct ttm_buffer_object *bo)
-{
-	struct ttm_bo_device *bdev = bo->bdev;
-	struct ttm_resource_manager *man = ttm_manager_type(bdev, bo->mem.mem_type);
-
-	ttm_mem_io_lock(man, false);
-	ttm_bo_unmap_virtual_locked(bo);
-	ttm_mem_io_unlock(man);
-}
-
-
 EXPORT_SYMBOL(ttm_bo_unmap_virtual);
 
 int ttm_bo_wait(struct ttm_buffer_object *bo,
@@ -1673,7 +1653,7 @@ int ttm_bo_swapout(struct ttm_bo_global *glob, struct ttm_operation_ctx *ctx)
 	if (bo->bdev->driver->swap_notify)
 		bo->bdev->driver->swap_notify(bo);
 
-	ret = ttm_tt_swapout(bo->ttm, bo->persistent_swap_storage);
+	ret = ttm_tt_swapout(bo->bdev, bo->ttm, bo->persistent_swap_storage);
 out:
 
 	/**

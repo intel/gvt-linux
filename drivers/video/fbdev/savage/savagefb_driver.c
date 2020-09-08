@@ -1859,7 +1859,6 @@ static int savage_init_hw(struct savagefb_par *par)
 		vga_out8(0x3d4, 0x68, par);	/* memory control 1 */
 		if ((vga_in8(0x3d5, par) & 0xC0) == (0x01 << 6))
 			RamSavage4[1] = 8;
-
 		fallthrough;
 
 	case S3_SAVAGE2000:

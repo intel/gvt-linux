@@ -48,7 +48,7 @@ struct ttm_agp_backend {
 	struct agp_bridge_data *bridge;
 };
 
-static int ttm_agp_bind(struct ttm_tt *ttm, struct ttm_resource *bo_mem)
+int ttm_agp_bind(struct ttm_tt *ttm, struct ttm_resource *bo_mem)
 {
 	struct ttm_agp_backend *agp_be = container_of(ttm, struct ttm_agp_backend, ttm);
 	struct page *dummy_read_page = ttm_bo_glob.dummy_read_page;
@@ -81,8 +81,9 @@ static int ttm_agp_bind(struct ttm_tt *ttm, struct ttm_resource *bo_mem)
 
 	return ret;
 }
+EXPORT_SYMBOL(ttm_agp_bind);
 
-static void ttm_agp_unbind(struct ttm_tt *ttm)
+void ttm_agp_unbind(struct ttm_tt *ttm)
 {
 	struct ttm_agp_backend *agp_be = container_of(ttm, struct ttm_agp_backend, ttm);
 
@@ -95,8 +96,9 @@ static void ttm_agp_unbind(struct ttm_tt *ttm)
 		agp_be->mem = NULL;
 	}
 }
+EXPORT_SYMBOL(ttm_agp_unbind);
 
-static void ttm_agp_destroy(struct ttm_tt *ttm)
+void ttm_agp_destroy(struct ttm_tt *ttm)
 {
 	struct ttm_agp_backend *agp_be = container_of(ttm, struct ttm_agp_backend, ttm);
 
@@ -105,12 +107,7 @@ static void ttm_agp_destroy(struct ttm_tt *ttm)
 	ttm_tt_fini(ttm);
 	kfree(agp_be);
 }
-
-static struct ttm_backend_func ttm_agp_func = {
-	.bind = ttm_agp_bind,
-	.unbind = ttm_agp_unbind,
-	.destroy = ttm_agp_destroy,
-};
+EXPORT_SYMBOL(ttm_agp_destroy);
 
 struct ttm_tt *ttm_agp_tt_create(struct ttm_buffer_object *bo,
 				 struct agp_bridge_data *bridge,
@@ -124,7 +121,6 @@ struct ttm_tt *ttm_agp_tt_create(struct ttm_buffer_object *bo,
 
 	agp_be->mem = NULL;
 	agp_be->bridge = bridge;
-	agp_be->ttm.func = &ttm_agp_func;
 
 	if (ttm_tt_init(&agp_be->ttm, bo, page_flags)) {
 		kfree(agp_be);
@@ -134,18 +130,3 @@ struct ttm_tt *ttm_agp_tt_create(struct ttm_buffer_object *bo,
 	return &agp_be->ttm;
 }
 EXPORT_SYMBOL(ttm_agp_tt_create);
-
-int ttm_agp_tt_populate(struct ttm_tt *ttm, struct ttm_operation_ctx *ctx)
-{
-	if (ttm->state != tt_unpopulated)
-		return 0;
-
-	return ttm_pool_populate(ttm, ctx);
-}
-EXPORT_SYMBOL(ttm_agp_tt_populate);
-
-void ttm_agp_tt_unpopulate(struct ttm_tt *ttm)
-{
-	ttm_pool_unpopulate(ttm);
-}
-EXPORT_SYMBOL(ttm_agp_tt_unpopulate);

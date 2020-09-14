@@ -48,48 +48,9 @@ enum ttm_caching_state {
 	tt_cached
 };
 
-struct ttm_backend_func {
-	/**
-	 * struct ttm_backend_func member bind
-	 *
-	 * @ttm: Pointer to a struct ttm_tt.
-	 * @bo_mem: Pointer to a struct ttm_resource describing the
-	 * memory type and location for binding.
-	 *
-	 * Bind the backend pages into the aperture in the location
-	 * indicated by @bo_mem. This function should be able to handle
-	 * differences between aperture and system page sizes.
-	 */
-	int (*bind) (struct ttm_tt *ttm, struct ttm_resource *bo_mem);
-
-	/**
-	 * struct ttm_backend_func member unbind
-	 *
-	 * @ttm: Pointer to a struct ttm_tt.
-	 *
-	 * Unbind previously bound backend pages. This function should be
-	 * able to handle differences between aperture and system page sizes.
-	 */
-	void (*unbind) (struct ttm_tt *ttm);
-
-	/**
-	 * struct ttm_backend_func member destroy
-	 *
-	 * @ttm: Pointer to a struct ttm_tt.
-	 *
-	 * Destroy the backend. This will be call back from ttm_tt_destroy so
-	 * don't call ttm_tt_destroy from the callback or infinite loop.
-	 */
-	void (*destroy) (struct ttm_tt *ttm);
-};
-
 /**
  * struct ttm_tt
  *
- * @bdev: Pointer to a struct ttm_bo_device.
- * @func: Pointer to a struct ttm_backend_func that describes
- * the backend methods.
- * pointer.
  * @pages: Array of pages backing the data.
  * @num_pages: Number of pages in the page array.
  * @bdev: Pointer to the current struct ttm_bo_device.
@@ -103,8 +64,6 @@ struct ttm_backend_func {
  * memory.
  */
 struct ttm_tt {
-	struct ttm_bo_device *bdev;
-	struct ttm_backend_func *func;
 	struct page **pages;
 	uint32_t page_flags;
 	unsigned long num_pages;
@@ -183,7 +142,8 @@ void ttm_dma_tt_fini(struct ttm_dma_tt *ttm_dma);
  *
  * Bind the pages of @ttm to an aperture location identified by @bo_mem
  */
-int ttm_tt_bind(struct ttm_tt *ttm, struct ttm_resource *bo_mem,
+int ttm_tt_bind(struct ttm_bo_device *bdev,
+		struct ttm_tt *ttm, struct ttm_resource *bo_mem,
 		struct ttm_operation_ctx *ctx);
 
 /**
@@ -193,7 +153,7 @@ int ttm_tt_bind(struct ttm_tt *ttm, struct ttm_resource *bo_mem,
  *
  * Unbind, unpopulate and destroy common struct ttm_tt.
  */
-void ttm_tt_destroy(struct ttm_tt *ttm);
+void ttm_tt_destroy(struct ttm_bo_device *bdev, struct ttm_tt *ttm);
 
 /**
  * ttm_ttm_unbind:
@@ -202,7 +162,7 @@ void ttm_tt_destroy(struct ttm_tt *ttm);
  *
  * Unbind a struct ttm_tt.
  */
-void ttm_tt_unbind(struct ttm_tt *ttm);
+void ttm_tt_unbind(struct ttm_bo_device *bdev, struct ttm_tt *ttm);
 
 /**
  * ttm_tt_swapin:
@@ -227,7 +187,7 @@ int ttm_tt_swapin(struct ttm_tt *ttm);
  * and cache flushes and potential page splitting / combining.
  */
 int ttm_tt_set_placement_caching(struct ttm_tt *ttm, uint32_t placement);
-int ttm_tt_swapout(struct ttm_tt *ttm, struct file *persistent_swap_storage);
+int ttm_tt_swapout(struct ttm_bo_device *bdev, struct ttm_tt *ttm, struct file *persistent_swap_storage);
 
 /**
  * ttm_tt_populate - allocate pages for a ttm
@@ -236,7 +196,7 @@ int ttm_tt_swapout(struct ttm_tt *ttm, struct file *persistent_swap_storage);
  *
  * Calls the driver method to allocate pages for a ttm
  */
-int ttm_tt_populate(struct ttm_tt *ttm, struct ttm_operation_ctx *ctx);
+int ttm_tt_populate(struct ttm_bo_device *bdev, struct ttm_tt *ttm, struct ttm_operation_ctx *ctx);
 
 /**
  * ttm_tt_unpopulate - free pages from a ttm
@@ -245,7 +205,7 @@ int ttm_tt_populate(struct ttm_tt *ttm, struct ttm_operation_ctx *ctx);
  *
  * Calls the driver method to free all pages from a ttm
  */
-void ttm_tt_unpopulate(struct ttm_tt *ttm);
+void ttm_tt_unpopulate(struct ttm_bo_device *bdev, struct ttm_tt *ttm);
 
 #if IS_ENABLED(CONFIG_AGP)
 #include <linux/agp_backend.h>
@@ -265,8 +225,9 @@ void ttm_tt_unpopulate(struct ttm_tt *ttm);
 struct ttm_tt *ttm_agp_tt_create(struct ttm_buffer_object *bo,
 				 struct agp_bridge_data *bridge,
 				 uint32_t page_flags);
-int ttm_agp_tt_populate(struct ttm_tt *ttm, struct ttm_operation_ctx *ctx);
-void ttm_agp_tt_unpopulate(struct ttm_tt *ttm);
+int ttm_agp_bind(struct ttm_tt *ttm, struct ttm_resource *bo_mem);
+void ttm_agp_unbind(struct ttm_tt *ttm);
+void ttm_agp_destroy(struct ttm_tt *ttm);
 #endif
 
 #endif

@@ -1382,7 +1382,6 @@ static inline bool i915_mmio_reg_valid(i915_reg_t reg)
 #define  DPIO_CMNRST			(1 << 0)
 
 #define DPIO_PHY(pipe)			((pipe) >> 1)
-#define DPIO_PHY_IOSF_PORT(phy)		(dev_priv->dpio_phy_iosf_port[phy])
 
 /*
  * Per pipe/PLL DPIO regs
@@ -9315,6 +9314,7 @@ enum {
 #define   GEN11_LSN_UNSLCVC_GAFS_HALF_SF_MAXALLOC	(1 << 7)
 
 #define GEN10_SAMPLER_MODE		_MMIO(0xE18C)
+#define   ENABLE_SMALLPL			REG_BIT(15)
 #define   GEN11_SAMPLER_ENABLE_HEADLESS_MSG	REG_BIT(5)
 
 /* IVYBRIDGE DPF */

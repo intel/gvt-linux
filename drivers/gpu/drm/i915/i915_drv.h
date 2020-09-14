@@ -1020,8 +1020,6 @@ struct drm_i915_private {
 	 */
 	u8 active_pipes;
 
-	int dpio_phy_iosf_port[I915_NUM_PHYS_VLV];
-
 	struct i915_wa_list gt_wa_list;
 
 	struct i915_frontbuffer_tracking fb_tracking;
@@ -1572,12 +1570,41 @@ extern const struct i915_rev_steppings kbl_revids[];
 #define IS_EHL_REVID(p, since, until) \
 	(IS_ELKHARTLAKE(p) && IS_REVID(p, since, until))
 
-#define TGL_REVID_A0		0x0
-#define TGL_REVID_B0		0x1
-#define TGL_REVID_C0		0x2
+enum {
+	TGL_REVID_A0,
+	TGL_REVID_B0,
+	TGL_REVID_B1,
+	TGL_REVID_C0,
+	TGL_REVID_D0,
+};
 
-#define IS_TGL_REVID(p, since, until) \
-	(IS_TIGERLAKE(p) && IS_REVID(p, since, until))
+extern const struct i915_rev_steppings tgl_uy_revids[];
+extern const struct i915_rev_steppings tgl_revids[];
+
+static inline const struct i915_rev_steppings *
+tgl_revids_get(struct drm_i915_private *dev_priv)
+{
+	if (IS_TGL_U(dev_priv) || IS_TGL_Y(dev_priv))
+		return tgl_uy_revids;
+	else
+		return tgl_revids;
+}
+
+#define IS_TGL_DISP_REVID(p, since, until) \
+	(IS_TIGERLAKE(p) && \
+	 tgl_revids_get(p)->disp_stepping >= (since) && \
+	 tgl_revids_get(p)->disp_stepping <= (until))
+
+#define IS_TGL_UY_GT_REVID(p, since, until) \
+	((IS_TGL_U(p) || IS_TGL_Y(p)) && \
+	 tgl_uy_revids->gt_stepping >= (since) && \
+	 tgl_uy_revids->gt_stepping <= (until))
+
+#define IS_TGL_GT_REVID(p, since, until) \
+	(IS_TIGERLAKE(p) && \
+	 !(IS_TGL_U(p) || IS_TGL_Y(p)) && \
+	 tgl_revids->gt_stepping >= (since) && \
+	 tgl_revids->gt_stepping <= (until))
 
 #define RKL_REVID_A0		0x0
 #define RKL_REVID_B0		0x1

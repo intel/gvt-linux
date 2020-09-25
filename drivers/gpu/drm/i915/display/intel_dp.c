@@ -592,6 +592,53 @@ static u8 intel_dp_dsc_get_slice_count(struct intel_dp *intel_dp,
 	return 0;
 }
 
+static enum intel_output_format
+intel_dp_output_format(struct drm_connector *connector,
+		       const struct drm_display_mode *mode)
+{
+	struct intel_dp *intel_dp = intel_attached_dp(to_intel_connector(connector));
+	const struct drm_display_info *info = &connector->display_info;
+
+	if (!drm_mode_is_420_only(info, mode))
+		return INTEL_OUTPUT_FORMAT_RGB;
+
+	if (intel_dp->dfp.ycbcr_444_to_420)
+		return INTEL_OUTPUT_FORMAT_YCBCR444;
+	else
+		return INTEL_OUTPUT_FORMAT_YCBCR420;
+}
+
+int intel_dp_min_bpp(enum intel_output_format output_format)
+{
+	if (output_format == INTEL_OUTPUT_FORMAT_RGB)
+		return 6 * 3;
+	else
+		return 8 * 3;
+}
+
+static int intel_dp_output_bpp(enum intel_output_format output_format, int bpp)
+{
+	/*
+	 * bpp value was assumed to RGB format. And YCbCr 4:2:0 output
+	 * format of the number of bytes per pixel will be half the number
+	 * of bytes of RGB pixel.
+	 */
+	if (output_format == INTEL_OUTPUT_FORMAT_YCBCR420)
+		bpp /= 2;
+
+	return bpp;
+}
+
+static int
+intel_dp_mode_min_output_bpp(struct drm_connector *connector,
+			     const struct drm_display_mode *mode)
+{
+	enum intel_output_format output_format =
+		intel_dp_output_format(connector, mode);
+
+	return intel_dp_output_bpp(output_format, intel_dp_min_bpp(output_format));
+}
+
 static bool intel_dp_hdisplay_bad(struct drm_i915_private *dev_priv,
 				  int hdisplay)
 {
@@ -671,7 +718,8 @@ intel_dp_mode_valid(struct drm_connector *connector,
 	max_lanes = intel_dp_max_lane_count(intel_dp);
 
 	max_rate = intel_dp_max_data_rate(max_link_clock, max_lanes);
-	mode_rate = intel_dp_link_required(target_clock, 18);
+	mode_rate = intel_dp_link_required(target_clock,
+					   intel_dp_mode_min_output_bpp(connector, mode));
 
 	if (intel_dp_hdisplay_bad(dev_priv, mode->hdisplay))
 		return MODE_H_ILLEGAL;
@@ -2095,19 +2143,6 @@ intel_dp_adjust_compliance_config(struct intel_dp *intel_dp,
 	}
 }
 
-static int intel_dp_output_bpp(const struct intel_crtc_state *crtc_state, int bpp)
-{
-	/*
-	 * bpp value was assumed to RGB format. And YCbCr 4:2:0 output
-	 * format of the number of bytes per pixel will be half the number
-	 * of bytes of RGB pixel.
-	 */
-	if (crtc_state->output_format == INTEL_OUTPUT_FORMAT_YCBCR420)
-		bpp /= 2;
-
-	return bpp;
-}
-
 /* Optimize link config in order: max bpp, min clock, min lanes */
 static int
 intel_dp_compute_link_config_wide(struct intel_dp *intel_dp,
@@ -2119,7 +2154,7 @@ intel_dp_compute_link_config_wide(struct intel_dp *intel_dp,
 	int mode_rate, link_clock, link_avail;
 
 	for (bpp = limits->max_bpp; bpp >= limits->min_bpp; bpp -= 2 * 3) {
-		int output_bpp = intel_dp_output_bpp(pipe_config, bpp);
+		int output_bpp = intel_dp_output_bpp(pipe_config->output_format, bpp);
 
 		mode_rate = intel_dp_link_required(adjusted_mode->crtc_clock,
 						   output_bpp);
@@ -2330,14 +2365,6 @@ static int intel_dp_dsc_compute_config(struct intel_dp *intel_dp,
 	return 0;
 }
 
-int intel_dp_min_bpp(const struct intel_crtc_state *crtc_state)
-{
-	if (crtc_state->output_format == INTEL_OUTPUT_FORMAT_RGB)
-		return 6 * 3;
-	else
-		return 8 * 3;
-}
-
 static int
 intel_dp_compute_link_config(struct intel_encoder *encoder,
 			     struct intel_crtc_state *pipe_config,
@@ -2363,7 +2390,7 @@ intel_dp_compute_link_config(struct intel_encoder *encoder,
 	limits.min_lane_count = 1;
 	limits.max_lane_count = intel_dp_max_lane_count(intel_dp);
 
-	limits.min_bpp = intel_dp_min_bpp(pipe_config);
+	limits.min_bpp = intel_dp_min_bpp(pipe_config->output_format);
 	limits.max_bpp = intel_dp_max_bpp(intel_dp, pipe_config);
 
 	if (intel_dp_is_edp(intel_dp)) {
@@ -2430,27 +2457,20 @@ intel_dp_compute_link_config(struct intel_encoder *encoder,
 }
 
 static int
-intel_dp_ycbcr420_config(struct intel_dp *intel_dp,
-			 struct intel_crtc_state *crtc_state,
+intel_dp_ycbcr420_config(struct intel_crtc_state *crtc_state,
 			 const struct drm_connector_state *conn_state)
 {
 	struct drm_connector *connector = conn_state->connector;
-	const struct drm_display_info *info = &connector->display_info;
 	const struct drm_display_mode *adjusted_mode =
 		&crtc_state->hw.adjusted_mode;
 
 	if (!connector->ycbcr_420_allowed)
 		return 0;
 
-	if (!drm_mode_is_420_only(info, adjusted_mode))
-		return 0;
+	crtc_state->output_format = intel_dp_output_format(connector, adjusted_mode);
 
-	if (intel_dp->dfp.ycbcr_444_to_420) {
-		crtc_state->output_format = INTEL_OUTPUT_FORMAT_YCBCR444;
+	if (crtc_state->output_format != INTEL_OUTPUT_FORMAT_YCBCR420)
 		return 0;
-	}
-
-	crtc_state->output_format = INTEL_OUTPUT_FORMAT_YCBCR420;
 
 	return intel_pch_panel_fitting(crtc_state, conn_state);
 }
@@ -2710,8 +2730,7 @@ intel_dp_compute_config(struct intel_encoder *encoder,
 	if (lspcon->active)
 		lspcon_ycbcr420_config(&intel_connector->base, pipe_config);
 	else
-		ret = intel_dp_ycbcr420_config(intel_dp, pipe_config,
-					       conn_state);
+		ret = intel_dp_ycbcr420_config(pipe_config, conn_state);
 	if (ret)
 		return ret;
 
@@ -2757,7 +2776,8 @@ intel_dp_compute_config(struct intel_encoder *encoder,
 	if (pipe_config->dsc.compression_enable)
 		output_bpp = pipe_config->dsc.compressed_bpp;
 	else
-		output_bpp = intel_dp_output_bpp(pipe_config, pipe_config->pipe_bpp);
+		output_bpp = intel_dp_output_bpp(pipe_config->output_format,
+						 pipe_config->pipe_bpp);
 
 	intel_link_compute_m_n(output_bpp,
 			       pipe_config->lane_count,

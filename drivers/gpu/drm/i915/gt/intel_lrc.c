@@ -2464,7 +2464,7 @@ cancel_port_requests(struct intel_engine_execlists * const execlists)
 }
 
 static inline void
-invalidate_csb_entries(const u32 *first, const u32 *last)
+invalidate_csb_entries(const u64 *first, const u64 *last)
 {
 	clflush((void *)first);
 	clflush((void *)last);
@@ -2496,14 +2496,11 @@ invalidate_csb_entries(const u32 *first, const u32 *last)
  *     bits 47-57: sw context id of the lrc the GT switched away from
  *     bits 58-63: sw counter of the lrc the GT switched away from
  */
-static inline bool
-gen12_csb_parse(const struct intel_engine_execlists *execlists, const u32 *csb)
+static inline bool gen12_csb_parse(const u64 csb)
 {
-	u32 lower_dw = csb[0];
-	u32 upper_dw = csb[1];
-	bool ctx_to_valid = GEN12_CSB_CTX_VALID(lower_dw);
-	bool ctx_away_valid = GEN12_CSB_CTX_VALID(upper_dw);
-	bool new_queue = lower_dw & GEN12_CTX_STATUS_SWITCHED_TO_NEW_QUEUE;
+	bool ctx_away_valid = GEN12_CSB_CTX_VALID(upper_32_bits(csb));
+	bool new_queue =
+		lower_32_bits(csb) & GEN12_CTX_STATUS_SWITCHED_TO_NEW_QUEUE;
 
 	/*
 	 * The context switch detail is not guaranteed to be 5 when a preemption
@@ -2513,7 +2510,7 @@ gen12_csb_parse(const struct intel_engine_execlists *execlists, const u32 *csb)
 	 * would require some extra handling, but we don't support that.
 	 */
 	if (!ctx_away_valid || new_queue) {
-		GEM_BUG_ON(!ctx_to_valid);
+		GEM_BUG_ON(!GEN12_CSB_CTX_VALID(lower_32_bits(csb)));
 		return true;
 	}
 
@@ -2522,20 +2519,79 @@ gen12_csb_parse(const struct intel_engine_execlists *execlists, const u32 *csb)
 	 * context switch on an unsuccessful wait instruction since we always
 	 * use polling mode.
 	 */
-	GEM_BUG_ON(GEN12_CTX_SWITCH_DETAIL(upper_dw));
+	GEM_BUG_ON(GEN12_CTX_SWITCH_DETAIL(upper_32_bits(csb)));
 	return false;
 }
 
-static inline bool
-gen8_csb_parse(const struct intel_engine_execlists *execlists, const u32 *csb)
+static inline bool gen8_csb_parse(const u64 csb)
 {
-	return *csb & (GEN8_CTX_STATUS_IDLE_ACTIVE | GEN8_CTX_STATUS_PREEMPTED);
+	return csb & (GEN8_CTX_STATUS_IDLE_ACTIVE | GEN8_CTX_STATUS_PREEMPTED);
+}
+
+static noinline u64
+wa_csb_read(const struct intel_engine_cs *engine, u64 * const csb)
+{
+	u64 entry;
+
+	/*
+	 * Reading from the HWSP has one particular advantage: we can detect
+	 * a stale entry. Since the write into HWSP is broken, we have no reason
+	 * to trust the HW at all, the mmio entry may equally be unordered, so
+	 * we prefer the path that is self-checking and as a last resort,
+	 * return the mmio value.
+	 *
+	 * tgl,dg1:HSDES#22011327657
+	 */
+	preempt_disable();
+	if (wait_for_atomic_us((entry = READ_ONCE(*csb)) != -1, 10)) {
+		int idx = csb - engine->execlists.csb_status;
+		int status;
+
+		status = GEN8_EXECLISTS_STATUS_BUF;
+		if (idx >= 6) {
+			status = GEN11_EXECLISTS_STATUS_BUF2;
+			idx -= 6;
+		}
+		status += sizeof(u64) * idx;
+
+		entry = intel_uncore_read64(engine->uncore,
+					    _MMIO(engine->mmio_base + status));
+	}
+	preempt_enable();
+
+	return entry;
+}
+
+static inline u64
+csb_read(const struct intel_engine_cs *engine, u64 * const csb)
+{
+	u64 entry = READ_ONCE(*csb);
+
+	/*
+	 * Unfortunately, the GPU does not always serialise its write
+	 * of the CSB entries before its write of the CSB pointer, at least
+	 * from the perspective of the CPU, using what is known as a Global
+	 * Observation Point. We may read a new CSB tail pointer, but then
+	 * read the stale CSB entries, causing us to misinterpret the
+	 * context-switch events, and eventually declare the GPU hung.
+	 *
+	 * icl:HSDES#1806554093
+	 * tgl:HSDES#22011248461
+	 */
+	if (unlikely(entry == -1))
+		entry = wa_csb_read(engine, csb);
+
+	/* Consume this entry so that we can spot its future reuse. */
+	WRITE_ONCE(*csb, -1);
+
+	/* ELSP is an implicit wmb() before the GPU wraps and overwrites csb */
+	return entry;
 }
 
 static void process_csb(struct intel_engine_cs *engine)
 {
 	struct intel_engine_execlists * const execlists = &engine->execlists;
-	const u32 * const buf = execlists->csb_status;
+	u64 * const buf = execlists->csb_status;
 	const u8 num_entries = execlists->csb_size;
 	u8 head, tail;
 
@@ -2593,6 +2649,7 @@ static void process_csb(struct intel_engine_cs *engine)
 	rmb();
 	do {
 		bool promote;
+		u64 csb;
 
 		if (++head == num_entries)
 			head = 0;
@@ -2615,13 +2672,14 @@ static void process_csb(struct intel_engine_cs *engine)
 		 * status notifier.
 		 */
 
+		csb = csb_read(engine, buf + head);
 		ENGINE_TRACE(engine, "csb[%d]: status=0x%08x:0x%08x\n",
-			     head, buf[2 * head + 0], buf[2 * head + 1]);
+			     head, upper_32_bits(csb), lower_32_bits(csb));
 
 		if (INTEL_GEN(engine->i915) >= 12)
-			promote = gen12_csb_parse(execlists, buf + 2 * head);
+			promote = gen12_csb_parse(csb);
 		else
-			promote = gen8_csb_parse(execlists, buf + 2 * head);
+			promote = gen8_csb_parse(csb);
 		if (promote) {
 			struct i915_request * const *old = execlists->active;
 
@@ -4005,6 +4063,8 @@ static void reset_csb_pointers(struct intel_engine_cs *engine)
 	WRITE_ONCE(*execlists->csb_write, reset_value);
 	wmb(); /* Make sure this is visible to HW (paranoia?) */
 
+	/* Check that the GPU does indeed update the CSB entries! */
+	memset(execlists->csb_status, -1, (reset_value + 1) * sizeof(u64));
 	invalidate_csb_entries(&execlists->csb_status[0],
 			       &execlists->csb_status[reset_value]);
 
@@ -5157,7 +5217,7 @@ int intel_execlists_submission_setup(struct intel_engine_cs *engine)
 	}
 
 	execlists->csb_status =
-		&engine->status_page.addr[I915_HWS_CSB_BUF0_INDEX];
+		(u64 *)&engine->status_page.addr[I915_HWS_CSB_BUF0_INDEX];
 
 	execlists->csb_write =
 		&engine->status_page.addr[intel_hws_csb_write_index(i915)];
@@ -5891,18 +5951,6 @@ int intel_virtual_engine_attach_bond(struct intel_engine_cs *engine,
 	ve->num_bonds++;
 
 	return 0;
-}
-
-struct intel_engine_cs *
-intel_virtual_engine_get_sibling(struct intel_engine_cs *engine,
-				 unsigned int sibling)
-{
-	struct virtual_engine *ve = to_virtual_engine(engine);
-
-	if (sibling >= ve->num_siblings)
-		return NULL;
-
-	return ve->siblings[sibling];
 }
 
 void intel_execlists_show_requests(struct intel_engine_cs *engine,

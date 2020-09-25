@@ -49,6 +49,8 @@
 #include <linux/rbtree.h>
 #include <linux/hashtable.h>
 #include <linux/dma-fence.h>
+#include <linux/pci.h>
+#include <linux/aer.h>
 
 #include <drm/ttm/ttm_bo_api.h>
 #include <drm/ttm/ttm_bo_driver.h>
@@ -178,6 +180,7 @@ extern uint amdgpu_dm_abm_level;
 extern struct amdgpu_mgpu_info mgpu_info;
 extern int amdgpu_ras_enable;
 extern uint amdgpu_ras_mask;
+extern int amdgpu_bad_page_threshold;
 extern int amdgpu_async_gfx_ring;
 extern int amdgpu_mcbp;
 extern int amdgpu_discovery;
@@ -187,9 +190,11 @@ extern int amdgpu_force_asic_type;
 #ifdef CONFIG_HSA_AMD
 extern int sched_policy;
 extern bool debug_evictions;
+extern bool no_system_mem_limit;
 #else
 static const int sched_policy = KFD_SCHED_POLICY_HWS;
 static const bool debug_evictions; /* = false */
+static const bool no_system_mem_limit;
 #endif
 
 extern int amdgpu_tmz;
@@ -201,6 +206,7 @@ extern int amdgpu_si_support;
 #ifdef CONFIG_DRM_AMDGPU_CIK
 extern int amdgpu_cik_support;
 #endif
+extern int amdgpu_num_kcq;
 
 #define AMDGPU_VM_MAX_NUM_CTX			4096
 #define AMDGPU_SG_THRESHOLD			(256*1024*1024)
@@ -211,6 +217,8 @@ extern int amdgpu_cik_support;
 #define AMDGPU_DEBUGFS_MAX_COMPONENTS		32
 #define AMDGPUFB_CONN_LIMIT			4
 #define AMDGPU_BIOS_NUM_SCRATCH			16
+
+#define AMDGPU_VBIOS_VGA_ALLOCATION		(9 * 1024 * 1024) /* reserve 8MB for vga emulator and 1 MB for FB */
 
 /* hard reset data */
 #define AMDGPU_ASIC_RESET_DATA                  0x39d5e86b
@@ -245,6 +253,7 @@ struct amdgpu_fpriv;
 struct amdgpu_bo_va_mapping;
 struct amdgpu_atif;
 struct kfd_vm_fault_info;
+struct amdgpu_hive_info;
 
 enum amdgpu_cp_irq {
 	AMDGPU_CP_IRQ_GFX_ME0_PIPE0_EOP = 0,
@@ -611,6 +620,8 @@ struct amdgpu_asic_funcs {
 	uint64_t (*get_pcie_replay_count)(struct amdgpu_device *adev);
 	/* device supports BACO */
 	bool (*supports_baco)(struct amdgpu_device *adev);
+	/* pre asic_init quirks */
+	void (*pre_asic_init)(struct amdgpu_device *adev);
 };
 
 /*
@@ -645,16 +656,6 @@ struct amdgpu_atcs_functions {
 
 struct amdgpu_atcs {
 	struct amdgpu_atcs_functions functions;
-};
-
-/*
- * Firmware VRAM reservation
- */
-struct amdgpu_fw_vram_usage {
-	u64 start_offset;
-	u64 size;
-	struct amdgpu_bo *reserved_bo;
-	void *va;
 };
 
 /*
@@ -725,13 +726,13 @@ struct amd_powerplay {
 #define AMDGPU_MAX_DF_PERFMONS 4
 struct amdgpu_device {
 	struct device			*dev;
-	struct drm_device		*ddev;
 	struct pci_dev			*pdev;
+	struct drm_device		ddev;
 
 #ifdef CONFIG_DRM_AMD_ACP
 	struct amdgpu_acp		acp;
 #endif
-
+	struct amdgpu_hive_info *hive;
 	/* ASIC */
 	enum amd_asic_type		asic_type;
 	uint32_t			family;
@@ -765,7 +766,6 @@ struct amdgpu_device {
 	bool				is_atom_fw;
 	uint8_t				*bios;
 	uint32_t			bios_size;
-	struct amdgpu_bo		*stolen_vga_memory;
 	uint32_t			bios_scratch_reg_offset;
 	uint32_t			bios_scratch[AMDGPU_BIOS_NUM_SCRATCH];
 
@@ -917,11 +917,6 @@ struct amdgpu_device {
 	/* display related functionality */
 	struct amdgpu_display_manager dm;
 
-	/* discovery */
-	uint8_t				*discovery_bin;
-	uint32_t			discovery_tmr_size;
-	struct amdgpu_bo		*discovery_memory;
-
 	/* mes */
 	bool                            enable_mes;
 	struct amdgpu_mes               mes;
@@ -946,8 +941,6 @@ struct amdgpu_device {
 	struct delayed_work     delayed_init_work;
 
 	struct amdgpu_virt	virt;
-	/* firmware VRAM reservation */
-	struct amdgpu_fw_vram_usage fw_vram_usage;
 
 	/* link all shadow bo */
 	struct list_head                shadow_list;
@@ -961,9 +954,9 @@ struct amdgpu_device {
 	bool                            in_suspend;
 	bool				in_hibernate;
 
-	bool                            in_gpu_reset;
+	atomic_t 			in_gpu_reset;
 	enum pp_mp1_state               mp1_state;
-	struct mutex  lock_reset;
+	struct rw_semaphore reset_sem;
 	struct amdgpu_doorbell_index doorbell_index;
 
 	struct mutex			notifier_lock;
@@ -995,7 +988,21 @@ struct amdgpu_device {
 
 	atomic_t			throttling_logging_enabled;
 	struct ratelimit_state		throttling_logging_rs;
+	uint32_t			ras_features;
+
+	bool                            in_pci_err_recovery;
+	struct pci_saved_state          *pci_state;
 };
+
+static inline struct amdgpu_device *drm_to_adev(struct drm_device *ddev)
+{
+	return container_of(ddev, struct amdgpu_device, ddev);
+}
+
+static inline struct drm_device *adev_to_drm(struct amdgpu_device *adev)
+{
+	return &adev->ddev;
+}
 
 static inline struct amdgpu_device *amdgpu_ttm_adev(struct ttm_bo_device *bdev)
 {
@@ -1003,8 +1010,6 @@ static inline struct amdgpu_device *amdgpu_ttm_adev(struct ttm_bo_device *bdev)
 }
 
 int amdgpu_device_init(struct amdgpu_device *adev,
-		       struct drm_device *ddev,
-		       struct pci_dev *pdev,
 		       uint32_t flags);
 void amdgpu_device_fini(struct amdgpu_device *adev);
 int amdgpu_gpu_wait_for_idle(struct amdgpu_device *adev);
@@ -1141,10 +1146,12 @@ int emu_soc_asic_init(struct amdgpu_device *adev);
 #define amdgpu_asic_need_reset_on_init(adev) (adev)->asic_funcs->need_reset_on_init((adev))
 #define amdgpu_asic_get_pcie_replay_count(adev) ((adev)->asic_funcs->get_pcie_replay_count((adev)))
 #define amdgpu_asic_supports_baco(adev) (adev)->asic_funcs->supports_baco((adev))
+#define amdgpu_asic_pre_asic_init(adev) (adev)->asic_funcs->pre_asic_init((adev))
 
 #define amdgpu_inc_vram_lost(adev) atomic_inc(&((adev)->vram_lost_counter));
 
 /* Common functions */
+bool amdgpu_device_has_job_running(struct amdgpu_device *adev);
 bool amdgpu_device_should_recover_gpu(struct amdgpu_device *adev);
 int amdgpu_device_gpu_recover(struct amdgpu_device *adev,
 			      struct amdgpu_job* job);
@@ -1194,7 +1201,7 @@ static inline void *amdgpu_atpx_get_dhandle(void) { return NULL; }
 extern const struct drm_ioctl_desc amdgpu_ioctls_kms[];
 extern const int amdgpu_max_kms_ioctl;
 
-int amdgpu_driver_load_kms(struct drm_device *dev, unsigned long flags);
+int amdgpu_driver_load_kms(struct amdgpu_device *adev, unsigned long flags);
 void amdgpu_driver_unload_kms(struct drm_device *dev);
 void amdgpu_driver_lastclose_kms(struct drm_device *dev);
 int amdgpu_driver_open_kms(struct drm_device *dev, struct drm_file *file_priv);
@@ -1258,6 +1265,15 @@ static inline int amdgpu_dm_display_resume(struct amdgpu_device *adev) { return 
 void amdgpu_register_gpu_instance(struct amdgpu_device *adev);
 void amdgpu_unregister_gpu_instance(struct amdgpu_device *adev);
 
+pci_ers_result_t amdgpu_pci_error_detected(struct pci_dev *pdev,
+					   pci_channel_state_t state);
+pci_ers_result_t amdgpu_pci_mmio_enabled(struct pci_dev *pdev);
+pci_ers_result_t amdgpu_pci_slot_reset(struct pci_dev *pdev);
+void amdgpu_pci_resume(struct pci_dev *pdev);
+
+bool amdgpu_device_cache_pci_state(struct pci_dev *pdev);
+bool amdgpu_device_load_pci_state(struct pci_dev *pdev);
+
 #include "amdgpu_object.h"
 
 /* used by df_v3_6.c and amdgpu_pmu.c */
@@ -1278,4 +1294,8 @@ static inline bool amdgpu_is_tmz(struct amdgpu_device *adev)
        return adev->gmc.tmz_enabled;
 }
 
+static inline int amdgpu_in_reset(struct amdgpu_device *adev)
+{
+	return atomic_read(&adev->in_gpu_reset);
+}
 #endif

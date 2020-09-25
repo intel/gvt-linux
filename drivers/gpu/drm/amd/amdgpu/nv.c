@@ -311,7 +311,7 @@ static int nv_asic_mode1_reset(struct amdgpu_device *adev)
 	/* disable BM */
 	pci_clear_master(adev->pdev);
 
-	pci_save_state(adev->pdev);
+	amdgpu_device_cache_pci_state(adev->pdev);
 
 	if (amdgpu_dpm_is_mode1_reset_supported(adev)) {
 		dev_info(adev->dev, "GPU smu mode1 reset\n");
@@ -323,7 +323,7 @@ static int nv_asic_mode1_reset(struct amdgpu_device *adev)
 
 	if (ret)
 		dev_err(adev->dev, "GPU mode1 reset failed\n");
-	pci_restore_state(adev->pdev);
+	amdgpu_device_load_pci_state(adev->pdev);
 
 	/* wait for asic to come out of reset */
 	for (i = 0; i < adev->usec_timeout; i++) {
@@ -380,7 +380,7 @@ static int nv_asic_reset(struct amdgpu_device *adev)
 	struct smu_context *smu = &adev->smu;
 
 	if (nv_asic_reset_method(adev) == AMD_RESET_METHOD_BACO) {
-		dev_info(adev->dev, "GPU BACO reset\n");
+		dev_info(adev->dev, "BACO reset\n");
 
 		ret = smu_baco_enter(smu);
 		if (ret)
@@ -388,8 +388,10 @@ static int nv_asic_reset(struct amdgpu_device *adev)
 		ret = smu_baco_exit(smu);
 		if (ret)
 			return ret;
-	} else
+	} else {
+		dev_info(adev->dev, "MODE1 reset\n");
 		ret = nv_asic_mode1_reset(adev);
+	}
 
 	return ret;
 }
@@ -690,6 +692,10 @@ static void nv_init_doorbell_index(struct amdgpu_device *adev)
 	adev->doorbell_index.sdma_doorbell_range = 20;
 }
 
+static void nv_pre_asic_init(struct amdgpu_device *adev)
+{
+}
+
 static const struct amdgpu_asic_funcs nv_asic_funcs =
 {
 	.read_disabled_bios = &nv_read_disabled_bios,
@@ -709,6 +715,7 @@ static const struct amdgpu_asic_funcs nv_asic_funcs =
 	.need_reset_on_init = &nv_need_reset_on_init,
 	.get_pcie_replay_count = &nv_get_pcie_replay_count,
 	.supports_baco = &nv_asic_supports_baco,
+	.pre_asic_init = &nv_pre_asic_init,
 };
 
 static int nv_common_early_init(void *handle)

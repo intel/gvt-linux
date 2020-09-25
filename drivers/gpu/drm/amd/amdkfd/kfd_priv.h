@@ -297,6 +297,9 @@ struct kfd_dev {
 
 	bool pci_atomic_requested;
 
+	/* Use IOMMU v2 flag */
+	bool use_iommu_v2;
+
 	/* SRAM ECC flag */
 	atomic_t sram_ecc_flag;
 
@@ -309,6 +312,8 @@ struct kfd_dev {
 	/* Clients watching SMI events */
 	struct list_head smi_clients;
 	spinlock_t smi_lock;
+
+	uint32_t reset_seq_num;
 };
 
 enum kfd_mempool {
@@ -626,7 +631,7 @@ enum kfd_pdd_bound {
 	PDD_BOUND_SUSPENDED,
 };
 
-#define MAX_SYSFS_FILENAME_LEN 11
+#define MAX_SYSFS_FILENAME_LEN 15
 
 /*
  * SDMA counter runs at 100MHz frequency.
@@ -687,6 +692,13 @@ struct kfd_process_device {
 	uint64_t sdma_past_activity_counter;
 	struct attribute attr_sdma;
 	char sdma_filename[MAX_SYSFS_FILENAME_LEN];
+
+	/* Eviction activity tracking */
+	uint64_t last_evict_timestamp;
+	atomic64_t evict_duration_counter;
+	struct attribute attr_evict;
+
+	struct kobject *kobj_stats;
 };
 
 #define qpd_to_pdd(x) container_of(x, struct kfd_process_device, qpd)
@@ -892,6 +904,7 @@ struct kfd_dev *kfd_device_by_pci_dev(const struct pci_dev *pdev);
 struct kfd_dev *kfd_device_by_kgd(const struct kgd_dev *kgd);
 int kfd_topology_enum_kfd_devices(uint8_t idx, struct kfd_dev **kdev);
 int kfd_numa_node_to_apic_id(int numa_node_id);
+void kfd_double_confirm_iommu_support(struct kfd_dev *gpu);
 
 /* Interrupts */
 int kfd_interrupt_init(struct kfd_dev *dev);

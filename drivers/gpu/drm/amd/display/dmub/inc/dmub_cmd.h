@@ -36,11 +36,20 @@
 
 /* Firmware versioning. */
 #ifdef DMUB_EXPOSE_VERSION
-#define DMUB_FW_VERSION_GIT_HASH 0xe6d590b09
+#define DMUB_FW_VERSION_GIT_HASH 0x82f998da6
 #define DMUB_FW_VERSION_MAJOR 0
 #define DMUB_FW_VERSION_MINOR 0
-#define DMUB_FW_VERSION_REVISION 25
-#define DMUB_FW_VERSION_UCODE ((DMUB_FW_VERSION_MAJOR << 24) | (DMUB_FW_VERSION_MINOR << 16) | DMUB_FW_VERSION_REVISION)
+#define DMUB_FW_VERSION_REVISION 32
+#define DMUB_FW_VERSION_TEST 0
+#define DMUB_FW_VERSION_VBIOS 0
+#define DMUB_FW_VERSION_HOTFIX 0
+#define DMUB_FW_VERSION_UCODE (((DMUB_FW_VERSION_MAJOR & 0xFF) << 24) | \
+		((DMUB_FW_VERSION_MINOR & 0xFF) << 16) | \
+		((DMUB_FW_VERSION_REVISION & 0xFF) << 8) | \
+		((DMUB_FW_VERSION_TEST & 0x1) << 7) | \
+		((DMUB_FW_VERSION_VBIOS & 0x1) << 6) | \
+		(DMUB_FW_VERSION_HOTFIX & 0x3F))
+
 #endif
 
 //<DMUB_TYPES>==================================================================
@@ -88,6 +97,7 @@ union dmub_psr_debug_flags {
 	struct {
 		uint32_t visual_confirm : 1;
 		uint32_t use_hw_lock_mgr : 1;
+		uint32_t log_line_nums : 1;
 	} bitfields;
 
 	uint32_t u32All;
@@ -204,6 +214,7 @@ enum dmub_cmd_vbios_type {
 	DMUB_CMD__VBIOS_DIG1_TRANSMITTER_CONTROL = 1,
 	DMUB_CMD__VBIOS_SET_PIXEL_CLOCK = 2,
 	DMUB_CMD__VBIOS_ENABLE_DISP_POWER_GATING = 3,
+	DMUB_CMD__VBIOS_LVTMA_CONTROL = 15,
 };
 
 //==============================================================================
@@ -781,12 +792,10 @@ static inline void dmub_rb_flush_pending(const struct dmub_rb *rb)
 
 	while (rptr != wptr) {
 		uint64_t volatile *data = (uint64_t volatile *)rb->base_address + rptr / sizeof(uint64_t);
-		//uint64_t volatile *p = (uint64_t volatile *)data;
-		uint64_t temp;
 		int i;
 
 		for (i = 0; i < DMUB_RB_CMD_SIZE / sizeof(uint64_t); i++)
-			temp = *data++;
+			*data++;
 
 		rptr += DMUB_RB_CMD_SIZE;
 		if (rptr >= rb->capacity)

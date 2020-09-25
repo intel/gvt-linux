@@ -151,7 +151,7 @@ static int radeon_verify_access(struct ttm_buffer_object *bo, struct file *filp)
 }
 
 static int radeon_move_blit(struct ttm_buffer_object *bo,
-			bool evict, bool no_wait_gpu,
+			bool evict,
 			struct ttm_resource *new_mem,
 			struct ttm_resource *old_mem)
 {
@@ -206,11 +206,10 @@ static int radeon_move_blit(struct ttm_buffer_object *bo,
 }
 
 static int radeon_move_vram_ram(struct ttm_buffer_object *bo,
-				bool evict, bool interruptible,
-				bool no_wait_gpu,
+				bool evict,
+				struct ttm_operation_ctx *ctx,
 				struct ttm_resource *new_mem)
 {
-	struct ttm_operation_ctx ctx = { interruptible, no_wait_gpu };
 	struct ttm_resource *old_mem = &bo->mem;
 	struct ttm_resource tmp_mem;
 	struct ttm_place placements;
@@ -227,7 +226,7 @@ static int radeon_move_vram_ram(struct ttm_buffer_object *bo,
 	placements.lpfn = 0;
 	placements.mem_type = TTM_PL_TT;
 	placements.flags = TTM_PL_MASK_CACHING;
-	r = ttm_bo_mem_space(bo, &placement, &tmp_mem, &ctx);
+	r = ttm_bo_mem_space(bo, &placement, &tmp_mem, ctx);
 	if (unlikely(r)) {
 		return r;
 	}
@@ -237,7 +236,7 @@ static int radeon_move_vram_ram(struct ttm_buffer_object *bo,
 		goto out_cleanup;
 	}
 
-	r = ttm_tt_populate(bo->bdev, bo->ttm, &ctx);
+	r = ttm_tt_populate(bo->bdev, bo->ttm, ctx);
 	if (unlikely(r)) {
 		goto out_cleanup;
 	}
@@ -246,22 +245,21 @@ static int radeon_move_vram_ram(struct ttm_buffer_object *bo,
 	if (unlikely(r)) {
 		goto out_cleanup;
 	}
-	r = radeon_move_blit(bo, true, no_wait_gpu, &tmp_mem, old_mem);
+	r = radeon_move_blit(bo, true, &tmp_mem, old_mem);
 	if (unlikely(r)) {
 		goto out_cleanup;
 	}
-	r = ttm_bo_move_ttm(bo, &ctx, new_mem);
+	r = ttm_bo_move_ttm(bo, ctx, new_mem);
 out_cleanup:
 	ttm_resource_free(bo, &tmp_mem);
 	return r;
 }
 
 static int radeon_move_ram_vram(struct ttm_buffer_object *bo,
-				bool evict, bool interruptible,
-				bool no_wait_gpu,
+				bool evict,
+				struct ttm_operation_ctx *ctx,
 				struct ttm_resource *new_mem)
 {
-	struct ttm_operation_ctx ctx = { interruptible, no_wait_gpu };
 	struct ttm_resource *old_mem = &bo->mem;
 	struct ttm_resource tmp_mem;
 	struct ttm_placement placement;
@@ -278,15 +276,15 @@ static int radeon_move_ram_vram(struct ttm_buffer_object *bo,
 	placements.lpfn = 0;
 	placements.mem_type = TTM_PL_TT;
 	placements.flags = TTM_PL_MASK_CACHING;
-	r = ttm_bo_mem_space(bo, &placement, &tmp_mem, &ctx);
+	r = ttm_bo_mem_space(bo, &placement, &tmp_mem, ctx);
 	if (unlikely(r)) {
 		return r;
 	}
-	r = ttm_bo_move_ttm(bo, &ctx, &tmp_mem);
+	r = ttm_bo_move_ttm(bo, ctx, &tmp_mem);
 	if (unlikely(r)) {
 		goto out_cleanup;
 	}
-	r = radeon_move_blit(bo, true, no_wait_gpu, new_mem, old_mem);
+	r = radeon_move_blit(bo, true, new_mem, old_mem);
 	if (unlikely(r)) {
 		goto out_cleanup;
 	}
@@ -304,13 +302,13 @@ static int radeon_bo_move(struct ttm_buffer_object *bo, bool evict,
 	struct ttm_resource *old_mem = &bo->mem;
 	int r;
 
-	r = ttm_bo_wait(bo, ctx->interruptible, ctx->no_wait_gpu);
+	r = ttm_bo_wait_ctx(bo, ctx);
 	if (r)
 		return r;
 
 	/* Can't move a pinned BO */
 	rbo = container_of(bo, struct radeon_bo, tbo);
-	if (WARN_ON_ONCE(rbo->pin_count > 0))
+	if (WARN_ON_ONCE(rbo->tbo.pin_count > 0))
 		return -EINVAL;
 
 	rdev = radeon_get_rdev(bo->bdev);
@@ -318,14 +316,16 @@ static int radeon_bo_move(struct ttm_buffer_object *bo, bool evict,
 		ttm_bo_move_null(bo, new_mem);
 		return 0;
 	}
-	if ((old_mem->mem_type == TTM_PL_TT &&
-	     new_mem->mem_type == TTM_PL_SYSTEM) ||
-	    (old_mem->mem_type == TTM_PL_SYSTEM &&
-	     new_mem->mem_type == TTM_PL_TT)) {
-		/* bind is enough */
+	if (old_mem->mem_type == TTM_PL_SYSTEM &&
+	    new_mem->mem_type == TTM_PL_TT) {
 		ttm_bo_move_null(bo, new_mem);
 		return 0;
 	}
+
+	if (old_mem->mem_type == TTM_PL_TT &&
+	    new_mem->mem_type == TTM_PL_SYSTEM)
+		return ttm_bo_move_ttm(bo, ctx, new_mem);
+
 	if (!rdev->ring[radeon_copy_ring_index(rdev)].ready ||
 	    rdev->asic->copy.copy == NULL) {
 		/* use memcpy */
@@ -334,14 +334,12 @@ static int radeon_bo_move(struct ttm_buffer_object *bo, bool evict,
 
 	if (old_mem->mem_type == TTM_PL_VRAM &&
 	    new_mem->mem_type == TTM_PL_SYSTEM) {
-		r = radeon_move_vram_ram(bo, evict, ctx->interruptible,
-					ctx->no_wait_gpu, new_mem);
+		r = radeon_move_vram_ram(bo, evict, ctx, new_mem);
 	} else if (old_mem->mem_type == TTM_PL_SYSTEM &&
 		   new_mem->mem_type == TTM_PL_VRAM) {
-		r = radeon_move_ram_vram(bo, evict, ctx->interruptible,
-					    ctx->no_wait_gpu, new_mem);
+		r = radeon_move_ram_vram(bo, evict, ctx, new_mem);
 	} else {
-		r = radeon_move_blit(bo, evict, ctx->no_wait_gpu,
+		r = radeon_move_blit(bo, evict,
 				     new_mem, old_mem);
 	}
 

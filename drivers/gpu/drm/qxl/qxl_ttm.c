@@ -67,7 +67,7 @@ static void qxl_evict_flags(struct ttm_buffer_object *bo,
 		return;
 	}
 	qbo = to_qxl_bo(bo);
-	qxl_ttm_placement_from_domain(qbo, QXL_GEM_DOMAIN_CPU, false);
+	qxl_ttm_placement_from_domain(qbo, QXL_GEM_DOMAIN_CPU);
 	*placement = qbo->placement;
 }
 
@@ -160,7 +160,7 @@ static int qxl_bo_move(struct ttm_buffer_object *bo, bool evict,
 	struct ttm_resource *old_mem = &bo->mem;
 	int ret;
 
-	ret = ttm_bo_wait(bo, ctx->interruptible, ctx->no_wait_gpu);
+	ret = ttm_bo_wait_ctx(bo, ctx);
 	if (ret)
 		return ret;
 

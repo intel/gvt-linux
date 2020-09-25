@@ -1,32 +1,12 @@
-drm drm-fixes ba78755e0c25dec4151880a14f523e929b2052c6
-	Merge tag 'drm-misc-fixes-2020-09-24' of git://anongit.freedesktop.org/drm/drm-misc into drm-fixes
-drm-misc drm-misc-fixes 19a508bd1ad8e444de86873bf2f2b2ab8edd6552
-	dmabuf: fix NULL pointer dereference in dma_buf_release()
-drm-intel drm-intel-fixes 16cce04cdb200ba905d1241b425ac48da5a9ace5
-	drm/i915/selftests: Push the fake iommu device from the stack to data
-drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
-	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
-drm drm-next 6ea6be77086f23d4b346c9946dae24593befda2e
-	Merge tag 'drm-misc-next-2020-09-21' of git://anongit.freedesktop.org/drm/drm-misc into drm-next
-drm-misc drm-misc-next-fixes de194561359788871f7d8f5f7797557a2a166b4e
-	drm/vc4: kms: Assign a FIFO to enabled CRTCs instead of active
-drm-intel drm-intel-next-fixes 9123e3a74ec7b934a4a099e98af6a61c2f80bbf5
-	Linux 5.9-rc1
-drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
-	Linux 4.14-rc1
-drm-misc drm-misc-next a0d078d06e516184e2f575f3803935697b5e3ac6
-	drm/hisilicon: Features to support reading resolutions from EDID
-drm-intel drm-intel-next-queued 0bf8dedc763aa7abe4b03d67d7697ccc2b72430a
-	drm/i915: Use the correct bpp when validating "4:2:0 only" modes
-drm-intel drm-intel-next 8fea92536e3efff14fa4cde7ed37c595b40a52b5
-	drm/i915: Update DRIVER_DATE to 20200917
-drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
-	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
-sound-upstream for-linus c413c3102703a453c1312ce2160c6b7ffd55403e
-	Revert "ALSA: usb-audio: Disable Lenovo P620 Rear line-in volume control"
-sound-upstream for-next 502f389a0fd2d987ea7405cb57c02817328b6f7a
-	ALSA: hda - remove kerneldoc for internal hdac_i915 function
-drm-intel topic/core-for-CI 5a88ca3607993082ad90cac768d50c3b1e2b458e
-	HAX sched/core: Paper over the ttwu() race
-drm-intel drm-intel-gt-next 102f5aa491f262c818e607fc4fee08a724a76c69
-	drm/i915/gem: Serialise debugfs i915_gem_objects with ctx->mutex
+drm-tip/drm-tip 04b9e672bb8daa5e9ac3a41abf5fc26d75ef9b51
+	drm-tip: 2020y-09m-25d-01h-30m-46s UTC integration manifest
+vfio-upstream/next 3de066f8f86bf3bc4921153ea952a60a11d9d94e
+	Merge branches 'v5.10/vfio/bardirty', 'v5.10/vfio/dma_avail', 'v5.10/vfio/misc', 'v5.10/vfio/no-cmd-mem' and 'v5.10/vfio/yan_zhao_fixes' into v5.10/vfio/next
+intel-iommu/iommu/next a593472591a5cf2d91244bc3f319c9dd91119343
+	Merge branches 'iommu/fixes', 'arm/omap', 'arm/exynos', 'x86/amd', 'x86/vt-d' and 'core' into next
+origin/gvt-fixes 28284943ac94014767ecc2f7b3c5747c4a5617a0
+	drm/i915/gvt: Fix port number for BDW on EDID region setup
+origin/gvt-next e00db7c089ebb7147d5b9610df4d18ab345d6f1d
+	drm/i915/gvt: Allow zero out HWSP addr on hws_pga_write
+origin/gvt-next-fixes 9e7c0efadb86ddb58965561bbca638d44792d78f
+	drm/i915/gvt: Do not reset pv_notified when vGPU transit from D3->D0

@@ -13,6 +13,7 @@
 #ifndef __DMA_BUF_H__
 #define __DMA_BUF_H__
 
+#include <linux/dma-buf-map.h>
 #include <linux/file.h>
 #include <linux/err.h>
 #include <linux/scatterlist.h>
@@ -265,8 +266,8 @@ struct dma_buf_ops {
 	 */
 	int (*mmap)(struct dma_buf *, struct vm_area_struct *vma);
 
-	void *(*vmap)(struct dma_buf *);
-	void (*vunmap)(struct dma_buf *, void *vaddr);
+	int (*vmap)(struct dma_buf *dmabuf, struct dma_buf_map *map);
+	void (*vunmap)(struct dma_buf *dmabuf, struct dma_buf_map *map);
 };
 
 /**
@@ -309,7 +310,7 @@ struct dma_buf {
 	const struct dma_buf_ops *ops;
 	struct mutex lock;
 	unsigned vmapping_counter;
-	void *vmap_ptr;
+	struct dma_buf_map vmap_ptr;
 	const char *exp_name;
 	const char *name;
 	spinlock_t name_lock;
@@ -502,6 +503,6 @@ int dma_buf_end_cpu_access(struct dma_buf *dma_buf,
 
 int dma_buf_mmap(struct dma_buf *, struct vm_area_struct *,
 		 unsigned long);
-void *dma_buf_vmap(struct dma_buf *);
-void dma_buf_vunmap(struct dma_buf *, void *vaddr);
+int dma_buf_vmap(struct dma_buf *dmabuf, struct dma_buf_map *map);
+void dma_buf_vunmap(struct dma_buf *dmabuf, struct dma_buf_map *map);
 #endif /* __DMA_BUF_H__ */

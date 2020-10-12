@@ -37,25 +37,11 @@ static const struct ttm_place vram_placement_flags = {
 	.flags = TTM_PL_FLAG_CACHED
 };
 
-static const struct ttm_place vram_ne_placement_flags = {
-	.fpfn = 0,
-	.lpfn = 0,
-	.mem_type = TTM_PL_VRAM,
-	.flags = TTM_PL_FLAG_CACHED | TTM_PL_FLAG_NO_EVICT
-};
-
 static const struct ttm_place sys_placement_flags = {
 	.fpfn = 0,
 	.lpfn = 0,
 	.mem_type = TTM_PL_SYSTEM,
 	.flags = TTM_PL_FLAG_CACHED
-};
-
-static const struct ttm_place sys_ne_placement_flags = {
-	.fpfn = 0,
-	.lpfn = 0,
-	.mem_type = TTM_PL_SYSTEM,
-	.flags = TTM_PL_FLAG_CACHED | TTM_PL_FLAG_NO_EVICT
 };
 
 static const struct ttm_place gmr_placement_flags = {
@@ -65,25 +51,11 @@ static const struct ttm_place gmr_placement_flags = {
 	.flags = TTM_PL_FLAG_CACHED
 };
 
-static const struct ttm_place gmr_ne_placement_flags = {
-	.fpfn = 0,
-	.lpfn = 0,
-	.mem_type = VMW_PL_GMR,
-	.flags = TTM_PL_FLAG_CACHED | TTM_PL_FLAG_NO_EVICT
-};
-
 static const struct ttm_place mob_placement_flags = {
 	.fpfn = 0,
 	.lpfn = 0,
 	.mem_type = VMW_PL_MOB,
 	.flags = TTM_PL_FLAG_CACHED
-};
-
-static const struct ttm_place mob_ne_placement_flags = {
-	.fpfn = 0,
-	.lpfn = 0,
-	.mem_type = VMW_PL_MOB,
-	.flags = TTM_PL_FLAG_CACHED | TTM_PL_FLAG_NO_EVICT
 };
 
 struct ttm_placement vmw_vram_placement = {
@@ -128,29 +100,6 @@ struct ttm_placement vmw_vram_gmr_placement = {
 	.busy_placement = &gmr_placement_flags
 };
 
-static const struct ttm_place vram_gmr_ne_placement_flags[] = {
-	{
-		.fpfn = 0,
-		.lpfn = 0,
-		.mem_type = TTM_PL_VRAM,
-		.flags = TTM_PL_FLAG_CACHED |
-			 TTM_PL_FLAG_NO_EVICT
-	}, {
-		.fpfn = 0,
-		.lpfn = 0,
-		.mem_type = VMW_PL_GMR,
-		.flags = TTM_PL_FLAG_CACHED |
-			 TTM_PL_FLAG_NO_EVICT
-	}
-};
-
-struct ttm_placement vmw_vram_gmr_ne_placement = {
-	.num_placement = 2,
-	.placement = vram_gmr_ne_placement_flags,
-	.num_busy_placement = 1,
-	.busy_placement = &gmr_ne_placement_flags
-};
-
 struct ttm_placement vmw_vram_sys_placement = {
 	.num_placement = 1,
 	.placement = &vram_placement_flags,
@@ -158,25 +107,11 @@ struct ttm_placement vmw_vram_sys_placement = {
 	.busy_placement = &sys_placement_flags
 };
 
-struct ttm_placement vmw_vram_ne_placement = {
-	.num_placement = 1,
-	.placement = &vram_ne_placement_flags,
-	.num_busy_placement = 1,
-	.busy_placement = &vram_ne_placement_flags
-};
-
 struct ttm_placement vmw_sys_placement = {
 	.num_placement = 1,
 	.placement = &sys_placement_flags,
 	.num_busy_placement = 1,
 	.busy_placement = &sys_placement_flags
-};
-
-struct ttm_placement vmw_sys_ne_placement = {
-	.num_placement = 1,
-	.placement = &sys_ne_placement_flags,
-	.num_busy_placement = 1,
-	.busy_placement = &sys_ne_placement_flags
 };
 
 static const struct ttm_place evictable_placement_flags[] = {
@@ -241,13 +176,6 @@ struct ttm_placement vmw_mob_placement = {
 	.num_busy_placement = 1,
 	.placement = &mob_placement_flags,
 	.busy_placement = &mob_placement_flags
-};
-
-struct ttm_placement vmw_mob_ne_placement = {
-	.num_placement = 1,
-	.num_busy_placement = 1,
-	.placement = &mob_ne_placement_flags,
-	.busy_placement = &mob_ne_placement_flags
 };
 
 struct ttm_placement vmw_nonfixed_placement = {
@@ -770,6 +698,8 @@ static void vmw_move_notify(struct ttm_buffer_object *bo,
 			    bool evict,
 			    struct ttm_resource *mem)
 {
+	if (!mem)
+		return;
 	vmw_bo_move_notify(bo, mem);
 	vmw_query_move_notify(bo, mem);
 }
@@ -786,6 +716,24 @@ static void vmw_swap_notify(struct ttm_buffer_object *bo)
 	(void) ttm_bo_wait(bo, false, false);
 }
 
+static int vmw_move(struct ttm_buffer_object *bo,
+		    bool evict,
+		    struct ttm_operation_ctx *ctx,
+		    struct ttm_resource *new_mem)
+{
+	struct ttm_resource_manager *old_man = ttm_manager_type(bo->bdev, bo->mem.mem_type);
+	struct ttm_resource_manager *new_man = ttm_manager_type(bo->bdev, new_mem->mem_type);
+
+	if (old_man->use_tt && new_man->use_tt) {
+		if (bo->mem.mem_type == TTM_PL_SYSTEM) {
+			ttm_bo_assign_mem(bo, new_mem);
+			return 0;
+		}
+		return ttm_bo_move_ttm(bo, ctx, new_mem);
+	} else {
+		return ttm_bo_move_memcpy(bo, ctx, new_mem);
+	}
+}
 
 struct ttm_bo_driver vmw_bo_driver = {
 	.ttm_tt_create = &vmw_ttm_tt_create,
@@ -796,7 +744,7 @@ struct ttm_bo_driver vmw_bo_driver = {
 	.ttm_tt_destroy = &vmw_ttm_destroy,
 	.eviction_valuable = ttm_bo_eviction_valuable,
 	.evict_flags = vmw_evict_flags,
-	.move = NULL,
+	.move = vmw_move,
 	.verify_access = vmw_verify_access,
 	.move_notify = vmw_move_notify,
 	.swap_notify = vmw_swap_notify,
@@ -814,11 +762,9 @@ int vmw_bo_create_and_populate(struct vmw_private *dev_priv,
 	struct ttm_buffer_object *bo;
 	int ret;
 
-	ret = ttm_bo_create(&dev_priv->bdev, bo_size,
-			    ttm_bo_type_device,
-			    &vmw_sys_ne_placement,
-			    0, false, &bo);
-
+	ret = vmw_bo_create_kernel(dev_priv, bo_size,
+				   &vmw_sys_placement,
+				   &bo);
 	if (unlikely(ret != 0))
 		return ret;
 

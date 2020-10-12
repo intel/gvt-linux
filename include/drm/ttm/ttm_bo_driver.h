@@ -190,9 +190,6 @@ struct ttm_bo_driver {
 	void (*move_notify)(struct ttm_buffer_object *bo,
 			    bool evict,
 			    struct ttm_resource *new_mem);
-	/* notify the driver we are taking a fault on this BO
-	 * and have reserved it */
-	int (*fault_reserve_notify)(struct ttm_buffer_object *bo);
 
 	/**
 	 * notify the driver that we're about to swap out this bo
@@ -451,15 +448,6 @@ int ttm_bo_device_init(struct ttm_bo_device *bdev,
  * @bo: tear down the virtual mappings for this BO
  */
 void ttm_bo_unmap_virtual(struct ttm_buffer_object *bo);
-
-/**
- * ttm_bo_unmap_virtual
- *
- * @bo: tear down the virtual mappings for this BO
- *
- * The caller must take ttm_mem_io_lock before calling this function.
- */
-void ttm_bo_unmap_virtual_locked(struct ttm_buffer_object *bo);
 
 /**
  * ttm_bo_reserve:

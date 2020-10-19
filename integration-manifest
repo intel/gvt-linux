@@ -1,0 +1,32 @@
+drm drm-fixes dded93ffbb8c4a578adf13b54cd62519908a23f8
+	Merge tag 'amd-drm-fixes-5.9-2020-10-08' of git://people.freedesktop.org/~agd5f/linux into drm-fixes
+drm-misc drm-misc-fixes 27204b99b08289d0993cb77c22470034b5eb974d
+	drm: drm_dsc.h: fix a kernel-doc markup
+drm-intel drm-intel-fixes bbf5c979011a099af5dc76498918ed7df445635b
+	Linux 5.9
+drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
+	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
+drm drm-next 40b99050455b9a6cb8faf15dcd41888312184720
+	Merge tag 'drm-intel-next-fixes-2020-10-15' of git://anongit.freedesktop.org/drm/drm-intel into drm-next
+drm-misc drm-misc-next-fixes d3c8f2784d3266d27956659c78835ee1d1925ad2
+	drm/ingenic: Fix bad revert
+drm-intel drm-intel-next-fixes 214bba50616f65264dfc30d095daef3ab7500f52
+	drm/i915: Set all unused color plane offsets to ~0xfff again
+drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
+	Linux 4.14-rc1
+drm-misc drm-misc-next d1934d2b687ae0c27c69c4dd7d74f65a8ce5083d
+	drm/ttm: drop free old node wrapper.
+drm-intel drm-intel-next-queued 0af0b841c6489b8ef1adea62fca6874bc918d97c
+	drm/i915: Inline intel_dp_ycbcr420_config()
+drm-intel drm-intel-next 8fea92536e3efff14fa4cde7ed37c595b40a52b5
+	drm/i915: Update DRIVER_DATE to 20200917
+drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
+	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
+sound-upstream for-linus 9ce88a13b3016436441fec0b8b00ce8116f91269
+	ALSA: hda/ca0132: make some const arrays static, makes object smaller
+sound-upstream for-next 9ce88a13b3016436441fec0b8b00ce8116f91269
+	ALSA: hda/ca0132: make some const arrays static, makes object smaller
+drm-intel topic/core-for-CI c082b170b61f96f6148481ae69b69f66664839eb
+	mm: do not rely on mm == current->mm in __get_user_pages_locked
+drm-intel drm-intel-gt-next 178536b8292ecd118f59d2fac4509c7e70b99854
+	drm/i915: Use the active reference on the vma while capturing

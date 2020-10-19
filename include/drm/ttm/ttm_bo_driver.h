@@ -190,9 +190,6 @@ struct ttm_bo_driver {
 	void (*move_notify)(struct ttm_buffer_object *bo,
 			    bool evict,
 			    struct ttm_resource *new_mem);
-	/* notify the driver we are taking a fault on this BO
-	 * and have reserved it */
-	int (*fault_reserve_notify)(struct ttm_buffer_object *bo);
 
 	/**
 	 * notify the driver that we're about to swap out this bo
@@ -453,15 +450,6 @@ int ttm_bo_device_init(struct ttm_bo_device *bdev,
 void ttm_bo_unmap_virtual(struct ttm_buffer_object *bo);
 
 /**
- * ttm_bo_unmap_virtual
- *
- * @bo: tear down the virtual mappings for this BO
- *
- * The caller must take ttm_mem_io_lock before calling this function.
- */
-void ttm_bo_unmap_virtual_locked(struct ttm_buffer_object *bo);
-
-/**
  * ttm_bo_reserve:
  *
  * @bo: A pointer to a struct ttm_buffer_object.
@@ -628,15 +616,6 @@ int ttm_bo_move_memcpy(struct ttm_buffer_object *bo,
 		       struct ttm_resource *new_mem);
 
 /**
- * ttm_bo_free_old_node
- *
- * @bo: A pointer to a struct ttm_buffer_object.
- *
- * Utility function to free an old placement after a successful move.
- */
-void ttm_bo_free_old_node(struct ttm_buffer_object *bo);
-
-/**
  * ttm_bo_move_accel_cleanup.
  *
  * @bo: A pointer to a struct ttm_buffer_object.
@@ -669,13 +648,15 @@ int ttm_bo_pipeline_gutting(struct ttm_buffer_object *bo);
 /**
  * ttm_io_prot
  *
- * @c_state: Caching state.
+ * bo: ttm buffer object
+ * res: ttm resource object
  * @tmp: Page protection flag for a normal, cached mapping.
  *
  * Utility function that returns the pgprot_t that should be used for
  * setting up a PTE with the caching model indicated by @c_state.
  */
-pgprot_t ttm_io_prot(uint32_t caching_flags, pgprot_t tmp);
+pgprot_t ttm_io_prot(struct ttm_buffer_object *bo, struct ttm_resource *res,
+		     pgprot_t tmp);
 
 /**
  * ttm_bo_tt_bind

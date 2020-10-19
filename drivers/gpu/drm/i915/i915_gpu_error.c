@@ -1026,6 +1026,7 @@ i915_vma_coredump_create(const struct intel_gt *gt,
 		dma_addr_t dma;
 
 		for_each_sgt_daddr(dma, iter, vma->pages) {
+			mutex_lock(&ggtt->error_mutex);
 			ggtt->vm.insert_page(&ggtt->vm, dma, slot,
 					     I915_CACHE_NONE, 0);
 			mb();
@@ -1035,6 +1036,10 @@ i915_vma_coredump_create(const struct intel_gt *gt,
 					    (void  __force *)s, dst,
 					    true);
 			io_mapping_unmap(s);
+
+			mb();
+			ggtt->vm.clear_range(&ggtt->vm, slot, PAGE_SIZE);
+			mutex_unlock(&ggtt->error_mutex);
 			if (ret)
 				break;
 		}
@@ -1312,7 +1317,7 @@ capture_vma(struct intel_engine_capture_vma *next,
 	}
 
 	strcpy(c->name, name);
-	c->vma = i915_vma_get(vma);
+	c->vma = vma; /* reference held while active */
 
 	c->next = next;
 	return c;
@@ -1402,7 +1407,6 @@ intel_engine_coredump_add_vma(struct intel_engine_coredump *ee,
 						 compress));
 
 		i915_active_release(&vma->active);
-		i915_vma_put(vma);
 
 		capture = this->next;
 		kfree(this);
@@ -1504,25 +1508,6 @@ gt_record_uc(struct intel_gt_coredump *gt,
 					 compress);
 
 	return error_uc;
-}
-
-static void gt_capture_prepare(struct intel_gt_coredump *gt)
-{
-	struct i915_ggtt *ggtt = gt->_gt->ggtt;
-
-	mutex_lock(&ggtt->error_mutex);
-}
-
-static void gt_capture_finish(struct intel_gt_coredump *gt)
-{
-	struct i915_ggtt *ggtt = gt->_gt->ggtt;
-
-	if (drm_mm_node_allocated(&ggtt->error_capture))
-		ggtt->vm.clear_range(&ggtt->vm,
-				     ggtt->error_capture.start,
-				     PAGE_SIZE);
-
-	mutex_unlock(&ggtt->error_mutex);
 }
 
 /* Capture all registers which don't fit into another category. */
@@ -1783,8 +1768,6 @@ i915_vma_capture_prepare(struct intel_gt_coredump *gt)
 		return NULL;
 	}
 
-	gt_capture_prepare(gt);
-
 	return compress;
 }
 
@@ -1793,8 +1776,6 @@ void i915_vma_capture_finish(struct intel_gt_coredump *gt,
 {
 	if (!compress)
 		return;
-
-	gt_capture_finish(gt);
 
 	compress_fini(compress);
 	kfree(compress);

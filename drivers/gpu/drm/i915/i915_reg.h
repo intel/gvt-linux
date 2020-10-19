@@ -242,7 +242,8 @@ static inline bool i915_mmio_reg_valid(i915_reg_t reg)
 #define _MMIO_PIPE3(pipe, a, b, c)	_MMIO(_PICK(pipe, a, b, c))
 #define _MMIO_PORT3(pipe, a, b, c)	_MMIO(_PICK(pipe, a, b, c))
 #define _MMIO_PHY3(phy, a, b, c)	_MMIO(_PHY3(phy, a, b, c))
-#define _MMIO_PLL3(pll, a, b, c)	_MMIO(_PICK(pll, a, b, c))
+#define _MMIO_PLL3(pll, ...)		_MMIO(_PICK(pll, __VA_ARGS__))
+
 
 /*
  * Device info offset array based helpers for groups of registers with unevenly
@@ -2527,6 +2528,7 @@ static inline bool i915_mmio_reg_valid(i915_reg_t reg)
 #define RING_PSMI_CTL(base)	_MMIO((base) + 0x50)
 #define RING_MAX_IDLE(base)	_MMIO((base) + 0x54)
 #define RING_HWS_PGA(base)	_MMIO((base) + 0x80)
+#define RING_ID(base)		_MMIO((base) + 0x8c)
 #define RING_HWS_PGA_GEN6(base)	_MMIO((base) + 0x2080)
 #define RING_RESET_CTL(base)	_MMIO((base) + 0xd0)
 #define   RESET_CTL_CAT_ERROR	   REG_BIT(2)
@@ -4146,6 +4148,7 @@ enum {
 
 #define GEN9_CLKGATE_DIS_3		_MMIO(0x46538)
 #define   TGL_VRH_GATING_DIS		REG_BIT(31)
+#define   DPT_GATING_DIS		REG_BIT(22)
 
 #define GEN9_CLKGATE_DIS_4		_MMIO(0x4653C)
 #define   BXT_GMBUS_GATING_DIS		(1 << 14)
@@ -6923,6 +6926,7 @@ enum {
 #define   PLANE_CTL_TILED_X			(1 << 10)
 #define   PLANE_CTL_TILED_Y			(4 << 10)
 #define   PLANE_CTL_TILED_YF			(5 << 10)
+#define   PLANE_CTL_ASYNC_FLIP			(1 << 9)
 #define   PLANE_CTL_FLIP_HORIZONTAL		(1 << 8)
 #define   PLANE_CTL_MEDIA_DECOMPRESSION_ENABLE	(1 << 4) /* TGL+ */
 #define   PLANE_CTL_ALPHA_MASK			(0x3 << 4) /* Pre-GLK */
@@ -7532,6 +7536,7 @@ enum {
 #define BXT_CSR_DC3_DC5_COUNT	_MMIO(0x80038)
 #define TGL_DMC_DEBUG_DC5_COUNT	_MMIO(0x101084)
 #define TGL_DMC_DEBUG_DC6_COUNT	_MMIO(0x101088)
+#define DG1_DMC_DEBUG_DC5_COUNT	_MMIO(0x134154)
 
 #define DMC_DEBUG3		_MMIO(0x101090)
 
@@ -7865,6 +7870,7 @@ enum {
 # define CHICKEN3_DGMG_DONE_FIX_DISABLE		(1 << 2)
 
 #define CHICKEN_PAR1_1			_MMIO(0x42080)
+#define  KBL_ARB_FILL_SPARE_22		REG_BIT(22)
 #define  DIS_RAM_BYPASS_PSR2_MAN_TRACK	(1 << 16)
 #define  SKL_DE_COMPRESSED_HASH_MODE	(1 << 15)
 #define  DPA_MASK_VBLANK_SRD		(1 << 15)
@@ -7877,6 +7883,8 @@ enum {
 
 #define CHICKEN_MISC_2		_MMIO(0x42084)
 #define  CNL_COMP_PWR_DOWN	(1 << 23)
+#define  KBL_ARB_FILL_SPARE_14	REG_BIT(14)
+#define  KBL_ARB_FILL_SPARE_13	REG_BIT(13)
 #define  GLK_CL2_PWR_DOWN	(1 << 12)
 #define  GLK_CL1_PWR_DOWN	(1 << 11)
 #define  GLK_CL0_PWR_DOWN	(1 << 10)
@@ -8014,13 +8022,15 @@ enum {
 #define GEN8_L3CNTLREG	_MMIO(0x7034)
   #define GEN8_ERRDETBCTRL (1 << 9)
 
-#define GEN11_COMMON_SLICE_CHICKEN3		_MMIO(0x7304)
-  #define GEN11_BLEND_EMB_FIX_DISABLE_IN_RCC	(1 << 11)
-  #define GEN12_DISABLE_CPS_AWARE_COLOR_PIPE	(1 << 9)
+#define GEN11_COMMON_SLICE_CHICKEN3			_MMIO(0x7304)
+  #define DG1_FLOAT_POINT_BLEND_OPT_STRICT_MODE_EN	REG_BIT(12)
+  #define GEN11_BLEND_EMB_FIX_DISABLE_IN_RCC		REG_BIT(11)
+  #define GEN12_DISABLE_CPS_AWARE_COLOR_PIPE		REG_BIT(9)
 
 #define HIZ_CHICKEN					_MMIO(0x7018)
-# define CHV_HZ_8X8_MODE_IN_1X				(1 << 15)
-# define BDW_HIZ_POWER_COMPILER_CLOCK_GATING_DISABLE	(1 << 3)
+# define CHV_HZ_8X8_MODE_IN_1X				REG_BIT(15)
+# define DG1_HZ_READ_SUPPRESSION_OPTIMIZATION_DISABLE   REG_BIT(14)
+# define BDW_HIZ_POWER_COMPILER_CLOCK_GATING_DISABLE	REG_BIT(3)
 
 #define GEN9_SLICE_COMMON_ECO_CHICKEN0		_MMIO(0x7308)
 #define  DISABLE_PIXEL_MASK_CAMMING		(1 << 14)
@@ -8954,12 +8964,12 @@ enum {
 #define  FORCEWAKE_MEDIA_VDBOX_GEN11(n)		_MMIO(0xa540 + (n) * 4)
 #define  FORCEWAKE_MEDIA_VEBOX_GEN11(n)		_MMIO(0xa560 + (n) * 4)
 #define  FORCEWAKE_RENDER_GEN9			_MMIO(0xa278)
-#define  FORCEWAKE_BLITTER_GEN9			_MMIO(0xa188)
+#define  FORCEWAKE_GT_GEN9			_MMIO(0xa188)
 #define  FORCEWAKE_ACK_MEDIA_GEN9		_MMIO(0x0D88)
 #define  FORCEWAKE_ACK_MEDIA_VDBOX_GEN11(n)	_MMIO(0x0D50 + (n) * 4)
 #define  FORCEWAKE_ACK_MEDIA_VEBOX_GEN11(n)	_MMIO(0x0D70 + (n) * 4)
 #define  FORCEWAKE_ACK_RENDER_GEN9		_MMIO(0x0D84)
-#define  FORCEWAKE_ACK_BLITTER_GEN9		_MMIO(0x130044)
+#define  FORCEWAKE_ACK_GT_GEN9			_MMIO(0x130044)
 #define   FORCEWAKE_KERNEL			BIT(0)
 #define   FORCEWAKE_USER			BIT(1)
 #define   FORCEWAKE_KERNEL_FALLBACK		BIT(15)
@@ -9223,6 +9233,9 @@ enum {
 #define     GEN9_SAGV_DISABLE			0x0
 #define     GEN9_SAGV_IS_DISABLED		0x1
 #define     GEN9_SAGV_ENABLE			0x3
+#define   DG1_PCODE_STATUS			0x7E
+#define     DG1_UNCORE_GET_INIT_STATUS		0x0
+#define     DG1_UNCORE_INIT_STATUS_COMPLETE	0x1
 #define GEN12_PCODE_READ_SAGV_BLOCK_TIME_US	0x23
 #define GEN6_PCODE_DATA				_MMIO(0x138128)
 #define   GEN6_PCODE_FREQ_IA_RATIO_SHIFT	8
@@ -10257,6 +10270,7 @@ enum skl_power_gate {
 #define  DPLL_CFGCR2_PDIV_2 (1 << 2)
 #define  DPLL_CFGCR2_PDIV_3 (2 << 2)
 #define  DPLL_CFGCR2_PDIV_7 (4 << 2)
+#define  DPLL_CFGCR2_PDIV_7_INVALID	(5 << 2)
 #define  DPLL_CFGCR2_CENTRAL_FREQ_MASK	(3)
 
 #define DPLL_CFGCR1(id)	_MMIO_PIPE((id) - SKL_DPLL1, _DPLL1_CFGCR1, _DPLL2_CFGCR1)
@@ -10306,6 +10320,10 @@ enum skl_power_gate {
 /* Bits are the same as DPLL0_ENABLE */
 #define MG_PLL_ENABLE(tc_port)	_MMIO_PORT((tc_port), _MG_PLL1_ENABLE, \
 					   _MG_PLL2_ENABLE)
+
+/* DG1 PLL */
+#define DG1_DPLL_ENABLE(pll)    _MMIO_PLL3(pll, DPLL0_ENABLE, DPLL1_ENABLE, \
+					   _MG_PLL1_ENABLE, _MG_PLL2_ENABLE)
 
 #define _MG_REFCLKIN_CTL_PORT1				0x16892C
 #define _MG_REFCLKIN_CTL_PORT2				0x16992C
@@ -10522,6 +10540,20 @@ enum skl_power_gate {
 						   _TGL_TBTPLL_CFGCR1)
 #define RKL_DPLL_CFGCR1(pll)		_MMIO_PLL(pll, _TGL_DPLL0_CFGCR1, \
 						  _TGL_DPLL1_CFGCR1)
+
+#define _DG1_DPLL2_CFGCR0		0x16C284
+#define _DG1_DPLL3_CFGCR0		0x16C28C
+#define DG1_DPLL_CFGCR0(pll)		_MMIO_PLL3(pll, _TGL_DPLL0_CFGCR0, \
+						   _TGL_DPLL1_CFGCR0, \
+						   _DG1_DPLL2_CFGCR0, \
+						   _DG1_DPLL3_CFGCR0)
+
+#define _DG1_DPLL2_CFGCR1               0x16C288
+#define _DG1_DPLL3_CFGCR1               0x16C290
+#define DG1_DPLL_CFGCR1(pll)            _MMIO_PLL3(pll, _TGL_DPLL0_CFGCR1, \
+						   _TGL_DPLL1_CFGCR1, \
+						   _DG1_DPLL2_CFGCR1, \
+						   _DG1_DPLL3_CFGCR1)
 
 #define _DKL_PHY1_BASE			0x168000
 #define _DKL_PHY2_BASE			0x169000
@@ -11003,14 +11035,17 @@ enum skl_power_gate {
 #define _CGM_PIPE_A_CSC_COEFF67	(VLV_DISPLAY_BASE + 0x6790C)
 #define _CGM_PIPE_A_CSC_COEFF8	(VLV_DISPLAY_BASE + 0x67910)
 #define _CGM_PIPE_A_DEGAMMA	(VLV_DISPLAY_BASE + 0x66000)
+#define   CGM_PIPE_DEGAMMA_RED_MASK	REG_GENMASK(13, 0)
+#define   CGM_PIPE_DEGAMMA_GREEN_MASK	REG_GENMASK(29, 16)
+#define   CGM_PIPE_DEGAMMA_BLUE_MASK	REG_GENMASK(13, 0)
 #define _CGM_PIPE_A_GAMMA	(VLV_DISPLAY_BASE + 0x67000)
+#define   CGM_PIPE_GAMMA_RED_MASK	REG_GENMASK(9, 0)
+#define   CGM_PIPE_GAMMA_GREEN_MASK	REG_GENMASK(25, 16)
+#define   CGM_PIPE_GAMMA_BLUE_MASK	REG_GENMASK(9, 0)
 #define _CGM_PIPE_A_MODE	(VLV_DISPLAY_BASE + 0x67A00)
 #define   CGM_PIPE_MODE_GAMMA	(1 << 2)
 #define   CGM_PIPE_MODE_CSC	(1 << 1)
 #define   CGM_PIPE_MODE_DEGAMMA	(1 << 0)
-#define   CGM_PIPE_GAMMA_RED_MASK   REG_GENMASK(9, 0)
-#define   CGM_PIPE_GAMMA_GREEN_MASK REG_GENMASK(25, 16)
-#define   CGM_PIPE_GAMMA_BLUE_MASK  REG_GENMASK(9, 0)
 
 #define _CGM_PIPE_B_CSC_COEFF01	(VLV_DISPLAY_BASE + 0x69900)
 #define _CGM_PIPE_B_CSC_COEFF23	(VLV_DISPLAY_BASE + 0x69904)

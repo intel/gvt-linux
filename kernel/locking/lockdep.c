@@ -4831,7 +4831,10 @@ static int __lock_acquire(struct lockdep_map *lock, unsigned int subclass,
 	if (!validate_chain(curr, hlock, chain_head, chain_key))
 		return 0;
 
-	curr->curr_chain_key = chain_key;
+	chain_key = hlock->prev_chain_key;
+	if (separate_irq_context(curr, hlock))
+		chain_key = INITIAL_CHAIN_KEY;
+	curr->curr_chain_key = iterate_chain_key(chain_key, hlock_id(hlock));
 	curr->lockdep_depth++;
 	check_chain_key(curr);
 #ifdef CONFIG_DEBUG_LOCKDEP

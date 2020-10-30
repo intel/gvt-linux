@@ -1,32 +1,14 @@
-drm drm-fixes 7babd126327b8b5a3904d2f8f01c95235801af2a
-	Merge tag 'drm-intel-fixes-2020-10-29' of git://anongit.freedesktop.org/drm/drm-intel into drm-fixes
-drm-misc drm-misc-fixes 5066f42c7d3c7766c16ba6e73da514af04d43ff7
-	drm/vc4: Rework the structure conversion functions
-drm-intel drm-intel-fixes 856011a4cf3de8b2e4c296f1d4f6a1bf9dc4d5a6
-	lockdep: Fix nr_unused_locks
-drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
-	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
-drm drm-next b45b6fbc671c60f56fd119c443e5570f83175928
-	Merge tag 'drm-intel-next-fixes-2020-10-22' of git://anongit.freedesktop.org/drm/drm-intel into drm-next
-drm-misc drm-misc-next-fixes 2580a493a97da4a302cb66251b558bfc04c16e68
-	dt-binding: display: Require two resets on mantix panel
-drm-intel drm-intel-next-fixes b45b6fbc671c60f56fd119c443e5570f83175928
-	Merge tag 'drm-intel-next-fixes-2020-10-22' of git://anongit.freedesktop.org/drm/drm-intel into drm-next
-drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
-	Linux 4.14-rc1
-drm-misc drm-misc-next fa3bfa3527b31562dba28d49c0a18b722b42e226
-	drm: Quieten [zero] EDID carping
-drm-intel drm-intel-next-queued 96eaeb3dfa40576a7aa195303c538202311cffbc
-	drm/i915: Use _MMIO_PIPE3() for ilk+ WM0_PIPE registers
-drm-intel drm-intel-next 8fea92536e3efff14fa4cde7ed37c595b40a52b5
-	drm/i915: Update DRIVER_DATE to 20200917
-drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
-	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
-sound-upstream for-linus 9fc149c3bce7bdbb94948a8e6bd025e3b3538603
-	ALSA: hda: Reinstate runtime_allow() for all hda controllers
-sound-upstream for-next ad26098970b637f4565b110df929d74eb2c2652e
-	ALSA: remove unneeded break
-drm-intel topic/core-for-CI 0cde87f8d8e421ecbb923bc84c60e45e3e43522f
-	rcu/tree: Drop the lock before entering to page allocator
-drm-intel drm-intel-gt-next 0f41e31a7bdca9a1c51ae21ccfc569ccb9359e03
-	drm/i915/guc: Clear pointers on free
+drm-tip/drm-tip a2bcd1ea633c3d2f5872eedb12a9255a2e5b1fc7
+	drm-tip: 2020y-10m-30d-01h-55m-21s UTC integration manifest
+vfio-upstream/next 2e6cfd496f5b57034cf2aec738799571b5a52124
+	vfio iommu type1: Fix memory leak in vfio_iommu_type1_pin_pages
+intel-iommu/iommu/next a593472591a5cf2d91244bc3f319c9dd91119343
+	Merge branches 'iommu/fixes', 'arm/omap', 'arm/exynos', 'x86/amd', 'x86/vt-d' and 'core' into next
+intel-iommu/iommu/fixes 9def3b1a07c41e21c68a0eb353e3e569fdd1d2b1
+	iommu/vt-d: Don't dereference iommu_device if IOMMU_API is not built
+origin/gvt-fixes 92010a97098c4c9fd777408cc98064d26b32695b
+	drm/i915/gvt: Fix mmio handler break on BXT/APL.
+origin/gvt-next e00db7c089ebb7147d5b9610df4d18ab345d6f1d
+	drm/i915/gvt: Allow zero out HWSP addr on hws_pga_write
+origin/gvt-next-fixes 9e7c0efadb86ddb58965561bbca638d44792d78f
+	drm/i915/gvt: Do not reset pv_notified when vGPU transit from D3->D0

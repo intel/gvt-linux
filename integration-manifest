@@ -1,32 +1,16 @@
-drm drm-fixes 3cea11cd5e3b00d91caf0b4730194039b45c5891
-	Linux 5.10-rc2
-drm-misc drm-misc-fixes 077aa5c8dd6e2b9c721e8cb3d98a3aa8ecb0e2ef
-	drm/vc4: drv: Remove unused variable
-drm-intel drm-intel-fixes 537457a979a02a410b555fab289dcb28b588f33b
-	drm/i915: Hold onto an explicit ref to i915_vma_work.pinned
-drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
-	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
-drm drm-next e047c7be173caab95f3876ab30c03ebcf654c300
-	Merge tag 'drm-intel-next-queued-2020-11-03' of git://anongit.freedesktop.org/drm/drm-intel into drm-next
-drm-misc drm-misc-next-fixes 2580a493a97da4a302cb66251b558bfc04c16e68
-	dt-binding: display: Require two resets on mantix panel
-drm-intel drm-intel-next-fixes b45b6fbc671c60f56fd119c443e5570f83175928
-	Merge tag 'drm-intel-next-fixes-2020-10-22' of git://anongit.freedesktop.org/drm/drm-intel into drm-next
-drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
-	Linux 4.14-rc1
-drm-misc drm-misc-next d74252bb8f0e38194e7457f7b4e5a8a33514bc24
-	drm: Use the state pointer directly in atomic_check
-drm-intel drm-intel-next-queued 0e8e272f1368b26053440fcf3b0ef0693f9e706e
-	drm/i915/ehl: Remove invalid PCI ID
-drm-intel drm-intel-next 8fea92536e3efff14fa4cde7ed37c595b40a52b5
-	drm/i915: Update DRIVER_DATE to 20200917
-drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
-	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
-sound-upstream for-linus ef9ce66fab959c66d270bbee7ca79b92ee957893
-	ALSA: hda/realtek - Enable headphone for ASUS TM420
-sound-upstream for-next ad26098970b637f4565b110df929d74eb2c2652e
-	ALSA: remove unneeded break
-drm-intel topic/core-for-CI 043d4b2c00c53845990898354ad3fabc5a31b42c
-	HAX suspend: Disable S3/S4 for fi-bdw-samus
-drm-intel drm-intel-gt-next c648ae338e927f8fb6dd274646e5825852b7fd63
-	drm/i915/gem: Perform all asynchronous waits prior to marking payload start
+drm-tip/drm-tip ac7c5c0c0d9c3475169572ccbd5f28f612a2c5a0
+	drm-tip: 2020y-11m-04d-04h-49m-47s UTC integration manifest
+vfio-upstream/next 2e6cfd496f5b57034cf2aec738799571b5a52124
+	vfio iommu type1: Fix memory leak in vfio_iommu_type1_pin_pages
+vfio-upstream/for-linus e4eccb853664de7bcf9518fb658f35e748bf1f68
+	vfio/pci: Bypass IGD init in case of -ENODEV
+intel-iommu/iommu/next a593472591a5cf2d91244bc3f319c9dd91119343
+	Merge branches 'iommu/fixes', 'arm/omap', 'arm/exynos', 'x86/amd', 'x86/vt-d' and 'core' into next
+intel-iommu/iommu/fixes 4dd6ce478003525df8618750d30f0b90380047a7
+	iommu: Fix a check in iommu_check_bind_data()
+origin/gvt-fixes 92010a97098c4c9fd777408cc98064d26b32695b
+	drm/i915/gvt: Fix mmio handler break on BXT/APL.
+origin/gvt-next e00db7c089ebb7147d5b9610df4d18ab345d6f1d
+	drm/i915/gvt: Allow zero out HWSP addr on hws_pga_write
+origin/gvt-next-fixes 9e7c0efadb86ddb58965561bbca638d44792d78f
+	drm/i915/gvt: Do not reset pv_notified when vGPU transit from D3->D0

@@ -223,13 +223,6 @@ void panic(const char *fmt, ...)
 		buf[len - 1] = '\0';
 
 	pr_emerg("Kernel panic - not syncing: %s\n", buf);
-#ifdef CONFIG_DEBUG_BUGVERBOSE
-	/*
-	 * Avoid nested stack-dumping if a panic occurs during oops processing
-	 */
-	if (!test_taint(TAINT_DIE) && oops_in_progress <= 1)
-		dump_stack();
-#endif
 
 	/*
 	 * If kgdb is enabled, give it a chance to run before we stop all
@@ -270,6 +263,14 @@ void panic(const char *fmt, ...)
 	 * add information to the kmsg dump output.
 	 */
 	atomic_notifier_call_chain(&panic_notifier_list, 0, buf);
+
+#ifdef CONFIG_DEBUG_BUGVERBOSE
+	/*
+	 * Avoid nested stack-dumping if a panic occurs during oops processing
+	 */
+	if (!test_taint(TAINT_DIE) && oops_in_progress <= 1)
+		dump_stack();
+#endif
 
 	/* Call flush even twice. It tries harder with a single online CPU */
 	printk_safe_flush_on_panic();

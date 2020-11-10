@@ -1,32 +1,16 @@
-drm drm-fixes f8394f232b1eab649ce2df5c5f15b0e528c92091
-	Linux 5.10-rc3
-drm-misc drm-misc-fixes 06ad8d339524bf94b89859047822c31df6ace239
-	drm/gma500: Fix out-of-bounds access to struct drm_device.vblank[]
-drm-intel drm-intel-fixes 79f46c998a1270435423fca7e3e226a3d34cf959
-	drm/i915: Hold onto an explicit ref to i915_vma_work.pinned
-drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
-	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
-drm drm-next c0f98d2f8b076bf3e3183aa547395f919c943a14
-	Merge tag 'drm-misc-next-2020-11-05' of git://anongit.freedesktop.org/drm/drm-misc into drm-next
-drm-misc drm-misc-next-fixes 2580a493a97da4a302cb66251b558bfc04c16e68
-	dt-binding: display: Require two resets on mantix panel
-drm-intel drm-intel-next-fixes b45b6fbc671c60f56fd119c443e5570f83175928
-	Merge tag 'drm-intel-next-fixes-2020-10-22' of git://anongit.freedesktop.org/drm/drm-intel into drm-next
-drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
-	Linux 4.14-rc1
-drm-misc drm-misc-next b7a2657e770881b1243a77672f828cd920031bac
-	drm/gma500: Remove unused function psb_gem_get_aperture()
-drm-intel drm-intel-next-queued 1ba1014db2586bdfe0a9680a00613e2089586c46
-	drm/i915/edp/jsl: Update vswing table for HBR and HBR2
-drm-intel drm-intel-next 8fea92536e3efff14fa4cde7ed37c595b40a52b5
-	drm/i915: Update DRIVER_DATE to 20200917
-drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
-	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
-sound-upstream for-linus 446b8185f0c39ac3faadbcd8ac156c50f2fd4ffe
-	ALSA: hda/realtek - Add supported for Lenovo ThinkPad Headset Button
-sound-upstream for-next 1a6a071f51a5373de21edd34f9b79610be2d02e3
-	ALSA: seq: remove useless function
-drm-intel topic/core-for-CI 043d4b2c00c53845990898354ad3fabc5a31b42c
-	HAX suspend: Disable S3/S4 for fi-bdw-samus
-drm-intel drm-intel-gt-next 330b7d33056bb0fa7d7f672d4a98495f200fe9d4
-	drm/i915/region: fix order when adding blocks
+drm-tip/drm-tip b063ffc58716bfabe6b1f2bae559def23c8dbc62
+	drm-tip: 2020y-11m-09d-21h-22m-19s UTC integration manifest
+vfio-upstream/next 2e6cfd496f5b57034cf2aec738799571b5a52124
+	vfio iommu type1: Fix memory leak in vfio_iommu_type1_pin_pages
+vfio-upstream/for-linus e4eccb853664de7bcf9518fb658f35e748bf1f68
+	vfio/pci: Bypass IGD init in case of -ENODEV
+intel-iommu/iommu/next a593472591a5cf2d91244bc3f319c9dd91119343
+	Merge branches 'iommu/fixes', 'arm/omap', 'arm/exynos', 'x86/amd', 'x86/vt-d' and 'core' into next
+intel-iommu/iommu/fixes 4dd6ce478003525df8618750d30f0b90380047a7
+	iommu: Fix a check in iommu_check_bind_data()
+origin/gvt-fixes 642403e3599e80370f71ba7a8a8c8fa82e5f6706
+	drm/i915/gvt: Temporarily disable vfio_edid for BXT/APL
+origin/gvt-next a5a8ef937cfa79167f4b2a5602092b8d14fd6b9a
+	drm/i915/gvt: Fix virtual display setup for BXT/APL
+origin/gvt-next-fixes 9e7c0efadb86ddb58965561bbca638d44792d78f
+	drm/i915/gvt: Do not reset pv_notified when vGPU transit from D3->D0

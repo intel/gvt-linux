@@ -1,32 +1,16 @@
-drm drm-fixes f8394f232b1eab649ce2df5c5f15b0e528c92091
-	Linux 5.10-rc3
-drm-misc drm-misc-fixes bc551d776b691022f49b5bb5379bd58f7c4eb76a
-	drm: bridge: dw-hdmi: Avoid resetting force in the detect function
-drm-intel drm-intel-fixes 5ce6861d36ed5207aff9e5eead4c7cc38a986586
-	drm/i915: Correctly set SFC capability for video engines
-drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
-	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
-drm drm-next 512bce50a41c528fa15c4c014293e7bebf018658
-	Merge v5.10-rc3 into drm-next
-drm-misc drm-misc-next-fixes 2580a493a97da4a302cb66251b558bfc04c16e68
-	dt-binding: display: Require two resets on mantix panel
-drm-intel drm-intel-next-fixes b45b6fbc671c60f56fd119c443e5570f83175928
-	Merge tag 'drm-intel-next-fixes-2020-10-22' of git://anongit.freedesktop.org/drm/drm-intel into drm-next
-drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
-	Linux 4.14-rc1
-drm-misc drm-misc-next 2c686404012accc010693fd5c112943c4f0b9dbb
-	drm/via/via_dma: Remove set but unused variable 'agp_base'
-drm-intel drm-intel-next-queued 6ec29d2bb060442315f6c11b0af02ad5da085287
-	drm/i915/dp: Some reshuffling in mode_valid as prep for bigjoiner modes
-drm-intel drm-intel-next 8fea92536e3efff14fa4cde7ed37c595b40a52b5
-	drm/i915: Update DRIVER_DATE to 20200917
-drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
-	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
-sound-upstream for-linus b5acfe152abaa2721c9ca8aa67f941d7de55d24e
-	ALSA: hda/realtek: Add some Clove SSID in the ALC293(ALC1220)
-sound-upstream for-next 8461352ddf076712350eeded350c13385c80ff38
-	ALSA: firewire: fix comparison to bool warning
-drm-intel topic/core-for-CI 4a9b5f4558ed8673bdd9a1ac6853739447c0751b
-	HAX x86/rapl: Treat Tigerlake like Icelake
-drm-intel drm-intel-gt-next 695dc55b573985569259e18f8e6261a77924342b
-	drm/i915/tgl: Fix Media power gate sequence.
+drm-tip/drm-tip 366ce9f353c96590e0c13d8e33906022500c243c
+	drm-tip: 2020y-11m-13d-00h-47m-34s UTC integration manifest
+vfio-upstream/next 2e6cfd496f5b57034cf2aec738799571b5a52124
+	vfio iommu type1: Fix memory leak in vfio_iommu_type1_pin_pages
+vfio-upstream/for-linus e4eccb853664de7bcf9518fb658f35e748bf1f68
+	vfio/pci: Bypass IGD init in case of -ENODEV
+intel-iommu/iommu/next a593472591a5cf2d91244bc3f319c9dd91119343
+	Merge branches 'iommu/fixes', 'arm/omap', 'arm/exynos', 'x86/amd', 'x86/vt-d' and 'core' into next
+intel-iommu/iommu/fixes 4dd6ce478003525df8618750d30f0b90380047a7
+	iommu: Fix a check in iommu_check_bind_data()
+origin/gvt-fixes edb8d77a939c422f3ae57f557cd1d6899d9bafad
+	drm/i915/gvt: Set ENHANCED_FRAME_CAP bit
+origin/gvt-next 64e65f443a43c35967242fd13b494c251bc5d7ee
+	drm/i915/gvt: replace idr_init() by idr_init_base()
+origin/gvt-next-fixes 9e7c0efadb86ddb58965561bbca638d44792d78f
+	drm/i915/gvt: Do not reset pv_notified when vGPU transit from D3->D0

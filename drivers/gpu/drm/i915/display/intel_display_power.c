@@ -4492,30 +4492,24 @@ static u32 get_allowed_dc_mask(const struct drm_i915_private *dev_priv,
 	int requested_dc;
 	int max_dc;
 
-	if (INTEL_GEN(dev_priv) >= 12) {
-		if (IS_DG1(dev_priv))
-			max_dc = 3;
-		else
-			max_dc = 4;
-		/*
-		 * DC9 has a separate HW flow from the rest of the DC states,
-		 * not depending on the DMC firmware. It's needed by system
-		 * suspend/resume, so allow it unconditionally.
-		 */
-		mask = DC_STATE_EN_DC9;
-	} else if (IS_GEN(dev_priv, 11)) {
+	if (IS_DG1(dev_priv))
+		max_dc = 3;
+	else if (INTEL_GEN(dev_priv) >= 12)
+		max_dc = 4;
+	else if (INTEL_GEN(dev_priv) >= 10 || IS_GEN9_BC(dev_priv))
 		max_dc = 2;
-		mask = DC_STATE_EN_DC9;
-	} else if (IS_GEN(dev_priv, 10) || IS_GEN9_BC(dev_priv)) {
-		max_dc = 2;
-		mask = 0;
-	} else if (IS_GEN9_LP(dev_priv)) {
+	else if (IS_GEN9_LP(dev_priv))
 		max_dc = 1;
-		mask = DC_STATE_EN_DC9;
-	} else {
+	else
 		max_dc = 0;
-		mask = 0;
-	}
+
+	/*
+	 * DC9 has a separate HW flow from the rest of the DC states,
+	 * not depending on the DMC firmware. It's needed by system
+	 * suspend/resume, so allow it unconditionally.
+	 */
+	mask = IS_GEN9_LP(dev_priv) || INTEL_GEN(dev_priv) >= 11 ?
+	       DC_STATE_EN_DC9 : 0;
 
 	if (!dev_priv->params.disable_power_well)
 		max_dc = 0;

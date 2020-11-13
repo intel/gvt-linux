@@ -2765,7 +2765,9 @@ print_deadlock_bug(struct task_struct *curr, struct held_lock *prev,
  * (Note that this has to be done separately, because the graph cannot
  * detect such classes of deadlocks.)
  *
- * Returns: 0 on deadlock detected, 1 on OK, 2 on recursive read
+ * Returns: 0 on deadlock detected, 1 on OK, 2 if another lock with the same
+ * lock class is held but nest_lock is also held, i.e. we rely on the
+ * nest_lock to avoid the deadlock.
  */
 static int
 check_deadlock(struct task_struct *curr, struct held_lock *next)
@@ -2788,7 +2790,7 @@ check_deadlock(struct task_struct *curr, struct held_lock *next)
 		 * lock class (i.e. read_lock(lock)+read_lock(lock)):
 		 */
 		if ((next->read == 2) && prev->read)
-			return 2;
+			continue;
 
 		/*
 		 * We're holding the nest_lock, which serializes this lock's
@@ -3593,15 +3595,12 @@ static int validate_chain(struct task_struct *curr,
 		if (!ret)
 			return 0;
 		/*
-		 * Mark recursive read, as we jump over it when
-		 * building dependencies (just like we jump over
-		 * trylock entries):
-		 */
-		if (ret == 2)
-			hlock->read = 2;
-		/*
 		 * Add dependency only if this lock is not the head
-		 * of the chain, and if it's not a secondary read-lock:
+		 * of the chain, and if the new lock introduces no more
+		 * lock dependency (because we already hold a lock with the
+		 * same lock class) nor deadlock (because the nest_lock
+		 * serializes nesting locks), see the comments for
+		 * check_deadlock().
 		 */
 		if (!chain_head && ret != 2) {
 			if (!check_prevs_add(curr, hlock))
@@ -5206,11 +5205,14 @@ static struct pin_cookie __lock_pin_lock(struct lockdep_map *lock)
 
 		if (match_held_lock(hlock, lock)) {
 			/*
-			 * Grab 16bits of randomness; this is sufficient to not
-			 * be guessable and still allows some pin nesting in
-			 * our u32 pin_count.
+			 * Grab 6bits of randomness; this is barely sufficient
+			 * to not be guessable and still allows some 32 levels
+			 * of pin nesting in our u12 pin_count.
 			 */
-			cookie.val = 1 + (prandom_u32() >> 16);
+			cookie.val = 1 + (prandom_u32() >> 26);
+			if (DEBUG_LOCKS_WARN_ON(hlock->pin_count + cookie.val >= 1 << 12))
+				return NIL_COOKIE;
+
 			hlock->pin_count += cookie.val;
 			return cookie;
 		}

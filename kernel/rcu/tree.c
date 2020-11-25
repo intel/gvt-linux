@@ -3357,6 +3357,8 @@ kvfree_call_rcu_add_ptr_to_bulk(struct kfree_rcu_cpu *krcp, void *ptr)
 		return false;
 
 	lockdep_assert_held(&krcp->lock);
+	lockdep_assert_irqs_disabled();
+
 	idx = !!is_vmalloc_addr(ptr);
 
 	/* Check if a new block is required. */
@@ -3377,6 +3379,29 @@ kvfree_call_rcu_add_ptr_to_bulk(struct kfree_rcu_cpu *krcp, void *ptr)
 				return false;
 
 			/*
+			 * If built with CONFIG_PROVE_RAW_LOCK_NESTING option,
+			 * the lockedp will complain about violation of the
+			 * nesting rules. It does the raw_spinlock vs. spinlock
+			 * nesting checks.
+			 *
+			 * That is why we drop the raw lock. Please note IRQs are
+			 * still disabled it guarantees that the "current" stays
+			 * on the same CPU later on when the raw lock is taken
+			 * back.
+			 *
+			 * It is important because if the page allocator is invoked
+			 * in fully preemptible context, it can be that we get a page
+			 * but end up on another CPU. That another CPU might not need
+			 * a page because of having some extra spots in its internal
+			 * array for pointer collecting. Staying on same CPU eliminates
+			 * described issue.
+			 *
+			 * Dropping the lock also reduces the critical section by
+			 * the time taken by the page allocator to obtain a page.
+			 */
+			raw_spin_unlock(&krcp->lock);
+
+			/*
 			 * NOTE: For one argument of kvfree_rcu() we can
 			 * drop the lock and get the page in sleepable
 			 * context. That would allow to maintain an array
@@ -3385,6 +3410,8 @@ kvfree_call_rcu_add_ptr_to_bulk(struct kfree_rcu_cpu *krcp, void *ptr)
 			 */
 			bnode = (struct kvfree_rcu_bulk_data *)
 				__get_free_page(GFP_NOWAIT | __GFP_NOWARN);
+
+			raw_spin_lock(&krcp->lock);
 		}
 
 		/* Switch to emergency path. */

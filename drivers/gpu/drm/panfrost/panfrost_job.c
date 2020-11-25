@@ -25,7 +25,8 @@
 
 struct panfrost_queue_state {
 	struct drm_gpu_scheduler sched;
-
+	bool stopped;
+	struct mutex lock;
 	u64 fence_context;
 	u64 emit_seqno;
 };
@@ -369,6 +370,24 @@ void panfrost_job_enable_interrupts(struct panfrost_device *pfdev)
 	job_write(pfdev, JOB_INT_MASK, irq_mask);
 }
 
+static bool panfrost_scheduler_stop(struct panfrost_queue_state *queue,
+				    struct drm_sched_job *bad)
+{
+	bool stopped = false;
+
+	mutex_lock(&queue->lock);
+	if (!queue->stopped) {
+		drm_sched_stop(&queue->sched, bad);
+		if (bad)
+			drm_sched_increase_karma(bad);
+		queue->stopped = true;
+		stopped = true;
+	}
+	mutex_unlock(&queue->lock);
+
+	return stopped;
+}
+
 static void panfrost_job_timedout(struct drm_sched_job *sched_job)
 {
 	struct panfrost_job *job = to_panfrost_job(sched_job);
@@ -392,19 +411,39 @@ static void panfrost_job_timedout(struct drm_sched_job *sched_job)
 		job_read(pfdev, JS_TAIL_LO(js)),
 		sched_job);
 
+	/* Scheduler is already stopped, nothing to do. */
+	if (!panfrost_scheduler_stop(&pfdev->js->queue[js], sched_job))
+		return;
+
 	if (!mutex_trylock(&pfdev->reset_lock))
 		return;
 
 	for (i = 0; i < NUM_JOB_SLOTS; i++) {
 		struct drm_gpu_scheduler *sched = &pfdev->js->queue[i].sched;
 
-		drm_sched_stop(sched, sched_job);
-		if (js != i)
-			/* Ensure any timeouts on other slots have finished */
+		/*
+		 * If the queue is still active, make sure we wait for any
+		 * pending timeouts.
+		 */
+		if (!pfdev->js->queue[i].stopped)
 			cancel_delayed_work_sync(&sched->work_tdr);
-	}
 
-	drm_sched_increase_karma(sched_job);
+		/*
+		 * If the scheduler was not already stopped, there's a tiny
+		 * chance a timeout has expired just before we stopped it, and
+		 * drm_sched_stop() does not flush pending works. Let's flush
+		 * them now so the timeout handler doesn't get called in the
+		 * middle of a reset.
+		 */
+		if (panfrost_scheduler_stop(&pfdev->js->queue[i], NULL))
+			cancel_delayed_work_sync(&sched->work_tdr);
+
+		/*
+		 * Now that we cancelled the pending timeouts, we can safely
+		 * reset the stopped state.
+		 */
+		pfdev->js->queue[i].stopped = false;
+	}
 
 	spin_lock_irqsave(&pfdev->js->job_lock, flags);
 	for (i = 0; i < NUM_JOB_SLOTS; i++) {
@@ -421,11 +460,11 @@ static void panfrost_job_timedout(struct drm_sched_job *sched_job)
 	for (i = 0; i < NUM_JOB_SLOTS; i++)
 		drm_sched_resubmit_jobs(&pfdev->js->queue[i].sched);
 
+	mutex_unlock(&pfdev->reset_lock);
+
 	/* restart scheduler after GPU is usable again */
 	for (i = 0; i < NUM_JOB_SLOTS; i++)
 		drm_sched_start(&pfdev->js->queue[i].sched, true);
-
-	mutex_unlock(&pfdev->reset_lock);
 }
 
 static const struct drm_sched_backend_ops panfrost_sched_ops = {
@@ -515,6 +554,8 @@ int panfrost_job_init(struct panfrost_device *pfdev)
 	}
 
 	for (j = 0; j < NUM_JOB_SLOTS; j++) {
+		mutex_init(&js->queue[j].lock);
+
 		js->queue[j].fence_context = dma_fence_context_alloc(1);
 
 		ret = drm_sched_init(&js->queue[j].sched,
@@ -545,8 +586,10 @@ void panfrost_job_fini(struct panfrost_device *pfdev)
 
 	job_write(pfdev, JOB_INT_MASK, 0);
 
-	for (j = 0; j < NUM_JOB_SLOTS; j++)
+	for (j = 0; j < NUM_JOB_SLOTS; j++) {
 		drm_sched_fini(&js->queue[j].sched);
+		mutex_destroy(&js->queue[j].lock);
+	}
 
 }
 

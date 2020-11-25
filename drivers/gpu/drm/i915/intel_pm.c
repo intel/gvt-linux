@@ -3573,11 +3573,11 @@ static void ilk_write_wm_values(struct drm_i915_private *dev_priv,
 	_ilk_disable_lp_wm(dev_priv, dirty);
 
 	if (dirty & WM_DIRTY_PIPE(PIPE_A))
-		I915_WRITE(WM0_PIPEA_ILK, results->wm_pipe[0]);
+		I915_WRITE(WM0_PIPE_ILK(PIPE_A), results->wm_pipe[0]);
 	if (dirty & WM_DIRTY_PIPE(PIPE_B))
-		I915_WRITE(WM0_PIPEB_ILK, results->wm_pipe[1]);
+		I915_WRITE(WM0_PIPE_ILK(PIPE_B), results->wm_pipe[1]);
 	if (dirty & WM_DIRTY_PIPE(PIPE_C))
-		I915_WRITE(WM0_PIPEC_IVB, results->wm_pipe[2]);
+		I915_WRITE(WM0_PIPE_ILK(PIPE_C), results->wm_pipe[2]);
 
 	if (dirty & WM_DIRTY_DDB) {
 		if (IS_HASWELL(dev_priv) || IS_BROADWELL(dev_priv)) {
@@ -3706,7 +3706,7 @@ skl_setup_sagv_block_time(struct drm_i915_private *dev_priv)
  *  - All planes can enable watermarks for latencies >= SAGV engine block time
  *  - We're not using an interlaced display configuration
  */
-int
+static int
 intel_enable_sagv(struct drm_i915_private *dev_priv)
 {
 	int ret;
@@ -3740,7 +3740,7 @@ intel_enable_sagv(struct drm_i915_private *dev_priv)
 	return 0;
 }
 
-int
+static int
 intel_disable_sagv(struct drm_i915_private *dev_priv)
 {
 	int ret;
@@ -6287,13 +6287,8 @@ static void ilk_pipe_wm_get_hw_state(struct intel_crtc *crtc)
 	struct intel_crtc_state *crtc_state = to_intel_crtc_state(crtc->base.state);
 	struct intel_pipe_wm *active = &crtc_state->wm.ilk.optimal;
 	enum pipe pipe = crtc->pipe;
-	static const i915_reg_t wm0_pipe_reg[] = {
-		[PIPE_A] = WM0_PIPEA_ILK,
-		[PIPE_B] = WM0_PIPEB_ILK,
-		[PIPE_C] = WM0_PIPEC_IVB,
-	};
 
-	hw->wm_pipe[pipe] = I915_READ(wm0_pipe_reg[pipe]);
+	hw->wm_pipe[pipe] = I915_READ(WM0_PIPE_ILK(pipe));
 
 	memset(active, 0, sizeof(*active));
 
@@ -7132,6 +7127,14 @@ static void tgl_init_clock_gating(struct drm_i915_private *dev_priv)
 			 0, DFR_DISABLE);
 }
 
+static void dg1_init_clock_gating(struct drm_i915_private *dev_priv)
+{
+	/* Wa_1409836686:dg1[a0] */
+	if (IS_DG1_REVID(dev_priv, DG1_REVID_A0, DG1_REVID_A0))
+		I915_WRITE(GEN9_CLKGATE_DIS_3, I915_READ(GEN9_CLKGATE_DIS_3) |
+			   DPT_GATING_DIS);
+}
+
 static void cnp_init_clock_gating(struct drm_i915_private *dev_priv)
 {
 	if (!HAS_PCH_CNP(dev_priv))
@@ -7184,6 +7187,10 @@ static void cfl_init_clock_gating(struct drm_i915_private *dev_priv)
 	cnp_init_clock_gating(dev_priv);
 	gen9_init_clock_gating(dev_priv);
 
+	/* WAC6entrylatency:cfl */
+	I915_WRITE(FBC_LLC_READ_CTRL, I915_READ(FBC_LLC_READ_CTRL) |
+		   FBC_LLC_FULLY_OPEN);
+
 	/*
 	 * WaFbcTurnOffFbcWatermark:cfl
 	 * Display WA #0562: cfl
@@ -7202,6 +7209,10 @@ static void cfl_init_clock_gating(struct drm_i915_private *dev_priv)
 static void kbl_init_clock_gating(struct drm_i915_private *dev_priv)
 {
 	gen9_init_clock_gating(dev_priv);
+
+	/* WAC6entrylatency:kbl */
+	I915_WRITE(FBC_LLC_READ_CTRL, I915_READ(FBC_LLC_READ_CTRL) |
+		   FBC_LLC_FULLY_OPEN);
 
 	/* WaDisableSDEUnitClockGating:kbl */
 	if (IS_KBL_GT_REVID(dev_priv, 0, KBL_REVID_B0))
@@ -7577,7 +7588,9 @@ static void nop_init_clock_gating(struct drm_i915_private *dev_priv)
  */
 void intel_init_clock_gating_hooks(struct drm_i915_private *dev_priv)
 {
-	if (IS_GEN(dev_priv, 12))
+	if (IS_DG1(dev_priv))
+		dev_priv->display.init_clock_gating = dg1_init_clock_gating;
+	else if (IS_GEN(dev_priv, 12))
 		dev_priv->display.init_clock_gating = tgl_init_clock_gating;
 	else if (IS_GEN(dev_priv, 11))
 		dev_priv->display.init_clock_gating = icl_init_clock_gating;

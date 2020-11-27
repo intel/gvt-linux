@@ -2146,9 +2146,6 @@ static int azx_probe(struct pci_dev *pci,
 			 * codecs can be on the same link.
 			 */
 			if (HDA_CONTROLLER_IN_GPU(pci)) {
-				dev_err_probe(card->dev, err,
-					     "HSW/BDW HD-audio HDMI/DP requires binding with gfx driver\n");
-
 				goto out_free;
 			} else {
 				/* don't bother any longer */

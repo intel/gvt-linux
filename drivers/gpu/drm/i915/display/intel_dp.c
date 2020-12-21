@@ -2289,6 +2289,14 @@ static int intel_dp_dsc_compute_params(struct intel_encoder *encoder,
 	u8 line_buf_depth;
 	int ret;
 
+	/*
+	 * RC_MODEL_SIZE is currently a constant across all configurations.
+	 *
+	 * FIXME: Look into using sink defined DPCD DP_DSC_RC_BUF_BLK_SIZE and
+	 * DP_DSC_RC_BUF_SIZE for this.
+	 */
+	vdsc_cfg->rc_model_size = DSC_RC_MODEL_SIZE_CONST;
+
 	ret = intel_dsc_compute_params(encoder, crtc_state);
 	if (ret)
 		return ret;
@@ -3094,8 +3102,9 @@ static bool edp_panel_vdd_on(struct intel_dp *intel_dp)
 	if (edp_have_panel_vdd(intel_dp))
 		return need_to_disable;
 
-	intel_display_power_get(dev_priv,
-				intel_aux_power_domain(dig_port));
+	drm_WARN_ON(&dev_priv->drm, intel_dp->vdd_wakeref);
+	intel_dp->vdd_wakeref = intel_display_power_get(dev_priv,
+							intel_aux_power_domain(dig_port));
 
 	drm_dbg_kms(&dev_priv->drm, "Turning [ENCODER:%d:%s] VDD on\n",
 		    dig_port->base.base.base.id,
@@ -3188,8 +3197,9 @@ static void edp_panel_vdd_off_sync(struct intel_dp *intel_dp)
 	if ((pp & PANEL_POWER_ON) == 0)
 		intel_dp->panel_power_off_time = ktime_get_boottime();
 
-	intel_display_power_put_unchecked(dev_priv,
-					  intel_aux_power_domain(dig_port));
+	intel_display_power_put(dev_priv,
+				intel_aux_power_domain(dig_port),
+				fetch_and_zero(&intel_dp->vdd_wakeref));
 }
 
 static void edp_panel_vdd_work(struct work_struct *__work)
@@ -3341,7 +3351,9 @@ static void edp_panel_off(struct intel_dp *intel_dp)
 	intel_dp->panel_power_off_time = ktime_get_boottime();
 
 	/* We got a reference when we enabled the VDD. */
-	intel_display_power_put_unchecked(dev_priv, intel_aux_power_domain(dig_port));
+	intel_display_power_put(dev_priv,
+				intel_aux_power_domain(dig_port),
+				fetch_and_zero(&intel_dp->vdd_wakeref));
 }
 
 void intel_edp_panel_off(struct intel_dp *intel_dp)
@@ -6774,6 +6786,8 @@ intel_dp_connector_register(struct drm_connector *connector)
 {
 	struct drm_i915_private *i915 = to_i915(connector->dev);
 	struct intel_dp *intel_dp = intel_attached_dp(to_intel_connector(connector));
+	struct intel_digital_port *dig_port = dp_to_dig_port(intel_dp);
+	struct intel_lspcon *lspcon = &dig_port->lspcon;
 	int ret;
 
 	ret = intel_connector_register(connector);
@@ -6787,6 +6801,22 @@ intel_dp_connector_register(struct drm_connector *connector)
 	ret = drm_dp_aux_register(&intel_dp->aux);
 	if (!ret)
 		drm_dp_cec_register_connector(&intel_dp->aux, connector);
+
+	if (!intel_bios_is_lspcon_present(i915, dig_port->base.port))
+		return ret;
+
+	/*
+	 * ToDo: Clean this up to handle lspcon init and resume more
+	 * efficiently and streamlined.
+	 */
+	if (lspcon_init(dig_port)) {
+		lspcon_detect_hdr_capability(lspcon);
+		if (lspcon->hdr_supported)
+			drm_object_attach_property(&connector->base,
+						   connector->dev->mode_config.hdr_output_metadata_property,
+						   0);
+	}
+
 	return ret;
 }
 
@@ -6876,7 +6906,9 @@ static void intel_edp_panel_vdd_sanitize(struct intel_dp *intel_dp)
 	 */
 	drm_dbg_kms(&dev_priv->drm,
 		    "VDD left on by BIOS, adjusting state tracking\n");
-	intel_display_power_get(dev_priv, intel_aux_power_domain(dig_port));
+	drm_WARN_ON(&dev_priv->drm, intel_dp->vdd_wakeref);
+	intel_dp->vdd_wakeref = intel_display_power_get(dev_priv,
+							intel_aux_power_domain(dig_port));
 
 	edp_panel_vdd_schedule_off(intel_dp);
 }
@@ -7175,7 +7207,13 @@ intel_dp_add_properties(struct intel_dp *intel_dp, struct drm_connector *connect
 	else if (INTEL_GEN(dev_priv) >= 5)
 		drm_connector_attach_max_bpc_property(connector, 6, 12);
 
-	intel_attach_colorspace_property(connector);
+	/* Register HDMI colorspace for case of lspcon */
+	if (intel_bios_is_lspcon_present(dev_priv, port)) {
+		drm_connector_attach_content_type_property(connector);
+		intel_attach_hdmi_colorspace_property(connector);
+	} else {
+		intel_attach_dp_colorspace_property(connector);
+	}
 
 	if (IS_GEMINILAKE(dev_priv) || INTEL_GEN(dev_priv) >= 11)
 		drm_object_attach_property(&connector->base,

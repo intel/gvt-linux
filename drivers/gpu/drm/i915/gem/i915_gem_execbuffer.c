@@ -15,6 +15,7 @@
 
 #include "gem/i915_gem_ioctls.h"
 #include "gt/intel_context.h"
+#include "gt/intel_gpu_commands.h"
 #include "gt/intel_gt.h"
 #include "gt/intel_gt_buffer_pool.h"
 #include "gt/intel_gt_pm.h"
@@ -533,8 +534,6 @@ eb_add_vma(struct i915_execbuffer *eb,
 {
 	struct drm_i915_gem_exec_object2 *entry = &eb->exec[i];
 	struct eb_vma *ev = &eb->vma[i];
-
-	GEM_BUG_ON(i915_vma_is_closed(vma));
 
 	ev->vma = vma;
 	ev->exec = entry;

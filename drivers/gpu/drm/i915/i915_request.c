@@ -33,6 +33,7 @@
 #include "gem/i915_gem_context.h"
 #include "gt/intel_breadcrumbs.h"
 #include "gt/intel_context.h"
+#include "gt/intel_gpu_commands.h"
 #include "gt/intel_ring.h"
 #include "gt/intel_rps.h"
 
@@ -321,7 +322,8 @@ bool i915_request_retire(struct i915_request *rq)
 	 * after removing the breadcrumb and signaling it, so that we do not
 	 * inadvertently attach the breadcrumb to a completed request.
 	 */
-	remove_from_engine(rq);
+	if (!list_empty(&rq->sched.link))
+		remove_from_engine(rq);
 	GEM_BUG_ON(!llist_empty(&rq->execute_cb));
 
 	__list_del_entry(&rq->link); /* poison neither prev/next (RCU walks) */
@@ -1823,7 +1825,7 @@ long i915_request_wait(struct i915_request *rq,
 	 * for unhappy HW.
 	 */
 	if (i915_request_is_ready(rq))
-		intel_engine_flush_submission(rq->engine);
+		__intel_engine_flush_submission(rq->engine, false);
 
 	for (;;) {
 		set_current_state(state);
@@ -1853,6 +1855,106 @@ out:
 	mutex_release(&rq->engine->gt->reset.mutex.dep_map, _THIS_IP_);
 	trace_i915_request_wait_end(rq);
 	return timeout;
+}
+
+static int print_sched_attr(const struct i915_sched_attr *attr,
+			    char *buf, int x, int len)
+{
+	if (attr->priority == I915_PRIORITY_INVALID)
+		return x;
+
+	x += snprintf(buf + x, len - x,
+		      " prio=%d", attr->priority);
+
+	return x;
+}
+
+static char queue_status(const struct i915_request *rq)
+{
+	if (i915_request_is_active(rq))
+		return 'E';
+
+	if (i915_request_is_ready(rq))
+		return intel_engine_is_virtual(rq->engine) ? 'V' : 'R';
+
+	return 'U';
+}
+
+static const char *run_status(const struct i915_request *rq)
+{
+	if (i915_request_completed(rq))
+		return "!";
+
+	if (i915_request_started(rq))
+		return "*";
+
+	if (!i915_sw_fence_signaled(&rq->semaphore))
+		return "&";
+
+	return "";
+}
+
+static const char *fence_status(const struct i915_request *rq)
+{
+	if (test_bit(DMA_FENCE_FLAG_SIGNALED_BIT, &rq->fence.flags))
+		return "+";
+
+	if (test_bit(DMA_FENCE_FLAG_ENABLE_SIGNAL_BIT, &rq->fence.flags))
+		return "-";
+
+	return "";
+}
+
+void i915_request_show(struct drm_printer *m,
+		       const struct i915_request *rq,
+		       const char *prefix,
+		       int indent)
+{
+	const char *name = rq->fence.ops->get_timeline_name((struct dma_fence *)&rq->fence);
+	char buf[80] = "";
+	int x = 0;
+
+	/*
+	 * The prefix is used to show the queue status, for which we use
+	 * the following flags:
+	 *
+	 *  U [Unready]
+	 *    - initial status upon being submitted by the user
+	 *
+	 *    - the request is not ready for execution as it is waiting
+	 *      for external fences
+	 *
+	 *  R [Ready]
+	 *    - all fences the request was waiting on have been signaled,
+	 *      and the request is now ready for execution and will be
+	 *      in a backend queue
+	 *
+	 *    - a ready request may still need to wait on semaphores
+	 *      [internal fences]
+	 *
+	 *  V [Ready/virtual]
+	 *    - same as ready, but queued over multiple backends
+	 *
+	 *  E [Executing]
+	 *    - the request has been transferred from the backend queue and
+	 *      submitted for execution on HW
+	 *
+	 *    - a completed request may still be regarded as executing, its
+	 *      status may not be updated until it is retired and removed
+	 *      from the lists
+	 */
+
+	x = print_sched_attr(&rq->sched.attr, buf, x, sizeof(buf));
+
+	drm_printf(m, "%s%.*s%c %llx:%lld%s%s %s @ %dms: %s\n",
+		   prefix, indent, "                ",
+		   queue_status(rq),
+		   rq->fence.context, rq->fence.seqno,
+		   run_status(rq),
+		   fence_status(rq),
+		   buf,
+		   jiffies_to_msecs(jiffies - rq->emitted_jiffies),
+		   name);
 }
 
 #if IS_ENABLED(CONFIG_DRM_I915_SELFTEST)

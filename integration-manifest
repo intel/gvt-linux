@@ -1,32 +1,16 @@
-drm drm-fixes 2c85ebc57b3e1817b6ce1a6b703928e113a90442
-	Linux 5.10
-drm-misc drm-misc-fixes fd4e788e971ce763e50762d7b1a0048992949dd0
-	drm/omap: sdi: fix bridge enable/disable
-drm-intel drm-intel-fixes 7c5c15dffe1e3c42f44735ce9552afb7207f1584
-	drm/i915/gt: Declare gen9 has 64 mocs entries!
-drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
-	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
-drm drm-next 4efd7faba5e0687ae9143b7e6a19547ede20a7dd
-	Merge tag 'drm-intel-next-fixes-2020-12-18' of git://anongit.freedesktop.org/drm/drm-intel into drm-next
-drm-misc drm-misc-next-fixes be3e477effba636ad25dcd244db264c6cd5c1f36
-	drm/komeda: Fix bit check to import to value of proper type
-drm-intel drm-intel-next-fixes 046f70d31ddb2069941aec54966fec5b7fbc7b7b
-	drm/i915/tgl: Fix REVID macros for TGL to fetch correct stepping
-drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
-	Linux 4.14-rc1
-drm-misc drm-misc-next a1b766d1b3646b5ef90f0fa7b42fd99bbd166766
-	drm/doc: atomic implicitly enables other caps
-drm-intel drm-intel-next 4294fa5f50328eba73a48baf2b4b053e204c68ec
-	drm/i915: Reduce duplicated switch cases in hpd code
-drm-intel drm-intel-next-queued 9d8fddf8579a2a20d0e8a8b631547069a62b953e
-	drm/i915: Disable outputs during unregister
-drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
-	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
-sound-upstream for-linus 525d9c57d0eeeb660d9b25e5b2d1c95975e3ba95
-	ALSA: usb-audio: Add alias entry for ASUS PRIME TRX40 PRO-S
-sound-upstream for-next 525d9c57d0eeeb660d9b25e5b2d1c95975e3ba95
-	ALSA: usb-audio: Add alias entry for ASUS PRIME TRX40 PRO-S
-drm-intel topic/core-for-CI 86ba40501c85c1275aa841768b5dbd56ce993aac
-	HAX net/phy: Suppress WARN for calling stop while halted
-drm-intel drm-intel-gt-next a4d86249c7735b964ae812b803b828f2651b13b6
-	drm/i915/gt: Provide a utility to create a scratch buffer
+drm-tip/drm-tip 66ecfb1df07b703dc4e83e8c520b186dffe6d2b3
+	drm-tip: 2020y-12m-21d-10h-02m-12s UTC integration manifest
+vfio-upstream/next bdfae1c9a913930eae5ea506733aa7c285e12a06
+	vfio/type1: Add vfio_group_iommu_domain()
+vfio-upstream/for-linus e4eccb853664de7bcf9518fb658f35e748bf1f68
+	vfio/pci: Bypass IGD init in case of -ENODEV
+intel-iommu/iommu/next a593472591a5cf2d91244bc3f319c9dd91119343
+	Merge branches 'iommu/fixes', 'arm/omap', 'arm/exynos', 'x86/amd', 'x86/vt-d' and 'core' into next
+intel-iommu/iommu/fixes 4dd6ce478003525df8618750d30f0b90380047a7
+	iommu: Fix a check in iommu_check_bind_data()
+origin/gvt-fixes 4ec2b69da5e1544dbadb30cddb49c8df60209b0c
+	drm/i915/gvt: return error when failing to take the module reference
+origin/gvt-next 9a3a238b3de97b4210c6de66aa88b2d7021ac086
+	drm/i915/gvt: treat intel_gvt_mpt as const in gvt code
+origin/gvt-next-fixes e056f669dbf76b8752b6cb0b8edd2f75cbdcabb1
+	drm/i915/gvt: make mpt.h self-contained

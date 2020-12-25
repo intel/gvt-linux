@@ -1,34 +1,18 @@
-drm drm-fixes 2c85ebc57b3e1817b6ce1a6b703928e113a90442
-	Linux 5.10
-drm-misc drm-misc-fixes fd4e788e971ce763e50762d7b1a0048992949dd0
-	drm/omap: sdi: fix bridge enable/disable
-drm-intel drm-intel-fixes 7c5c15dffe1e3c42f44735ce9552afb7207f1584
-	drm/i915/gt: Declare gen9 has 64 mocs entries!
-drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
-	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
-drm drm-next 5b2fc08c455bbf749489254a81baeffdf4c0a693
-	Merge tag 'amd-drm-fixes-5.11-2020-12-23' of git://people.freedesktop.org/~agd5f/linux into drm-next
-drm-misc drm-misc-next-fixes be3e477effba636ad25dcd244db264c6cd5c1f36
-	drm/komeda: Fix bit check to import to value of proper type
-drm-intel drm-intel-next-fixes 046f70d31ddb2069941aec54966fec5b7fbc7b7b
-	drm/i915/tgl: Fix REVID macros for TGL to fetch correct stepping
-drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
-	Linux 4.14-rc1
-drm-misc drm-misc-next 72eab0ba6d68cde5c6e24658260b60824b297905
-	drm/hisilicon: Remove drm_dev_put in hibmc
-drm-intel drm-intel-next 021a3ac2a09592cb5d9d0946989b0e29e54a4e7b
-	drm/i915/dp: Add register definitions for Intel HDR backlight interface
-drm-intel drm-intel-next-queued 9d8fddf8579a2a20d0e8a8b631547069a62b953e
-	drm/i915: Disable outputs during unregister
-drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
-	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
-sound-upstream for-linus 13be30f156fda725b168ac89fc91f78651575307
-	ALSA/hda: apply jack fixup for the Acer Veriton N4640G/N6640G/N2510G
-sound-upstream for-next c1e8952395c1f44a6304c71401519d19ed2ac56a
-	ALSA: hda/realtek - Modify Dell platform name
-drm-intel topic/core-for-CI 86ba40501c85c1275aa841768b5dbd56ce993aac
-	HAX net/phy: Suppress WARN for calling stop while halted
-drm-intel drm-intel-gt-next fe7bcfaeb2b775f257348dc7b935f8e80eef3e7d
-	drm/i915/gt: Refactor heartbeat request construction and submission
-drm-intel topic/dp-hdmi-2.1-pcon 522508b665df3bbfdf40381d4e61777844b1703f
-	drm/i915/display: Let PCON convert from RGB to YCbCr if it can
+drm-tip/drm-tip 2384222e087b158e3cb9dd3b74a0561ed9be6dc6
+	drm-tip: 2020y-12m-24d-18h-19m-54s UTC integration manifest
+vfio-upstream/next bdfae1c9a913930eae5ea506733aa7c285e12a06
+	vfio/type1: Add vfio_group_iommu_domain()
+vfio-upstream/for-linus e4eccb853664de7bcf9518fb658f35e748bf1f68
+	vfio/pci: Bypass IGD init in case of -ENODEV
+intel-iommu/iommu/next a593472591a5cf2d91244bc3f319c9dd91119343
+	Merge branches 'iommu/fixes', 'arm/omap', 'arm/exynos', 'x86/amd', 'x86/vt-d' and 'core' into next
+intel-iommu/iommu/fixes 4dd6ce478003525df8618750d30f0b90380047a7
+	iommu: Fix a check in iommu_check_bind_data()
+origin/gvt-fixes 4ec2b69da5e1544dbadb30cddb49c8df60209b0c
+	drm/i915/gvt: return error when failing to take the module reference
+origin/gvt-next 9a3a238b3de97b4210c6de66aa88b2d7021ac086
+	drm/i915/gvt: treat intel_gvt_mpt as const in gvt code
+origin/gvt-gt-next 02dd2b12a685944c4d52c569d05f636372a7b6c7
+	drm/i915/gvt: unify lri cmd handler and mmio handlers
+origin/gvt-next-fixes e056f669dbf76b8752b6cb0b8edd2f75cbdcabb1
+	drm/i915/gvt: make mpt.h self-contained

@@ -68,6 +68,7 @@ typedef u8 intel_engine_mask_t;
 #define ALL_ENGINES ((intel_engine_mask_t)~0ul)
 
 struct intel_hw_status_page {
+	struct list_head timelines;
 	struct i915_vma *vma;
 	u32 *addr;
 };
@@ -183,7 +184,8 @@ struct intel_engine_execlists {
 	 * Reserve the upper 16b for tracking internal errors.
 	 */
 	u32 error_interrupt;
-#define ERROR_CSB BIT(31)
+#define ERROR_CSB	BIT(31)
+#define ERROR_PREEMPT	BIT(30)
 
 	/**
 	 * @reset_ccid: Active CCID [EXECLISTS_STATUS_HI] at the time of reset
@@ -559,6 +561,8 @@ struct intel_engine_cs {
 		unsigned long stop_timeout_ms;
 		unsigned long timeslice_duration_ms;
 	} props, defaults;
+
+	I915_SELFTEST_DECLARE(struct fault_attr reset_timeout);
 };
 
 static inline bool

@@ -40,7 +40,7 @@
  * A plane represents an image source that can be blended with or overlayed on
  * top of a CRTC during the scanout process. Planes take their input data from a
  * &drm_framebuffer object. The plane itself specifies the cropping and scaling
- * of that image, and where it is placed on the visible are of a display
+ * of that image, and where it is placed on the visible area of a display
  * pipeline, represented by &drm_crtc. A plane can also have additional
  * properties that specify how the pixels are positioned and blended, like
  * rotation or Z-position. All these properties are stored in &drm_plane_state.
@@ -49,14 +49,34 @@
  * &struct drm_plane (possibly as part of a larger structure) and registers it
  * with a call to drm_universal_plane_init().
  *
- * Cursor and overlay planes are optional. All drivers should provide one
- * primary plane per CRTC to avoid surprising userspace too much. See enum
- * drm_plane_type for a more in-depth discussion of these special uapi-relevant
- * plane types. Special planes are associated with their CRTC by calling
- * drm_crtc_init_with_planes().
- *
  * The type of a plane is exposed in the immutable "type" enumeration property,
- * which has one of the following values: "Overlay", "Primary", "Cursor".
+ * which has one of the following values: "Overlay", "Primary", "Cursor" (see
+ * enum drm_plane_type). A plane can be compatible with multiple CRTCs, see
+ * &drm_plane.possible_crtcs.
+ *
+ * Each CRTC must have a unique primary plane userspace can attach to enable
+ * the CRTC. In other words, userspace must be able to attach a different
+ * primary plane to each CRTC at the same time. Primary planes can still be
+ * compatible with multiple CRTCs. There must be exactly as many primary planes
+ * as there are CRTCs.
+ *
+ * Legacy uAPI doesn't expose the primary and cursor planes directly. DRM core
+ * relies on the driver to set the primary and optionally the cursor plane used
+ * for legacy IOCTLs. This is done by calling drm_crtc_init_with_planes(). All
+ * drivers must provide one primary plane per CRTC to avoid surprising legacy
+ * userspace too much.
+ */
+
+/**
+ * DOC: standard plane properties
+ *
+ * DRM planes have a few standardized properties:
+ *
+ * IN_FORMATS:
+ *     Blob property which contains the set of buffer format and modifier
+ *     pairs supported by this plane. The blob is a struct
+ *     drm_format_modifier_blob. Without this property the plane doesn't
+ *     support buffers with modifiers. Userspace cannot change this property.
  */
 
 static unsigned int drm_num_planes(struct drm_device *dev)

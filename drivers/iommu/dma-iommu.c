@@ -351,9 +351,9 @@ static int iommu_dma_init_domain(struct iommu_domain *domain, dma_addr_t base,
 	}
 
 	/* start_pfn is always nonzero for an already-initialised domain */
-	if (iovad->start_pfn) {
+	if (iovad_start_pfn(iovad)) {
 		if (1UL << order != iovad->granule ||
-		    base_pfn != iovad->start_pfn) {
+		    base_pfn != iovad_start_pfn(iovad)) {
 			pr_warn("Incompatible range for DMA domain\n");
 			return -EFAULT;
 		}

@@ -426,15 +426,27 @@ unsigned long
 alloc_iova_fast(struct iova_domain *iovad, unsigned long size,
 		unsigned long limit_pfn, bool flush_rcache)
 {
-	unsigned long iova_pfn;
+	unsigned long iova_pfn, iova_len = size;
 	struct iova *new_iova;
+	bool align = false;
 
-	iova_pfn = iova_rcache_get(iovad, size, limit_pfn + 1);
-	if (iova_pfn)
-		return iova_pfn;
+	/*
+	 * Freeing non-power-of-two-sized allocations back into the IOVA caches
+	 * will come back to bite us badly, so we have to waste a bit of space
+	 * rounding up anything cacheable to make sure that can't happen. The
+	 * order of the unadjusted size will still match upon freeing.
+	 */
+	if (size < (1 << (IOVA_RANGE_CACHE_MAX_SIZE - 1))) {
+		iova_len = roundup_pow_of_two(size);
+		iova_pfn = iova_rcache_get(iovad, iova_len, limit_pfn + 1);
+		if (iova_pfn)
+			return iova_pfn;
+
+		align = true;
+	}
 
 retry:
-	new_iova = alloc_iova(iovad, size, limit_pfn, true);
+	new_iova = alloc_iova(iovad, iova_len, limit_pfn, align);
 	if (!new_iova) {
 		unsigned int cpu;
 
@@ -446,6 +458,9 @@ retry:
 		for_each_online_cpu(cpu)
 			free_cpu_cached_iovas(cpu, iovad);
 		free_global_cached_iovas(iovad);
+
+		align = false;
+		iova_len = size;
 		goto retry;
 	}
 
@@ -916,6 +931,12 @@ static bool iova_rcache_insert(struct iova_domain *iovad, unsigned long pfn,
 	unsigned int log_size = order_base_2(size);
 
 	if (log_size >= IOVA_RANGE_CACHE_MAX_SIZE)
+		return false;
+
+	if (!is_power_of_2(size))
+		return false;
+
+	if (!IS_ALIGNED(pfn, size))
 		return false;
 
 	return __iova_rcache_insert(iovad, &iovad->rcaches[log_size], pfn);

@@ -1,0 +1,36 @@
+drm drm-fixes c8f6364f35f32786dd40336cfa35b9166d91b8ab
+	Merge branch '04.00-ampere-lite-fixes' of git://github.com/skeggsb/linux into drm-fixes
+drm-misc drm-misc-fixes bb52cb0dec8d2fecdb22843a805131478a180728
+	drm/ttm: make the pool shrinker lock a mutex
+drm-intel drm-intel-fixes 984cadea032b103c5824a5f29d0a36b3e9df6333
+	drm/i915: Allow the sysadmin to override security mitigations
+drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
+	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
+drm drm-next 1777b185f5cc0c6470f429b5a3f5f2766dc62f7a
+	Merge tag 'imx-drm-next-2021-01-08' of git://git.pengutronix.de/git/pza/linux into drm-next
+drm-misc drm-misc-next-fixes be3e477effba636ad25dcd244db264c6cd5c1f36
+	drm/komeda: Fix bit check to import to value of proper type
+drm-intel drm-intel-next-fixes 046f70d31ddb2069941aec54966fec5b7fbc7b7b
+	drm/i915/tgl: Fix REVID macros for TGL to fetch correct stepping
+drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
+	Linux 4.14-rc1
+drm-misc drm-misc-next 85dd1dd6e27147efe68539ef52802a7fa579f6cf
+	drm/vkms: Fix missing kmalloc allocation failure check
+drm-intel drm-intel-next ba217b77772a16ad93c8534121b4859e731db384
+	Merge drm/drm-next into drm-intel-next
+drm-intel drm-intel-next-queued 9d8fddf8579a2a20d0e8a8b631547069a62b953e
+	drm/i915: Disable outputs during unregister
+drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
+	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
+sound-upstream for-linus f84d3a1ec375e46a55cc3ba85c04272b24bd3921
+	ALSA: hda: Add Cometlake-R PCI ID
+sound-upstream for-next 915183b62276191ef767e00e683f4c085c4cc325
+	ALSA: x86: Simplify with dma_set_mask_and_coherent()
+drm-intel topic/core-for-CI 696510e2c0f05ede81b9cc98653508e744b4f896
+	HAX net/phy: Suppress WARN for calling stop while halted
+drm-intel drm-intel-gt-next f530a41d13f2f45174fa0996a85edc32278d3fd5
+	drm/i915/gt: Convert stats.active to plain unsigned int
+drm topic/iomem-mmap-vs-gup 85482fbab59eeb802af167510c5804dd6f521112
+	PCI: Revoke mappings like devmem
+drm topic/nouveau-ampere-modeset 584265dfec70e78ce2085b82ed389f27e06fbca0
+	Merge branch '04.01-ampere-lite' of git://github.com/skeggsb/linux into topic/nouveau-ampere-modeset

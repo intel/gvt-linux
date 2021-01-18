@@ -101,13 +101,13 @@ static const unsigned long LOCKF_USED_IN_IRQ_READ =
 #else
 #define MAX_LOCKDEP_ENTRIES	32768UL
 
-#define MAX_LOCKDEP_CHAINS_BITS	16
+#define MAX_LOCKDEP_CHAINS_BITS	17
 
 /*
  * Stack-trace: tightly packed array of stack backtrace
  * addresses. Protected by the hash_lock.
  */
-#define MAX_STACK_TRACE_ENTRIES	524288UL
+#define MAX_STACK_TRACE_ENTRIES	1048576UL
 #define STACK_TRACE_HASH_SIZE	16384
 #endif
 

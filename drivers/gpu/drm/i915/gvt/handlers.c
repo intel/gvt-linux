@@ -1651,7 +1651,7 @@ static int edp_psr_imr_iir_write(struct intel_vgpu *vgpu,
 	return 0;
 }
 
-/**
+/*
  * FixMe:
  * If guest fills non-priv batch buffer on ApolloLake/Broxton as Mesa i965 did:
  * 717e7539124d (i965: Use a WC map and memcpy for the batch instead of pwrite.)
@@ -3686,14 +3686,13 @@ void intel_gvt_restore_fence(struct intel_gvt *gvt)
 	}
 }
 
-static inline int mmio_pm_restore_handler(struct intel_gvt *gvt,
-					  u32 offset, void *data)
+static int mmio_pm_restore_handler(struct intel_gvt *gvt, u32 offset, void *data)
 {
 	struct intel_vgpu *vgpu = data;
 	struct drm_i915_private *dev_priv = gvt->gt->i915;
 
 	if (gvt->mmio.mmio_attribute[offset >> 2] & F_PM_SAVE)
-		I915_WRITE(_MMIO(offset), vgpu_vreg(vgpu, offset));
+		intel_uncore_write(&dev_priv->uncore, _MMIO(offset), vgpu_vreg(vgpu, offset));
 
 	return 0;
 }

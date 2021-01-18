@@ -2928,8 +2928,7 @@ static inline bool i915_mmio_reg_valid(i915_reg_t reg)
 
 #define HDPORT_STATE			_MMIO(0x45050)
 #define   HDPORT_DPLL_USED_MASK		REG_GENMASK(14, 12)
-#define   HDPORT_PHY_USED_DP(phy)	REG_BIT(2 * (phy) + 2)
-#define   HDPORT_PHY_USED_HDMI(phy)	REG_BIT(2 * (phy) + 1)
+#define   HDPORT_DDI_USED(phy)		REG_BIT(2 * (phy) + 1)
 #define   HDPORT_ENABLED		REG_BIT(0)
 
 /* Make render/texture TLB fetches lower priorty than associated data
@@ -4352,6 +4351,7 @@ enum {
 #define   VRR_CTL_IGN_MAX_SHIFT		REG_BIT(30)
 #define   VRR_CTL_FLIP_LINE_EN		REG_BIT(29)
 #define   VRR_CTL_LINE_COUNT_MASK	REG_GENMASK(10, 3)
+#define   VRR_CTL_LINE_COUNT(x)		REG_FIELD_PREP(VRR_CTL_LINE_COUNT_MASK, (x))
 #define   VRR_CTL_SW_FULLLINE_COUNT	REG_BIT(0)
 
 #define _TRANS_VRR_VMAX_A		0x60424
@@ -10851,8 +10851,10 @@ enum skl_power_gate {
 #define  CNL_DRAM_RANK_3			(0x2 << 9)
 #define  CNL_DRAM_RANK_4			(0x3 << 9)
 
-/* Please see hsw_read_dcomp() and hsw_write_dcomp() before using this register,
- * since on HSW we can't write to it using I915_WRITE. */
+/*
+ * Please see hsw_read_dcomp() and hsw_write_dcomp() before using this register,
+ * since on HSW we can't write to it using intel_uncore_write.
+ */
 #define D_COMP_HSW			_MMIO(MCHBAR_MIRROR_BASE_SNB + 0x5F0C)
 #define D_COMP_BDW			_MMIO(0x138144)
 #define  D_COMP_RCOMP_IN_PROGRESS	(1 << 9)

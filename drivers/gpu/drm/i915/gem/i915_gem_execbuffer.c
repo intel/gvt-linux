@@ -15,6 +15,7 @@
 
 #include "gem/i915_gem_ioctls.h"
 #include "gt/intel_context.h"
+#include "gt/intel_gpu_commands.h"
 #include "gt/intel_gt.h"
 #include "gt/intel_gt_buffer_pool.h"
 #include "gt/intel_gt_pm.h"
@@ -533,8 +534,6 @@ eb_add_vma(struct i915_execbuffer *eb,
 {
 	struct drm_i915_gem_exec_object2 *entry = &eb->exec[i];
 	struct eb_vma *ev = &eb->vma[i];
-
-	GEM_BUG_ON(i915_vma_is_closed(vma));
 
 	ev->vma = vma;
 	ev->exec = entry;
@@ -2535,6 +2534,9 @@ static int eb_submit(struct i915_execbuffer *eb, struct i915_vma *batch)
 {
 	int err;
 
+	if (intel_context_nopreempt(eb->context))
+		__set_bit(I915_FENCE_FLAG_NOPREEMPT, &eb->request->fence.flags);
+
 	err = eb_move_to_gpu(eb);
 	if (err)
 		return err;
@@ -2575,15 +2577,12 @@ static int eb_submit(struct i915_execbuffer *eb, struct i915_vma *batch)
 			return err;
 	}
 
-	if (intel_context_nopreempt(eb->context))
-		__set_bit(I915_FENCE_FLAG_NOPREEMPT, &eb->request->fence.flags);
-
 	return 0;
 }
 
 static int num_vcs_engines(const struct drm_i915_private *i915)
 {
-	return hweight64(VDBOX_MASK(&i915->gt));
+	return hweight_long(VDBOX_MASK(&i915->gt));
 }
 
 /*

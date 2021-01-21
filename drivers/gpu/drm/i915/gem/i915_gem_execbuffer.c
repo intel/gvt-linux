@@ -1151,23 +1151,16 @@ static void *reloc_iomap(struct drm_i915_gem_object *obj,
 		struct i915_vma *vma;
 		int err;
 
-		if (i915_gem_object_is_tiled(obj))
-			return ERR_PTR(-EINVAL);
-
 		if (use_cpu_reloc(cache, obj))
 			return NULL;
 
-		err = i915_gem_object_set_to_gtt_domain(obj, true);
-		if (err)
-			return ERR_PTR(err);
-
-		vma = i915_gem_object_ggtt_pin_ww(obj, &eb->ww, NULL, 0, 0,
-						  PIN_MAPPABLE |
-						  PIN_NONBLOCK /* NOWARN */ |
-						  PIN_NOEVICT);
-		if (vma == ERR_PTR(-EDEADLK))
-			return vma;
-
+		vma = ERR_PTR(-ENODEV);
+		if (!i915_gem_object_is_tiled(obj))
+			vma = i915_gem_object_ggtt_pin_ww(obj, &eb->ww,
+							  NULL, 0, 0,
+							  PIN_MAPPABLE |
+							  PIN_NONBLOCK /* NOWARN */ |
+							  PIN_NOEVICT);
 		if (IS_ERR(vma)) {
 			memset(&cache->node, 0, sizeof(cache->node));
 			mutex_lock(&ggtt->vm.mutex);

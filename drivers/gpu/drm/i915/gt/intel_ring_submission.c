@@ -333,8 +333,8 @@ static void reset_prepare(struct intel_engine_cs *engine)
 	ENGINE_TRACE(engine, "\n");
 	intel_engine_stop_cs(engine);
 
-	if (!stop_ring(engine)) {
-		/* G45 ring initialization often fails to reset head to zero */
+	/* G45 ring initialization often fails to reset head to zero */
+	if (!stop_ring(engine) && !stop_ring(engine))
 		ENGINE_TRACE(engine,
 			     "HEAD not reset to zero, "
 			     "{ CTL:%08x, HEAD:%08x, TAIL:%08x, START:%08x }\n",
@@ -342,17 +342,6 @@ static void reset_prepare(struct intel_engine_cs *engine)
 			     ENGINE_READ_FW(engine, RING_HEAD),
 			     ENGINE_READ_FW(engine, RING_TAIL),
 			     ENGINE_READ_FW(engine, RING_START));
-		if (!stop_ring(engine)) {
-			drm_err(&engine->i915->drm,
-				"failed to set %s head to zero "
-				"ctl %08x head %08x tail %08x start %08x\n",
-				engine->name,
-				ENGINE_READ_FW(engine, RING_CTL),
-				ENGINE_READ_FW(engine, RING_HEAD),
-				ENGINE_READ_FW(engine, RING_TAIL),
-				ENGINE_READ_FW(engine, RING_START));
-		}
-	}
 }
 
 static void reset_rewind(struct intel_engine_cs *engine, bool stalled)

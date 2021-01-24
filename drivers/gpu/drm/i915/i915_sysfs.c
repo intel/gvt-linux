@@ -560,6 +560,11 @@ void i915_setup_sysfs(struct drm_i915_private *dev_priv)
 	struct device *kdev = dev_priv->drm.primary->kdev;
 	int ret;
 
+	dev_priv->clients.root =
+		kobject_create_and_add("clients", &kdev->kobj);
+	if (!dev_priv->clients.root)
+		drm_warn(&dev_priv->drm, "Per-client sysfs setup failed\n");
+
 #ifdef CONFIG_PM
 	if (HAS_RC6(dev_priv)) {
 		ret = sysfs_merge_group(&kdev->kobj,
@@ -627,4 +632,7 @@ void i915_teardown_sysfs(struct drm_i915_private *dev_priv)
 	sysfs_unmerge_group(&kdev->kobj, &rc6_attr_group);
 	sysfs_unmerge_group(&kdev->kobj, &rc6p_attr_group);
 #endif
+
+	if (dev_priv->clients.root)
+		kobject_put(dev_priv->clients.root);
 }

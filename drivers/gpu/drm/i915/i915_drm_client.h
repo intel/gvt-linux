@@ -30,6 +30,14 @@ struct i915_drm_clients {
 	struct kobject *root;
 };
 
+struct i915_drm_client;
+
+struct i915_engine_busy_attribute {
+	struct device_attribute attr;
+	struct i915_drm_client *client;
+	unsigned int engine_class;
+};
+
 struct i915_drm_client_name {
 	struct rcu_head rcu;
 	struct i915_drm_client *client;
@@ -54,9 +62,11 @@ struct i915_drm_client {
 	struct i915_drm_clients *clients;
 
 	struct kobject *root;
+	struct kobject *busy_root;
 	struct {
 		struct device_attribute pid;
 		struct device_attribute name;
+		struct i915_engine_busy_attribute busy[MAX_ENGINE_CLASS + 1];
 	} attr;
 
 	/**

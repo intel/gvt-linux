@@ -9,6 +9,11 @@
 
 #include <drm/drm_print.h>
 
+#include <uapi/drm/i915_drm.h>
+
+#include "gem/i915_gem_context.h"
+#include "gt/intel_engine_user.h"
+
 #include "i915_drm_client.h"
 #include "i915_drv.h"
 #include "i915_gem.h"
@@ -55,6 +60,95 @@ show_client_pid(struct device *kdev, struct device_attribute *attr, char *buf)
 	return ret;
 }
 
+static u64 busy_add(struct i915_gem_context *ctx, unsigned int class)
+{
+	struct i915_gem_engines_iter it;
+	struct intel_context *ce;
+	u64 total = 0;
+
+	for_each_gem_engine(ce, rcu_dereference(ctx->engines), it) {
+		if (ce->engine->uabi_class != class)
+			continue;
+
+		total += intel_context_get_total_runtime_ns(ce);
+	}
+
+	return total;
+}
+
+static ssize_t
+show_busy(struct device *kdev, struct device_attribute *attr, char *buf)
+{
+	struct i915_engine_busy_attribute *i915_attr =
+		container_of(attr, typeof(*i915_attr), attr);
+	unsigned int class = i915_attr->engine_class;
+	const struct i915_drm_client *client = i915_attr->client;
+	const struct list_head *list = &client->ctx_list;
+	u64 total = atomic64_read(&client->past_runtime[class]);
+	struct i915_gem_context *ctx;
+
+	rcu_read_lock();
+	list_for_each_entry_rcu(ctx, list, client_link)
+		total += busy_add(ctx, class);
+	rcu_read_unlock();
+
+	return sysfs_emit(buf, "%llu\n", total);
+}
+
+static const char * const uabi_class_names[] = {
+	[I915_ENGINE_CLASS_RENDER] = "0",
+	[I915_ENGINE_CLASS_COPY] = "1",
+	[I915_ENGINE_CLASS_VIDEO] = "2",
+	[I915_ENGINE_CLASS_VIDEO_ENHANCE] = "3",
+};
+
+static int __client_register_sysfs_busy(struct i915_drm_client *client)
+{
+	struct i915_drm_clients *clients = client->clients;
+	unsigned int i;
+	int ret = 0;
+
+	if (!(clients->i915->caps.scheduler & I915_SCHEDULER_CAP_ENGINE_BUSY_STATS))
+		return 0;
+
+	client->busy_root = kobject_create_and_add("busy", client->root);
+	if (!client->busy_root)
+		return -ENOMEM;
+
+	for (i = 0; i < ARRAY_SIZE(uabi_class_names); i++) {
+		struct i915_engine_busy_attribute *i915_attr =
+			&client->attr.busy[i];
+		struct device_attribute *attr = &i915_attr->attr;
+
+		if (!intel_engine_lookup_user(clients->i915, i, 0))
+			continue;
+
+		i915_attr->client = client;
+		i915_attr->engine_class = i;
+
+		sysfs_attr_init(&attr->attr);
+
+		attr->attr.name = uabi_class_names[i];
+		attr->attr.mode = 0444;
+		attr->show = show_busy;
+
+		ret = sysfs_create_file(client->busy_root, &attr->attr);
+		if (ret)
+			goto out;
+	}
+
+out:
+	if (ret)
+		kobject_put(client->busy_root);
+
+	return ret;
+}
+
+static void __client_unregister_sysfs_busy(struct i915_drm_client *client)
+{
+	kobject_put(fetch_and_zero(&client->busy_root));
+}
+
 static int __client_register_sysfs(struct i915_drm_client *client)
 {
 	const struct {
@@ -90,9 +184,12 @@ static int __client_register_sysfs(struct i915_drm_client *client)
 
 		ret = sysfs_create_file(client->root, &attr->attr);
 		if (ret)
-			break;
+			goto out;
 	}
 
+	ret = __client_register_sysfs_busy(client);
+
+out:
 	if (ret)
 		kobject_put(client->root);
 
@@ -101,6 +198,8 @@ static int __client_register_sysfs(struct i915_drm_client *client)
 
 static void __client_unregister_sysfs(struct i915_drm_client *client)
 {
+	__client_unregister_sysfs_busy(client);
+
 	kobject_put(fetch_and_zero(&client->root));
 }
 

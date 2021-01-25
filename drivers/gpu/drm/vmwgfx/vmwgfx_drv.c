@@ -153,7 +153,7 @@
 	DRM_IOWR(DRM_COMMAND_BASE + DRM_VMW_MSG,			\
 		struct drm_vmw_msg_arg)
 
-/**
+/*
  * The core DRM version of this macro doesn't account for
  * DRM_COMMAND_BASE.
  */
@@ -161,7 +161,7 @@
 #define VMW_IOCTL_DEF(ioctl, func, flags) \
   [DRM_IOCTL_NR(DRM_IOCTL_##ioctl) - DRM_COMMAND_BASE] = {DRM_IOCTL_##ioctl, flags, func}
 
-/**
+/*
  * Ioctl definitions.
  */
 
@@ -526,7 +526,7 @@ static void vmw_release_device_late(struct vmw_private *dev_priv)
 	vmw_fifo_release(dev_priv, &dev_priv->fifo);
 }
 
-/**
+/*
  * Sets the initial_[width|height] fields on the given vmw_private.
  *
  * It does so by reading SVGA_REG_[WIDTH|HEIGHT] regs and then
@@ -599,7 +599,7 @@ static int vmw_dma_select_mode(struct vmw_private *dev_priv)
 /**
  * vmw_dma_masks - set required page- and dma masks
  *
- * @dev: Pointer to struct drm-device
+ * @dev_priv: Pointer to struct drm-device
  *
  * With 32-bit we can only handle 32 bit PFNs. Optionally set that
  * restriction also for 64-bit systems.
@@ -884,12 +884,12 @@ static int vmw_driver_load(struct vmw_private *dev_priv, u32 pci_id)
 	drm_vma_offset_manager_init(&dev_priv->vma_manager,
 				    DRM_FILE_PAGE_OFFSET_START,
 				    DRM_FILE_PAGE_OFFSET_SIZE);
-	ret = ttm_bo_device_init(&dev_priv->bdev, &vmw_bo_driver,
-				 dev_priv->drm.dev,
-				 dev_priv->drm.anon_inode->i_mapping,
-				 &dev_priv->vma_manager,
-				 dev_priv->map_mode == vmw_dma_alloc_coherent,
-				 false);
+	ret = ttm_device_init(&dev_priv->bdev, &vmw_bo_driver,
+			      dev_priv->drm.dev,
+			      dev_priv->drm.anon_inode->i_mapping,
+			      &dev_priv->vma_manager,
+			      dev_priv->map_mode == vmw_dma_alloc_coherent,
+			      false);
 	if (unlikely(ret != 0)) {
 		DRM_ERROR("Failed initializing TTM buffer object driver.\n");
 		goto out_no_bdev;
@@ -1006,7 +1006,7 @@ out_no_kms:
 		vmw_gmrid_man_fini(dev_priv, VMW_PL_GMR);
 	vmw_vram_manager_fini(dev_priv);
 out_no_vram:
-	(void)ttm_bo_device_release(&dev_priv->bdev);
+	ttm_device_fini(&dev_priv->bdev);
 out_no_bdev:
 	vmw_fence_manager_takedown(dev_priv->fman);
 out_no_fman:
@@ -1053,7 +1053,7 @@ static void vmw_driver_unload(struct drm_device *dev)
 	if (dev_priv->has_mob)
 		vmw_gmrid_man_fini(dev_priv, VMW_PL_MOB);
 	vmw_vram_manager_fini(dev_priv);
-	(void) ttm_bo_device_release(&dev_priv->bdev);
+	ttm_device_fini(&dev_priv->bdev);
 	drm_vma_offset_manager_destroy(&dev_priv->vma_manager);
 	vmw_release_device_late(dev_priv);
 	vmw_fence_manager_takedown(dev_priv->fman);
@@ -1516,7 +1516,6 @@ static int vmw_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 	if (IS_ERR(vmw))
 		return PTR_ERR(vmw);
 
-	vmw->drm.pdev = pdev;
 	pci_set_drvdata(pdev, &vmw->drm);
 
 	ret = vmw_driver_load(vmw, ent->device);

@@ -59,6 +59,7 @@ i915-y += i915_drv.o \
 
 # core library code
 i915-y += \
+	dma_resv_utils.o \
 	i915_memcpy.o \
 	i915_mm.o \
 	i915_sw_fence.o \
@@ -83,6 +84,7 @@ gt-y += \
 	gt/gen6_engine_cs.o \
 	gt/gen6_ppgtt.o \
 	gt/gen7_renderclear.o \
+	gt/gen8_engine_cs.o \
 	gt/gen8_ppgtt.o \
 	gt/intel_breadcrumbs.o \
 	gt/intel_context.o \
@@ -92,6 +94,7 @@ gt-y += \
 	gt/intel_engine_heartbeat.o \
 	gt/intel_engine_pm.o \
 	gt/intel_engine_user.o \
+	gt/intel_execlists_submission.o \
 	gt/intel_ggtt.o \
 	gt/intel_ggtt_fencing.o \
 	gt/intel_gt.o \
@@ -107,6 +110,7 @@ gt-y += \
 	gt/intel_mocs.o \
 	gt/intel_ppgtt.o \
 	gt/intel_rc6.o \
+	gt/intel_region_lmem.o \
 	gt/intel_renderstate.o \
 	gt/intel_reset.o \
 	gt/intel_ring.o \
@@ -132,6 +136,7 @@ gem-y += \
 	gem/i915_gem_clflush.o \
 	gem/i915_gem_client_blt.o \
 	gem/i915_gem_context.o \
+	gem/i915_gem_create.o \
 	gem/i915_gem_dmabuf.o \
 	gem/i915_gem_domain.o \
 	gem/i915_gem_execbuffer.o \
@@ -167,7 +172,6 @@ i915-y += \
 	  i915_scheduler.o \
 	  i915_trace_points.o \
 	  i915_vma.o \
-	  intel_region_lmem.o \
 	  intel_wopcm.o
 
 # general-purpose microcontroller (GuC) support
@@ -198,6 +202,7 @@ i915-y += \
 	display/intel_combo_phy.o \
 	display/intel_connector.o \
 	display/intel_csr.o \
+	display/intel_cursor.o \
 	display/intel_display.o \
 	display/intel_display_power.o \
 	display/intel_dpio_phy.o \
@@ -215,7 +220,8 @@ i915-y += \
 	display/intel_quirks.o \
 	display/intel_sprite.o \
 	display/intel_tc.o \
-	display/intel_vga.o
+	display/intel_vga.o \
+	display/i9xx_plane.o
 i915-$(CONFIG_ACPI) += \
 	display/intel_acpi.o \
 	display/intel_opregion.o
@@ -284,15 +290,7 @@ obj-$(CONFIG_DRM_I915_GVT_KVMGT) += gvt/kvmgt.o
 
 # exclude some broken headers from the test coverage
 no-header-test := \
-	display/intel_vbt_defs.h \
-	gvt/execlist.h \
-	gvt/fb_decoder.h \
-	gvt/gtt.h \
-	gvt/gvt.h \
-	gvt/interrupt.h \
-	gvt/mmio_context.h \
-	gvt/mpt.h \
-	gvt/scheduler.h
+	display/intel_vbt_defs.h
 
 extra-$(CONFIG_DRM_I915_WERROR) += \
 	$(patsubst %.h,%.hdrtest, $(filter-out $(no-header-test), \

@@ -30,6 +30,10 @@ struct intel_context;
 struct intel_ring;
 
 struct intel_context_ops {
+	unsigned long flags;
+#define COPS_HAS_INFLIGHT_BIT 0
+#define COPS_HAS_INFLIGHT BIT(COPS_HAS_INFLIGHT_BIT)
+
 	int (*alloc)(struct intel_context *ce);
 
 	int (*pre_pin)(struct intel_context *ce, struct i915_gem_ww_ctx *ww, void **vaddr);
@@ -85,12 +89,13 @@ struct intel_context {
 	unsigned long flags;
 #define CONTEXT_BARRIER_BIT		0
 #define CONTEXT_ALLOC_BIT		1
-#define CONTEXT_VALID_BIT		2
-#define CONTEXT_CLOSED_BIT		3
-#define CONTEXT_USE_SEMAPHORES		4
-#define CONTEXT_BANNED			5
-#define CONTEXT_FORCE_SINGLE_SUBMISSION	6
-#define CONTEXT_NOPREEMPT		7
+#define CONTEXT_INIT_BIT		2
+#define CONTEXT_VALID_BIT		3
+#define CONTEXT_CLOSED_BIT		4
+#define CONTEXT_USE_SEMAPHORES		5
+#define CONTEXT_BANNED			6
+#define CONTEXT_FORCE_SINGLE_SUBMISSION	7
+#define CONTEXT_NOPREEMPT		8
 
 	u32 *lrc_reg_state;
 	union {

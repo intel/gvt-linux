@@ -924,6 +924,9 @@ slice_semaphore_queue(struct intel_engine_cs *outer,
 		return PTR_ERR(head);
 
 	for_each_engine(engine, outer->gt, id) {
+		if (!intel_engine_has_preemption(engine))
+			continue;
+
 		for (i = 0; i < count; i++) {
 			struct i915_request *rq;
 
@@ -943,8 +946,8 @@ slice_semaphore_queue(struct intel_engine_cs *outer,
 
 	if (i915_request_wait(head, 0,
 			      2 * outer->gt->info.num_engines * (count + 2) * (count + 3)) < 0) {
-		pr_err("Failed to slice along semaphore chain of length (%d, %d)!\n",
-		       count, n);
+		pr_err("%s: Failed to slice along semaphore chain of length (%d, %d)!\n",
+		       outer->name, count, n);
 		GEM_TRACE_DUMP();
 		intel_gt_set_wedged(outer->gt);
 		err = -EIO;
@@ -1721,12 +1724,6 @@ static int live_preempt(void *arg)
 	enum intel_engine_id id;
 	int err = -ENOMEM;
 
-	if (!HAS_LOGICAL_RING_PREEMPTION(gt->i915))
-		return 0;
-
-	if (!(gt->i915->caps.scheduler & I915_SCHEDULER_CAP_PREEMPTION))
-		pr_err("Logical preemption supported, but not exposed\n");
-
 	if (igt_spinner_init(&spin_hi, gt))
 		return -ENOMEM;
 
@@ -1820,9 +1817,6 @@ static int live_late_preempt(void *arg)
 	struct i915_sched_attr attr = {};
 	enum intel_engine_id id;
 	int err = -ENOMEM;
-
-	if (!HAS_LOGICAL_RING_PREEMPTION(gt->i915))
-		return 0;
 
 	if (igt_spinner_init(&spin_hi, gt))
 		return -ENOMEM;
@@ -1956,9 +1950,6 @@ static int live_nopreempt(void *arg)
 	 * Verify that we can disable preemption for an individual request
 	 * that may be being observed and not want to be interrupted.
 	 */
-
-	if (!HAS_LOGICAL_RING_PREEMPTION(gt->i915))
-		return 0;
 
 	if (preempt_client_init(gt, &a))
 		return -ENOMEM;
@@ -2299,6 +2290,77 @@ out:
 	return err;
 }
 
+static void force_reset_timeout(struct intel_engine_cs *engine)
+{
+	engine->reset_timeout.probability = 999;
+	atomic_set(&engine->reset_timeout.times, -1);
+}
+
+static void cancel_reset_timeout(struct intel_engine_cs *engine)
+{
+	memset(&engine->reset_timeout, 0, sizeof(engine->reset_timeout));
+}
+
+static int __cancel_fail(struct live_preempt_cancel *arg)
+{
+	struct intel_engine_cs *engine = arg->engine;
+	struct i915_request *rq;
+	int err;
+
+	if (!IS_ACTIVE(CONFIG_DRM_I915_PREEMPT_TIMEOUT))
+		return 0;
+
+	if (!intel_has_reset_engine(engine->gt))
+		return 0;
+
+	GEM_TRACE("%s(%s)\n", __func__, engine->name);
+	rq = spinner_create_request(&arg->a.spin,
+				    arg->a.ctx, engine,
+				    MI_NOOP); /* preemption disabled */
+	if (IS_ERR(rq))
+		return PTR_ERR(rq);
+
+	clear_bit(CONTEXT_BANNED, &rq->context->flags);
+	i915_request_get(rq);
+	i915_request_add(rq);
+	if (!igt_wait_for_spinner(&arg->a.spin, rq)) {
+		err = -EIO;
+		goto out;
+	}
+
+	intel_context_set_banned(rq->context);
+
+	err = intel_engine_pulse(engine);
+	if (err)
+		goto out;
+
+	force_reset_timeout(engine);
+
+	/* force preempt reset [failure] */
+	while (!engine->execlists.pending[0])
+		intel_engine_flush_submission(engine);
+	del_timer_sync(&engine->execlists.preempt);
+	intel_engine_flush_submission(engine);
+
+	cancel_reset_timeout(engine);
+
+	/* after failure, require heartbeats to reset device */
+	intel_engine_set_heartbeat(engine, 1);
+	err = wait_for_reset(engine, rq, HZ / 2);
+	intel_engine_set_heartbeat(engine,
+				   engine->defaults.heartbeat_interval_ms);
+	if (err) {
+		pr_err("Cancelled inflight0 request did not reset\n");
+		goto out;
+	}
+
+out:
+	i915_request_put(rq);
+	if (igt_flush_test(engine->i915))
+		err = -EIO;
+	return err;
+}
+
 static int live_preempt_cancel(void *arg)
 {
 	struct intel_gt *gt = arg;
@@ -2310,9 +2372,6 @@ static int live_preempt_cancel(void *arg)
 	 * To cancel an inflight context, we need to first remove it from the
 	 * GPU. That sounds like preemption! Plus a little bit of bookkeeping.
 	 */
-
-	if (!HAS_LOGICAL_RING_PREEMPTION(gt->i915))
-		return 0;
 
 	if (preempt_client_init(gt, &data.a))
 		return -ENOMEM;
@@ -2336,6 +2395,10 @@ static int live_preempt_cancel(void *arg)
 			goto err_wedged;
 
 		err = __cancel_hostile(&data);
+		if (err)
+			goto err_wedged;
+
+		err = __cancel_fail(&data);
 		if (err)
 			goto err_wedged;
 	}
@@ -2372,9 +2435,6 @@ static int live_suppress_self_preempt(void *arg)
 	 * skipped and that we do not accidentally apply it after the CS
 	 * completion event.
 	 */
-
-	if (!HAS_LOGICAL_RING_PREEMPTION(gt->i915))
-		return 0;
 
 	if (intel_uc_uses_guc_submission(&gt->uc))
 		return 0; /* presume black blox */
@@ -2487,9 +2547,6 @@ static int live_chain_preempt(void *arg)
 	 * preemption of the last request. It should then complete before
 	 * the previously submitted spinner in B.
 	 */
-
-	if (!HAS_LOGICAL_RING_PREEMPTION(gt->i915))
-		return 0;
 
 	if (preempt_client_init(gt, &hi))
 		return -ENOMEM;
@@ -2658,8 +2715,10 @@ static int create_gang(struct intel_engine_cs *engine,
 		goto err_obj;
 
 	cs = i915_gem_object_pin_map(obj, I915_MAP_WC);
-	if (IS_ERR(cs))
+	if (IS_ERR(cs)) {
+		err = PTR_ERR(cs);
 		goto err_obj;
+	}
 
 	/* Semaphore target: spin until zero */
 	*cs++ = MI_ARB_ON_OFF | MI_ARB_ENABLE;
@@ -2686,8 +2745,10 @@ static int create_gang(struct intel_engine_cs *engine,
 	i915_gem_object_unpin_map(obj);
 
 	rq = intel_context_create_request(ce);
-	if (IS_ERR(rq))
+	if (IS_ERR(rq)) {
+		err = PTR_ERR(rq);
 		goto err_obj;
+	}
 
 	rq->batch = i915_vma_get(vma);
 	i915_request_get(rq);
@@ -2889,9 +2950,6 @@ static int live_preempt_gang(void *arg)
 	struct intel_gt *gt = arg;
 	struct intel_engine_cs *engine;
 	enum intel_engine_id id;
-
-	if (!HAS_LOGICAL_RING_PREEMPTION(gt->i915))
-		return 0;
 
 	/*
 	 * Build as long a chain of preempters as we can, with each
@@ -3193,9 +3251,6 @@ static int live_preempt_user(void *arg)
 	u32 *result;
 	int err = 0;
 
-	if (!HAS_LOGICAL_RING_PREEMPTION(gt->i915))
-		return 0;
-
 	/*
 	 * In our other tests, we look at preemption in carefully
 	 * controlled conditions in the ringbuffer. Since most of the
@@ -3243,8 +3298,10 @@ static int live_preempt_user(void *arg)
 
 			rq = create_gpr_client(engine, global,
 					       NUM_GPR * i * sizeof(u32));
-			if (IS_ERR(rq))
+			if (IS_ERR(rq)) {
+				err = PTR_ERR(rq);
 				goto end_test;
+			}
 
 			client[i] = rq;
 		}
@@ -3316,9 +3373,6 @@ static int live_preempt_timeout(void *arg)
 	 * context if it refuses to yield the GPU.
 	 */
 	if (!IS_ACTIVE(CONFIG_DRM_I915_PREEMPT_TIMEOUT))
-		return 0;
-
-	if (!HAS_LOGICAL_RING_PREEMPTION(gt->i915))
 		return 0;
 
 	if (!intel_has_reset_engine(gt))
@@ -3590,9 +3644,6 @@ static int live_preempt_smoke(void *arg)
 	int err = -ENOMEM;
 	u32 *cs;
 	int n;
-
-	if (!HAS_LOGICAL_RING_PREEMPTION(smoke.gt->i915))
-		return 0;
 
 	smoke.contexts = kmalloc_array(smoke.ncontext,
 				       sizeof(*smoke.contexts),

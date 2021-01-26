@@ -151,8 +151,7 @@ static void mark_innocent(struct i915_request *rq)
 void __i915_request_reset(struct i915_request *rq, bool guilty)
 {
 	RQ_TRACE(rq, "guilty? %s\n", yesno(guilty));
-
-	GEM_BUG_ON(i915_request_completed(rq));
+	GEM_BUG_ON(__i915_request_is_complete(rq));
 
 	rcu_read_lock(); /* protect the GEM context */
 	if (guilty) {
@@ -496,6 +495,9 @@ static int gen8_engine_reset_prepare(struct intel_engine_cs *engine)
 	const i915_reg_t reg = RING_RESET_CTL(engine->mmio_base);
 	u32 request, mask, ack;
 	int ret;
+
+	if (I915_SELFTEST_ONLY(should_fail(&engine->reset_timeout, 1)))
+		return -ETIMEDOUT;
 
 	ack = intel_uncore_read_fw(uncore, reg);
 	if (ack & RESET_CTL_CAT_ERROR) {
@@ -1107,7 +1109,7 @@ error:
 	goto finish;
 }
 
-static inline int intel_gt_reset_engine(struct intel_engine_cs *engine)
+static int intel_gt_reset_engine(struct intel_engine_cs *engine)
 {
 	return __intel_gt_reset(engine->gt, engine->mask);
 }
@@ -1203,14 +1205,14 @@ static void intel_gt_reset_global(struct intel_gt *gt,
 
 	/* Use a watchdog to ensure that our reset completes */
 	intel_wedge_on_timeout(&w, gt, 5 * HZ) {
-		intel_prepare_reset(gt->i915);
+		intel_display_prepare_reset(gt->i915);
 
 		/* Flush everyone using a resource about to be clobbered */
 		synchronize_srcu_expedited(&gt->reset.backoff_srcu);
 
 		intel_gt_reset(gt, engine_mask, reason);
 
-		intel_finish_reset(gt->i915);
+		intel_display_finish_reset(gt->i915);
 	}
 
 	if (!test_bit(I915_WEDGED, &gt->reset.flags))
@@ -1393,6 +1395,17 @@ void intel_gt_init_reset(struct intel_gt *gt)
 	init_waitqueue_head(&gt->reset.queue);
 	mutex_init(&gt->reset.mutex);
 	init_srcu_struct(&gt->reset.backoff_srcu);
+
+	/*
+	 * While undesirable to wait inside the shrinker, complain anyway.
+	 *
+	 * If we have to wait during shrinking, we guarantee forward progress
+	 * by forcing the reset. Therefore during the reset we must not
+	 * re-enter the shrinker. By declaring that we take the reset mutex
+	 * within the shrinker, we forbid ourselves from performing any
+	 * fs-reclaim or taking related locks during reset.
+	 */
+	i915_gem_shrinker_taints_mutex(gt->i915, &gt->reset.mutex);
 
 	/* no GPU until we are ready! */
 	__set_bit(I915_WEDGED, &gt->reset.flags);

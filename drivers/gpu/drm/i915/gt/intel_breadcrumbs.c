@@ -257,17 +257,17 @@ static void signal_irq_work(struct irq_work *work)
 			list_del_rcu(&rq->signal_link);
 			release = remove_signaling_context(b, ce);
 			spin_unlock(&ce->signal_lock);
+			if (release) {
+				if (intel_timeline_is_last(ce->timeline, rq))
+					add_retire(b, ce->timeline);
+				intel_context_put(ce);
+			}
 
 			if (__dma_fence_signal(&rq->fence))
 				/* We own signal_node now, xfer to local list */
 				signal = slist_add(&rq->signal_node, signal);
 			else
 				i915_request_put(rq);
-
-			if (release) {
-				add_retire(b, ce->timeline);
-				intel_context_put(ce);
-			}
 		}
 	}
 	atomic_dec(&b->signaler_active);
@@ -453,16 +453,17 @@ void i915_request_cancel_breadcrumb(struct i915_request *rq)
 {
 	struct intel_breadcrumbs *b = READ_ONCE(rq->engine)->breadcrumbs;
 	struct intel_context *ce = rq->context;
-	unsigned long flags;
 	bool release;
 
-	if (!test_and_clear_bit(I915_FENCE_FLAG_SIGNAL, &rq->fence.flags))
+	spin_lock(&ce->signal_lock);
+	if (!test_and_clear_bit(I915_FENCE_FLAG_SIGNAL, &rq->fence.flags)) {
+		spin_unlock(&ce->signal_lock);
 		return;
+	}
 
-	spin_lock_irqsave(&ce->signal_lock, flags);
 	list_del_rcu(&rq->signal_link);
 	release = remove_signaling_context(b, ce);
-	spin_unlock_irqrestore(&ce->signal_lock, flags);
+	spin_unlock(&ce->signal_lock);
 	if (release)
 		intel_context_put(ce);
 
@@ -470,6 +471,39 @@ void i915_request_cancel_breadcrumb(struct i915_request *rq)
 		irq_signal_request(rq, b);
 
 	i915_request_put(rq);
+}
+
+void intel_context_remove_breadcrumbs(struct intel_context *ce,
+				      struct intel_breadcrumbs *b)
+{
+	struct i915_request *rq, *rn;
+	bool release = false;
+	unsigned long flags;
+
+	spin_lock_irqsave(&ce->signal_lock, flags);
+
+	if (list_empty(&ce->signals))
+		goto unlock;
+
+	list_for_each_entry_safe(rq, rn, &ce->signals, signal_link) {
+		GEM_BUG_ON(!__i915_request_is_complete(rq));
+		if (!test_and_clear_bit(I915_FENCE_FLAG_SIGNAL,
+					&rq->fence.flags))
+			continue;
+
+		list_del_rcu(&rq->signal_link);
+		irq_signal_request(rq, b);
+		i915_request_put(rq);
+	}
+	release = remove_signaling_context(b, ce);
+
+unlock:
+	spin_unlock_irqrestore(&ce->signal_lock, flags);
+	if (release)
+		intel_context_put(ce);
+
+	while (atomic_read(&b->signaler_active))
+		cpu_relax();
 }
 
 static void print_signals(struct intel_breadcrumbs *b, struct drm_printer *p)
@@ -484,8 +518,8 @@ static void print_signals(struct intel_breadcrumbs *b, struct drm_printer *p)
 		list_for_each_entry_rcu(rq, &ce->signals, signal_link)
 			drm_printf(p, "\t[%llx:%llx%s] @ %dms\n",
 				   rq->fence.context, rq->fence.seqno,
-				   i915_request_completed(rq) ? "!" :
-				   i915_request_started(rq) ? "*" :
+				   __i915_request_is_complete(rq) ? "!" :
+				   __i915_request_has_started(rq) ? "*" :
 				   "",
 				   jiffies_to_msecs(jiffies - rq->emitted_jiffies));
 	}

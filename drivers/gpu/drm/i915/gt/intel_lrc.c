@@ -14,11 +14,6 @@
 #include "intel_ring.h"
 #include "shmem_utils.h"
 
-static inline unsigned int dword_in_page(void *addr)
-{
-	return offset_in_page(addr) / sizeof(u32);
-}
-
 static void set_offsets(u32 *regs,
 			const u8 *data,
 			const struct intel_engine_cs *engine,
@@ -916,6 +911,10 @@ lrc_pin(struct intel_context *ce,
 	void *vaddr)
 {
 	ce->lrc_reg_state = vaddr + LRC_STATE_OFFSET;
+
+	if (!__test_and_set_bit(CONTEXT_INIT_BIT, &ce->flags))
+		lrc_init_state(ce, engine, vaddr);
+
 	ce->lrc.lrca = lrc_update_regs(ce, engine, ce->ring->tail);
 	return 0;
 }
@@ -1036,7 +1035,7 @@ gen12_emit_indirect_ctx_xcs(const struct intel_context *ce, u32 *cs)
 	return cs;
 }
 
-static inline u32 context_wa_bb_offset(const struct intel_context *ce)
+static u32 context_wa_bb_offset(const struct intel_context *ce)
 {
 	return PAGE_SIZE * ce->wa_bb_page;
 }
@@ -1099,7 +1098,7 @@ setup_indirect_ctx_bb(const struct intel_context *ce,
  * engine info, SW context ID and SW counter need to form a unique number
  * (Context ID) per lrc.
  */
-static inline u32 lrc_descriptor(const struct intel_context *ce)
+static u32 lrc_descriptor(const struct intel_context *ce)
 {
 	u32 desc;
 
@@ -1449,11 +1448,14 @@ err:
 void lrc_fini_wa_ctx(struct intel_engine_cs *engine)
 {
 	i915_vma_unpin_and_release(&engine->wa_ctx.vma, 0);
+
+	/* Called on error unwind, clear all flags to prevent further use */
+	memset(&engine->wa_ctx, 0, sizeof(engine->wa_ctx));
 }
 
 typedef u32 *(*wa_bb_func_t)(struct intel_engine_cs *engine, u32 *batch);
 
-int lrc_init_wa_ctx(struct intel_engine_cs *engine)
+void lrc_init_wa_ctx(struct intel_engine_cs *engine)
 {
 	struct i915_ctx_workarounds *wa_ctx = &engine->wa_ctx;
 	struct i915_wa_ctx_bb *wa_bb[] = {
@@ -1462,15 +1464,15 @@ int lrc_init_wa_ctx(struct intel_engine_cs *engine)
 	wa_bb_func_t wa_bb_fn[ARRAY_SIZE(wa_bb)];
 	void *batch, *batch_ptr;
 	unsigned int i;
-	int ret;
+	int err;
 
 	if (engine->class != RENDER_CLASS)
-		return 0;
+		return;
 
 	switch (INTEL_GEN(engine->i915)) {
 	case 12:
 	case 11:
-		return 0;
+		return;
 	case 10:
 		wa_bb_fn[0] = gen10_init_indirectctx_bb;
 		wa_bb_fn[1] = NULL;
@@ -1485,14 +1487,20 @@ int lrc_init_wa_ctx(struct intel_engine_cs *engine)
 		break;
 	default:
 		MISSING_CASE(INTEL_GEN(engine->i915));
-		return 0;
+		return;
 	}
 
-	ret = lrc_setup_wa_ctx(engine);
-	if (ret) {
-		drm_dbg(&engine->i915->drm,
-			"Failed to setup context WA page: %d\n", ret);
-		return ret;
+	err = lrc_setup_wa_ctx(engine);
+	if (err) {
+		/*
+		 * We continue even if we fail to initialize WA batch
+		 * because we only expect rare glitches but nothing
+		 * critical to prevent us from using GPU
+		 */
+		drm_err(&engine->i915->drm,
+			"Ignoring context switch w/a allocation error:%d\n",
+			err);
+		return;
 	}
 
 	batch = i915_gem_object_pin_map(wa_ctx->vma->obj, I915_MAP_WB);
@@ -1507,7 +1515,7 @@ int lrc_init_wa_ctx(struct intel_engine_cs *engine)
 		wa_bb[i]->offset = batch_ptr - batch;
 		if (GEM_DEBUG_WARN_ON(!IS_ALIGNED(wa_bb[i]->offset,
 						  CACHELINE_BYTES))) {
-			ret = -EINVAL;
+			err = -EINVAL;
 			break;
 		}
 		if (wa_bb_fn[i])
@@ -1518,10 +1526,10 @@ int lrc_init_wa_ctx(struct intel_engine_cs *engine)
 
 	__i915_gem_object_flush_map(wa_ctx->vma->obj, 0, batch_ptr - batch);
 	__i915_gem_object_release_map(wa_ctx->vma->obj);
-	if (ret)
-		lrc_fini_wa_ctx(engine);
 
-	return ret;
+	/* Verify that we can handle failure to setup the wa_ctx */
+	if (err || i915_inject_probe_error(engine->i915, -ENODEV))
+		lrc_fini_wa_ctx(engine);
 }
 
 static void st_update_runtime_underflow(struct intel_context *ce, s32 dt)

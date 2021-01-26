@@ -330,7 +330,7 @@ int gen12_emit_flush_xcs(struct i915_request *rq, u32 mode)
 	return 0;
 }
 
-static inline u32 preempt_address(struct intel_engine_cs *engine)
+static u32 preempt_address(struct intel_engine_cs *engine)
 {
 	return (i915_ggtt_offset(engine->status_page.vma) +
 		I915_GEM_HWS_PREEMPT_ADDR);
@@ -361,19 +361,30 @@ int gen8_emit_init_breadcrumb(struct i915_request *rq)
 	if (IS_ERR(cs))
 		return PTR_ERR(cs);
 
+	*cs++ = MI_STORE_DWORD_IMM_GEN4 | MI_USE_GGTT;
+	*cs++ = hwsp_offset(rq);
+	*cs++ = 0;
+	*cs++ = rq->fence.seqno - 1;
+
 	/*
 	 * Check if we have been preempted before we even get started.
 	 *
 	 * After this point i915_request_started() reports true, even if
 	 * we get preempted and so are no longer running.
+	 *
+	 * i915_request_started() is used during preemption processing
+	 * to decide if the request is currently inside the user payload
+	 * or spinning on a kernel semaphore (or earlier). For no-preemption
+	 * requests, we do allow preemption on the semaphore before the user
+	 * payload, but do not allow preemption once the request is started.
+	 *
+	 * i915_request_started() is similarly used during GPU hangs to
+	 * determine if the user's payload was guilty, and if so, the
+	 * request is banned. Before the request is started, it is assumed
+	 * to be unharmed and an innocent victim of another's hang.
 	 */
-	*cs++ = MI_ARB_CHECK;
 	*cs++ = MI_NOOP;
-
-	*cs++ = MI_STORE_DWORD_IMM_GEN4 | MI_USE_GGTT;
-	*cs++ = hwsp_offset(rq);
-	*cs++ = 0;
-	*cs++ = rq->fence.seqno - 1;
+	*cs++ = MI_ARB_CHECK;
 
 	intel_ring_advance(rq, cs);
 
@@ -427,6 +438,9 @@ int gen8_emit_bb_start(struct i915_request *rq,
 {
 	u32 *cs;
 
+	if (unlikely(i915_request_has_nopreempt(rq)))
+		return gen8_emit_bb_start_noarb(rq, offset, len, flags);
+
 	cs = intel_ring_begin(rq, 6);
 	if (IS_ERR(cs))
 		return PTR_ERR(cs);
@@ -474,6 +488,7 @@ static u32 *gen8_emit_wa_tail(struct i915_request *rq, u32 *cs)
 
 static u32 *emit_preempt_busywait(struct i915_request *rq, u32 *cs)
 {
+	*cs++ = MI_ARB_CHECK; /* trigger IDLE->ACTIVE first */
 	*cs++ = MI_SEMAPHORE_WAIT |
 		MI_SEMAPHORE_GLOBAL_GTT |
 		MI_SEMAPHORE_POLL |
@@ -481,6 +496,7 @@ static u32 *emit_preempt_busywait(struct i915_request *rq, u32 *cs)
 	*cs++ = 0;
 	*cs++ = preempt_address(rq->engine);
 	*cs++ = 0;
+	*cs++ = MI_NOOP;
 
 	return cs;
 }
@@ -564,6 +580,7 @@ u32 *gen11_emit_fini_breadcrumb_rcs(struct i915_request *rq, u32 *cs)
 
 static u32 *gen12_emit_preempt_busywait(struct i915_request *rq, u32 *cs)
 {
+	*cs++ = MI_ARB_CHECK; /* trigger IDLE->ACTIVE first */
 	*cs++ = MI_SEMAPHORE_WAIT_TOKEN |
 		MI_SEMAPHORE_GLOBAL_GTT |
 		MI_SEMAPHORE_POLL |
@@ -572,7 +589,6 @@ static u32 *gen12_emit_preempt_busywait(struct i915_request *rq, u32 *cs)
 	*cs++ = preempt_address(rq->engine);
 	*cs++ = 0;
 	*cs++ = 0;
-	*cs++ = MI_NOOP;
 
 	return cs;
 }

@@ -198,7 +198,7 @@ __notify_execute_cb(struct i915_request *rq, bool (*fn)(struct irq_work *wrk))
 
 	llist_for_each_entry_safe(cb, cn,
 				  llist_del_all(&rq->execute_cb),
-				  work.llnode)
+				  work.node.llist)
 		fn(&cb->work);
 }
 
@@ -276,7 +276,7 @@ static void remove_from_engine(struct i915_request *rq)
 
 bool i915_request_retire(struct i915_request *rq)
 {
-	if (!i915_request_completed(rq))
+	if (!__i915_request_is_complete(rq))
 		return false;
 
 	RQ_TRACE(rq, "\n");
@@ -307,10 +307,8 @@ bool i915_request_retire(struct i915_request *rq)
 		spin_unlock_irq(&rq->lock);
 	}
 
-	if (i915_request_has_waitboost(rq)) {
-		GEM_BUG_ON(!atomic_read(&rq->engine->gt->rps.num_waiters));
+	if (test_and_set_bit(I915_FENCE_FLAG_BOOST, &rq->fence.flags))
 		atomic_dec(&rq->engine->gt->rps.num_waiters);
-	}
 
 	/*
 	 * We only loosely track inflight requests across preemption,
@@ -344,8 +342,7 @@ void i915_request_retire_upto(struct i915_request *rq)
 	struct i915_request *tmp;
 
 	RQ_TRACE(rq, "\n");
-
-	GEM_BUG_ON(!i915_request_completed(rq));
+	GEM_BUG_ON(!__i915_request_is_complete(rq));
 
 	do {
 		tmp = list_first_entry(&tl->requests, typeof(*tmp), link);
@@ -462,7 +459,7 @@ __await_execution(struct i915_request *rq,
 	 * callback first, then checking the ACTIVE bit, we serialise with
 	 * the completed/retired request.
 	 */
-	if (llist_add(&cb->work.llnode, &signal->execute_cb)) {
+	if (llist_add(&cb->work.node.llist, &signal->execute_cb)) {
 		if (i915_request_is_active(signal) ||
 		    __request_in_flight(signal))
 			__notify_execute_cb_imm(signal);
@@ -490,6 +487,8 @@ void __i915_request_skip(struct i915_request *rq)
 	if (rq->infix == rq->postfix)
 		return;
 
+	RQ_TRACE(rq, "error: %d\n", rq->fence.error);
+
 	/*
 	 * As this request likely depends on state from the lost
 	 * context, clear out all the user operations leaving the
@@ -513,6 +512,17 @@ void i915_request_set_error_once(struct i915_request *rq, int error)
 		if (fatal_error(old))
 			return;
 	} while (!try_cmpxchg(&rq->fence.error, &old, error));
+}
+
+void i915_request_mark_eio(struct i915_request *rq)
+{
+	if (__i915_request_is_complete(rq))
+		return;
+
+	GEM_BUG_ON(i915_request_signaled(rq));
+
+	i915_request_set_error_once(rq, -EIO);
+	i915_request_mark_complete(rq);
 }
 
 bool __i915_request_submit(struct i915_request *request)
@@ -541,12 +551,10 @@ bool __i915_request_submit(struct i915_request *request)
 	 * dropped upon retiring. (Otherwise if resubmit a *retired*
 	 * request, this would be a horrible use-after-free.)
 	 */
-	if (i915_request_completed(request))
-		goto xfer;
-
-	if (unlikely(intel_context_is_closed(request->context) &&
-		     !intel_engine_has_heartbeat(engine)))
-		intel_context_set_banned(request->context);
+	if (__i915_request_is_complete(request)) {
+		list_del_init(&request->sched.link);
+		goto active;
+	}
 
 	if (unlikely(intel_context_is_banned(request->context)))
 		i915_request_set_error_once(request, -EIO);
@@ -581,11 +589,11 @@ bool __i915_request_submit(struct i915_request *request)
 	engine->serial++;
 	result = true;
 
-xfer:
-	if (!test_and_set_bit(I915_FENCE_FLAG_ACTIVE, &request->fence.flags)) {
-		list_move_tail(&request->sched.link, &engine->active.requests);
-		clear_bit(I915_FENCE_FLAG_PQUEUE, &request->fence.flags);
-	}
+	GEM_BUG_ON(test_bit(I915_FENCE_FLAG_ACTIVE, &request->fence.flags));
+	list_move_tail(&request->sched.link, &engine->active.requests);
+active:
+	clear_bit(I915_FENCE_FLAG_PQUEUE, &request->fence.flags);
+	set_bit(I915_FENCE_FLAG_ACTIVE, &request->fence.flags);
 
 	/*
 	 * XXX Rollback bonded-execution on __i915_request_unsubmit()?
@@ -645,7 +653,7 @@ void __i915_request_unsubmit(struct i915_request *request)
 		i915_request_cancel_breadcrumb(request);
 
 	/* We've already spun, don't charge on resubmitting. */
-	if (request->sched.semaphores && i915_request_started(request))
+	if (request->sched.semaphores && __i915_request_has_started(request))
 		request->sched.semaphores = 0;
 
 	/*
@@ -857,7 +865,7 @@ __i915_request_create(struct intel_context *ce, gfp_t gfp)
 	RCU_INIT_POINTER(rq->timeline, tl);
 	RCU_INIT_POINTER(rq->hwsp_cacheline, tl->hwsp_cacheline);
 	rq->hwsp_seqno = tl->hwsp_seqno;
-	GEM_BUG_ON(i915_request_completed(rq));
+	GEM_BUG_ON(__i915_request_is_complete(rq));
 
 	rq->rcustate = get_state_synchronize_rcu(); /* acts as smp_mb() */
 
@@ -963,15 +971,22 @@ i915_request_await_start(struct i915_request *rq, struct i915_request *signal)
 	if (i915_request_started(signal))
 		return 0;
 
+	/*
+	 * The caller holds a reference on @signal, but we do not serialise
+	 * against it being retired and removed from the lists.
+	 *
+	 * We do not hold a reference to the request before @signal, and
+	 * so must be very careful to ensure that it is not _recycled_ as
+	 * we follow the link backwards.
+	 */
 	fence = NULL;
 	rcu_read_lock();
-	spin_lock_irq(&signal->lock);
 	do {
 		struct list_head *pos = READ_ONCE(signal->link.prev);
 		struct i915_request *prev;
 
 		/* Confirm signal has not been retired, the link is valid */
-		if (unlikely(i915_request_started(signal)))
+		if (unlikely(__i915_request_has_started(signal)))
 			break;
 
 		/* Is signal the earliest request on its timeline? */
@@ -996,7 +1011,6 @@ i915_request_await_start(struct i915_request *rq, struct i915_request *signal)
 
 		fence = &prev->fence;
 	} while (0);
-	spin_unlock_irq(&signal->lock);
 	rcu_read_unlock();
 	if (!fence)
 		return 0;
@@ -1513,7 +1527,7 @@ __i915_request_add_to_timeline(struct i915_request *rq)
 	 */
 	prev = to_request(__i915_active_fence_set(&timeline->last_request,
 						  &rq->fence));
-	if (prev && !i915_request_completed(prev)) {
+	if (prev && !__i915_request_is_complete(prev)) {
 		/*
 		 * The requests are supposed to be kept in order. However,
 		 * we need to be wary in case the timeline->last_request
@@ -1890,10 +1904,10 @@ static char queue_status(const struct i915_request *rq)
 
 static const char *run_status(const struct i915_request *rq)
 {
-	if (i915_request_completed(rq))
+	if (__i915_request_is_complete(rq))
 		return "!";
 
-	if (i915_request_started(rq))
+	if (__i915_request_has_started(rq))
 		return "*";
 
 	if (!i915_sw_fence_signaled(&rq->semaphore))

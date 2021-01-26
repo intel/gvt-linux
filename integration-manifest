@@ -1,38 +1,18 @@
-drm drm-fixes 06ee38dc2aab3b5a09feb74128cf7326a490b788
-	Merge tag 'amd-drm-fixes-5.11-2021-01-21' of https://gitlab.freedesktop.org/agd5f/linux into drm-fixes
-drm-misc drm-misc-fixes f6b57101a6b31277a4bde1d8028c46e898bd2ff2
-	drm/vc4: Correct POS1_SCL for hvs5
-drm-intel drm-intel-fixes 6ee1d745b7c9fd573fba142a2efdad76a9f1cb04
-	Linux 5.11-rc5
-drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
-	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
-drm drm-next bc96ad6722f86a377ed2872c9a4854c90caf78ca
-	Merge tag 'v5.11-rc5' of git://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux into drm-next
-drm-misc drm-misc-next-fixes be3e477effba636ad25dcd244db264c6cd5c1f36
-	drm/komeda: Fix bit check to import to value of proper type
-drm-intel drm-intel-next-fixes 046f70d31ddb2069941aec54966fec5b7fbc7b7b
-	drm/i915/tgl: Fix REVID macros for TGL to fetch correct stepping
-drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
-	Linux 4.14-rc1
-drm-misc drm-misc-next 97ecfff41e269d9c3114db85225bf1e493470a8f
-	drm/doc: document the type plane property
-drm-intel drm-intel-next d6a059e2d39fe1ed0acf6232daa02f19ef97091a
-	drm/i915: Fix vblank evasion with vrr
-drm-intel drm-intel-next-queued 9d8fddf8579a2a20d0e8a8b631547069a62b953e
-	drm/i915: Disable outputs during unregister
-drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
-	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
-sound-upstream for-linus c5b5ff607d6fe5f4284acabd07066f96ecf96ac4
-	ALSA: hda: intel-dsp-config: add PCI id for TGL-H
-sound-upstream for-next f4514249d6483effbc08984ed908fc741de798f0
-	ALSA: fireface: remove unnecessary condition in hwdep_read()
-drm-intel topic/core-for-CI 4a25de48cb4a28994172165e41a8b75e256a5e17
-	HAX net/phy: Suppress WARN from phy_error
-drm-intel drm-intel-gt-next 991e048e86269e676870413ac897cbf3768c9765
-	drm/i915/gt: Move the defer_request waiter active assertion
-drm topic/iomem-mmap-vs-gup 74b30195395c406c787280a77ae55aed82dbbfc7
-	sysfs: Support zapping of binary attr mmaps
-drm topic/nouveau-ampere-modeset 584265dfec70e78ce2085b82ed389f27e06fbca0
-	Merge branch '04.01-ampere-lite' of git://github.com/skeggsb/linux into topic/nouveau-ampere-modeset
-drm-intel topic/adl-s-enabling 0883d63b19bbd6bb09f27786e768c1af09aa0ede
-	drm/i915/adl_s: Add ADL-S platform info and PCI ids
+drm-tip/drm-tip 35ee6d505b478462c04952da1a4fbc03991af114
+	drm-tip: 2021y-01m-25d-23h-23m-57s UTC integration manifest
+vfio-upstream/next bdfae1c9a913930eae5ea506733aa7c285e12a06
+	vfio/type1: Add vfio_group_iommu_domain()
+vfio-upstream/for-linus e4eccb853664de7bcf9518fb658f35e748bf1f68
+	vfio/pci: Bypass IGD init in case of -ENODEV
+intel-iommu/iommu/next a593472591a5cf2d91244bc3f319c9dd91119343
+	Merge branches 'iommu/fixes', 'arm/omap', 'arm/exynos', 'x86/amd', 'x86/vt-d' and 'core' into next
+intel-iommu/iommu/fixes 4dd6ce478003525df8618750d30f0b90380047a7
+	iommu: Fix a check in iommu_check_bind_data()
+origin/gvt-fixes 4ceb06e7c336f4a8d3f3b6ac9a4fea2e9c97dc07
+	drm/i915/gvt: Fix vfio_edid issue for BXT/APL
+origin/gvt-next 9a3a238b3de97b4210c6de66aa88b2d7021ac086
+	drm/i915/gvt: treat intel_gvt_mpt as const in gvt code
+origin/gvt-gt-next ab07fea9c4e179a22644a6406ecea4614406c245
+	drm/i915/gvt: fix uninitialized return in intel_gvt_update_reg_whitelist()
+origin/gvt-next-fixes e056f669dbf76b8752b6cb0b8edd2f75cbdcabb1
+	drm/i915/gvt: make mpt.h self-contained

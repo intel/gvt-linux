@@ -19,6 +19,17 @@ static struct i915_global_scheduler {
 
 static DEFINE_SPINLOCK(schedule_lock);
 
+static struct i915_sched_node *node_get(struct i915_sched_node *node)
+{
+	i915_request_get(container_of(node, struct i915_request, sched));
+	return node;
+}
+
+static void node_put(struct i915_sched_node *node)
+{
+	i915_request_put(container_of(node, struct i915_request, sched));
+}
+
 static const struct i915_request *
 node_to_request(const struct i915_sched_node *node)
 {
@@ -350,6 +361,8 @@ void i915_schedule(struct i915_request *rq, const struct i915_sched_attr *attr)
 
 void i915_sched_node_init(struct i915_sched_node *node)
 {
+	spin_lock_init(&node->lock);
+
 	INIT_LIST_HEAD(&node->signalers_list);
 	INIT_LIST_HEAD(&node->waiters_list);
 	INIT_LIST_HEAD(&node->link);
@@ -375,9 +388,16 @@ i915_dependency_alloc(void)
 }
 
 static void
+rcu_dependency_free(struct rcu_head *rcu)
+{
+	kmem_cache_free(global.slab_dependencies,
+			container_of(rcu, typeof(struct i915_dependency), rcu));
+}
+
+static void
 i915_dependency_free(struct i915_dependency *dep)
 {
-	kmem_cache_free(global.slab_dependencies, dep);
+	call_rcu(&dep->rcu, rcu_dependency_free);
 }
 
 bool __i915_sched_node_add_dependency(struct i915_sched_node *node,
@@ -387,24 +407,27 @@ bool __i915_sched_node_add_dependency(struct i915_sched_node *node,
 {
 	bool ret = false;
 
-	spin_lock_irq(&schedule_lock);
+	/* The signal->lock is always the outer lock in this double-lock. */
+	spin_lock(&signal->lock);
 
 	if (!node_signaled(signal)) {
 		INIT_LIST_HEAD(&dep->dfs_link);
 		dep->signaler = signal;
-		dep->waiter = node;
+		dep->waiter = node_get(node);
 		dep->flags = flags;
 
 		/* All set, now publish. Beware the lockless walkers. */
+		spin_lock_nested(&node->lock, SINGLE_DEPTH_NESTING);
 		list_add_rcu(&dep->signal_link, &node->signalers_list);
 		list_add_rcu(&dep->wait_link, &signal->waiters_list);
+		spin_unlock(&node->lock);
 
 		/* Propagate the chains */
 		node->flags |= signal->flags;
 		ret = true;
 	}
 
-	spin_unlock_irq(&schedule_lock);
+	spin_unlock(&signal->lock);
 
 	return ret;
 }
@@ -426,39 +449,41 @@ int i915_sched_node_add_dependency(struct i915_sched_node *node,
 	return 0;
 }
 
-void i915_sched_node_fini(struct i915_sched_node *node)
+void i915_sched_node_retire(struct i915_sched_node *node)
 {
 	struct i915_dependency *dep, *tmp;
-
-	spin_lock_irq(&schedule_lock);
+	LIST_HEAD(waiters);
 
 	/*
 	 * Everyone we depended upon (the fences we wait to be signaled)
 	 * should retire before us and remove themselves from our list.
 	 * However, retirement is run independently on each timeline and
-	 * so we may be called out-of-order.
+	 * so we may be called out-of-order. As we need to avoid taking
+	 * the signaler's lock, just mark up our completion and be wary
+	 * in traversing the signalers->waiters_list.
 	 */
-	list_for_each_entry_safe(dep, tmp, &node->signalers_list, signal_link) {
-		GEM_BUG_ON(!list_empty(&dep->dfs_link));
-
-		list_del_rcu(&dep->wait_link);
-		if (dep->flags & I915_DEPENDENCY_ALLOC)
-			i915_dependency_free(dep);
-	}
-	INIT_LIST_HEAD(&node->signalers_list);
 
 	/* Remove ourselves from everyone who depends upon us */
-	list_for_each_entry_safe(dep, tmp, &node->waiters_list, wait_link) {
-		GEM_BUG_ON(dep->signaler != node);
-		GEM_BUG_ON(!list_empty(&dep->dfs_link));
+	spin_lock(&node->lock);
+	if (!list_empty(&node->waiters_list)) {
+		list_replace_rcu(&node->waiters_list, &waiters);
+		INIT_LIST_HEAD_RCU(&node->waiters_list);
+	}
+	spin_unlock(&node->lock);
 
+	list_for_each_entry_safe(dep, tmp, &waiters, wait_link) {
+		struct i915_sched_node *w = dep->waiter;
+
+		GEM_BUG_ON(dep->signaler != node);
+
+		spin_lock(&w->lock);
 		list_del_rcu(&dep->signal_link);
+		spin_unlock(&w->lock);
+		node_put(w);
+
 		if (dep->flags & I915_DEPENDENCY_ALLOC)
 			i915_dependency_free(dep);
 	}
-	INIT_LIST_HEAD(&node->waiters_list);
-
-	spin_unlock_irq(&schedule_lock);
 }
 
 void i915_request_show_with_schedule(struct drm_printer *m,
@@ -509,8 +534,7 @@ static struct i915_global_scheduler global = { {
 int __init i915_global_scheduler_init(void)
 {
 	global.slab_dependencies = KMEM_CACHE(i915_dependency,
-					      SLAB_HWCACHE_ALIGN |
-					      SLAB_TYPESAFE_BY_RCU);
+					      SLAB_HWCACHE_ALIGN);
 	if (!global.slab_dependencies)
 		return -ENOMEM;
 

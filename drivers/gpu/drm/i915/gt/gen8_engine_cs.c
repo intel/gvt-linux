@@ -277,7 +277,7 @@ int gen12_emit_flush_xcs(struct i915_request *rq, u32 mode)
 	if (mode & EMIT_INVALIDATE)
 		cmd += 2;
 	if (mode & EMIT_INVALIDATE)
-		aux_inv = rq->engine->mask & ~BIT(BCS0);
+		aux_inv = rq->execution_mask & ~BIT(BCS0);
 	if (aux_inv)
 		cmd += 2 * hweight8(aux_inv) + 2;
 

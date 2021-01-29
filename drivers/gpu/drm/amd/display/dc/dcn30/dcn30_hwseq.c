@@ -814,6 +814,19 @@ bool dcn30_apply_idle_power_optimizations(struct dc *dc, bool enable)
 	return true;
 }
 
+bool dcn30_does_plane_fit_in_mall(struct dc *dc, struct dc_plane_state *plane)
+{
+	// add meta size?
+	unsigned int surface_size = plane->plane_size.surface_pitch * plane->plane_size.surface_size.height *
+			(plane->format >= SURFACE_PIXEL_FORMAT_GRPH_ARGB16161616 ? 8 : 4);
+	unsigned int mall_size = dc->caps.mall_size_total;
+
+	if (dc->debug.mall_size_override)
+		mall_size = 1024 * 1024 * dc->debug.mall_size_override;
+
+	return (surface_size + dc->caps.cursor_cache_size) < mall_size;
+}
+
 void dcn30_hardware_release(struct dc *dc)
 {
 	/* if pstate unsupported, force it supported */
@@ -821,6 +834,53 @@ void dcn30_hardware_release(struct dc *dc)
 			dc->res_pool->hubbub->funcs->force_pstate_change_control)
 		dc->res_pool->hubbub->funcs->force_pstate_change_control(
 				dc->res_pool->hubbub, true, true);
+}
+
+void dcn30_set_hubp_blank(const struct dc *dc,
+		struct pipe_ctx *pipe_ctx,
+		bool blank_enable)
+{
+	struct pipe_ctx *mpcc_pipe;
+	struct pipe_ctx *odm_pipe;
+
+	if (blank_enable) {
+		struct plane_resource *plane_res = &pipe_ctx->plane_res;
+		struct stream_resource *stream_res = &pipe_ctx->stream_res;
+
+		/* Wait for enter vblank */
+		stream_res->tg->funcs->wait_for_state(stream_res->tg, CRTC_STATE_VBLANK);
+
+		/* Blank HUBP to allow p-state during blank on all timings */
+		pipe_ctx->plane_res.hubp->funcs->set_blank(pipe_ctx->plane_res.hubp, true);
+		/* Confirm hubp in blank */
+		ASSERT(plane_res->hubp->funcs->hubp_in_blank(plane_res->hubp));
+		/* Toggle HUBP_DISABLE */
+		plane_res->hubp->funcs->hubp_soft_reset(plane_res->hubp, true);
+		plane_res->hubp->funcs->hubp_soft_reset(plane_res->hubp, false);
+		for (mpcc_pipe = pipe_ctx->bottom_pipe; mpcc_pipe; mpcc_pipe = mpcc_pipe->bottom_pipe) {
+			mpcc_pipe->plane_res.hubp->funcs->set_blank(mpcc_pipe->plane_res.hubp, true);
+			/* Confirm hubp in blank */
+			ASSERT(mpcc_pipe->plane_res.hubp->funcs->hubp_in_blank(mpcc_pipe->plane_res.hubp));
+			/* Toggle HUBP_DISABLE */
+			mpcc_pipe->plane_res.hubp->funcs->hubp_soft_reset(mpcc_pipe->plane_res.hubp, true);
+			mpcc_pipe->plane_res.hubp->funcs->hubp_soft_reset(mpcc_pipe->plane_res.hubp, false);
+
+		}
+		for (odm_pipe = pipe_ctx->next_odm_pipe; odm_pipe; odm_pipe = odm_pipe->next_odm_pipe) {
+			odm_pipe->plane_res.hubp->funcs->set_blank(odm_pipe->plane_res.hubp, true);
+			/* Confirm hubp in blank */
+			ASSERT(odm_pipe->plane_res.hubp->funcs->hubp_in_blank(odm_pipe->plane_res.hubp));
+			/* Toggle HUBP_DISABLE */
+			odm_pipe->plane_res.hubp->funcs->hubp_soft_reset(odm_pipe->plane_res.hubp, true);
+			odm_pipe->plane_res.hubp->funcs->hubp_soft_reset(odm_pipe->plane_res.hubp, false);
+		}
+	} else {
+		pipe_ctx->plane_res.hubp->funcs->set_blank(pipe_ctx->plane_res.hubp, false);
+		for (mpcc_pipe = pipe_ctx->bottom_pipe; mpcc_pipe; mpcc_pipe = mpcc_pipe->bottom_pipe)
+			mpcc_pipe->plane_res.hubp->funcs->set_blank(mpcc_pipe->plane_res.hubp, false);
+		for (odm_pipe = pipe_ctx->next_odm_pipe; odm_pipe; odm_pipe = odm_pipe->next_odm_pipe)
+			odm_pipe->plane_res.hubp->funcs->set_blank(odm_pipe->plane_res.hubp, false);
+	}
 }
 
 void dcn30_set_disp_pattern_generator(const struct dc *dc,
@@ -831,6 +891,25 @@ void dcn30_set_disp_pattern_generator(const struct dc *dc,
 		const struct tg_color *solid_color,
 		int width, int height, int offset)
 {
-	pipe_ctx->stream_res.opp->funcs->opp_set_disp_pattern_generator(pipe_ctx->stream_res.opp, test_pattern,
-			color_space, color_depth, solid_color, width, height, offset);
+	struct stream_resource *stream_res = &pipe_ctx->stream_res;
+
+	if (test_pattern != CONTROLLER_DP_TEST_PATTERN_VIDEOMODE) {
+		pipe_ctx->vtp_locked = false;
+		/* turning on DPG */
+		stream_res->opp->funcs->opp_set_disp_pattern_generator(stream_res->opp, test_pattern, color_space,
+				color_depth, solid_color, width, height, offset);
+
+		/* Defer hubp blank if tg is locked */
+		if (stream_res->tg->funcs->is_tg_enabled(stream_res->tg)) {
+			if (stream_res->tg->funcs->is_locked(stream_res->tg))
+				pipe_ctx->vtp_locked = true;
+			else
+				dc->hwss.set_hubp_blank(dc, pipe_ctx, true);
+		}
+	} else {
+		dc->hwss.set_hubp_blank(dc, pipe_ctx, false);
+		/* turning off DPG */
+		stream_res->opp->funcs->opp_set_disp_pattern_generator(stream_res->opp, test_pattern, color_space,
+				color_depth, solid_color, width, height, offset);
+	}
 }

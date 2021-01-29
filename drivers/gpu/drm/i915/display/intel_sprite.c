@@ -49,6 +49,8 @@
 #include "intel_psr.h"
 #include "intel_dsi.h"
 #include "intel_sprite.h"
+#include "i9xx_plane.h"
+#include "intel_vrr.h"
 
 int intel_usecs_to_scanlines(const struct drm_display_mode *adjusted_mode,
 			     int usecs)
@@ -61,13 +63,15 @@ int intel_usecs_to_scanlines(const struct drm_display_mode *adjusted_mode,
 			    1000 * adjusted_mode->crtc_htotal);
 }
 
-/* FIXME: We should instead only take spinlocks once for the entire update
- * instead of once per mmio. */
-#if IS_ENABLED(CONFIG_PROVE_LOCKING)
-#define VBLANK_EVASION_TIME_US 250
-#else
-#define VBLANK_EVASION_TIME_US 100
-#endif
+static int intel_mode_vblank_start(const struct drm_display_mode *mode)
+{
+	int vblank_start = mode->crtc_vblank_start;
+
+	if (mode->flags & DRM_MODE_FLAG_INTERLACE)
+		vblank_start = DIV_ROUND_UP(vblank_start, 2);
+
+	return vblank_start;
+}
 
 /**
  * intel_pipe_update_start() - start update of a set of display registers
@@ -97,9 +101,10 @@ void intel_pipe_update_start(const struct intel_crtc_state *new_crtc_state)
 	if (new_crtc_state->uapi.async_flip)
 		return;
 
-	vblank_start = adjusted_mode->crtc_vblank_start;
-	if (adjusted_mode->flags & DRM_MODE_FLAG_INTERLACE)
-		vblank_start = DIV_ROUND_UP(vblank_start, 2);
+	if (new_crtc_state->vrr.enable)
+		vblank_start = intel_vrr_vmax_vblank_start(new_crtc_state);
+	else
+		vblank_start = intel_mode_vblank_start(adjusted_mode);
 
 	/* FIXME needs to be calibrated sensibly */
 	min = vblank_start - intel_usecs_to_scanlines(adjusted_mode,
@@ -187,6 +192,36 @@ irq_disable:
 	local_irq_disable();
 }
 
+#if IS_ENABLED(CONFIG_DRM_I915_DEBUG_VBLANK_EVADE)
+static void dbg_vblank_evade(struct intel_crtc *crtc, ktime_t end)
+{
+	u64 delta = ktime_to_ns(ktime_sub(end, crtc->debug.start_vbl_time));
+	unsigned int h;
+
+	h = ilog2(delta >> 9);
+	if (h >= ARRAY_SIZE(crtc->debug.vbl.times))
+		h = ARRAY_SIZE(crtc->debug.vbl.times) - 1;
+	crtc->debug.vbl.times[h]++;
+
+	crtc->debug.vbl.sum += delta;
+	if (!crtc->debug.vbl.min || delta < crtc->debug.vbl.min)
+		crtc->debug.vbl.min = delta;
+	if (delta > crtc->debug.vbl.max)
+		crtc->debug.vbl.max = delta;
+
+	if (delta > 1000 * VBLANK_EVASION_TIME_US) {
+		drm_dbg_kms(crtc->base.dev,
+			    "Atomic update on pipe (%c) took %lld us, max time under evasion is %u us\n",
+			    pipe_name(crtc->pipe),
+			    div_u64(delta, 1000),
+			    VBLANK_EVASION_TIME_US);
+		crtc->debug.vbl.over++;
+	}
+}
+#else
+static void dbg_vblank_evade(struct intel_crtc *crtc, ktime_t end) {}
+#endif
+
 /**
  * intel_pipe_update_end() - end update of a set of display registers
  * @new_crtc_state: the new crtc state
@@ -235,6 +270,9 @@ void intel_pipe_update_end(struct intel_crtc_state *new_crtc_state)
 
 	local_irq_enable();
 
+	/* Send VRR Push to terminate Vblank */
+	intel_vrr_send_push(new_crtc_state);
+
 	if (intel_vgpu_active(dev_priv))
 		return;
 
@@ -249,15 +287,8 @@ void intel_pipe_update_end(struct intel_crtc_state *new_crtc_state)
 			crtc->debug.min_vbl, crtc->debug.max_vbl,
 			crtc->debug.scanline_start, scanline_end);
 	}
-#ifdef CONFIG_DRM_I915_DEBUG_VBLANK_EVADE
-	else if (ktime_us_delta(end_vbl_time, crtc->debug.start_vbl_time) >
-		 VBLANK_EVASION_TIME_US)
-		drm_warn(&dev_priv->drm,
-			 "Atomic update on pipe (%c) took %lld us, max time under evasion is %u us\n",
-			 pipe_name(pipe),
-			 ktime_us_delta(end_vbl_time, crtc->debug.start_vbl_time),
-			 VBLANK_EVASION_TIME_US);
-#endif
+
+	dbg_vblank_evade(crtc, end_vbl_time);
 }
 
 int intel_plane_check_stride(const struct intel_plane_state *plane_state)
@@ -755,7 +786,8 @@ icl_program_input_csc(struct intel_plane *plane,
 static void
 skl_plane_async_flip(struct intel_plane *plane,
 		     const struct intel_crtc_state *crtc_state,
-		     const struct intel_plane_state *plane_state)
+		     const struct intel_plane_state *plane_state,
+		     bool async_flip)
 {
 	struct drm_i915_private *dev_priv = to_i915(plane->base.dev);
 	unsigned long irqflags;
@@ -765,6 +797,9 @@ skl_plane_async_flip(struct intel_plane *plane,
 	u32 plane_ctl = plane_state->ctl;
 
 	plane_ctl |= skl_plane_ctl_crtc(crtc_state);
+
+	if (async_flip)
+		plane_ctl |= PLANE_CTL_ASYNC_FLIP;
 
 	spin_lock_irqsave(&dev_priv->uncore.lock, irqflags);
 
@@ -850,6 +885,10 @@ skl_program_plane(struct intel_plane *plane,
 
 	if (fb->format->is_yuv && icl_is_hdr_plane(dev_priv, plane_id))
 		icl_program_input_csc(plane, crtc_state, plane_state);
+
+	if (fb->modifier == I915_FORMAT_MOD_Y_TILED_GEN12_RC_CCS_CC)
+		intel_uncore_write64_fw(&dev_priv->uncore,
+					PLANE_CC_VAL(pipe, plane_id), plane_state->ccval);
 
 	skl_write_plane_wm(plane, crtc_state);
 
@@ -940,6 +979,28 @@ skl_plane_get_hw_state(struct intel_plane *plane,
 	intel_display_power_put(dev_priv, power_domain, wakeref);
 
 	return ret;
+}
+
+static void
+skl_plane_enable_flip_done(struct intel_plane *plane)
+{
+	struct drm_i915_private *i915 = to_i915(plane->base.dev);
+	enum pipe pipe = plane->pipe;
+
+	spin_lock_irq(&i915->irq_lock);
+	bdw_enable_pipe_irq(i915, pipe, GEN9_PIPE_PLANE_FLIP_DONE(plane->id));
+	spin_unlock_irq(&i915->irq_lock);
+}
+
+static void
+skl_plane_disable_flip_done(struct intel_plane *plane)
+{
+	struct drm_i915_private *i915 = to_i915(plane->base.dev);
+	enum pipe pipe = plane->pipe;
+
+	spin_lock_irq(&i915->irq_lock);
+	bdw_disable_pipe_irq(i915, pipe, GEN9_PIPE_PLANE_FLIP_DONE(plane->id));
+	spin_unlock_irq(&i915->irq_lock);
 }
 
 static void i9xx_plane_linear_gamma(u16 gamma[8])
@@ -2350,7 +2411,8 @@ static int skl_plane_check_fb(const struct intel_crtc_state *crtc_state,
 	     fb->modifier == I915_FORMAT_MOD_Y_TILED_CCS ||
 	     fb->modifier == I915_FORMAT_MOD_Yf_TILED_CCS ||
 	     fb->modifier == I915_FORMAT_MOD_Y_TILED_GEN12_RC_CCS ||
-	     fb->modifier == I915_FORMAT_MOD_Y_TILED_GEN12_MC_CCS)) {
+	     fb->modifier == I915_FORMAT_MOD_Y_TILED_GEN12_MC_CCS ||
+	     fb->modifier == I915_FORMAT_MOD_Y_TILED_GEN12_RC_CCS_CC)) {
 		drm_dbg_kms(&dev_priv->drm,
 			    "Y/Yf tiling not supported in IF-ID mode\n");
 		return -EINVAL;
@@ -2840,6 +2902,7 @@ static const u64 skl_plane_format_modifiers_ccs[] = {
 static const u64 gen12_plane_format_modifiers_mc_ccs[] = {
 	I915_FORMAT_MOD_Y_TILED_GEN12_MC_CCS,
 	I915_FORMAT_MOD_Y_TILED_GEN12_RC_CCS,
+	I915_FORMAT_MOD_Y_TILED_GEN12_RC_CCS_CC,
 	I915_FORMAT_MOD_Y_TILED,
 	I915_FORMAT_MOD_X_TILED,
 	DRM_FORMAT_MOD_LINEAR,
@@ -2848,6 +2911,7 @@ static const u64 gen12_plane_format_modifiers_mc_ccs[] = {
 
 static const u64 gen12_plane_format_modifiers_rc_ccs[] = {
 	I915_FORMAT_MOD_Y_TILED_GEN12_RC_CCS,
+	I915_FORMAT_MOD_Y_TILED_GEN12_RC_CCS_CC,
 	I915_FORMAT_MOD_Y_TILED,
 	I915_FORMAT_MOD_X_TILED,
 	DRM_FORMAT_MOD_LINEAR,
@@ -3038,6 +3102,7 @@ static bool gen12_plane_format_mod_supported(struct drm_plane *_plane,
 	case I915_FORMAT_MOD_X_TILED:
 	case I915_FORMAT_MOD_Y_TILED:
 	case I915_FORMAT_MOD_Y_TILED_GEN12_RC_CCS:
+	case I915_FORMAT_MOD_Y_TILED_GEN12_RC_CCS_CC:
 		break;
 	default:
 		return false;
@@ -3274,7 +3339,13 @@ skl_universal_plane_create(struct drm_i915_private *dev_priv,
 	plane->get_hw_state = skl_plane_get_hw_state;
 	plane->check_plane = skl_plane_check;
 	plane->min_cdclk = skl_plane_min_cdclk;
-	plane->async_flip = skl_plane_async_flip;
+
+	if (plane_id == PLANE_PRIMARY) {
+		plane->need_async_flip_disable_wa = IS_GEN_RANGE(dev_priv, 9, 10);
+		plane->async_flip = skl_plane_async_flip;
+		plane->enable_flip_done = skl_plane_enable_flip_done;
+		plane->disable_flip_done = skl_plane_disable_flip_done;
+	}
 
 	if (INTEL_GEN(dev_priv) >= 11)
 		formats = icl_get_plane_formats(dev_priv, pipe,

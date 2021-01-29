@@ -42,7 +42,7 @@
 #include "inc/hw/dmcu.h"
 #include "dml/display_mode_lib.h"
 
-#define DC_VER "3.2.116"
+#define DC_VER "3.2.118"
 
 #define MAX_SURFACES 3
 #define MAX_PLANES 6
@@ -171,6 +171,9 @@ struct dc_caps {
 	bool dmcub_support;
 	uint32_t num_of_internal_disp;
 	enum dp_protocol_version max_dp_protocol_version;
+	unsigned int mall_size_per_mem_channel;
+	unsigned int mall_size_total;
+	unsigned int cursor_cache_size;
 	struct dc_plane_cap planes[MAX_PLANES];
 	struct dc_color_caps color;
 };
@@ -481,7 +484,6 @@ struct dc_debug_options {
 	bool performance_trace;
 	bool az_endpoint_mute_only;
 	bool always_use_regamma;
-	bool p010_mpo_support;
 	bool recovery_enabled;
 	bool avoid_vbios_exec_table;
 	bool scl_reset_length10;
@@ -499,6 +501,7 @@ struct dc_debug_options {
 	bool dmcub_emulation;
 #if defined(CONFIG_DRM_AMD_DC_DCN)
 	bool disable_idle_power_optimizations;
+	unsigned int mall_size_override;
 #endif
 	bool dmub_command_table; /* for testing only */
 	struct dc_bw_validation_profile bw_val_profile;

@@ -2289,8 +2289,6 @@ static int azx_probe_continue(struct azx *chip)
 			 * codecs can be on the same link.
 			 */
 			if (CONTROLLER_IN_GPU(pci)) {
-				dev_err(chip->card->dev,
-					"HSW/BDW HD-audio HDMI/DP requires binding with gfx driver\n");
 				goto out_free;
 			} else {
 				/* don't bother any longer */

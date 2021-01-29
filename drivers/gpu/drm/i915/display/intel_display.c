@@ -3086,6 +3086,8 @@ static int skl_check_main_surface(struct intel_plane_state *plane_state)
 		}
 	}
 
+	drm_WARN_ON(&dev_priv->drm, x > 8191 || y > 8191);
+
 	plane_state->color_plane[0].offset = offset;
 	plane_state->color_plane[0].x = x;
 	plane_state->color_plane[0].y = y;
@@ -3157,6 +3159,8 @@ static int skl_check_nv12_aux_surface(struct intel_plane_state *plane_state)
 			return -EINVAL;
 		}
 	}
+
+	drm_WARN_ON(&i915->drm, x > 8191 || y > 8191);
 
 	plane_state->color_plane[uv_plane].offset = offset;
 	plane_state->color_plane[uv_plane].x = x;
@@ -3577,6 +3581,8 @@ u32 glk_plane_color_ctl(const struct intel_crtc_state *crtc_state,
 			plane_color_ctl |= PLANE_COLOR_YUV_RANGE_CORRECTION_DISABLE;
 	} else if (fb->format->is_yuv) {
 		plane_color_ctl |= PLANE_COLOR_INPUT_CSC_ENABLE;
+		if (plane_state->hw.color_range == DRM_COLOR_YCBCR_FULL_RANGE)
+			plane_color_ctl |= PLANE_COLOR_YUV_RANGE_CORRECTION_DISABLE;
 	}
 
 	return plane_color_ctl;

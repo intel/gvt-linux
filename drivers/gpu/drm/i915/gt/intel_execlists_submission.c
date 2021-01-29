@@ -2249,8 +2249,22 @@ static u32 active_ccid(struct intel_engine_cs *engine)
 static void execlists_capture(struct intel_engine_cs *engine)
 {
 	struct execlists_capture *cap;
+	struct i915_request *rq;
 
 	if (!IS_ENABLED(CONFIG_DRM_I915_CAPTURE_ERROR))
+		return;
+
+	rq = active_context(engine, active_ccid(engine));
+
+	/*
+	 * If the context is closed or already banned, assume no one is
+	 * listening for the associated state; the user is already gone. We can
+	 * save a lot of time around forced-preemption by just cancelling the
+	 * guilty request and not capturing the error state.
+	 */
+	if (!rq ||
+	    intel_context_is_closed(rq->context) ||
+	    intel_context_is_banned(rq->context))
 		return;
 
 	/*
@@ -2262,11 +2276,8 @@ static void execlists_capture(struct intel_engine_cs *engine)
 	if (!cap)
 		return;
 
-	cap->rq = active_context(engine, active_ccid(engine));
-	if (cap->rq) {
-		cap->rq = active_request(cap->rq->context->timeline, cap->rq);
-		cap->rq = i915_request_get_rcu(cap->rq);
-	}
+	rq = active_request(rq->context->timeline, rq);
+	cap->rq = i915_request_get_rcu(rq);
 	if (!cap->rq)
 		goto err_free;
 

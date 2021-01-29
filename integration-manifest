@@ -1,0 +1,38 @@
+drm drm-fixes e0ecafede87eb1a3d1e708f0365fad0d59489285
+	Merge tag 'amd-drm-fixes-5.11-2021-01-28' of https://gitlab.freedesktop.org/agd5f/linux into drm-fixes
+drm-misc drm-misc-fixes 2b1b3e544f65f40df5eef99753e460a127910479
+	drm/ttm: Use __GFP_NOWARN for huge pages in ttm_pool_alloc_page
+drm-intel drm-intel-fixes 489140b5ba2e7cc4b853c29e0591895ddb462a82
+	drm/i915/gt: Always try to reserve GGTT address 0x0
+drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
+	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
+drm drm-next 32c3d9b0f51ee1e6bb0160496b97e50b5caca4d0
+	Merge tag 'drm-intel-next-2021-01-27' of git://anongit.freedesktop.org/drm/drm-intel into drm-next
+drm-misc drm-misc-next-fixes be3e477effba636ad25dcd244db264c6cd5c1f36
+	drm/komeda: Fix bit check to import to value of proper type
+drm-intel drm-intel-next-fixes 046f70d31ddb2069941aec54966fec5b7fbc7b7b
+	drm/i915/tgl: Fix REVID macros for TGL to fetch correct stepping
+drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
+	Linux 4.14-rc1
+drm-misc drm-misc-next f3ebd4e6b692ab7af464561410a1f05dfc850823
+	drm/vmwgfx/vmwgfx_drv: Fix an error path in vmw_setup_pci_resources()
+drm-intel drm-intel-next b59c27cab257cfbff939615a87b72bce83925710
+	drm/i915: Fix the MST PBN divider calculation
+drm-intel drm-intel-next-queued 9d8fddf8579a2a20d0e8a8b631547069a62b953e
+	drm/i915: Disable outputs during unregister
+drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
+	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
+sound-upstream for-linus 4961167bf7482944ca09a6f71263b9e47f949851
+	ALSA: hda/via: Apply the workaround generically for Clevo machines
+sound-upstream for-next 4f2da3324eaff382ab1c6aaef8c10180b2f4d08c
+	Merge tag 'tags/isa-void-remove-callback' into for-next
+drm-intel topic/core-for-CI 2c7737b7b1772aff246a93f2bdc9fd7dd3991825
+	HAX net/phy: Suppress WARN from phy_error
+drm-intel drm-intel-gt-next 0be01a010a0bfcd36fc9d4ce3639945d1751102a
+	drm/i915: allocate cmd ring in lmem
+drm topic/iomem-mmap-vs-gup 74b30195395c406c787280a77ae55aed82dbbfc7
+	sysfs: Support zapping of binary attr mmaps
+drm topic/nouveau-ampere-modeset 584265dfec70e78ce2085b82ed389f27e06fbca0
+	Merge branch '04.01-ampere-lite' of git://github.com/skeggsb/linux into topic/nouveau-ampere-modeset
+drm-intel topic/adl-s-enabling 52401eb8e3fced097628507e1d3056cc81d51ed9
+	drm/i915/adl_s: Update combo PHY master/slave relationships

@@ -1145,69 +1145,43 @@ void i915_gem_cleanup_early(struct drm_i915_private *dev_priv)
 	drm_WARN_ON(&dev_priv->drm, dev_priv->mm.shrink_count);
 }
 
-int i915_gem_freeze(struct drm_i915_private *dev_priv)
-{
-	/* Discard all purgeable objects, let userspace recover those as
-	 * required after resuming.
-	 */
-	i915_gem_shrink_all(dev_priv);
-
-	return 0;
-}
-
-int i915_gem_freeze_late(struct drm_i915_private *i915)
-{
-	struct drm_i915_gem_object *obj;
-	intel_wakeref_t wakeref;
-
-	/*
-	 * Called just before we write the hibernation image.
-	 *
-	 * We need to update the domain tracking to reflect that the CPU
-	 * will be accessing all the pages to create and restore from the
-	 * hibernation, and so upon restoration those pages will be in the
-	 * CPU domain.
-	 *
-	 * To make sure the hibernation image contains the latest state,
-	 * we update that state just before writing out the image.
-	 *
-	 * To try and reduce the hibernation image, we manually shrink
-	 * the objects as well, see i915_gem_freeze()
-	 */
-
-	with_intel_runtime_pm(&i915->runtime_pm, wakeref)
-		i915_gem_shrink(i915, -1UL, NULL, ~0);
-	i915_gem_drain_freed_objects(i915);
-
-	wbinvd_on_all_cpus();
-	list_for_each_entry(obj, &i915->mm.shrink_list, mm.link)
-		__start_cpu_write(obj);
-
-	return 0;
-}
-
 int i915_gem_open(struct drm_i915_private *i915, struct drm_file *file)
 {
 	struct drm_i915_file_private *file_priv;
-	int ret;
+	struct i915_drm_client *client;
+	int ret = -ENOMEM;
 
 	DRM_DEBUG("\n");
 
 	file_priv = kzalloc(sizeof(*file_priv), GFP_KERNEL);
 	if (!file_priv)
-		return -ENOMEM;
+		goto err_alloc;
+
+	client = i915_drm_client_add(&i915->clients, current);
+	if (IS_ERR(client)) {
+		ret = PTR_ERR(client);
+		goto err_client;
+	}
 
 	file->driver_priv = file_priv;
 	file_priv->dev_priv = i915;
 	file_priv->file = file;
+	file_priv->client = client;
 
 	file_priv->bsd_engine = -1;
 	file_priv->hang_timestamp = jiffies;
 
 	ret = i915_gem_context_open(i915, file);
 	if (ret)
-		kfree(file_priv);
+		goto err_context;
 
+	return 0;
+
+err_context:
+	i915_drm_client_close(client);
+err_client:
+	kfree(file_priv);
+err_alloc:
 	return ret;
 }
 

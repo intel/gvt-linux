@@ -3,6 +3,8 @@
  * Copyright © 2014 Intel Corporation
  */
 
+#include "gem/i915_gem_lmem.h"
+
 #include "gen8_engine_cs.h"
 #include "i915_drv.h"
 #include "i915_perf.h"
@@ -640,7 +642,7 @@ static void init_common_regs(u32 * const regs,
 					   CTX_CTRL_RS_CTX_ENABLE);
 	regs[CTX_CONTEXT_CONTROL] = ctl;
 
-	regs[CTX_TIMESTAMP] = ce->runtime.last;
+	regs[CTX_TIMESTAMP] = ce->stats.runtime.last;
 }
 
 static void init_wa_bb_regs(u32 * const regs,
@@ -808,7 +810,9 @@ __lrc_alloc_state(struct intel_context *ce, struct intel_engine_cs *engine)
 		context_size += PAGE_SIZE;
 	}
 
-	obj = i915_gem_object_create_shmem(engine->i915, context_size);
+	obj = i915_gem_object_create_lmem(engine->i915, context_size, 0);
+	if (IS_ERR(obj))
+		obj = i915_gem_object_create_shmem(engine->i915, context_size);
 	if (IS_ERR(obj))
 		return ERR_CAST(obj);
 
@@ -1532,35 +1536,36 @@ void lrc_init_wa_ctx(struct intel_engine_cs *engine)
 		lrc_fini_wa_ctx(engine);
 }
 
-static void st_update_runtime_underflow(struct intel_context *ce, s32 dt)
+static void st_runtime_underflow(struct intel_context_stats *stats, s32 dt)
 {
 #if IS_ENABLED(CONFIG_DRM_I915_SELFTEST)
-	ce->runtime.num_underflow++;
-	ce->runtime.max_underflow = max_t(u32, ce->runtime.max_underflow, -dt);
+	stats->runtime.num_underflow++;
+	stats->runtime.max_underflow =
+		max_t(u32, stats->runtime.max_underflow, -dt);
 #endif
 }
 
 void lrc_update_runtime(struct intel_context *ce)
 {
+	struct intel_context_stats *stats = &ce->stats;
 	u32 old;
 	s32 dt;
 
-	if (intel_context_is_barrier(ce))
+	old = stats->runtime.last;
+	stats->runtime.last = lrc_get_runtime(ce);
+	dt = stats->runtime.last - old;
+	if (!dt)
 		return;
-
-	old = ce->runtime.last;
-	ce->runtime.last = lrc_get_runtime(ce);
-	dt = ce->runtime.last - old;
 
 	if (unlikely(dt < 0)) {
 		CE_TRACE(ce, "runtime underflow: last=%u, new=%u, delta=%d\n",
-			 old, ce->runtime.last, dt);
-		st_update_runtime_underflow(ce, dt);
+			 old, stats->runtime.last, dt);
+		st_runtime_underflow(stats, dt);
 		return;
 	}
 
-	ewma_runtime_add(&ce->runtime.avg, dt);
-	ce->runtime.total += dt;
+	ewma_runtime_add(&stats->runtime.avg, dt);
+	stats->runtime.total += dt;
 }
 
 #if IS_ENABLED(CONFIG_DRM_I915_SELFTEST)

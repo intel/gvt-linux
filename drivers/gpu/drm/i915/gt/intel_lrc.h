@@ -79,4 +79,28 @@ static inline u32 lrc_get_runtime(const struct intel_context *ce)
 	return READ_ONCE(ce->lrc_reg_state[CTX_TIMESTAMP]);
 }
 
+static inline void lrc_runtime_start(struct intel_context *ce)
+{
+	struct intel_context_stats *stats = &ce->stats;
+
+	if (intel_context_is_barrier(ce))
+		return;
+
+	if (stats->active)
+		return;
+
+	WRITE_ONCE(stats->active, intel_context_clock());
+}
+
+static inline void lrc_runtime_stop(struct intel_context *ce)
+{
+	struct intel_context_stats *stats = &ce->stats;
+
+	if (!stats->active)
+		return;
+
+	lrc_update_runtime(ce);
+	WRITE_ONCE(stats->active, 0);
+}
+
 #endif /* __INTEL_LRC_H__ */

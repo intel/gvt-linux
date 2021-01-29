@@ -19,6 +19,17 @@ static struct i915_global_scheduler {
 
 static DEFINE_SPINLOCK(schedule_lock);
 
+static struct i915_sched_node *node_get(struct i915_sched_node *node)
+{
+	i915_request_get(container_of(node, struct i915_request, sched));
+	return node;
+}
+
+static void node_put(struct i915_sched_node *node)
+{
+	i915_request_put(container_of(node, struct i915_request, sched));
+}
+
 static const struct i915_request *
 node_to_request(const struct i915_sched_node *node)
 {
@@ -43,7 +54,7 @@ static inline struct i915_priolist *to_priolist(struct rb_node *rb)
 static void assert_priolists(struct intel_engine_execlists * const execlists)
 {
 	struct rb_node *rb;
-	long last_prio, i;
+	long last_prio;
 
 	if (!IS_ENABLED(CONFIG_DRM_I915_DEBUG_GEM))
 		return;
@@ -57,14 +68,6 @@ static void assert_priolists(struct intel_engine_execlists * const execlists)
 
 		GEM_BUG_ON(p->priority > last_prio);
 		last_prio = p->priority;
-
-		GEM_BUG_ON(!p->used);
-		for (i = 0; i < ARRAY_SIZE(p->requests); i++) {
-			if (list_empty(&p->requests[i]))
-				continue;
-
-			GEM_BUG_ON(!(p->used & BIT(i)));
-		}
 	}
 }
 
@@ -75,14 +78,10 @@ i915_sched_lookup_priolist(struct intel_engine_cs *engine, int prio)
 	struct i915_priolist *p;
 	struct rb_node **parent, *rb;
 	bool first = true;
-	int idx, i;
 
 	lockdep_assert_held(&engine->active.lock);
 	assert_priolists(execlists);
 
-	/* buckets sorted from highest [in slot 0] to lowest priority */
-	idx = I915_PRIORITY_COUNT - (prio & I915_PRIORITY_MASK) - 1;
-	prio >>= I915_USER_PRIORITY_SHIFT;
 	if (unlikely(execlists->no_priolist))
 		prio = I915_PRIORITY_NORMAL;
 
@@ -99,7 +98,7 @@ find_priolist:
 			parent = &rb->rb_right;
 			first = false;
 		} else {
-			goto out;
+			return &p->requests;
 		}
 	}
 
@@ -125,15 +124,12 @@ find_priolist:
 	}
 
 	p->priority = prio;
-	for (i = 0; i < ARRAY_SIZE(p->requests); i++)
-		INIT_LIST_HEAD(&p->requests[i]);
+	INIT_LIST_HEAD(&p->requests);
+
 	rb_link_node(&p->node, rb, parent);
 	rb_insert_color_cached(&p->node, &execlists->queue, first);
-	p->used = 0;
 
-out:
-	p->used |= BIT(idx);
-	return &p->requests[idx];
+	return &p->requests;
 }
 
 void __i915_priolist_free(struct i915_priolist *p)
@@ -363,32 +359,10 @@ void i915_schedule(struct i915_request *rq, const struct i915_sched_attr *attr)
 	spin_unlock_irq(&schedule_lock);
 }
 
-static void __bump_priority(struct i915_sched_node *node, unsigned int bump)
-{
-	struct i915_sched_attr attr = node->attr;
-
-	if (attr.priority & bump)
-		return;
-
-	attr.priority |= bump;
-	__i915_schedule(node, &attr);
-}
-
-void i915_schedule_bump_priority(struct i915_request *rq, unsigned int bump)
-{
-	unsigned long flags;
-
-	GEM_BUG_ON(bump & ~I915_PRIORITY_MASK);
-	if (READ_ONCE(rq->sched.attr.priority) & bump)
-		return;
-
-	spin_lock_irqsave(&schedule_lock, flags);
-	__bump_priority(&rq->sched, bump);
-	spin_unlock_irqrestore(&schedule_lock, flags);
-}
-
 void i915_sched_node_init(struct i915_sched_node *node)
 {
+	spin_lock_init(&node->lock);
+
 	INIT_LIST_HEAD(&node->signalers_list);
 	INIT_LIST_HEAD(&node->waiters_list);
 	INIT_LIST_HEAD(&node->link);
@@ -414,9 +388,16 @@ i915_dependency_alloc(void)
 }
 
 static void
+rcu_dependency_free(struct rcu_head *rcu)
+{
+	kmem_cache_free(global.slab_dependencies,
+			container_of(rcu, typeof(struct i915_dependency), rcu));
+}
+
+static void
 i915_dependency_free(struct i915_dependency *dep)
 {
-	kmem_cache_free(global.slab_dependencies, dep);
+	call_rcu(&dep->rcu, rcu_dependency_free);
 }
 
 bool __i915_sched_node_add_dependency(struct i915_sched_node *node,
@@ -426,24 +407,27 @@ bool __i915_sched_node_add_dependency(struct i915_sched_node *node,
 {
 	bool ret = false;
 
-	spin_lock_irq(&schedule_lock);
+	/* The signal->lock is always the outer lock in this double-lock. */
+	spin_lock(&signal->lock);
 
 	if (!node_signaled(signal)) {
 		INIT_LIST_HEAD(&dep->dfs_link);
 		dep->signaler = signal;
-		dep->waiter = node;
+		dep->waiter = node_get(node);
 		dep->flags = flags;
 
 		/* All set, now publish. Beware the lockless walkers. */
+		spin_lock_nested(&node->lock, SINGLE_DEPTH_NESTING);
 		list_add_rcu(&dep->signal_link, &node->signalers_list);
 		list_add_rcu(&dep->wait_link, &signal->waiters_list);
+		spin_unlock(&node->lock);
 
 		/* Propagate the chains */
 		node->flags |= signal->flags;
 		ret = true;
 	}
 
-	spin_unlock_irq(&schedule_lock);
+	spin_unlock(&signal->lock);
 
 	return ret;
 }
@@ -465,39 +449,41 @@ int i915_sched_node_add_dependency(struct i915_sched_node *node,
 	return 0;
 }
 
-void i915_sched_node_fini(struct i915_sched_node *node)
+void i915_sched_node_retire(struct i915_sched_node *node)
 {
 	struct i915_dependency *dep, *tmp;
-
-	spin_lock_irq(&schedule_lock);
+	LIST_HEAD(waiters);
 
 	/*
 	 * Everyone we depended upon (the fences we wait to be signaled)
 	 * should retire before us and remove themselves from our list.
 	 * However, retirement is run independently on each timeline and
-	 * so we may be called out-of-order.
+	 * so we may be called out-of-order. As we need to avoid taking
+	 * the signaler's lock, just mark up our completion and be wary
+	 * in traversing the signalers->waiters_list.
 	 */
-	list_for_each_entry_safe(dep, tmp, &node->signalers_list, signal_link) {
-		GEM_BUG_ON(!list_empty(&dep->dfs_link));
-
-		list_del_rcu(&dep->wait_link);
-		if (dep->flags & I915_DEPENDENCY_ALLOC)
-			i915_dependency_free(dep);
-	}
-	INIT_LIST_HEAD(&node->signalers_list);
 
 	/* Remove ourselves from everyone who depends upon us */
-	list_for_each_entry_safe(dep, tmp, &node->waiters_list, wait_link) {
-		GEM_BUG_ON(dep->signaler != node);
-		GEM_BUG_ON(!list_empty(&dep->dfs_link));
+	spin_lock(&node->lock);
+	if (!list_empty(&node->waiters_list)) {
+		list_replace_rcu(&node->waiters_list, &waiters);
+		INIT_LIST_HEAD_RCU(&node->waiters_list);
+	}
+	spin_unlock(&node->lock);
 
+	list_for_each_entry_safe(dep, tmp, &waiters, wait_link) {
+		struct i915_sched_node *w = dep->waiter;
+
+		GEM_BUG_ON(dep->signaler != node);
+
+		spin_lock(&w->lock);
 		list_del_rcu(&dep->signal_link);
+		spin_unlock(&w->lock);
+		node_put(w);
+
 		if (dep->flags & I915_DEPENDENCY_ALLOC)
 			i915_dependency_free(dep);
 	}
-	INIT_LIST_HEAD(&node->waiters_list);
-
-	spin_unlock_irq(&schedule_lock);
 }
 
 void i915_request_show_with_schedule(struct drm_printer *m,
@@ -548,13 +534,11 @@ static struct i915_global_scheduler global = { {
 int __init i915_global_scheduler_init(void)
 {
 	global.slab_dependencies = KMEM_CACHE(i915_dependency,
-					      SLAB_HWCACHE_ALIGN |
-					      SLAB_TYPESAFE_BY_RCU);
+					      SLAB_HWCACHE_ALIGN);
 	if (!global.slab_dependencies)
 		return -ENOMEM;
 
-	global.slab_priorities = KMEM_CACHE(i915_priolist,
-					    SLAB_HWCACHE_ALIGN);
+	global.slab_priorities = KMEM_CACHE(i915_priolist, 0);
 	if (!global.slab_priorities)
 		goto err_priorities;
 

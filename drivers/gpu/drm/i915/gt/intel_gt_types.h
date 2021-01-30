@@ -89,13 +89,6 @@ struct intel_gt {
 	u32 pm_guc_events;
 
 	struct {
-		bool active;
-
-		/**
-		 * @lock: Lock protecting the below fields.
-		 */
-		seqcount_mutex_t lock;
-
 		/**
 		 * @total: Total time this engine was busy.
 		 *

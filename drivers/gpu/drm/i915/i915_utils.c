@@ -127,3 +127,18 @@ void fs_reclaim_taints_mutex(struct mutex *mutex)
 
 	fs_reclaim_release(GFP_KERNEL);
 }
+
+#ifdef CONFIG_DEBUG_LOCK_ALLOC
+void __mark_lock_used_irq(struct lockdep_map *lock)
+{
+	/*
+	 * Due to an interesting quirk in lockdep's internal debug tracking,
+	 * after setting a subclass we must ensure the lock is used. Otherwise,
+	 * nr_unused_locks is incremented once too often.
+	 */
+	local_irq_disable();
+	lock_map_acquire(lock);
+	lock_map_release(lock);
+	local_irq_enable();
+}
+#endif

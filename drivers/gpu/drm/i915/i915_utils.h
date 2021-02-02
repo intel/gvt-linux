@@ -450,6 +450,13 @@ static inline bool timer_expired(const struct timer_list *t)
 	return timer_active(t) && !timer_pending(t);
 }
 
+#ifdef CONFIG_DEBUG_LOCK_ALLOC
+void __mark_lock_used_irq(struct lockdep_map *lock);
+#define mark_lock_used_irq(lock) __mark_lock_used_irq(&(lock)->dep_map)
+#else
+#define mark_lock_used_irq(lock)
+#endif
+
 /*
  * This is a lookalike for IS_ENABLED() that takes a kconfig value,
  * e.g. CONFIG_DRM_I915_SPIN_REQUEST, and evaluates whether it is non-zero

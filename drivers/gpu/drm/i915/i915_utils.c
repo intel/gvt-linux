@@ -114,3 +114,16 @@ void set_timer_ms(struct timer_list *t, unsigned long timeout)
 	/* Keep t->expires = 0 reserved to indicate a canceled timer. */
 	mod_timer(t, jiffies + timeout ?: 1);
 }
+
+void fs_reclaim_taints_mutex(struct mutex *mutex)
+{
+	if (!IS_ENABLED(CONFIG_LOCKDEP))
+		return;
+
+	fs_reclaim_acquire(GFP_KERNEL);
+
+	mutex_acquire(&mutex->dep_map, 0, 0, _RET_IP_);
+	mutex_release(&mutex->dep_map, _RET_IP_);
+
+	fs_reclaim_release(GFP_KERNEL);
+}

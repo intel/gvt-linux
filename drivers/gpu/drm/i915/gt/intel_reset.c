@@ -1401,7 +1401,7 @@ void intel_gt_init_reset(struct intel_gt *gt)
 	 * within the shrinker, we forbid ourselves from performing any
 	 * fs-reclaim or taking related locks during reset.
 	 */
-	i915_gem_shrinker_taints_mutex(gt->i915, &gt->reset.mutex);
+	fs_reclaim_taints_mutex(&gt->reset.mutex);
 
 	/* no GPU until we are ready! */
 	__set_bit(I915_WEDGED, &gt->reset.flags);

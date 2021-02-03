@@ -7,6 +7,7 @@
 
 #include "gt/intel_context.h"
 #include "gt/intel_gpu_commands.h"
+#include "gt/intel_ring.h"
 #include "gt/selftest_engine_heartbeat.h"
 #include "selftests/igt_spinner.h"
 #include "selftests/i915_random.h"
@@ -504,10 +505,224 @@ static int igt_priority_chains(void *arg)
 	return igt_schedule_chains(arg, igt_priority);
 }
 
+static struct i915_request *
+__write_timestamp(struct intel_engine_cs *engine,
+		  struct drm_i915_gem_object *obj,
+		  int slot,
+		  struct i915_request *prev)
+{
+	struct i915_request *rq = ERR_PTR(-EINVAL);
+	bool use_64b = INTEL_GEN(engine->i915) >= 8;
+	struct intel_context *ce;
+	struct i915_vma *vma;
+	int err = 0;
+	u32 *cs;
+
+	ce = intel_context_create(engine);
+	if (IS_ERR(ce))
+		return ERR_CAST(ce);
+
+	vma = i915_vma_instance(obj, ce->vm, NULL);
+	if (IS_ERR(vma)) {
+		err = PTR_ERR(vma);
+		goto out_ce;
+	}
+
+	err = i915_vma_pin(vma, 0, 0, PIN_USER);
+	if (err)
+		goto out_ce;
+
+	rq = intel_context_create_request(ce);
+	if (IS_ERR(rq)) {
+		err = PTR_ERR(rq);
+		goto out_unpin;
+	}
+
+	i915_vma_lock(vma);
+	err = i915_vma_move_to_active(vma, rq, EXEC_OBJECT_WRITE);
+	i915_vma_unlock(vma);
+	if (err)
+		goto out_request;
+
+	if (prev) {
+		err = i915_request_await_dma_fence(rq, &prev->fence);
+		if (err)
+			goto out_request;
+	}
+
+	if (engine->emit_init_breadcrumb) {
+		err = engine->emit_init_breadcrumb(rq);
+		if (err)
+			goto out_request;
+	}
+
+	cs = intel_ring_begin(rq, 4);
+	if (IS_ERR(cs)) {
+		err = PTR_ERR(cs);
+		goto out_request;
+	}
+
+	*cs++ = MI_STORE_REGISTER_MEM + use_64b;
+	*cs++ = i915_mmio_reg_offset(RING_TIMESTAMP(engine->mmio_base));
+	*cs++ = lower_32_bits(vma->node.start) + sizeof(u32) * slot;
+	*cs++ = upper_32_bits(vma->node.start);
+	intel_ring_advance(rq, cs);
+
+	i915_request_get(rq);
+out_request:
+	i915_request_add(rq);
+out_unpin:
+	i915_vma_unpin(vma);
+out_ce:
+	intel_context_put(ce);
+	i915_request_put(prev);
+	return err ? ERR_PTR(err) : rq;
+}
+
+static struct i915_request *create_spinner(struct drm_i915_private *i915,
+					   struct igt_spinner *spin)
+{
+	struct intel_engine_cs *engine;
+
+	for_each_uabi_engine(engine, i915) {
+		struct intel_context *ce;
+		struct i915_request *rq;
+
+		if (igt_spinner_init(spin, engine->gt))
+			return ERR_PTR(-ENOMEM);
+
+		ce = intel_context_create(engine);
+		if (IS_ERR(ce))
+			return ERR_CAST(ce);
+
+		rq = igt_spinner_create_request(spin, ce, MI_NOOP);
+		intel_context_put(ce);
+		if (rq == ERR_PTR(-ENODEV))
+			continue;
+		if (IS_ERR(rq))
+			return rq;
+
+		i915_request_get(rq);
+		i915_request_add(rq);
+		return rq;
+	}
+
+	return ERR_PTR(-ENODEV);
+}
+
+static bool has_timestamp(const struct drm_i915_private *i915)
+{
+	return INTEL_GEN(i915) >= 7;
+}
+
+static int __igt_schedule_cycle(struct drm_i915_private *i915,
+				bool (*fn)(struct i915_request *rq,
+					   unsigned long v, unsigned long e))
+{
+	struct intel_engine_cs *engine;
+	struct drm_i915_gem_object *obj;
+	struct igt_spinner spin;
+	struct i915_request *rq;
+	unsigned long count, n;
+	u32 *time, last;
+	int err, loop;
+
+	/*
+	 * Queue a bunch of ordered requests (each waiting on the previous)
+	 * around the engines a couple of times. Each request will write
+	 * the timestamp it executes at into the scratch, with the expectation
+	 * that the timestamp will be in our desired execution order.
+	 */
+
+	if (!i915->caps.scheduler || !has_timestamp(i915))
+		return 0;
+
+	obj = i915_gem_object_create_internal(i915, SZ_64K);
+	if (IS_ERR(obj))
+		return PTR_ERR(obj);
+
+	time = i915_gem_object_pin_map(obj, I915_MAP_WC);
+	if (IS_ERR(time)) {
+		err = PTR_ERR(time);
+		goto out_obj;
+	}
+
+	rq = create_spinner(i915, &spin);
+	if (IS_ERR(rq)) {
+		err = PTR_ERR(rq);
+		goto out_obj;
+	}
+
+	err = 0;
+	count = 0;
+	for (loop = 0; !err && loop < 3; loop++) {
+		for_each_uabi_engine(engine, i915) {
+			if (!intel_engine_has_scheduler(engine))
+				continue;
+
+			rq = __write_timestamp(engine, obj, count, rq);
+			if (IS_ERR(rq)) {
+				err = PTR_ERR(rq);
+				break;
+			}
+
+			count++;
+		}
+	}
+	GEM_BUG_ON(count * sizeof(u32) > obj->base.size);
+	if (err || !count)
+		goto out_spin;
+
+	fn(rq, count + 1, count);
+	igt_spinner_end(&spin);
+
+	if (i915_request_wait(rq, 0, HZ / 2) < 0) {
+		err = -ETIME;
+		goto out_request;
+	}
+
+	last = time[0];
+	for (n = 1; n < count; n++) {
+		if (i915_seqno_passed(last, time[n])) {
+			pr_err("Timestamp[%lu] %x before previous %x\n",
+			       n, time[n], last);
+			err = -EINVAL;
+			break;
+		}
+		last = time[n];
+	}
+
+out_request:
+	i915_request_put(rq);
+out_spin:
+	igt_spinner_fini(&spin);
+out_obj:
+	i915_gem_object_put(obj);
+	return err;
+}
+
+static bool noop(struct i915_request *rq, unsigned long v, unsigned long e)
+{
+	return true;
+}
+
+static int igt_schedule_cycle(void *arg)
+{
+	return __igt_schedule_cycle(arg, noop);
+}
+
+static int igt_priority_cycle(void *arg)
+{
+	return __igt_schedule_cycle(arg, igt_priority);
+}
+
 int i915_scheduler_live_selftests(struct drm_i915_private *i915)
 {
 	static const struct i915_subtest tests[] = {
 		SUBTEST(igt_priority_chains),
+
+		SUBTEST(igt_schedule_cycle),
+		SUBTEST(igt_priority_cycle),
 	};
 
 	return i915_subtests(tests, i915);

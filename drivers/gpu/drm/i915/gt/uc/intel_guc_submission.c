@@ -520,34 +520,6 @@ static int guc_request_alloc(struct i915_request *request)
 	return 0;
 }
 
-static inline void queue_request(struct intel_engine_cs *engine,
-				 struct i915_request *rq,
-				 int prio)
-{
-	GEM_BUG_ON(!list_empty(&rq->sched.link));
-	list_add_tail(&rq->sched.link,
-		      i915_sched_lookup_priolist(engine, prio));
-	set_bit(I915_FENCE_FLAG_PQUEUE, &rq->fence.flags);
-}
-
-static void guc_submit_request(struct i915_request *rq)
-{
-	struct intel_engine_cs *engine = rq->engine;
-	unsigned long flags;
-
-	/* Will be called from irq-context when using foreign fences. */
-	spin_lock_irqsave(&engine->active.lock, flags);
-
-	queue_request(engine, rq, rq_prio(rq));
-
-	GEM_BUG_ON(RB_EMPTY_ROOT(&engine->execlists.queue.rb_root));
-	GEM_BUG_ON(list_empty(&rq->sched.link));
-
-	tasklet_hi_schedule(&engine->execlists.tasklet);
-
-	spin_unlock_irqrestore(&engine->active.lock, flags);
-}
-
 static void sanitize_hwsp(struct intel_engine_cs *engine)
 {
 	struct intel_timeline *tl;
@@ -616,7 +588,7 @@ static int guc_resume(struct intel_engine_cs *engine)
 
 static void guc_set_default_submission(struct intel_engine_cs *engine)
 {
-	engine->submit_request = guc_submit_request;
+	engine->submit_request = i915_request_enqueue;
 }
 
 static void guc_release(struct intel_engine_cs *engine)

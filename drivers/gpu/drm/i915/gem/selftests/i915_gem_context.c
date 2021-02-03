@@ -955,8 +955,6 @@ retry:
 	if (!err)
 		err = i915_gem_object_lock(rpcs, &ww);
 	if (!err)
-		err = i915_gem_object_set_to_gtt_domain(obj, false);
-	if (!err)
 		err = i915_vma_pin_ww(vma, &ww, 0, 0, PIN_USER);
 	if (err)
 		goto err_put;

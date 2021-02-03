@@ -608,7 +608,7 @@ static int live_hold_reset(void *arg)
 		GEM_BUG_ON(execlists_active(&engine->execlists) != rq);
 
 		i915_request_get(rq);
-		execlists_hold(engine, rq);
+		i915_sched_suspend_request(engine, rq);
 		GEM_BUG_ON(!i915_request_on_hold(rq));
 
 		__intel_engine_reset_bh(engine, NULL);
@@ -630,7 +630,7 @@ static int live_hold_reset(void *arg)
 		GEM_BUG_ON(!i915_request_on_hold(rq));
 
 		/* But is resubmitted on release */
-		execlists_unhold(engine, rq);
+		i915_sched_resume_request(engine, rq);
 		if (i915_request_wait(rq, 0, HZ / 5) < 0) {
 			pr_err("%s: held request did not complete!\n",
 			       engine->name);
@@ -4587,7 +4587,7 @@ static int reset_virtual_engine(struct intel_gt *gt,
 	GEM_BUG_ON(rq->engine != engine);
 
 	/* Reset the engine while keeping our active request on hold */
-	execlists_hold(engine, rq);
+	i915_sched_suspend_request(engine, rq);
 	GEM_BUG_ON(!i915_request_on_hold(rq));
 
 	__intel_engine_reset_bh(engine, NULL);
@@ -4610,7 +4610,7 @@ static int reset_virtual_engine(struct intel_gt *gt,
 	GEM_BUG_ON(!i915_request_on_hold(rq));
 
 	/* But is resubmitted on release */
-	execlists_unhold(engine, rq);
+	i915_sched_resume_request(engine, rq);
 	if (i915_request_wait(rq, 0, HZ / 5) < 0) {
 		pr_err("%s: held request did not complete!\n",
 		       engine->name);

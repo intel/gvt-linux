@@ -586,6 +586,159 @@ __i915_sched_rewind_requests(struct intel_engine_cs *engine)
 	return active;
 }
 
+bool __i915_sched_suspend_request(struct intel_engine_cs *engine,
+				  struct i915_request *rq)
+{
+	LIST_HEAD(list);
+
+	lockdep_assert_held(&engine->active.lock);
+	GEM_BUG_ON(rq->engine != engine);
+
+	if (__i915_request_is_complete(rq)) /* too late! */
+		return false;
+
+	if (i915_request_on_hold(rq))
+		return false;
+
+	ENGINE_TRACE(engine, "suspending request %llx:%lld\n",
+		     rq->fence.context, rq->fence.seqno);
+
+	/*
+	 * Transfer this request onto the hold queue to prevent it
+	 * being resumbitted to HW (and potentially completed) before we have
+	 * released it. Since we may have already submitted following
+	 * requests, we need to remove those as well.
+	 */
+	do {
+		struct i915_dependency *p;
+
+		if (i915_request_is_active(rq))
+			__i915_request_unsubmit(rq);
+
+		list_move_tail(&rq->sched.link, &engine->active.hold);
+		clear_bit(I915_FENCE_FLAG_PQUEUE, &rq->fence.flags);
+		i915_request_set_hold(rq);
+		RQ_TRACE(rq, "on hold\n");
+
+		for_each_waiter(p, rq) {
+			struct i915_request *w =
+				container_of(p->waiter, typeof(*w), sched);
+
+			if (p->flags & I915_DEPENDENCY_WEAK)
+				continue;
+
+			/* Leave semaphores spinning on the other engines */
+			if (w->engine != engine)
+				continue;
+
+			if (!i915_request_is_ready(w))
+				continue;
+
+			if (__i915_request_is_complete(w))
+				continue;
+
+			if (i915_request_on_hold(w)) /* acts as a visited bit */
+				continue;
+
+			list_move_tail(&w->sched.link, &list);
+		}
+
+		rq = list_first_entry_or_null(&list, typeof(*rq), sched.link);
+	} while (rq);
+
+	GEM_BUG_ON(list_empty(&engine->active.hold));
+
+	return true;
+}
+
+bool i915_sched_suspend_request(struct intel_engine_cs *engine,
+				struct i915_request *rq)
+{
+	bool result;
+
+	if (i915_request_on_hold(rq))
+		return false;
+
+	spin_lock_irq(&engine->active.lock);
+	result = __i915_sched_suspend_request(engine, rq);
+	spin_unlock_irq(&engine->active.lock);
+
+	return result;
+}
+
+void __i915_sched_resume_request(struct intel_engine_cs *engine,
+				 struct i915_request *rq)
+{
+	LIST_HEAD(list);
+
+	lockdep_assert_held(&engine->active.lock);
+
+	if (rq_prio(rq) > engine->execlists.queue_priority_hint) {
+		engine->execlists.queue_priority_hint = rq_prio(rq);
+		tasklet_hi_schedule(&engine->execlists.tasklet);
+	}
+
+	if (!i915_request_on_hold(rq))
+		return;
+
+	ENGINE_TRACE(engine, "resuming request %llx:%lld\n",
+		     rq->fence.context, rq->fence.seqno);
+
+	/*
+	 * Move this request back to the priority queue, and all of its
+	 * children and grandchildren that were suspended along with it.
+	 */
+	do {
+		struct i915_dependency *p;
+
+		RQ_TRACE(rq, "hold release\n");
+
+		GEM_BUG_ON(!i915_request_on_hold(rq));
+		GEM_BUG_ON(!i915_sw_fence_signaled(&rq->submit));
+
+		i915_request_clear_hold(rq);
+		list_del_init(&rq->sched.link);
+
+		queue_request(engine, rq);
+
+		/* Also release any children on this engine that are ready */
+		for_each_waiter(p, rq) {
+			struct i915_request *w =
+				container_of(p->waiter, typeof(*w), sched);
+
+			if (p->flags & I915_DEPENDENCY_WEAK)
+				continue;
+
+			/* Propagate any change in error status */
+			if (rq->fence.error)
+				i915_request_set_error_once(w, rq->fence.error);
+
+			if (w->engine != engine)
+				continue;
+
+			/* We also treat the on-hold status as a visited bit */
+			if (!i915_request_on_hold(w))
+				continue;
+
+			/* Check that no other parents are also on hold [BFS] */
+			if (hold_request(w))
+				continue;
+
+			list_move_tail(&w->sched.link, &list);
+		}
+
+		rq = list_first_entry_or_null(&list, typeof(*rq), sched.link);
+	} while (rq);
+}
+
+void i915_sched_resume_request(struct intel_engine_cs *engine,
+			       struct i915_request *rq)
+{
+	spin_lock_irq(&engine->active.lock);
+	__i915_sched_resume_request(engine, rq);
+	spin_unlock_irq(&engine->active.lock);
+}
+
 void i915_sched_node_init(struct i915_sched_node *node)
 {
 	spin_lock_init(&node->lock);

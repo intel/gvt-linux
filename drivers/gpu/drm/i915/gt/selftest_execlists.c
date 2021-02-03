@@ -4582,7 +4582,7 @@ static int reset_virtual_engine(struct intel_gt *gt,
 
 	/* Fake a preemption event; failed of course */
 	spin_lock_irq(&engine->active.lock);
-	__unwind_incomplete_requests(engine);
+	__i915_sched_rewind_requests(engine);
 	spin_unlock_irq(&engine->active.lock);
 	GEM_BUG_ON(rq->engine != engine);
 

@@ -360,56 +360,6 @@ assert_priority_queue(const struct i915_request *prev,
 	return rq_prio(prev) >= rq_prio(next);
 }
 
-static struct i915_request *
-__unwind_incomplete_requests(struct intel_engine_cs *engine)
-{
-	struct i915_request *rq, *rn, *active = NULL;
-	struct list_head *pl;
-	int prio = I915_PRIORITY_INVALID;
-
-	lockdep_assert_held(&engine->active.lock);
-
-	list_for_each_entry_safe_reverse(rq, rn,
-					 &engine->active.requests,
-					 sched.link) {
-		if (__i915_request_is_complete(rq)) {
-			list_del_init(&rq->sched.link);
-			continue;
-		}
-
-		__i915_request_unsubmit(rq);
-
-		GEM_BUG_ON(rq_prio(rq) == I915_PRIORITY_INVALID);
-		if (rq_prio(rq) != prio) {
-			prio = rq_prio(rq);
-			pl = i915_sched_lookup_priolist(engine, prio);
-		}
-		GEM_BUG_ON(RB_EMPTY_ROOT(&engine->execlists.queue.rb_root));
-
-		list_move(&rq->sched.link, pl);
-		set_bit(I915_FENCE_FLAG_PQUEUE, &rq->fence.flags);
-
-		/* Check in case we rollback so far we wrap [size/2] */
-		if (intel_ring_direction(rq->ring,
-					 rq->tail,
-					 rq->ring->tail + 8) > 0)
-			rq->context->lrc.desc |= CTX_DESC_FORCE_RESTORE;
-
-		active = rq;
-	}
-
-	return active;
-}
-
-struct i915_request *
-execlists_unwind_incomplete_requests(struct intel_engine_execlists *execlists)
-{
-	struct intel_engine_cs *engine =
-		container_of(execlists, typeof(*engine), execlists);
-
-	return __unwind_incomplete_requests(engine);
-}
-
 static void
 execlists_context_status_change(struct i915_request *rq, unsigned long status)
 {
@@ -1081,7 +1031,7 @@ static void defer_active(struct intel_engine_cs *engine)
 {
 	struct i915_request *rq;
 
-	rq = __unwind_incomplete_requests(engine);
+	rq = __i915_sched_rewind_requests(engine);
 	if (!rq)
 		return;
 
@@ -1293,7 +1243,7 @@ static void execlists_dequeue(struct intel_engine_cs *engine)
 			 * the preemption, some of the unwound requests may
 			 * complete!
 			 */
-			__unwind_incomplete_requests(engine);
+			__i915_sched_rewind_requests(engine);
 
 			last = NULL;
 		} else if (timeslice_expired(engine, last)) {
@@ -2288,7 +2238,7 @@ static void execlists_capture(struct intel_engine_cs *engine)
 	 * which we return it to the queue for signaling.
 	 *
 	 * By removing them from the execlists queue, we also remove the
-	 * requests from being processed by __unwind_incomplete_requests()
+	 * requests from being processed by __intel_engine_rewind_requests()
 	 * during the intel_engine_reset(), and so they will *not* be replayed
 	 * afterwards.
 	 *
@@ -2898,7 +2848,7 @@ static void execlists_reset_rewind(struct intel_engine_cs *engine, bool stalled)
 	/* Push back any incomplete requests for replay after the reset. */
 	rcu_read_lock();
 	spin_lock_irqsave(&engine->active.lock, flags);
-	__unwind_incomplete_requests(engine);
+	__i915_sched_rewind_requests(engine);
 	spin_unlock_irqrestore(&engine->active.lock, flags);
 	rcu_read_unlock();
 }

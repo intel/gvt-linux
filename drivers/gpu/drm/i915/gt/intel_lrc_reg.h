@@ -92,4 +92,7 @@
 /* in Gen12 ID 0x7FF is reserved to indicate idle */
 #define GEN12_MAX_CONTEXT_HW_ID	(GEN11_MAX_CONTEXT_HW_ID - 1)
 
+#define CTX_DESC_RELOAD_PD BIT_ULL(1)
+#define CTX_DESC_FORCE_RESTORE BIT_ULL(2)
+
 #endif /* _INTEL_LRC_REG_H_ */

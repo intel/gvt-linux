@@ -6,6 +6,9 @@
 
 #include <linux/mutex.h>
 
+#include "gt/intel_ring.h"
+#include "gt/intel_lrc_reg.h"
+
 #include "i915_drv.h"
 #include "i915_globals.h"
 #include "i915_request.h"
@@ -540,6 +543,47 @@ void i915_request_enqueue(struct i915_request *rq)
 	spin_unlock_irqrestore(&engine->active.lock, flags);
 	if (kick)
 		tasklet_hi_schedule(&engine->execlists.tasklet);
+}
+
+struct i915_request *
+__i915_sched_rewind_requests(struct intel_engine_cs *engine)
+{
+	struct i915_request *rq, *rn, *active = NULL;
+	struct list_head *pl;
+	int prio = I915_PRIORITY_INVALID;
+
+	lockdep_assert_held(&engine->active.lock);
+
+	list_for_each_entry_safe_reverse(rq, rn,
+					 &engine->active.requests,
+					 sched.link) {
+		if (__i915_request_is_complete(rq)) {
+			list_del_init(&rq->sched.link);
+			continue;
+		}
+
+		__i915_request_unsubmit(rq);
+
+		GEM_BUG_ON(rq_prio(rq) == I915_PRIORITY_INVALID);
+		if (rq_prio(rq) != prio) {
+			prio = rq_prio(rq);
+			pl = i915_sched_lookup_priolist(engine, prio);
+		}
+		GEM_BUG_ON(RB_EMPTY_ROOT(&engine->execlists.queue.rb_root));
+
+		list_move(&rq->sched.link, pl);
+		set_bit(I915_FENCE_FLAG_PQUEUE, &rq->fence.flags);
+
+		/* Check in case we rollback so far we wrap [size/2] */
+		if (intel_ring_direction(rq->ring,
+					 rq->tail,
+					 rq->ring->tail + 8) > 0)
+			rq->context->lrc.desc |= CTX_DESC_FORCE_RESTORE;
+
+		active = rq;
+	}
+
+	return active;
 }
 
 void i915_sched_node_init(struct i915_sched_node *node)

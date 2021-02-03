@@ -137,9 +137,6 @@ execlists_active_unlock_bh(struct intel_engine_execlists *execlists)
 	local_bh_enable(); /* restore softirq, and kick ksoftirqd! */
 }
 
-struct i915_request *
-execlists_unwind_incomplete_requests(struct intel_engine_execlists *execlists);
-
 static inline u32
 intel_read_status_page(const struct intel_engine_cs *engine, int reg)
 {

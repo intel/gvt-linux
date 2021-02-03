@@ -315,14 +315,13 @@ static void guc_reset_state(struct intel_context *ce,
 
 static void guc_reset_rewind(struct intel_engine_cs *engine, bool stalled)
 {
-	struct intel_engine_execlists * const execlists = &engine->execlists;
 	struct i915_request *rq;
 	unsigned long flags;
 
 	spin_lock_irqsave(&engine->active.lock, flags);
 
 	/* Push back any incomplete requests for replay after the reset. */
-	rq = execlists_unwind_incomplete_requests(execlists);
+	rq = __i915_sched_rewind_requests(engine);
 	if (!rq)
 		goto out_unlock;
 

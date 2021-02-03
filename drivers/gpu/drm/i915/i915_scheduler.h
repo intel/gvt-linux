@@ -35,8 +35,7 @@ int i915_sched_node_add_dependency(struct i915_sched_node *node,
 
 void i915_sched_node_retire(struct i915_sched_node *node);
 
-void i915_schedule(struct i915_request *request,
-		   const struct i915_sched_attr *attr);
+void i915_request_set_priority(struct i915_request *request, int prio);
 
 struct list_head *
 i915_sched_lookup_priolist(struct intel_engine_cs *engine, int prio);

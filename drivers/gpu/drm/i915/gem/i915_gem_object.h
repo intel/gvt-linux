@@ -543,15 +543,14 @@ static inline void __start_cpu_write(struct drm_i915_gem_object *obj)
 		obj->cache_dirty = true;
 }
 
-void i915_gem_fence_wait_priority(struct dma_fence *fence,
-				  const struct i915_sched_attr *attr);
+void i915_gem_fence_wait_priority(struct dma_fence *fence, int prio);
 
 int i915_gem_object_wait(struct drm_i915_gem_object *obj,
 			 unsigned int flags,
 			 long timeout);
 int i915_gem_object_wait_priority(struct drm_i915_gem_object *obj,
 				  unsigned int flags,
-				  const struct i915_sched_attr *attr);
+				  int prio);
 
 void __i915_gem_object_flush_frontbuffer(struct drm_i915_gem_object *obj,
 					 enum fb_op_origin origin);

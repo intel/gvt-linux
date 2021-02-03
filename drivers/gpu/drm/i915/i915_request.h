@@ -616,4 +616,9 @@ i915_request_active_timeline(const struct i915_request *rq)
 					 lockdep_is_held(&rq->engine->active.lock));
 }
 
+static inline bool i915_request_use_scheduler(const struct i915_request *rq)
+{
+	return intel_engine_has_scheduler(rq->engine);
+}
+
 #endif /* I915_REQUEST_H */

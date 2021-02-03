@@ -227,10 +227,8 @@ unlock:
 	rcu_read_unlock();
 }
 
-static void __i915_schedule(struct i915_sched_node *node,
-			    const struct i915_sched_attr *attr)
+static void __i915_schedule(struct i915_sched_node *node, int prio)
 {
-	const int prio = max(attr->priority, node->attr.priority);
 	struct intel_engine_cs *engine;
 	struct i915_dependency *dep, *p;
 	struct i915_dependency stack;
@@ -243,6 +241,8 @@ static void __i915_schedule(struct i915_sched_node *node,
 
 	if (node_signaled(node))
 		return;
+
+	prio = max(prio, node->attr.priority);
 
 	stack.signaler = node;
 	list_add(&stack.dfs_link, &dfs);
@@ -297,7 +297,7 @@ static void __i915_schedule(struct i915_sched_node *node,
 	 */
 	if (node->attr.priority == I915_PRIORITY_INVALID) {
 		GEM_BUG_ON(!list_empty(&node->link));
-		node->attr = *attr;
+		node->attr.priority = prio;
 
 		if (stack.dfs_link.next == stack.dfs_link.prev)
 			return;
@@ -352,10 +352,13 @@ static void __i915_schedule(struct i915_sched_node *node,
 	spin_unlock(&engine->active.lock);
 }
 
-void i915_schedule(struct i915_request *rq, const struct i915_sched_attr *attr)
+void i915_request_set_priority(struct i915_request *rq, int prio)
 {
+	if (!i915_request_use_scheduler(rq))
+		return;
+
 	spin_lock_irq(&schedule_lock);
-	__i915_schedule(&rq->sched, attr);
+	__i915_schedule(&rq->sched, prio);
 	spin_unlock_irq(&schedule_lock);
 }
 

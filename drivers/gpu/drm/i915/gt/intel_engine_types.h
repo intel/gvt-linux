@@ -454,14 +454,6 @@ struct intel_engine_cs {
 	void            (*bond_execute)(struct i915_request *rq,
 					struct dma_fence *signal);
 
-	/*
-	 * Call when the priority on a request has changed and it and its
-	 * dependencies may need rescheduling. Note the request itself may
-	 * not be ready to run!
-	 */
-	void		(*schedule)(struct i915_request *request,
-				    const struct i915_sched_attr *attr);
-
 	void		(*release)(struct intel_engine_cs *engine);
 
 	struct intel_engine_execlists execlists;
@@ -479,12 +471,13 @@ struct intel_engine_cs {
 
 #define I915_ENGINE_USING_CMD_PARSER BIT(0)
 #define I915_ENGINE_SUPPORTS_STATS   BIT(1)
-#define I915_ENGINE_HAS_PREEMPTION   BIT(2)
-#define I915_ENGINE_HAS_SEMAPHORES   BIT(3)
-#define I915_ENGINE_HAS_TIMESLICES   BIT(4)
-#define I915_ENGINE_IS_VIRTUAL       BIT(5)
-#define I915_ENGINE_HAS_RELATIVE_MMIO BIT(6)
-#define I915_ENGINE_REQUIRES_CMD_PARSER BIT(7)
+#define I915_ENGINE_HAS_SCHEDULER    BIT(2)
+#define I915_ENGINE_HAS_PREEMPTION   BIT(3)
+#define I915_ENGINE_HAS_SEMAPHORES   BIT(4)
+#define I915_ENGINE_HAS_TIMESLICES   BIT(5)
+#define I915_ENGINE_IS_VIRTUAL       BIT(6)
+#define I915_ENGINE_HAS_RELATIVE_MMIO BIT(7)
+#define I915_ENGINE_REQUIRES_CMD_PARSER BIT(8)
 	unsigned int flags;
 
 	/*
@@ -565,6 +558,12 @@ static inline bool
 intel_engine_supports_stats(const struct intel_engine_cs *engine)
 {
 	return engine->flags & I915_ENGINE_SUPPORTS_STATS;
+}
+
+static inline bool
+intel_engine_has_scheduler(const struct intel_engine_cs *engine)
+{
+	return engine->flags & I915_ENGINE_HAS_SCHEDULER;
 }
 
 static inline bool

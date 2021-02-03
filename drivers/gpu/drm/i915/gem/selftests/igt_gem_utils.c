@@ -7,6 +7,7 @@
 #include "igt_gem_utils.h"
 
 #include "gem/i915_gem_context.h"
+#include "gem/i915_gem_clflush.h"
 #include "gem/i915_gem_pm.h"
 #include "gt/intel_context.h"
 #include "gt/intel_gpu_commands.h"
@@ -138,6 +139,8 @@ int igt_gpu_fill_dw(struct intel_context *ce,
 		goto skip_request;
 
 	i915_vma_lock(vma);
+	if (vma->obj->cache_dirty & ~vma->obj->cache_coherent)
+		i915_gem_clflush_object(vma->obj, 0);
 	err = i915_request_await_object(rq, vma->obj, true);
 	if (err == 0)
 		err = i915_vma_move_to_active(vma, rq, EXEC_OBJECT_WRITE);

@@ -962,14 +962,6 @@ static int gpu_write(struct intel_context *ce,
 		     u32 dw,
 		     u32 val)
 {
-	int err;
-
-	i915_gem_object_lock(vma->obj, NULL);
-	err = i915_gem_object_set_to_gtt_domain(vma->obj, true);
-	i915_gem_object_unlock(vma->obj);
-	if (err)
-		return err;
-
 	return igt_gpu_fill_dw(ce, vma, dw * sizeof(u32),
 			       vma->size >> PAGE_SHIFT, val);
 }

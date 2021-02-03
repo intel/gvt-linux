@@ -133,7 +133,7 @@ static int i915_gem_begin_cpu_access(struct dma_buf *dma_buf, enum dma_data_dire
 	if (err)
 		goto out;
 
-	err = i915_gem_object_set_to_cpu_domain(obj, write);
+	i915_gem_object_set_to_cpu_domain(obj, write);
 	i915_gem_object_unlock(obj);
 
 out:
@@ -154,7 +154,7 @@ static int i915_gem_end_cpu_access(struct dma_buf *dma_buf, enum dma_data_direct
 	if (err)
 		goto out;
 
-	err = i915_gem_object_set_to_gtt_domain(obj, false);
+	i915_gem_object_set_to_gtt_domain(obj, false);
 	i915_gem_object_unlock(obj);
 
 out:

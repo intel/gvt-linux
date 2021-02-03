@@ -507,12 +507,12 @@ void i915_gem_object_set_cache_coherency(struct drm_i915_gem_object *obj,
 void i915_gem_object_flush_if_display(struct drm_i915_gem_object *obj);
 void i915_gem_object_flush_if_display_locked(struct drm_i915_gem_object *obj);
 
-int __must_check
-i915_gem_object_set_to_wc_domain(struct drm_i915_gem_object *obj, bool write);
-int __must_check
-i915_gem_object_set_to_gtt_domain(struct drm_i915_gem_object *obj, bool write);
-int __must_check
-i915_gem_object_set_to_cpu_domain(struct drm_i915_gem_object *obj, bool write);
+void i915_gem_object_set_to_wc_domain(struct drm_i915_gem_object *obj,
+				      bool write);
+void i915_gem_object_set_to_gtt_domain(struct drm_i915_gem_object *obj,
+				       bool write);
+void i915_gem_object_set_to_cpu_domain(struct drm_i915_gem_object *obj,
+				       bool write);
 struct i915_vma * __must_check
 i915_gem_object_pin_to_display_plane(struct drm_i915_gem_object *obj,
 				     u32 alignment,

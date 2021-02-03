@@ -306,11 +306,7 @@ i915_gem_gtt_pread(struct drm_i915_gem_object *obj,
 	if (ret)
 		goto out_unpin;
 
-	ret = i915_gem_object_set_to_gtt_domain(obj, false);
-	if (ret) {
-		i915_gem_object_unlock(obj);
-		goto out_unpin;
-	}
+	i915_gem_object_set_to_gtt_domain(obj, false);
 
 	fence = i915_gem_object_lock_fence(obj);
 	i915_gem_object_unlock(obj);
@@ -511,11 +507,7 @@ i915_gem_gtt_pwrite_fast(struct drm_i915_gem_object *obj,
 	if (ret)
 		goto out_unpin;
 
-	ret = i915_gem_object_set_to_gtt_domain(obj, true);
-	if (ret) {
-		i915_gem_object_unlock(obj);
-		goto out_unpin;
-	}
+	i915_gem_object_set_to_gtt_domain(obj, true);
 
 	fence = i915_gem_object_lock_fence(obj);
 	i915_gem_object_unlock(obj);

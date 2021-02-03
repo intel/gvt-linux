@@ -44,6 +44,8 @@ void i915_request_enqueue(struct i915_request *request);
 
 struct i915_request *
 __i915_sched_rewind_requests(struct intel_engine_cs *engine);
+void __i915_sched_defer_request(struct intel_engine_cs *engine,
+				struct i915_request *request);
 
 bool __i915_sched_suspend_request(struct intel_engine_cs *engine,
 				  struct i915_request *rq);
@@ -54,9 +56,6 @@ bool i915_sched_suspend_request(struct intel_engine_cs *engine,
 				struct i915_request *request);
 void i915_sched_resume_request(struct intel_engine_cs *engine,
 			       struct i915_request *rq);
-
-struct list_head *
-i915_sched_lookup_priolist(struct intel_engine_cs *engine, int prio);
 
 void __i915_priolist_free(struct i915_priolist *p);
 static inline void i915_priolist_free(struct i915_priolist *p)

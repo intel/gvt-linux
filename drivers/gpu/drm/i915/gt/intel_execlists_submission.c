@@ -979,54 +979,6 @@ static void virtual_xfer_context(struct virtual_engine *ve,
 	}
 }
 
-static void defer_request(struct i915_request *rq, struct list_head * const pl)
-{
-	LIST_HEAD(list);
-
-	/*
-	 * We want to move the interrupted request to the back of
-	 * the round-robin list (i.e. its priority level), but
-	 * in doing so, we must then move all requests that were in
-	 * flight and were waiting for the interrupted request to
-	 * be run after it again.
-	 */
-	do {
-		struct i915_dependency *p;
-
-		GEM_BUG_ON(i915_request_is_active(rq));
-		list_move_tail(&rq->sched.link, pl);
-
-		for_each_waiter(p, rq) {
-			struct i915_request *w =
-				container_of(p->waiter, typeof(*w), sched);
-
-			if (p->flags & I915_DEPENDENCY_WEAK)
-				continue;
-
-			/* Leave semaphores spinning on the other engines */
-			if (w->engine != rq->engine)
-				continue;
-
-			/* No waiter should start before its signaler */
-			GEM_BUG_ON(i915_request_has_initial_breadcrumb(w) &&
-				   __i915_request_has_started(w) &&
-				   !__i915_request_is_complete(rq));
-
-			if (!i915_request_is_ready(w))
-				continue;
-
-			if (rq_prio(w) < rq_prio(rq))
-				continue;
-
-			GEM_BUG_ON(rq_prio(w) > rq_prio(rq));
-			GEM_BUG_ON(i915_request_is_active(w));
-			list_move_tail(&w->sched.link, &list);
-		}
-
-		rq = list_first_entry_or_null(&list, typeof(*rq), sched.link);
-	} while (rq);
-}
-
 static void defer_active(struct intel_engine_cs *engine)
 {
 	struct i915_request *rq;
@@ -1035,7 +987,14 @@ static void defer_active(struct intel_engine_cs *engine)
 	if (!rq)
 		return;
 
-	defer_request(rq, i915_sched_lookup_priolist(engine, rq_prio(rq)));
+	/*
+	 * We want to move the interrupted request to the back of
+	 * the round-robin list (i.e. its priority level), but
+	 * in doing so, we must then move all requests that were in
+	 * flight and were waiting for the interrupted request to
+	 * be run after it again.
+	 */
+	__i915_sched_defer_request(engine, rq);
 }
 
 static bool

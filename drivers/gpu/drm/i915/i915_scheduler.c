@@ -179,8 +179,8 @@ static void assert_priolists(struct intel_engine_execlists * const execlists)
 	}
 }
 
-struct list_head *
-i915_sched_lookup_priolist(struct intel_engine_cs *engine, int prio)
+static struct list_head *
+lookup_priolist(struct intel_engine_cs *engine, int prio)
 {
 	struct intel_engine_execlists * const execlists = &engine->execlists;
 	struct i915_priolist *p;
@@ -332,7 +332,7 @@ static void __i915_request_set_priority(struct i915_request *rq, int prio)
 	struct list_head *pos = &rq->sched.signalers_list;
 	struct list_head *plist;
 
-	plist = i915_sched_lookup_priolist(engine, prio);
+	plist = lookup_priolist(engine, prio);
 
 	/*
 	 * Recursively bump all dependent priorities to match the new request.
@@ -463,12 +463,63 @@ unlock:
 	spin_unlock_irqrestore(&engine->active.lock, flags);
 }
 
+void __i915_sched_defer_request(struct intel_engine_cs *engine,
+				struct i915_request *rq)
+{
+	struct list_head *pl;
+	LIST_HEAD(list);
+
+	lockdep_assert_held(&engine->active.lock);
+	GEM_BUG_ON(!test_bit(I915_FENCE_FLAG_PQUEUE, &rq->fence.flags));
+
+	/*
+	 * When we defer a request, we must maintain its order with respect
+	 * to those that are waiting upon it. So we traverse its chain of
+	 * waiters and move any that are earlier than the request to after it.
+	 */
+	pl = lookup_priolist(engine, rq_prio(rq));
+	do {
+		struct i915_dependency *p;
+
+		GEM_BUG_ON(i915_request_is_active(rq));
+		list_move_tail(&rq->sched.link, pl);
+
+		for_each_waiter(p, rq) {
+			struct i915_request *w =
+				container_of(p->waiter, typeof(*w), sched);
+
+			if (p->flags & I915_DEPENDENCY_WEAK)
+				continue;
+
+			/* Leave semaphores spinning on the other engines */
+			if (w->engine != engine)
+				continue;
+
+			/* No waiter should start before its signaler */
+			GEM_BUG_ON(i915_request_has_initial_breadcrumb(w) &&
+				   __i915_request_has_started(w) &&
+				   !__i915_request_is_complete(rq));
+
+			if (!i915_request_is_ready(w))
+				continue;
+
+			if (rq_prio(w) < rq_prio(rq))
+				continue;
+
+			GEM_BUG_ON(rq_prio(w) > rq_prio(rq));
+			GEM_BUG_ON(i915_request_is_active(w));
+			list_move_tail(&w->sched.link, &list);
+		}
+
+		rq = list_first_entry_or_null(&list, typeof(*rq), sched.link);
+	} while (rq);
+}
+
 static void queue_request(struct intel_engine_cs *engine,
 			  struct i915_request *rq)
 {
 	GEM_BUG_ON(!list_empty(&rq->sched.link));
-	list_add_tail(&rq->sched.link,
-		      i915_sched_lookup_priolist(engine, rq_prio(rq)));
+	list_add_tail(&rq->sched.link, lookup_priolist(engine, rq_prio(rq)));
 	set_bit(I915_FENCE_FLAG_PQUEUE, &rq->fence.flags);
 }
 
@@ -567,7 +618,7 @@ __i915_sched_rewind_requests(struct intel_engine_cs *engine)
 		GEM_BUG_ON(rq_prio(rq) == I915_PRIORITY_INVALID);
 		if (rq_prio(rq) != prio) {
 			prio = rq_prio(rq);
-			pl = i915_sched_lookup_priolist(engine, prio);
+			pl = lookup_priolist(engine, prio);
 		}
 		GEM_BUG_ON(RB_EMPTY_ROOT(&engine->execlists.queue.rb_root));
 

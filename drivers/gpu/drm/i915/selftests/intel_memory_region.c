@@ -738,11 +738,10 @@ static int igt_lmem_write_cpu(void *arg)
 	if (err)
 		goto out_unpin;
 
-	i915_gem_object_lock(obj, NULL);
-	err = i915_gem_object_set_to_wc_domain(obj, true);
-	i915_gem_object_unlock(obj);
-	if (err)
+	if (igt_flush_test(engine->i915)) {
+		err = -EIO;
 		goto out_unpin;
+	}
 
 	count = ARRAY_SIZE(bytes);
 	order = i915_random_order(count * count, &prng);

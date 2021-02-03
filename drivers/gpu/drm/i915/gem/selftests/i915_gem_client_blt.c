@@ -23,12 +23,19 @@ static int __igt_client_fill(struct intel_engine_cs *engine)
 	I915_RND_STATE(prng);
 	IGT_TIMEOUT(end);
 	u32 *vaddr;
+	u64 limit;
 	int err = 0;
+
+	/* Try to keep the blits within the timeout */
+	limit = min_t(u64, ce->vm->total >> 4,
+		      jiffies_to_msecs(i915_selftest.timeout_jiffies) * SZ_2M);
+	if (!limit)
+		limit = SZ_4K;
 
 	intel_engine_pm_get(engine);
 	do {
 		const u32 max_block_size = S16_MAX * PAGE_SIZE;
-		u32 sz = min_t(u64, ce->vm->total >> 4, prandom_u32_state(&prng));
+		u32 sz = min_t(u64, limit, prandom_u32_state(&prng));
 		u32 phys_sz = sz % (max_block_size + 1);
 		u32 val = prandom_u32_state(&prng);
 		u32 i;
@@ -73,13 +80,20 @@ static int __igt_client_fill(struct intel_engine_cs *engine)
 		if (err)
 			goto err_unpin;
 
-		i915_gem_object_lock(obj, NULL);
-		err = i915_gem_object_set_to_cpu_domain(obj, false);
-		i915_gem_object_unlock(obj);
-		if (err)
+		err = i915_gem_object_wait(obj,
+					   I915_WAIT_INTERRUPTIBLE,
+					   2 * i915_selftest.timeout_jiffies);
+		if (err) {
+			pr_err("%s fill %zxB timed out\n",
+			       engine->name, obj->base.size);
 			goto err_unpin;
+		}
 
-		for (i = 0; i < huge_gem_object_phys_size(obj) / sizeof(u32); ++i) {
+		for (i = 0;
+		     i < huge_gem_object_phys_size(obj) / sizeof(u32);
+		     i += 17) {
+			if (!(obj->cache_coherent & I915_BO_CACHE_COHERENT_FOR_READ))
+				clflush(&vaddr[i]);
 			if (vaddr[i] != val) {
 				pr_err("vaddr[%u]=%x, expected=%x\n", i,
 				       vaddr[i], val);

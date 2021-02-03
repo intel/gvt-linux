@@ -20,6 +20,7 @@
 #include "i915_gem.h"
 #include "i915_pmu.h"
 #include "i915_priolist_types.h"
+#include "i915_scheduler_types.h"
 #include "i915_selftest.h"
 #include "intel_breadcrumbs_types.h"
 #include "intel_sseu.h"
@@ -256,6 +257,8 @@ struct intel_engine_execlists {
 	 */
 	struct rb_root_cached queue;
 	struct rb_root_cached virtual;
+
+	struct i915_sched_ipi ipi;
 
 	/**
 	 * @csb_write: control register for Context Switch buffer

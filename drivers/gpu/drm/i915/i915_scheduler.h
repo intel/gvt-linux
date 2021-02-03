@@ -14,6 +14,7 @@
 #include "i915_scheduler_types.h"
 
 struct drm_printer;
+struct intel_engine_cs;
 
 #define priolist_for_each_request(it, plist) \
 	list_for_each_entry(it, &(plist)->requests, sched.link)
@@ -34,6 +35,8 @@ int i915_sched_node_add_dependency(struct i915_sched_node *node,
 				   unsigned long flags);
 
 void i915_sched_node_retire(struct i915_sched_node *node);
+
+void i915_sched_init_ipi(struct i915_sched_ipi *ipi);
 
 void i915_request_set_priority(struct i915_request *request, int prio);
 

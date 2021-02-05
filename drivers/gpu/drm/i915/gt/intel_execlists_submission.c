@@ -2917,7 +2917,7 @@ static void rcs_submission_override(struct intel_engine_cs *engine)
 	}
 }
 
-int intel_execlists_submission_setup(struct intel_engine_cs *engine)
+static void init_execlists(struct intel_engine_cs *engine)
 {
 	struct intel_engine_execlists * const execlists = &engine->execlists;
 	struct drm_i915_private *i915 = engine->i915;
@@ -2925,16 +2925,9 @@ int intel_execlists_submission_setup(struct intel_engine_cs *engine)
 	u32 base = engine->mmio_base;
 
 	tasklet_setup(&engine->execlists.tasklet, execlists_submission_tasklet);
+
 	timer_setup(&engine->execlists.timer, execlists_timeslice, 0);
 	timer_setup(&engine->execlists.preempt, execlists_preempt, 0);
-
-	logical_ring_default_vfuncs(engine);
-	logical_ring_default_irqs(engine);
-
-	if (engine->class == RENDER_CLASS)
-		rcs_submission_override(engine);
-
-	lrc_init_wa_ctx(engine);
 
 	if (HAS_LOGICAL_RING_ELSQ(i915)) {
 		execlists->submit_reg = uncore->regs +
@@ -2958,10 +2951,23 @@ int intel_execlists_submission_setup(struct intel_engine_cs *engine)
 		execlists->csb_size = GEN11_CSB_ENTRIES;
 
 	engine->context_tag = GENMASK(BITS_PER_LONG - 2, 0);
-	if (INTEL_GEN(engine->i915) >= 11) {
+	if (INTEL_GEN(i915) >= 11) {
 		execlists->ccid |= engine->instance << (GEN11_ENGINE_INSTANCE_SHIFT - 32);
 		execlists->ccid |= engine->class << (GEN11_ENGINE_CLASS_SHIFT - 32);
 	}
+}
+
+int intel_execlists_submission_setup(struct intel_engine_cs *engine)
+{
+	logical_ring_default_vfuncs(engine);
+	logical_ring_default_irqs(engine);
+
+	if (engine->class == RENDER_CLASS)
+		rcs_submission_override(engine);
+
+	init_execlists(engine);
+
+	lrc_init_wa_ctx(engine);
 
 	/* Finally, take ownership and responsibility for cleanup! */
 	engine->sanitize = execlists_sanitize;

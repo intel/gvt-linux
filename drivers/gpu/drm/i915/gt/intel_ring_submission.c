@@ -396,19 +396,14 @@ static void reset_finish(struct intel_engine_cs *engine)
 static void reset_cancel(struct intel_engine_cs *engine)
 {
 	struct i915_sched *se = intel_engine_get_scheduler(engine);
-	struct i915_request *request;
 	unsigned long flags;
 
 	spin_lock_irqsave(&se->lock, flags);
 
-	/* Mark all submitted requests as skipped. */
-	list_for_each_entry(request, &se->requests, sched.link)
-		i915_request_put(i915_request_mark_eio(request));
-	intel_engine_signal_breadcrumbs(engine);
-
-	/* Remaining _unready_ requests will be nop'ed when submitted */
+	__i915_sched_cancel_queue(se);
 
 	spin_unlock_irqrestore(&se->lock, flags);
+	intel_engine_signal_breadcrumbs(engine);
 }
 
 static void i9xx_submit_request(struct i915_request *request)

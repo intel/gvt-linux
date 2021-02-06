@@ -30,11 +30,45 @@ struct i915_sched {
 	struct list_head requests; /* active request, on HW */
 	struct list_head hold; /* ready requests, but on hold */
 
+	/**
+	 * @queue: queue of requests, in priority lists
+	 *
+	 * During request construction, we build a list of fence dependencies
+	 * that must be completed before the fence is executed. Then when the
+	 * request is committed, it waits for all of those fences before it is
+	 * submitted to the scheduler.
+	 *
+	 * The scheduler only sees requests that are ready to be executed.
+	 * However, the number that we may execute at any one time may be
+	 * limited, and so we store them in the @queue. This queue is sorted
+	 * in execution order, such that when the backend may submit more
+	 * requests to the HW, it can fill the HW submission ports from the
+	 * head of the queue. It also allows the backends to inspect the head
+	 * of the queue against the currently active requests to see if
+	 * we need to preempt the current execution in order to run higher
+	 * priority requests from the queue.
+	 *
+	 * In the simplest cases where the HW can consume everything, the
+	 * @queue is only used to transfer requests from the scheduler
+	 * frontend to the back.
+	 */
+	struct rb_root_cached queue;
+
 	/* Inter-engine scheduling delegate */
 	struct i915_sched_ipi {
 		struct i915_request *list;
 		struct work_struct work;
 	} ipi;
+
+	/**
+	 * @default_priolist: priority list for I915_PRIORITY_NORMAL
+	 */
+	struct i915_priolist default_priolist;
+
+	/**
+	 * @no_priolist: priority lists disabled
+	 */
+	bool no_priolist;
 
 	/* Pretty device names for debug messages */
 	struct {

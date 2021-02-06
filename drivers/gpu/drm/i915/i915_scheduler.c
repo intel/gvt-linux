@@ -129,8 +129,22 @@ void i915_sched_init(struct i915_sched *se,
 
 	INIT_LIST_HEAD(&se->requests);
 	INIT_LIST_HEAD(&se->hold);
+	se->queue = RB_ROOT_CACHED;
 
 	init_ipi(&se->ipi);
+}
+
+void i915_sched_park(struct i915_sched *se)
+{
+	GEM_BUG_ON(!i915_sched_is_idle(se));
+	se->no_priolist = false;
+}
+
+void i915_sched_fini(struct i915_sched *se)
+{
+	GEM_BUG_ON(!list_empty(&se->requests));
+
+	i915_sched_park(se);
 }
 
 static void __ipi_add(struct i915_request *rq)
@@ -181,7 +195,7 @@ static inline struct i915_priolist *to_priolist(struct rb_node *rb)
 	return rb_entry(rb, struct i915_priolist, node);
 }
 
-static void assert_priolists(struct intel_engine_execlists * const execlists)
+static void assert_priolists(struct i915_sched * const se)
 {
 	struct rb_node *rb;
 	long last_prio;
@@ -189,11 +203,11 @@ static void assert_priolists(struct intel_engine_execlists * const execlists)
 	if (!IS_ENABLED(CONFIG_DRM_I915_DEBUG_GEM))
 		return;
 
-	GEM_BUG_ON(rb_first_cached(&execlists->queue) !=
-		   rb_first(&execlists->queue.rb_root));
+	GEM_BUG_ON(rb_first_cached(&se->queue) !=
+		   rb_first(&se->queue.rb_root));
 
 	last_prio = INT_MAX;
-	for (rb = rb_first_cached(&execlists->queue); rb; rb = rb_next(rb)) {
+	for (rb = rb_first_cached(&se->queue); rb; rb = rb_next(rb)) {
 		const struct i915_priolist *p = to_priolist(rb);
 
 		GEM_BUG_ON(p->priority > last_prio);
@@ -202,24 +216,22 @@ static void assert_priolists(struct intel_engine_execlists * const execlists)
 }
 
 static struct list_head *
-lookup_priolist(struct intel_engine_cs *engine, int prio)
+lookup_priolist(struct i915_sched *se, int prio)
 {
-	struct intel_engine_execlists * const execlists = &engine->execlists;
-	struct i915_sched *se = intel_engine_get_scheduler(engine);
 	struct i915_priolist *p;
 	struct rb_node **parent, *rb;
 	bool first = true;
 
 	lockdep_assert_held(&se->lock);
-	assert_priolists(execlists);
+	assert_priolists(se);
 
-	if (unlikely(execlists->no_priolist))
+	if (unlikely(se->no_priolist))
 		prio = I915_PRIORITY_NORMAL;
 
 find_priolist:
 	/* most positive priority is scheduled first, equal priorities fifo */
 	rb = NULL;
-	parent = &execlists->queue.rb_root.rb_node;
+	parent = &se->queue.rb_root.rb_node;
 	while (*parent) {
 		rb = *parent;
 		p = to_priolist(rb);
@@ -234,7 +246,7 @@ find_priolist:
 	}
 
 	if (prio == I915_PRIORITY_NORMAL) {
-		p = &execlists->default_priolist;
+		p = &se->default_priolist;
 	} else {
 		p = kmem_cache_alloc(global.slab_priorities, GFP_ATOMIC);
 		/* Convert an allocation failure to a priority bump */
@@ -249,7 +261,7 @@ find_priolist:
 			 * requests, so if userspace lied about their
 			 * dependencies that reordering may be visible.
 			 */
-			execlists->no_priolist = true;
+			se->no_priolist = true;
 			goto find_priolist;
 		}
 	}
@@ -258,7 +270,7 @@ find_priolist:
 	INIT_LIST_HEAD(&p->requests);
 
 	rb_link_node(&p->node, rb, parent);
-	rb_insert_color_cached(&p->node, &execlists->queue, first);
+	rb_insert_color_cached(&p->node, &se->queue, first);
 
 	return &p->requests;
 }
@@ -351,13 +363,14 @@ static void ipi_priority(struct i915_request *rq, int prio)
 static void __i915_request_set_priority(struct i915_request *rq, int prio)
 {
 	struct intel_engine_cs *engine = rq->engine;
+	struct i915_sched *se = intel_engine_get_scheduler(engine);
 	struct list_head *pos = &rq->sched.signalers_list;
 	struct list_head *plist;
 
 	SCHED_TRACE(&engine->sched, "PI for " RQ_FMT ", prio:%d\n",
 		    RQ_ARG(rq), prio);
 
-	plist = lookup_priolist(engine, prio);
+	plist = lookup_priolist(se, prio);
 
 	/*
 	 * Recursively bump all dependent priorities to match the new request.
@@ -505,7 +518,7 @@ void __i915_sched_defer_request(struct intel_engine_cs *engine,
 	 * to those that are waiting upon it. So we traverse its chain of
 	 * waiters and move any that are earlier than the request to after it.
 	 */
-	pl = lookup_priolist(engine, rq_prio(rq));
+	pl = lookup_priolist(se, rq_prio(rq));
 	do {
 		struct i915_dependency *p;
 
@@ -543,11 +556,10 @@ void __i915_sched_defer_request(struct intel_engine_cs *engine,
 	} while (rq);
 }
 
-static void queue_request(struct intel_engine_cs *engine,
-			  struct i915_request *rq)
+static void queue_request(struct i915_sched *se, struct i915_request *rq)
 {
 	GEM_BUG_ON(!list_empty(&rq->sched.link));
-	list_add_tail(&rq->sched.link, lookup_priolist(engine, rq_prio(rq)));
+	list_add_tail(&rq->sched.link, lookup_priolist(se, rq_prio(rq)));
 	set_bit(I915_FENCE_FLAG_PQUEUE, &rq->fence.flags);
 }
 
@@ -614,9 +626,9 @@ void i915_request_enqueue(struct i915_request *rq)
 		list_add_tail(&rq->sched.link, &se->hold);
 		i915_request_set_hold(rq);
 	} else {
-		queue_request(engine, rq);
+		queue_request(se, rq);
 
-		GEM_BUG_ON(RB_EMPTY_ROOT(&engine->execlists.queue.rb_root));
+		GEM_BUG_ON(i915_sched_is_idle(se));
 
 		kick = submit_queue(engine, rq);
 	}
@@ -648,9 +660,9 @@ __i915_sched_rewind_requests(struct intel_engine_cs *engine)
 		GEM_BUG_ON(rq_prio(rq) == I915_PRIORITY_INVALID);
 		if (rq_prio(rq) != prio) {
 			prio = rq_prio(rq);
-			pl = lookup_priolist(engine, prio);
+			pl = lookup_priolist(se, prio);
 		}
-		GEM_BUG_ON(RB_EMPTY_ROOT(&engine->execlists.queue.rb_root));
+		GEM_BUG_ON(i915_sched_is_idle(se));
 
 		list_move(&rq->sched.link, pl);
 		set_bit(I915_FENCE_FLAG_PQUEUE, &rq->fence.flags);
@@ -785,7 +797,7 @@ void __i915_sched_resume_request(struct intel_engine_cs *engine,
 		i915_request_clear_hold(rq);
 		list_del_init(&rq->sched.link);
 
-		queue_request(engine, rq);
+		queue_request(se, rq);
 
 		/* Also release any children on this engine that are ready */
 		for_each_waiter(p, rq) {
@@ -825,6 +837,38 @@ void i915_sched_resume_request(struct intel_engine_cs *engine,
 	spin_lock_irq(&se->lock);
 	__i915_sched_resume_request(engine, rq);
 	spin_unlock_irq(&se->lock);
+}
+
+void __i915_sched_cancel_queue(struct i915_sched *se)
+{
+	struct i915_request *rq, *rn;
+	struct rb_node *rb;
+
+	lockdep_assert_held(&se->lock);
+
+	/* Mark all executing requests as skipped. */
+	list_for_each_entry(rq, &se->requests, sched.link)
+		i915_request_put(i915_request_mark_eio(rq));
+
+	/* Flush the queued requests to the timeline list (for retiring). */
+	while ((rb = rb_first_cached(&se->queue))) {
+		struct i915_priolist *p = to_priolist(rb);
+
+		priolist_for_each_request_consume(rq, rn, p) {
+			i915_request_put(i915_request_mark_eio(rq));
+			__i915_request_submit(rq);
+		}
+
+		rb_erase_cached(&p->node, &se->queue);
+		i915_priolist_free(p);
+	}
+	GEM_BUG_ON(!i915_sched_is_idle(se));
+
+	/* On-hold requests will be flushed to timeline upon their release */
+	list_for_each_entry(rq, &se->hold, sched.link)
+		i915_request_put(i915_request_mark_eio(rq));
+
+	/* Remaining _unready_ requests will be nop'ed when submitted */
 }
 
 void i915_sched_node_init(struct i915_sched_node *node)

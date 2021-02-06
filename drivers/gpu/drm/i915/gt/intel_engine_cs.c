@@ -581,7 +581,6 @@ void intel_engine_init_execlists(struct intel_engine_cs *engine)
 		memset(execlists->inflight, 0, sizeof(execlists->inflight));
 
 	execlists->queue_priority_hint = INT_MIN;
-	execlists->queue = RB_ROOT_CACHED;
 }
 
 static void cleanup_status_page(struct intel_engine_cs *engine)
@@ -918,7 +917,7 @@ int intel_engines_init(struct intel_gt *gt)
  */
 void intel_engine_cleanup_common(struct intel_engine_cs *engine)
 {
-	GEM_BUG_ON(!list_empty(&engine->sched.requests));
+	i915_sched_fini(intel_engine_get_scheduler(engine));
 	tasklet_kill(&engine->execlists.tasklet); /* flush the callback */
 
 	intel_breadcrumbs_free(engine->breadcrumbs);
@@ -1232,6 +1231,8 @@ void __intel_engine_flush_submission(struct intel_engine_cs *engine, bool sync)
  */
 bool intel_engine_is_idle(struct intel_engine_cs *engine)
 {
+	struct i915_sched *se = intel_engine_get_scheduler(engine);
+
 	/* More white lies, if wedged, hw state is inconsistent */
 	if (intel_gt_is_wedged(engine->gt))
 		return true;
@@ -1244,7 +1245,7 @@ bool intel_engine_is_idle(struct intel_engine_cs *engine)
 	intel_engine_flush_submission(engine);
 
 	/* ELSP is empty, but there are ready requests? E.g. after reset */
-	if (!RB_EMPTY_ROOT(&engine->execlists.queue.rb_root))
+	if (!i915_sched_is_idle(se))
 		return false;
 
 	/* Ring stopped? */

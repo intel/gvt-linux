@@ -205,7 +205,7 @@ static void __guc_dequeue(struct intel_engine_cs *engine)
 	 * event.
 	 */
 	port = first;
-	while ((rb = rb_first_cached(&execlists->queue))) {
+	while ((rb = rb_first_cached(&se->queue))) {
 		struct i915_priolist *p = to_priolist(rb);
 		struct i915_request *rq, *rn;
 
@@ -225,7 +225,7 @@ static void __guc_dequeue(struct intel_engine_cs *engine)
 			last = rq;
 		}
 
-		rb_erase_cached(&p->node, &execlists->queue);
+		rb_erase_cached(&p->node, &se->queue);
 		i915_priolist_free(p);
 	}
 done:
@@ -342,8 +342,6 @@ static void guc_reset_cancel(struct intel_engine_cs *engine)
 {
 	struct intel_engine_execlists * const execlists = &engine->execlists;
 	struct i915_sched *se = intel_engine_get_scheduler(engine);
-	struct i915_request *rq, *rn;
-	struct rb_node *rb;
 	unsigned long flags;
 
 	ENGINE_TRACE(engine, "\n");
@@ -364,33 +362,13 @@ static void guc_reset_cancel(struct intel_engine_cs *engine)
 	 */
 	spin_lock_irqsave(&se->lock, flags);
 
-	/* Mark all executing requests as skipped. */
-	list_for_each_entry(rq, &se->requests, sched.link) {
-		i915_request_set_error_once(rq, -EIO);
-		i915_request_mark_complete(rq);
-	}
-
-	/* Flush the queued requests to the timeline list (for retiring). */
-	while ((rb = rb_first_cached(&execlists->queue))) {
-		struct i915_priolist *p = to_priolist(rb);
-
-		priolist_for_each_request_consume(rq, rn, p) {
-			list_del_init(&rq->sched.link);
-			__i915_request_submit(rq);
-			dma_fence_set_error(&rq->fence, -EIO);
-			i915_request_mark_complete(rq);
-		}
-
-		rb_erase_cached(&p->node, &execlists->queue);
-		i915_priolist_free(p);
-	}
-
-	/* Remaining _unready_ requests will be nop'ed when submitted */
+	__i915_sched_cancel_queue(se);
 
 	execlists->queue_priority_hint = INT_MIN;
-	execlists->queue = RB_ROOT_CACHED;
+	se->queue = RB_ROOT_CACHED;
 
 	spin_unlock_irqrestore(&se->lock, flags);
+	intel_engine_signal_breadcrumbs(engine);
 }
 
 static void guc_reset_finish(struct intel_engine_cs *engine)

@@ -12,6 +12,7 @@
 #include <linux/kernel.h>
 
 #include "i915_scheduler_types.h"
+#include "i915_request.h"
 
 struct drm_printer;
 struct intel_engine_cs;
@@ -48,6 +49,8 @@ void i915_sched_init(struct i915_sched *se,
 		     const char *name,
 		     unsigned long mask,
 		     unsigned int subclass);
+void i915_sched_park(struct i915_sched *se);
+void i915_sched_fini(struct i915_sched *se);
 
 void i915_request_set_priority(struct i915_request *request, int prio);
 
@@ -68,11 +71,25 @@ bool i915_sched_suspend_request(struct intel_engine_cs *engine,
 void i915_sched_resume_request(struct intel_engine_cs *engine,
 			       struct i915_request *rq);
 
+void __i915_sched_cancel_queue(struct i915_sched *se);
+
 void __i915_priolist_free(struct i915_priolist *p);
 static inline void i915_priolist_free(struct i915_priolist *p)
 {
 	if (p->priority != I915_PRIORITY_NORMAL)
 		__i915_priolist_free(p);
+}
+
+static inline bool i915_sched_is_idle(const struct i915_sched *se)
+{
+	return RB_EMPTY_ROOT(&se->queue.rb_root);
+}
+
+static inline bool
+i915_sched_is_last_request(const struct i915_sched *se,
+			   const struct i915_request *rq)
+{
+	return list_is_last_rcu(&rq->sched.link, &se->requests);
 }
 
 void i915_request_show_with_schedule(struct drm_printer *m,

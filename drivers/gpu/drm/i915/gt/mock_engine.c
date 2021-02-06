@@ -238,10 +238,7 @@ static void mock_reset_cancel(struct intel_engine_cs *engine)
 
 	spin_lock_irqsave(&se->lock, flags);
 
-	/* Mark all submitted requests as skipped. */
-	list_for_each_entry(rq, &se->requests, sched.link)
-		i915_request_put(i915_request_mark_eio(rq));
-	intel_engine_signal_breadcrumbs(engine);
+	__i915_sched_cancel_queue(se);
 
 	/* Cancel and submit all pending requests. */
 	list_for_each_entry(rq, &mock->hw_queue, mock.link) {
@@ -251,6 +248,8 @@ static void mock_reset_cancel(struct intel_engine_cs *engine)
 		}
 	}
 	INIT_LIST_HEAD(&mock->hw_queue);
+
+	intel_engine_signal_breadcrumbs(engine);
 
 	spin_unlock_irqrestore(&se->lock, flags);
 }

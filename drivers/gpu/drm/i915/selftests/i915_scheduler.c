@@ -77,8 +77,7 @@ static int all_engines(struct drm_i915_private *i915,
 	return 0;
 }
 
-static bool check_context_order(struct i915_sched *se,
-				struct intel_engine_cs *engine)
+static bool check_context_order(struct i915_sched *se)
 {
 	u64 last_seqno, last_context;
 	unsigned long count;
@@ -93,7 +92,7 @@ static bool check_context_order(struct i915_sched *se,
 	last_context = 0;
 	last_seqno = 0;
 	last_prio = 0;
-	for (rb = rb_first_cached(&engine->execlists.queue); rb; rb = rb_next(rb)) {
+	for (rb = rb_first_cached(&se->queue); rb; rb = rb_next(rb)) {
 		struct i915_priolist *p = rb_entry(rb, typeof(*p), node);
 		struct i915_request *rq;
 
@@ -175,7 +174,7 @@ static int __single_chain(struct intel_engine_cs *engine, unsigned long length,
 	intel_engine_flush_submission(engine);
 
 	execlists_active_lock_bh(&engine->execlists);
-	if (fn(rq, count, count - 1) && !check_context_order(se, engine))
+	if (fn(rq, count, count - 1) && !check_context_order(se))
 		err = -EINVAL;
 	execlists_active_unlock_bh(&engine->execlists);
 
@@ -260,7 +259,7 @@ static int __wide_chain(struct intel_engine_cs *engine, unsigned long width,
 	intel_engine_flush_submission(engine);
 
 	execlists_active_lock_bh(&engine->execlists);
-	if (fn(rq[i - 1], i, count) && !check_context_order(se, engine))
+	if (fn(rq[i - 1], i, count) && !check_context_order(se))
 		err = -EINVAL;
 	execlists_active_unlock_bh(&engine->execlists);
 
@@ -349,7 +348,7 @@ static int __inv_chain(struct intel_engine_cs *engine, unsigned long width,
 	intel_engine_flush_submission(engine);
 
 	execlists_active_lock_bh(&engine->execlists);
-	if (fn(rq[i - 1], i, count) && !check_context_order(se, engine))
+	if (fn(rq[i - 1], i, count) && !check_context_order(se))
 		err = -EINVAL;
 	execlists_active_unlock_bh(&engine->execlists);
 
@@ -455,7 +454,7 @@ static int __sparse_chain(struct intel_engine_cs *engine, unsigned long width,
 	intel_engine_flush_submission(engine);
 
 	execlists_active_lock_bh(&engine->execlists);
-	if (fn(rq[i - 1], i, count) && !check_context_order(se, engine))
+	if (fn(rq[i - 1], i, count) && !check_context_order(se))
 		err = -EINVAL;
 	execlists_active_unlock_bh(&engine->execlists);
 

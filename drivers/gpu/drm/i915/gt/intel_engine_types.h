@@ -154,11 +154,6 @@ struct intel_engine_execlists {
 	struct timer_list preempt;
 
 	/**
-	 * @default_priolist: priority list for I915_PRIORITY_NORMAL
-	 */
-	struct i915_priolist default_priolist;
-
-	/**
 	 * @ccid: identifier for contexts submitted to this engine
 	 */
 	u32 ccid;
@@ -191,11 +186,6 @@ struct intel_engine_execlists {
 	 * @reset_ccid: Active CCID [EXECLISTS_STATUS_HI] at the time of reset
 	 */
 	u32 reset_ccid;
-
-	/**
-	 * @no_priolist: priority lists disabled
-	 */
-	bool no_priolist;
 
 	/**
 	 * @submit_reg: gen-specific execlist submission register
@@ -252,10 +242,6 @@ struct intel_engine_execlists {
 	 */
 	int queue_priority_hint;
 
-	/**
-	 * @queue: queue of requests, in priority lists
-	 */
-	struct rb_root_cached queue;
 	struct rb_root_cached virtual;
 
 	/**

@@ -329,7 +329,7 @@ struct intel_engine_cs {
 
 	struct intel_sseu sseu;
 
-	struct {
+	struct i915_sched {
 		spinlock_t lock;
 		struct list_head requests;
 		struct list_head hold; /* ready requests, but on hold */
@@ -615,5 +615,12 @@ intel_engine_has_relative_mmio(const struct intel_engine_cs * const engine)
 	     (slice_) += ((subslice_) == 0)) \
 		for_each_if((instdone_has_slice(dev_priv_, sseu_, slice_)) && \
 			    (instdone_has_subslice(dev_priv_, sseu_, slice_, \
-						    subslice_)))
+						   subslice_)))
+
+static inline struct i915_sched *
+intel_engine_get_scheduler(struct intel_engine_cs *engine)
+{
+	return &engine->active;
+}
+
 #endif /* __INTEL_ENGINE_TYPES_H__ */

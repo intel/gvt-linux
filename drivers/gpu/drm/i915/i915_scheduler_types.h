@@ -68,12 +68,12 @@ struct i915_sched_node {
 
 	struct list_head signalers_list; /* those before us, we depend upon */
 	struct list_head waiters_list; /* those after us, they depend upon us */
-	struct list_head link; /* guarded by engine->active.lock */
+	struct list_head link; /* guarded by i915_sched.lock */
 	struct i915_sched_stack {
 		/* Branch memoization used during depth-first search */
 		struct i915_request *prev;
 		struct list_head *pos;
-	} dfs; /* guarded by engine->active.lock */
+	} dfs; /* guarded by i915_sched.lock */
 	struct i915_sched_attr attr;
 	unsigned long flags;
 #define I915_SCHED_HAS_EXTERNAL_CHAIN	BIT(0)

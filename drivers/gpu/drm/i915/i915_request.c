@@ -533,12 +533,12 @@ struct i915_request *i915_request_mark_eio(struct i915_request *rq)
 bool __i915_request_submit(struct i915_request *request)
 {
 	struct intel_engine_cs *engine = request->engine;
+	struct i915_sched *se = intel_engine_get_scheduler(engine);
 	bool result = false;
 
 	RQ_TRACE(request, "\n");
 
-	GEM_BUG_ON(!irqs_disabled());
-	lockdep_assert_held(&engine->active.lock);
+	lockdep_assert_held(&se->lock);
 
 	/*
 	 * With the advent of preempt-to-busy, we frequently encounter
@@ -595,7 +595,7 @@ bool __i915_request_submit(struct i915_request *request)
 	result = true;
 
 	GEM_BUG_ON(test_bit(I915_FENCE_FLAG_ACTIVE, &request->fence.flags));
-	list_move_tail(&request->sched.link, &engine->active.requests);
+	list_move_tail(&request->sched.link, &se->requests);
 active:
 	clear_bit(I915_FENCE_FLAG_PQUEUE, &request->fence.flags);
 	set_bit(I915_FENCE_FLAG_ACTIVE, &request->fence.flags);
@@ -621,29 +621,24 @@ active:
 
 void i915_request_submit(struct i915_request *request)
 {
-	struct intel_engine_cs *engine = request->engine;
+	struct i915_sched *se = i915_request_get_scheduler(request);
 	unsigned long flags;
 
 	/* Will be called from irq-context when using foreign fences. */
-	spin_lock_irqsave(&engine->active.lock, flags);
+	spin_lock_irqsave(&se->lock, flags);
 
 	__i915_request_submit(request);
 
-	spin_unlock_irqrestore(&engine->active.lock, flags);
+	spin_unlock_irqrestore(&se->lock, flags);
 }
 
 void __i915_request_unsubmit(struct i915_request *request)
 {
-	struct intel_engine_cs *engine = request->engine;
-
 	/*
 	 * Only unwind in reverse order, required so that the per-context list
 	 * is kept in seqno/ring order.
 	 */
 	RQ_TRACE(request, "\n");
-
-	GEM_BUG_ON(!irqs_disabled());
-	lockdep_assert_held(&engine->active.lock);
 
 	/*
 	 * Before we remove this breadcrumb from the signal list, we have
@@ -672,15 +667,15 @@ void __i915_request_unsubmit(struct i915_request *request)
 
 void i915_request_unsubmit(struct i915_request *request)
 {
-	struct intel_engine_cs *engine = request->engine;
+	struct i915_sched *se = i915_request_get_scheduler(request);
 	unsigned long flags;
 
 	/* Will be called from irq-context when using foreign fences. */
-	spin_lock_irqsave(&engine->active.lock, flags);
+	spin_lock_irqsave(&se->lock, flags);
 
 	__i915_request_unsubmit(request);
 
-	spin_unlock_irqrestore(&engine->active.lock, flags);
+	spin_unlock_irqrestore(&se->lock, flags);
 }
 
 static int __i915_sw_fence_call

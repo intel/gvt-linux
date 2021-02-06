@@ -589,6 +589,12 @@ static inline void i915_request_clear_hold(struct i915_request *rq)
 	clear_bit(I915_FENCE_FLAG_HOLD, &rq->fence.flags);
 }
 
+static inline struct i915_sched *
+i915_request_get_scheduler(const struct i915_request *rq)
+{
+	return intel_engine_get_scheduler(rq->engine);
+}
+
 static inline struct intel_timeline *
 i915_request_timeline(const struct i915_request *rq)
 {
@@ -613,7 +619,7 @@ i915_request_active_timeline(const struct i915_request *rq)
 	 * this submission.
 	 */
 	return rcu_dereference_protected(rq->timeline,
-					 lockdep_is_held(&rq->engine->active.lock));
+					 lockdep_is_held(&i915_request_get_scheduler(rq)->lock));
 }
 
 static inline bool i915_request_use_scheduler(const struct i915_request *rq)

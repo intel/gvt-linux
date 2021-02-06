@@ -732,6 +732,7 @@ struct measure_breadcrumb {
 static int measure_breadcrumb_dw(struct intel_context *ce)
 {
 	struct intel_engine_cs *engine = ce->engine;
+	struct i915_sched *se = intel_engine_get_scheduler(engine);
 	struct measure_breadcrumb *frame;
 	int dw;
 
@@ -754,11 +755,11 @@ static int measure_breadcrumb_dw(struct intel_context *ce)
 	frame->rq.ring = &frame->ring;
 
 	mutex_lock(&ce->timeline->mutex);
-	spin_lock_irq(&engine->active.lock);
+	spin_lock_irq(&se->lock);
 
 	dw = engine->emit_fini_breadcrumb(&frame->rq, frame->cs) - frame->cs;
 
-	spin_unlock_irq(&engine->active.lock);
+	spin_unlock_irq(&se->lock);
 	mutex_unlock(&ce->timeline->mutex);
 
 	GEM_BUG_ON(dw & 1); /* RING_TAIL must be qword aligned */
@@ -1623,6 +1624,7 @@ void intel_engine_dump(struct intel_engine_cs *engine,
 		       const char *header, ...)
 {
 	struct i915_gpu_error * const error = &engine->i915->gpu_error;
+	struct i915_sched *se = intel_engine_get_scheduler(engine);
 	struct i915_request *rq;
 	intel_wakeref_t wakeref;
 	unsigned long flags;
@@ -1664,7 +1666,7 @@ void intel_engine_dump(struct intel_engine_cs *engine,
 
 	drm_printf(m, "\tRequests:\n");
 
-	spin_lock_irqsave(&engine->active.lock, flags);
+	spin_lock_irqsave(&se->lock, flags);
 	rq = intel_engine_find_active_request(engine);
 	if (rq) {
 		struct intel_timeline *tl = get_timeline(rq);
@@ -1695,8 +1697,8 @@ void intel_engine_dump(struct intel_engine_cs *engine,
 			hexdump(m, rq->context->lrc_reg_state, PAGE_SIZE);
 		}
 	}
-	drm_printf(m, "\tOn hold?: %lu\n", list_count(&engine->active.hold));
-	spin_unlock_irqrestore(&engine->active.lock, flags);
+	drm_printf(m, "\tOn hold?: %lu\n", list_count(&se->hold));
+	spin_unlock_irqrestore(&se->lock, flags);
 
 	drm_printf(m, "\tMMIO base:  0x%08x\n", engine->mmio_base);
 	wakeref = intel_runtime_pm_get_if_in_use(engine->uncore->rpm);
@@ -1755,6 +1757,7 @@ static bool match_ring(struct i915_request *rq)
 struct i915_request *
 intel_engine_find_active_request(struct intel_engine_cs *engine)
 {
+	struct i915_sched *se = intel_engine_get_scheduler(engine);
 	struct i915_request *request, *active = NULL;
 
 	/*
@@ -1768,7 +1771,7 @@ intel_engine_find_active_request(struct intel_engine_cs *engine)
 	 * At all other times, we must assume the GPU is still running, but
 	 * we only care about the snapshot of this moment.
 	 */
-	lockdep_assert_held(&engine->active.lock);
+	lockdep_assert_held(&se->lock);
 
 	rcu_read_lock();
 	request = execlists_active(&engine->execlists);
@@ -1786,7 +1789,7 @@ intel_engine_find_active_request(struct intel_engine_cs *engine)
 	if (active)
 		return active;
 
-	list_for_each_entry(request, &engine->active.requests, sched.link) {
+	list_for_each_entry(request, &se->requests, sched.link) {
 		if (__i915_request_is_complete(request))
 			continue;
 

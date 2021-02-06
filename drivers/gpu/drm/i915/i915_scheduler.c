@@ -183,11 +183,12 @@ static struct list_head *
 lookup_priolist(struct intel_engine_cs *engine, int prio)
 {
 	struct intel_engine_execlists * const execlists = &engine->execlists;
+	struct i915_sched *se = intel_engine_get_scheduler(engine);
 	struct i915_priolist *p;
 	struct rb_node **parent, *rb;
 	bool first = true;
 
-	lockdep_assert_held(&engine->active.lock);
+	lockdep_assert_held(&se->lock);
 	assert_priolists(execlists);
 
 	if (unlikely(execlists->no_priolist))
@@ -466,10 +467,11 @@ unlock:
 void __i915_sched_defer_request(struct intel_engine_cs *engine,
 				struct i915_request *rq)
 {
+	struct i915_sched *se = intel_engine_get_scheduler(engine);
 	struct list_head *pl;
 	LIST_HEAD(list);
 
-	lockdep_assert_held(&engine->active.lock);
+	lockdep_assert_held(&se->lock);
 	GEM_BUG_ON(!test_bit(I915_FENCE_FLAG_PQUEUE, &rq->fence.flags));
 
 	/*
@@ -561,26 +563,27 @@ static bool hold_request(const struct i915_request *rq)
 	return result;
 }
 
-static bool ancestor_on_hold(const struct intel_engine_cs *engine,
+static bool ancestor_on_hold(const struct i915_sched *se,
 			     const struct i915_request *rq)
 {
 	GEM_BUG_ON(i915_request_on_hold(rq));
-	return unlikely(!list_empty(&engine->active.hold)) && hold_request(rq);
+	return unlikely(!list_empty(&se->hold)) && hold_request(rq);
 }
 
 void i915_request_enqueue(struct i915_request *rq)
 {
 	struct intel_engine_cs *engine = rq->engine;
+	struct i915_sched *se = intel_engine_get_scheduler(engine);
 	unsigned long flags;
 	bool kick = false;
 
 	/* Will be called from irq-context when using foreign fences. */
-	spin_lock_irqsave(&engine->active.lock, flags);
+	spin_lock_irqsave(&se->lock, flags);
 	GEM_BUG_ON(test_bit(I915_FENCE_FLAG_PQUEUE, &rq->fence.flags));
 
-	if (unlikely(ancestor_on_hold(engine, rq))) {
+	if (unlikely(ancestor_on_hold(se, rq))) {
 		RQ_TRACE(rq, "ancestor on hold\n");
-		list_add_tail(&rq->sched.link, &engine->active.hold);
+		list_add_tail(&rq->sched.link, &se->hold);
 		i915_request_set_hold(rq);
 	} else {
 		queue_request(engine, rq);
@@ -591,7 +594,7 @@ void i915_request_enqueue(struct i915_request *rq)
 	}
 
 	GEM_BUG_ON(list_empty(&rq->sched.link));
-	spin_unlock_irqrestore(&engine->active.lock, flags);
+	spin_unlock_irqrestore(&se->lock, flags);
 	if (kick)
 		tasklet_hi_schedule(&engine->execlists.tasklet);
 }
@@ -599,15 +602,14 @@ void i915_request_enqueue(struct i915_request *rq)
 struct i915_request *
 __i915_sched_rewind_requests(struct intel_engine_cs *engine)
 {
+	struct i915_sched *se = intel_engine_get_scheduler(engine);
 	struct i915_request *rq, *rn, *active = NULL;
 	struct list_head *pl;
 	int prio = I915_PRIORITY_INVALID;
 
-	lockdep_assert_held(&engine->active.lock);
+	lockdep_assert_held(&se->lock);
 
-	list_for_each_entry_safe_reverse(rq, rn,
-					 &engine->active.requests,
-					 sched.link) {
+	list_for_each_entry_safe_reverse(rq, rn, &se->requests, sched.link) {
 		if (__i915_request_is_complete(rq)) {
 			list_del_init(&rq->sched.link);
 			continue;
@@ -640,9 +642,10 @@ __i915_sched_rewind_requests(struct intel_engine_cs *engine)
 bool __i915_sched_suspend_request(struct intel_engine_cs *engine,
 				  struct i915_request *rq)
 {
+	struct i915_sched *se = intel_engine_get_scheduler(engine);
 	LIST_HEAD(list);
 
-	lockdep_assert_held(&engine->active.lock);
+	lockdep_assert_held(&se->lock);
 	GEM_BUG_ON(rq->engine != engine);
 
 	if (__i915_request_is_complete(rq)) /* too late! */
@@ -666,7 +669,7 @@ bool __i915_sched_suspend_request(struct intel_engine_cs *engine,
 		if (i915_request_is_active(rq))
 			__i915_request_unsubmit(rq);
 
-		list_move_tail(&rq->sched.link, &engine->active.hold);
+		list_move_tail(&rq->sched.link, &se->hold);
 		clear_bit(I915_FENCE_FLAG_PQUEUE, &rq->fence.flags);
 		i915_request_set_hold(rq);
 		RQ_TRACE(rq, "on hold\n");
@@ -697,7 +700,7 @@ bool __i915_sched_suspend_request(struct intel_engine_cs *engine,
 		rq = list_first_entry_or_null(&list, typeof(*rq), sched.link);
 	} while (rq);
 
-	GEM_BUG_ON(list_empty(&engine->active.hold));
+	GEM_BUG_ON(list_empty(&se->hold));
 
 	return true;
 }
@@ -705,14 +708,15 @@ bool __i915_sched_suspend_request(struct intel_engine_cs *engine,
 bool i915_sched_suspend_request(struct intel_engine_cs *engine,
 				struct i915_request *rq)
 {
+	struct i915_sched *se = intel_engine_get_scheduler(engine);
 	bool result;
 
 	if (i915_request_on_hold(rq))
 		return false;
 
-	spin_lock_irq(&engine->active.lock);
+	spin_lock_irq(&se->lock);
 	result = __i915_sched_suspend_request(engine, rq);
-	spin_unlock_irq(&engine->active.lock);
+	spin_unlock_irq(&se->lock);
 
 	return result;
 }
@@ -720,9 +724,10 @@ bool i915_sched_suspend_request(struct intel_engine_cs *engine,
 void __i915_sched_resume_request(struct intel_engine_cs *engine,
 				 struct i915_request *rq)
 {
+	struct i915_sched *se = intel_engine_get_scheduler(engine);
 	LIST_HEAD(list);
 
-	lockdep_assert_held(&engine->active.lock);
+	lockdep_assert_held(&se->lock);
 
 	if (rq_prio(rq) > engine->execlists.queue_priority_hint) {
 		engine->execlists.queue_priority_hint = rq_prio(rq);
@@ -785,9 +790,11 @@ void __i915_sched_resume_request(struct intel_engine_cs *engine,
 void i915_sched_resume_request(struct intel_engine_cs *engine,
 			       struct i915_request *rq)
 {
-	spin_lock_irq(&engine->active.lock);
+	struct i915_sched *se = intel_engine_get_scheduler(engine);
+
+	spin_lock_irq(&se->lock);
 	__i915_sched_resume_request(engine, rq);
-	spin_unlock_irq(&engine->active.lock);
+	spin_unlock_irq(&se->lock);
 }
 
 void i915_sched_node_init(struct i915_sched_node *node)

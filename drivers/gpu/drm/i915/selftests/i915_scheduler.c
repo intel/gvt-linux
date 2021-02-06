@@ -77,7 +77,8 @@ static int all_engines(struct drm_i915_private *i915,
 	return 0;
 }
 
-static bool check_context_order(struct intel_engine_cs *engine)
+static bool check_context_order(struct i915_sched *se,
+				struct intel_engine_cs *engine)
 {
 	u64 last_seqno, last_context;
 	unsigned long count;
@@ -86,7 +87,7 @@ static bool check_context_order(struct intel_engine_cs *engine)
 	int last_prio;
 
 	/* We expect the execution order to follow ascending fence-context */
-	spin_lock_irq(&engine->active.lock);
+	spin_lock_irq(&se->lock);
 
 	count = 0;
 	last_context = 0;
@@ -119,7 +120,7 @@ static bool check_context_order(struct intel_engine_cs *engine)
 	}
 	result = true;
 out_unlock:
-	spin_unlock_irq(&engine->active.lock);
+	spin_unlock_irq(&se->lock);
 
 	return result;
 }
@@ -128,6 +129,7 @@ static int __single_chain(struct intel_engine_cs *engine, unsigned long length,
 			  bool (*fn)(struct i915_request *rq,
 				     unsigned long v, unsigned long e))
 {
+	struct i915_sched *se = intel_engine_get_scheduler(engine);
 	struct intel_context *ce;
 	struct igt_spinner spin;
 	struct i915_request *rq;
@@ -173,7 +175,7 @@ static int __single_chain(struct intel_engine_cs *engine, unsigned long length,
 	intel_engine_flush_submission(engine);
 
 	execlists_active_lock_bh(&engine->execlists);
-	if (fn(rq, count, count - 1) && !check_context_order(engine))
+	if (fn(rq, count, count - 1) && !check_context_order(se, engine))
 		err = -EINVAL;
 	execlists_active_unlock_bh(&engine->execlists);
 
@@ -191,6 +193,7 @@ static int __wide_chain(struct intel_engine_cs *engine, unsigned long width,
 			bool (*fn)(struct i915_request *rq,
 				   unsigned long v, unsigned long e))
 {
+	struct i915_sched *se = intel_engine_get_scheduler(engine);
 	struct intel_context **ce;
 	struct i915_request **rq;
 	struct igt_spinner spin;
@@ -257,7 +260,7 @@ static int __wide_chain(struct intel_engine_cs *engine, unsigned long width,
 	intel_engine_flush_submission(engine);
 
 	execlists_active_lock_bh(&engine->execlists);
-	if (fn(rq[i - 1], i, count) && !check_context_order(engine))
+	if (fn(rq[i - 1], i, count) && !check_context_order(se, engine))
 		err = -EINVAL;
 	execlists_active_unlock_bh(&engine->execlists);
 
@@ -279,6 +282,7 @@ static int __inv_chain(struct intel_engine_cs *engine, unsigned long width,
 		       bool (*fn)(struct i915_request *rq,
 				  unsigned long v, unsigned long e))
 {
+	struct i915_sched *se = intel_engine_get_scheduler(engine);
 	struct intel_context **ce;
 	struct i915_request **rq;
 	struct igt_spinner spin;
@@ -345,7 +349,7 @@ static int __inv_chain(struct intel_engine_cs *engine, unsigned long width,
 	intel_engine_flush_submission(engine);
 
 	execlists_active_lock_bh(&engine->execlists);
-	if (fn(rq[i - 1], i, count) && !check_context_order(engine))
+	if (fn(rq[i - 1], i, count) && !check_context_order(se, engine))
 		err = -EINVAL;
 	execlists_active_unlock_bh(&engine->execlists);
 
@@ -367,6 +371,7 @@ static int __sparse_chain(struct intel_engine_cs *engine, unsigned long width,
 			  bool (*fn)(struct i915_request *rq,
 				     unsigned long v, unsigned long e))
 {
+	struct i915_sched *se = intel_engine_get_scheduler(engine);
 	struct intel_context **ce;
 	struct i915_request **rq;
 	struct igt_spinner spin;
@@ -450,7 +455,7 @@ static int __sparse_chain(struct intel_engine_cs *engine, unsigned long width,
 	intel_engine_flush_submission(engine);
 
 	execlists_active_lock_bh(&engine->execlists);
-	if (fn(rq[i - 1], i, count) && !check_context_order(engine))
+	if (fn(rq[i - 1], i, count) && !check_context_order(se, engine))
 		err = -EINVAL;
 	execlists_active_unlock_bh(&engine->execlists);
 

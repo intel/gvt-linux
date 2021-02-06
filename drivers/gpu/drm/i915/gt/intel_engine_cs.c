@@ -918,7 +918,6 @@ int intel_engines_init(struct intel_gt *gt)
 void intel_engine_cleanup_common(struct intel_engine_cs *engine)
 {
 	i915_sched_fini(intel_engine_get_scheduler(engine));
-	tasklet_kill(&engine->execlists.tasklet); /* flush the callback */
 
 	intel_breadcrumbs_free(engine->breadcrumbs);
 
@@ -1201,27 +1200,6 @@ static bool ring_is_idle(struct intel_engine_cs *engine)
 	return idle;
 }
 
-void __intel_engine_flush_submission(struct intel_engine_cs *engine, bool sync)
-{
-	struct tasklet_struct *t = &engine->execlists.tasklet;
-
-	if (!t->callback)
-		return;
-
-	local_bh_disable();
-	if (tasklet_trylock(t)) {
-		/* Must wait for any GPU reset in progress. */
-		if (__tasklet_is_enabled(t))
-			t->callback(t);
-		tasklet_unlock(t);
-	}
-	local_bh_enable();
-
-	/* Synchronise and wait for the tasklet on another CPU */
-	if (sync)
-		tasklet_unlock_wait(t);
-}
-
 /**
  * intel_engine_is_idle() - Report if the engine has finished process all work
  * @engine: the intel_engine_cs
@@ -1242,7 +1220,7 @@ bool intel_engine_is_idle(struct intel_engine_cs *engine)
 
 	/* Waiting to drain ELSP? */
 	synchronize_hardirq(to_pci_dev(engine->i915->drm.dev)->irq);
-	intel_engine_flush_submission(engine);
+	i915_sched_flush(se);
 
 	/* ELSP is empty, but there are ready requests? E.g. after reset */
 	if (!i915_sched_is_idle(se))
@@ -1457,6 +1435,7 @@ static void intel_engine_print_registers(struct intel_engine_cs *engine,
 	if (intel_engine_uses_guc(engine)) {
 		/* nothing to print yet */
 	} else if (HAS_EXECLISTS(dev_priv)) {
+		struct i915_sched *se = intel_engine_get_scheduler(engine);
 		struct i915_request * const *port, *rq;
 		const u32 *hws =
 			&engine->status_page.addr[I915_HWS_CSB_BUF0_INDEX];
@@ -1466,8 +1445,8 @@ static void intel_engine_print_registers(struct intel_engine_cs *engine,
 
 		drm_printf(m, "\tExeclist tasklet queued? %s (%s), preempt? %s, timeslice? %s\n",
 			   yesno(test_bit(TASKLET_STATE_SCHED,
-					  &engine->execlists.tasklet.state)),
-			   enableddisabled(!atomic_read(&engine->execlists.tasklet.count)),
+					  &se->tasklet.state)),
+			   enableddisabled(!atomic_read(&se->tasklet.count)),
 			   repr_timer(&engine->execlists.preempt),
 			   repr_timer(&engine->execlists.timer));
 
@@ -1491,7 +1470,7 @@ static void intel_engine_print_registers(struct intel_engine_cs *engine,
 				   idx, hws[idx * 2], hws[idx * 2 + 1]);
 		}
 
-		execlists_active_lock_bh(execlists);
+		i915_sched_lock_bh(se);
 		rcu_read_lock();
 		for (port = execlists->active; (rq = *port); port++) {
 			char hdr[160];
@@ -1522,7 +1501,7 @@ static void intel_engine_print_registers(struct intel_engine_cs *engine,
 			i915_request_show(m, rq, hdr, 0);
 		}
 		rcu_read_unlock();
-		execlists_active_unlock_bh(execlists);
+		i915_sched_unlock_bh(se);
 	} else if (INTEL_GEN(dev_priv) > 6) {
 		drm_printf(m, "\tPP_DIR_BASE: 0x%08x\n",
 			   ENGINE_READ(engine, RING_PP_DIR_BASE));

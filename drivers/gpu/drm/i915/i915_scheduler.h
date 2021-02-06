@@ -92,6 +92,52 @@ i915_sched_is_last_request(const struct i915_sched *se,
 	return list_is_last_rcu(&rq->sched.link, &se->requests);
 }
 
+static inline void
+i915_sched_lock_bh(struct i915_sched *se)
+{
+	local_bh_disable(); /* prevent local softirq and lock recursion */
+	tasklet_lock(&se->tasklet);
+}
+
+static inline void
+i915_sched_unlock_bh(struct i915_sched *se)
+{
+	tasklet_unlock(&se->tasklet);
+	local_bh_enable(); /* restore softirq, and kick ksoftirqd! */
+}
+
+/*
+ * Control execution of the submission backend. While this does not immediately
+ * stop the HW, it does prevent us from propagating any more requests to it.
+ * Typically used aroung reset.
+ */
+void i915_sched_disable_tasklet(struct i915_sched *se);
+void i915_sched_enable_tasklet(struct i915_sched *se);
+
+static inline bool __i915_sched_tasklet_is_disabled(const struct i915_sched *se)
+{
+	return unlikely(!__tasklet_is_enabled(&se->tasklet));
+}
+
+static inline void i915_sched_kill_tasklet(struct i915_sched *se)
+{
+	tasklet_kill(&se->tasklet);
+}
+
+/* Schedule execution of the scheduler's bottom-half, the submission backend */
+static inline void i915_sched_kick(struct i915_sched *se)
+{
+	/* Kick the tasklet for some interrupt coalescing and reset handling */
+	tasklet_hi_schedule(&se->tasklet);
+}
+
+/* Immediately execute the scheduler's bottom-half, and wait for completion */
+void __i915_sched_flush(struct i915_sched *se, bool sync);
+static inline void i915_sched_flush(struct i915_sched *se)
+{
+	__i915_sched_flush(se, true);
+}
+
 void i915_request_show_with_schedule(struct drm_printer *m,
 				     const struct i915_request *rq,
 				     const char *prefix,

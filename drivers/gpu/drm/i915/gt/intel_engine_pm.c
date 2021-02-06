@@ -53,7 +53,7 @@ static int __engine_unpark(struct intel_wakeref *wf)
 
 		/* Flush all pending HW writes before we touch the context */
 		while (unlikely(intel_context_inflight(ce)))
-			intel_engine_flush_submission(engine);
+			intel_engine_flush_scheduler(engine);
 
 		/* First poison the image to verify we never fully trust it */
 		dbg_poison_ce(ce);

@@ -144,6 +144,7 @@ void i915_sched_fini(struct i915_sched *se)
 {
 	GEM_BUG_ON(!list_empty(&se->requests));
 
+	tasklet_kill(&se->tasklet); /* flush the callback */
 	i915_sched_park(se);
 }
 
@@ -345,7 +346,7 @@ static void kick_submission(struct intel_engine_cs *engine,
 
 	engine->execlists.queue_priority_hint = prio;
 	if (need_preempt(prio, rq_prio(inflight)))
-		tasklet_hi_schedule(&engine->execlists.tasklet);
+		intel_engine_kick_scheduler(engine);
 }
 
 static void ipi_priority(struct i915_request *rq, int prio)
@@ -636,7 +637,7 @@ void i915_request_enqueue(struct i915_request *rq)
 	GEM_BUG_ON(list_empty(&rq->sched.link));
 	spin_unlock_irqrestore(&se->lock, flags);
 	if (kick)
-		tasklet_hi_schedule(&engine->execlists.tasklet);
+		i915_sched_kick(se);
 }
 
 struct i915_request *
@@ -774,7 +775,7 @@ void __i915_sched_resume_request(struct intel_engine_cs *engine,
 
 	if (rq_prio(rq) > engine->execlists.queue_priority_hint) {
 		engine->execlists.queue_priority_hint = rq_prio(rq);
-		tasklet_hi_schedule(&engine->execlists.tasklet);
+		i915_sched_kick(se);
 	}
 
 	if (!i915_request_on_hold(rq))
@@ -1000,6 +1001,44 @@ void i915_sched_node_retire(struct i915_sched_node *node)
 		if (dep->flags & I915_DEPENDENCY_ALLOC)
 			i915_dependency_free(dep);
 	}
+}
+
+void i915_sched_disable_tasklet(struct i915_sched *se)
+{
+	__tasklet_disable_sync_once(&se->tasklet);
+	GEM_BUG_ON(!__i915_sched_tasklet_is_disabled(se));
+	SCHED_TRACE(se, "disable:%d\n", atomic_read(&se->tasklet.count));
+}
+
+void i915_sched_enable_tasklet(struct i915_sched *se)
+{
+	SCHED_TRACE(se, "enable:%d\n", atomic_read(&se->tasklet.count));
+	GEM_BUG_ON(!__i915_sched_tasklet_is_disabled(se));
+
+	/* And kick in case we missed a new request submission. */
+	if (__tasklet_enable(&se->tasklet))
+		i915_sched_kick(se);
+}
+
+void __i915_sched_flush(struct i915_sched *se, bool sync)
+{
+	struct tasklet_struct *t = &se->tasklet;
+
+	if (!t->callback)
+		return;
+
+	local_bh_disable();
+	if (tasklet_trylock(t)) {
+		/* Must wait for any GPU reset in progress. */
+		if (__tasklet_is_enabled(t))
+			t->callback(t);
+		tasklet_unlock(t);
+	}
+	local_bh_enable();
+
+	/* Synchronise and wait for the tasklet on another CPU */
+	if (sync)
+		tasklet_unlock_wait(t);
 }
 
 void i915_request_show_with_schedule(struct drm_printer *m,

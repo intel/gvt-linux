@@ -88,7 +88,7 @@ static void heartbeat(struct work_struct *wrk)
 	unsigned long serial;
 
 	/* Just in case everything has gone horribly wrong, give it a kick */
-	intel_engine_flush_submission(engine);
+	intel_engine_flush_scheduler(engine);
 
 	rq = engine->heartbeat.systole;
 	if (rq && i915_request_completed(rq)) {

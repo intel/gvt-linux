@@ -171,12 +171,12 @@ static int __single_chain(struct intel_engine_cs *engine, unsigned long length,
 		i915_request_add(rq);
 		count++;
 	}
-	intel_engine_flush_submission(engine);
+	i915_sched_flush(se);
 
-	execlists_active_lock_bh(&engine->execlists);
+	i915_sched_lock_bh(se);
 	if (fn(rq, count, count - 1) && !check_context_order(se))
 		err = -EINVAL;
-	execlists_active_unlock_bh(&engine->execlists);
+	i915_sched_unlock_bh(se);
 
 	igt_spinner_end(&spin);
 err_context:
@@ -256,12 +256,12 @@ static int __wide_chain(struct intel_engine_cs *engine, unsigned long width,
 		}
 		i915_request_add(rq[i]);
 	}
-	intel_engine_flush_submission(engine);
+	i915_sched_flush(se);
 
-	execlists_active_lock_bh(&engine->execlists);
+	i915_sched_lock_bh(se);
 	if (fn(rq[i - 1], i, count) && !check_context_order(se))
 		err = -EINVAL;
-	execlists_active_unlock_bh(&engine->execlists);
+	i915_sched_unlock_bh(se);
 
 	igt_spinner_end(&spin);
 err_free:
@@ -345,12 +345,12 @@ static int __inv_chain(struct intel_engine_cs *engine, unsigned long width,
 		}
 		i915_request_add(rq[i]);
 	}
-	intel_engine_flush_submission(engine);
+	i915_sched_flush(se);
 
-	execlists_active_lock_bh(&engine->execlists);
+	i915_sched_lock_bh(se);
 	if (fn(rq[i - 1], i, count) && !check_context_order(se))
 		err = -EINVAL;
-	execlists_active_unlock_bh(&engine->execlists);
+	i915_sched_unlock_bh(se);
 
 	igt_spinner_end(&spin);
 err_free:
@@ -451,12 +451,12 @@ static int __sparse_chain(struct intel_engine_cs *engine, unsigned long width,
 		if (err)
 			break;
 	}
-	intel_engine_flush_submission(engine);
+	i915_sched_flush(se);
 
-	execlists_active_lock_bh(&engine->execlists);
+	i915_sched_lock_bh(se);
 	if (fn(rq[i - 1], i, count) && !check_context_order(se))
 		err = -EINVAL;
-	execlists_active_unlock_bh(&engine->execlists);
+	i915_sched_unlock_bh(se);
 
 	igt_spinner_end(&spin);
 err_free:

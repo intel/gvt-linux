@@ -49,7 +49,7 @@ static int wait_for_submit(struct intel_engine_cs *engine,
 			   unsigned long timeout)
 {
 	/* Ignore our own attempts to suppress excess tasklets */
-	tasklet_hi_schedule(&engine->execlists.tasklet);
+	intel_engine_kick_scheduler(engine);
 
 	timeout += jiffies;
 	do {
@@ -59,7 +59,7 @@ static int wait_for_submit(struct intel_engine_cs *engine,
 			return 0;
 
 		/* Wait until the HW has acknowleged the submission (or err) */
-		intel_engine_flush_submission(engine);
+		intel_engine_flush_scheduler(engine);
 		if (!READ_ONCE(engine->execlists.pending[0]) && is_active(rq))
 			return 0;
 
@@ -417,7 +417,7 @@ retry:
 	if (err)
 		goto err_rq;
 
-	intel_engine_flush_submission(engine);
+	intel_engine_flush_scheduler(engine);
 	expected[RING_TAIL_IDX] = ce->ring->tail;
 
 	if (i915_request_wait(rq, 0, HZ / 5) < 0) {
@@ -1852,17 +1852,18 @@ static int live_lrc_indirect_ctx_bb(void *arg)
 static void garbage_reset(struct intel_engine_cs *engine,
 			  struct i915_request *rq)
 {
+	struct i915_sched *se = intel_engine_get_scheduler(engine);
 	const unsigned int bit = I915_RESET_ENGINE + engine->id;
 	unsigned long *lock = &engine->gt->reset.flags;
 
 	local_bh_disable();
 	if (!test_and_set_bit(bit, lock)) {
-		tasklet_disable(&engine->execlists.tasklet);
+		tasklet_disable(&se->tasklet);
 
 		if (!rq->fence.error)
 			__intel_engine_reset_bh(engine, NULL);
 
-		tasklet_enable(&engine->execlists.tasklet);
+		tasklet_enable(&se->tasklet);
 		clear_and_wake_up_bit(bit, lock);
 	}
 	local_bh_enable();
@@ -1923,7 +1924,7 @@ static int __lrc_garbage(struct intel_engine_cs *engine, struct rnd_state *prng)
 	intel_context_set_banned(ce);
 	garbage_reset(engine, hang);
 
-	intel_engine_flush_submission(engine);
+	intel_engine_flush_scheduler(engine);
 	if (!hang->fence.error) {
 		i915_request_put(hang);
 		pr_err("%s: corrupted context was not reset\n",

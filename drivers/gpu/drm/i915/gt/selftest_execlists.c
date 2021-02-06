@@ -43,7 +43,7 @@ static int wait_for_submit(struct intel_engine_cs *engine,
 			   unsigned long timeout)
 {
 	/* Ignore our own attempts to suppress excess tasklets */
-	tasklet_hi_schedule(&engine->execlists.tasklet);
+	intel_engine_kick_scheduler(engine);
 
 	timeout += jiffies;
 	do {
@@ -53,7 +53,7 @@ static int wait_for_submit(struct intel_engine_cs *engine,
 			return 0;
 
 		/* Wait until the HW has acknowleged the submission (or err) */
-		intel_engine_flush_submission(engine);
+		intel_engine_flush_scheduler(engine);
 		if (!READ_ONCE(engine->execlists.pending[0]) && is_active(rq))
 			return 0;
 
@@ -72,7 +72,7 @@ static int wait_for_reset(struct intel_engine_cs *engine,
 
 	do {
 		cond_resched();
-		intel_engine_flush_submission(engine);
+		intel_engine_flush_scheduler(engine);
 
 		if (READ_ONCE(engine->execlists.pending[0]))
 			continue;
@@ -288,7 +288,7 @@ static int live_unlite_restore(struct intel_gt *gt, int prio)
 		i915_request_put(rq[0]);
 
 err_ce:
-		intel_engine_flush_submission(engine);
+		intel_engine_flush_scheduler(engine);
 		igt_spinner_end(&spin);
 		for (n = 0; n < ARRAY_SIZE(ce); n++) {
 			if (IS_ERR_OR_NULL(ce[n]))
@@ -409,10 +409,10 @@ static int live_unlite_ring(void *arg)
 			}
 
 			i915_request_add(tmp);
-			intel_engine_flush_submission(engine);
+			intel_engine_flush_scheduler(engine);
 			n++;
 		}
-		intel_engine_flush_submission(engine);
+		intel_engine_flush_scheduler(engine);
 		pr_debug("%s: Filled ring with %d nop tails {size:%x, tail:%x, emit:%x, rq.tail:%x}\n",
 			 engine->name, n,
 			 ce[0]->ring->size,
@@ -449,7 +449,7 @@ static int live_unlite_ring(void *arg)
 			 ce[1]->ring->tail, ce[1]->ring->emit);
 
 err_ce:
-		intel_engine_flush_submission(engine);
+		intel_engine_flush_scheduler(engine);
 		igt_spinner_end(&spin);
 		for (n = 0; n < ARRAY_SIZE(ce); n++) {
 			if (IS_ERR_OR_NULL(ce[n]))
@@ -568,6 +568,7 @@ static int live_hold_reset(void *arg)
 		return -ENOMEM;
 
 	for_each_engine(engine, gt, id) {
+		struct i915_sched *se = intel_engine_get_scheduler(engine);
 		struct intel_context *ce;
 		struct i915_request *rq;
 
@@ -602,9 +603,9 @@ static int live_hold_reset(void *arg)
 			err = -EBUSY;
 			goto out;
 		}
-		tasklet_disable(&engine->execlists.tasklet);
+		tasklet_disable(&se->tasklet);
 
-		engine->execlists.tasklet.callback(&engine->execlists.tasklet);
+		se->tasklet.callback(&se->tasklet);
 		GEM_BUG_ON(execlists_active(&engine->execlists) != rq);
 
 		i915_request_get(rq);
@@ -614,7 +615,7 @@ static int live_hold_reset(void *arg)
 		__intel_engine_reset_bh(engine, NULL);
 		GEM_BUG_ON(rq->fence.error != -EIO);
 
-		tasklet_enable(&engine->execlists.tasklet);
+		tasklet_enable(&se->tasklet);
 		clear_and_wake_up_bit(I915_RESET_ENGINE + id,
 				      &gt->reset.flags);
 		local_bh_enable();
@@ -762,7 +763,7 @@ static int live_error_interrupt(void *arg)
 				}
 
 				/* Kick the tasklet to process the error */
-				intel_engine_flush_submission(engine);
+				intel_engine_flush_scheduler(engine);
 				if (client[i]->fence.error != p->error[i]) {
 					pr_err("%s: %s request (%s) with wrong error code: %d\n",
 					       engine->name,
@@ -1176,8 +1177,8 @@ static int live_timeslice_rewind(void *arg)
 		while (i915_request_is_active(rq[A2])) { /* semaphore yield! */
 			/* Wait for the timeslice to kick in */
 			del_timer(&engine->execlists.timer);
-			tasklet_hi_schedule(&engine->execlists.tasklet);
-			intel_engine_flush_submission(engine);
+			intel_engine_kick_scheduler(engine);
+			intel_engine_flush_scheduler(engine);
 		}
 		/* -> ELSP[] = { { A:rq1 }, { B:rq1 } } */
 		GEM_BUG_ON(!i915_request_is_active(rq[A1]));
@@ -1350,7 +1351,7 @@ static int live_timeslice_queue(void *arg)
 		/* Wait until we ack the release_queue and start timeslicing */
 		do {
 			cond_resched();
-			intel_engine_flush_submission(engine);
+			intel_engine_flush_scheduler(engine);
 		} while (READ_ONCE(engine->execlists.pending[0]));
 
 		/* Timeslice every jiffy, so within 2 we should signal */
@@ -2320,9 +2321,9 @@ static int __cancel_fail(struct live_preempt_cancel *arg)
 
 	/* force preempt reset [failure] */
 	while (!engine->execlists.pending[0])
-		intel_engine_flush_submission(engine);
+		intel_engine_flush_scheduler(engine);
 	del_timer_sync(&engine->execlists.preempt);
-	intel_engine_flush_submission(engine);
+	intel_engine_flush_scheduler(engine);
 
 	cancel_reset_timeout(engine);
 
@@ -2826,10 +2827,10 @@ static int __live_preempt_ring(struct intel_engine_cs *engine,
 		}
 
 		i915_request_add(tmp);
-		intel_engine_flush_submission(engine);
+		intel_engine_flush_scheduler(engine);
 		n++;
 	}
-	intel_engine_flush_submission(engine);
+	intel_engine_flush_scheduler(engine);
 	pr_debug("%s: Filled %d with %d nop tails {size:%x, tail:%x, emit:%x, rq.tail:%x}\n",
 		 engine->name, queue_sz, n,
 		 ce[0]->ring->size,
@@ -2863,7 +2864,7 @@ static int __live_preempt_ring(struct intel_engine_cs *engine,
 		 ce[1]->ring->tail, ce[1]->ring->emit);
 
 err_ce:
-	intel_engine_flush_submission(engine);
+	intel_engine_flush_scheduler(engine);
 	igt_spinner_end(spin);
 	for (n = 0; n < ARRAY_SIZE(ce); n++) {
 		if (IS_ERR_OR_NULL(ce[n]))
@@ -3398,7 +3399,7 @@ static int live_preempt_timeout(void *arg)
 		i915_request_get(rq);
 		i915_request_add(rq);
 
-		intel_engine_flush_submission(engine);
+		intel_engine_flush_scheduler(engine);
 		engine->props.preempt_timeout_ms = saved_timeout;
 
 		if (i915_request_wait(rq, 0, HZ / 10) < 0) {
@@ -4438,7 +4439,7 @@ static int bond_virtual_engine(struct intel_gt *gt,
 			}
 		}
 		onstack_fence_fini(&fence);
-		intel_engine_flush_submission(master);
+		intel_engine_flush_scheduler(master);
 		igt_spinner_end(&spin);
 
 		if (i915_request_wait(rq[0], 0, HZ / 10) < 0) {
@@ -4577,9 +4578,9 @@ static int reset_virtual_engine(struct intel_gt *gt,
 		err = -EBUSY;
 		goto out_heartbeat;
 	}
-	tasklet_disable(&engine->execlists.tasklet);
+	tasklet_disable(&se->tasklet);
 
-	engine->execlists.tasklet.callback(&engine->execlists.tasklet);
+	se->tasklet.callback(&se->tasklet);
 	GEM_BUG_ON(execlists_active(&engine->execlists) != rq);
 
 	/* Fake a preemption event; failed of course */
@@ -4596,7 +4597,7 @@ static int reset_virtual_engine(struct intel_gt *gt,
 	GEM_BUG_ON(rq->fence.error != -EIO);
 
 	/* Release our grasp on the engine, letting CS flow again */
-	tasklet_enable(&engine->execlists.tasklet);
+	tasklet_enable(&se->tasklet);
 	clear_and_wake_up_bit(I915_RESET_ENGINE + engine->id, &gt->reset.flags);
 	local_bh_enable();
 

@@ -515,7 +515,7 @@ static void kick_siblings(struct i915_request *rq, struct intel_context *ce)
 		resubmit_virtual_request(rq, ve);
 
 	if (READ_ONCE(ve->request))
-		tasklet_hi_schedule(&ve->base.execlists.tasklet);
+		intel_engine_kick_scheduler(&ve->base);
 }
 
 static void __execlists_schedule_out(struct i915_request * const rq,
@@ -681,12 +681,6 @@ trace_ports(const struct intel_engine_execlists *execlists,
 		     dump_port(p1, sizeof(p1), ", ", ports[1]));
 }
 
-static bool
-reset_in_progress(const struct intel_engine_execlists *execlists)
-{
-	return unlikely(!__tasklet_is_enabled(&execlists->tasklet));
-}
-
 static __maybe_unused noinline bool
 assert_pending_valid(const struct intel_engine_execlists *execlists,
 		     const char *msg)
@@ -701,7 +695,7 @@ assert_pending_valid(const struct intel_engine_execlists *execlists,
 	trace_ports(execlists, msg, execlists->pending);
 
 	/* We may be messing around with the lists during reset, lalala */
-	if (reset_in_progress(execlists))
+	if (__i915_sched_tasklet_is_disabled(intel_engine_get_scheduler(engine)))
 		return true;
 
 	if (!execlists->pending[0]) {
@@ -1088,7 +1082,7 @@ static void start_timeslice(struct intel_engine_cs *engine)
 			 * its timeslice, so recheck.
 			 */
 			if (!timer_pending(&el->timer))
-				tasklet_hi_schedule(&el->tasklet);
+				intel_engine_kick_scheduler(engine);
 			return;
 		}
 
@@ -1665,14 +1659,6 @@ process_csb(struct intel_engine_cs *engine, struct i915_request **inactive)
 	u8 head, tail;
 
 	/*
-	 * As we modify our execlists state tracking we require exclusive
-	 * access. Either we are inside the tasklet, or the tasklet is disabled
-	 * and we assume that is only inside the reset paths and so serialised.
-	 */
-	GEM_BUG_ON(!tasklet_is_locked(&execlists->tasklet) &&
-		   !reset_in_progress(execlists));
-
-	/*
 	 * Note that csb_write, csb_status may be either in HWSP or mmio.
 	 * When reading from the csb_write mmio register, we have to be
 	 * careful to only use the GEN8_CSB_WRITE_PTR portion, which is
@@ -2067,6 +2053,7 @@ err_free:
 
 static noinline void execlists_reset(struct intel_engine_cs *engine)
 {
+	struct i915_sched *se = intel_engine_get_scheduler(engine);
 	const unsigned int bit = I915_RESET_ENGINE + engine->id;
 	unsigned long *lock = &engine->gt->reset.flags;
 	unsigned long eir = fetch_and_zero(&engine->execlists.error_interrupt);
@@ -2090,13 +2077,13 @@ static noinline void execlists_reset(struct intel_engine_cs *engine)
 	ENGINE_TRACE(engine, "reset for %s\n", msg);
 
 	/* Mark this tasklet as disabled to avoid waiting for it to complete */
-	tasklet_disable_nosync(&engine->execlists.tasklet);
+	tasklet_disable_nosync(&se->tasklet);
 
 	ring_set_paused(engine, 1); /* Freeze the current request in place */
 	execlists_capture(engine);
 	intel_engine_reset(engine, msg);
 
-	tasklet_enable(&engine->execlists.tasklet);
+	tasklet_enable(&se->tasklet);
 	clear_and_wake_up_bit(bit, lock);
 }
 
@@ -2120,9 +2107,15 @@ static bool preempt_timeout(const struct intel_engine_cs *const engine)
 static void execlists_submission_tasklet(struct tasklet_struct *t)
 {
 	struct intel_engine_cs * const engine =
-		from_tasklet(engine, t, execlists.tasklet);
+		from_tasklet(engine, t, sched.tasklet);
 	struct i915_request *post[2 * EXECLIST_MAX_PORTS];
 	struct i915_request **inactive;
+
+	/*
+	 * As we modify our execlists state tracking we require exclusive
+	 * access. Either we are inside the tasklet, or the tasklet is disabled
+	 * and we assume that is only inside the reset paths and so serialised.
+	 */
 
 	rcu_read_lock();
 	inactive = process_csb(engine, post);
@@ -2181,13 +2174,15 @@ static void execlists_irq_handler(struct intel_engine_cs *engine, u16 iir)
 		intel_engine_signal_breadcrumbs(engine);
 
 	if (tasklet)
-		tasklet_hi_schedule(&engine->execlists.tasklet);
+		intel_engine_kick_scheduler(engine);
 }
 
 static void __execlists_kick(struct intel_engine_execlists *execlists)
 {
-	/* Kick the tasklet for some interrupt coalescing and reset handling */
-	tasklet_hi_schedule(&execlists->tasklet);
+	struct intel_engine_cs *engine =
+		container_of(execlists, typeof(*engine), execlists);
+
+	intel_engine_kick_scheduler(engine);
 }
 
 #define execlists_kick(t, member) \
@@ -2490,11 +2485,6 @@ static int execlists_resume(struct intel_engine_cs *engine)
 
 static void execlists_reset_prepare(struct intel_engine_cs *engine)
 {
-	struct intel_engine_execlists * const execlists = &engine->execlists;
-
-	ENGINE_TRACE(engine, "depth<-%d\n",
-		     atomic_read(&execlists->tasklet.count));
-
 	/*
 	 * Prevent request submission to the hardware until we have
 	 * completed the reset in i915_gem_reset_finish(). If a request
@@ -2504,8 +2494,7 @@ static void execlists_reset_prepare(struct intel_engine_cs *engine)
 	 * Turning off the execlists->tasklet until the reset is over
 	 * prevents the race.
 	 */
-	__tasklet_disable_sync_once(&execlists->tasklet);
-	GEM_BUG_ON(!reset_in_progress(execlists));
+	i915_sched_disable_tasklet(intel_engine_get_scheduler(engine));
 
 	/*
 	 * We stop engines, otherwise we might get failed reset and a
@@ -2657,7 +2646,7 @@ static void execlists_reset_rewind(struct intel_engine_cs *engine, bool stalled)
 static void nop_submission_tasklet(struct tasklet_struct *t)
 {
 	struct intel_engine_cs * const engine =
-		from_tasklet(engine, t, execlists.tasklet);
+		from_tasklet(engine, t, sched.tasklet);
 
 	/* The driver is wedged; don't process any more events. */
 	WRITE_ONCE(engine->execlists.queue_priority_hint, INT_MIN);
@@ -2720,8 +2709,8 @@ static void execlists_reset_cancel(struct intel_engine_cs *engine)
 	execlists->queue_priority_hint = INT_MIN;
 	se->queue = RB_ROOT_CACHED;
 
-	GEM_BUG_ON(__tasklet_is_enabled(&execlists->tasklet));
-	execlists->tasklet.callback = nop_submission_tasklet;
+	GEM_BUG_ON(__tasklet_is_enabled(&se->tasklet));
+	se->tasklet.callback = nop_submission_tasklet;
 
 	spin_unlock_irqrestore(&se->lock, flags);
 	rcu_read_unlock();
@@ -2731,8 +2720,6 @@ static void execlists_reset_cancel(struct intel_engine_cs *engine)
 
 static void execlists_reset_finish(struct intel_engine_cs *engine)
 {
-	struct intel_engine_execlists * const execlists = &engine->execlists;
-
 	/*
 	 * After a GPU reset, we may have requests to replay. Do so now while
 	 * we still have the forcewake to be sure that the GPU is not allowed
@@ -2743,14 +2730,8 @@ static void execlists_reset_finish(struct intel_engine_cs *engine)
 	 * reset as the next level of recovery, and as a final resort we
 	 * will declare the device wedged.
 	 */
-	GEM_BUG_ON(!reset_in_progress(execlists));
 
-	/* And kick in case we missed a new request submission. */
-	if (__tasklet_enable(&execlists->tasklet))
-		__execlists_kick(execlists);
-
-	ENGINE_TRACE(engine, "depth->%d\n",
-		     atomic_read(&execlists->tasklet.count));
+	i915_sched_enable_tasklet(intel_engine_get_scheduler(engine));
 }
 
 static void gen8_logical_ring_enable_irq(struct intel_engine_cs *engine)
@@ -2783,7 +2764,7 @@ static bool can_preempt(struct intel_engine_cs *engine)
 static void execlists_set_default_submission(struct intel_engine_cs *engine)
 {
 	engine->submit_request = i915_request_enqueue;
-	engine->execlists.tasklet.callback = execlists_submission_tasklet;
+	engine->sched.tasklet.callback = execlists_submission_tasklet;
 }
 
 static void execlists_shutdown(struct intel_engine_cs *engine)
@@ -2791,7 +2772,6 @@ static void execlists_shutdown(struct intel_engine_cs *engine)
 	/* Synchronise with residual timers and any softirq they raise */
 	del_timer_sync(&engine->execlists.timer);
 	del_timer_sync(&engine->execlists.preempt);
-	tasklet_kill(&engine->execlists.tasklet);
 }
 
 static void execlists_release(struct intel_engine_cs *engine)
@@ -2908,7 +2888,7 @@ static void init_execlists(struct intel_engine_cs *engine)
 	struct intel_uncore *uncore = engine->uncore;
 	u32 base = engine->mmio_base;
 
-	tasklet_setup(&engine->execlists.tasklet, execlists_submission_tasklet);
+	tasklet_setup(&engine->sched.tasklet, execlists_submission_tasklet);
 
 	timer_setup(&engine->execlists.timer, execlists_timeslice, 0);
 	timer_setup(&engine->execlists.preempt, execlists_preempt, 0);
@@ -2997,7 +2977,7 @@ static void rcu_virtual_context_destroy(struct work_struct *wrk)
 	 * rbtrees as in the case it is running in parallel, it may reinsert
 	 * the rb_node into a sibling.
 	 */
-	tasklet_kill(&ve->base.execlists.tasklet);
+	i915_sched_kill_tasklet(se);
 
 	/* Decouple ourselves from the siblings, no more access allowed. */
 	for (n = 0; n < ve->num_siblings; n++) {
@@ -3015,7 +2995,7 @@ static void rcu_virtual_context_destroy(struct work_struct *wrk)
 
 		spin_unlock_irq(&sibling->sched.lock);
 	}
-	GEM_BUG_ON(__tasklet_is_scheduled(&ve->base.execlists.tasklet));
+	GEM_BUG_ON(__tasklet_is_scheduled(&se->tasklet));
 	GEM_BUG_ON(!list_empty(virtual_queue(ve)));
 
 	lrc_fini(&ve->context);
@@ -3160,7 +3140,7 @@ static intel_engine_mask_t virtual_submission_mask(struct virtual_engine *ve)
 static void virtual_submission_tasklet(struct tasklet_struct *t)
 {
 	struct virtual_engine * const ve =
-		from_tasklet(ve, t, base.execlists.tasklet);
+		from_tasklet(ve, t, base.sched.tasklet);
 	const int prio = READ_ONCE(ve->base.execlists.queue_priority_hint);
 	intel_engine_mask_t mask;
 	unsigned int n;
@@ -3231,7 +3211,7 @@ submit_engine:
 		GEM_BUG_ON(RB_EMPTY_NODE(&node->rb));
 		node->prio = prio;
 		if (first && prio > sibling->execlists.queue_priority_hint)
-			tasklet_hi_schedule(&sibling->execlists.tasklet);
+			i915_sched_kick(se);
 
 unlock_engine:
 		spin_unlock_irq(&se->lock);
@@ -3273,7 +3253,7 @@ static void virtual_submit_request(struct i915_request *rq)
 	GEM_BUG_ON(!list_empty(virtual_queue(ve)));
 	list_move_tail(&rq->sched.link, virtual_queue(ve));
 
-	tasklet_hi_schedule(&ve->base.execlists.tasklet);
+	intel_engine_kick_scheduler(&ve->base);
 
 unlock:
 	spin_unlock_irqrestore(&se->lock, flags);
@@ -3370,7 +3350,7 @@ intel_execlists_create_virtual(struct intel_engine_cs **siblings,
 
 	INIT_LIST_HEAD(virtual_queue(ve));
 	ve->base.execlists.queue_priority_hint = INT_MIN;
-	tasklet_setup(&ve->base.execlists.tasklet, virtual_submission_tasklet);
+	tasklet_setup(&ve->base.sched.tasklet, virtual_submission_tasklet);
 
 	intel_context_init(&ve->context, &ve->base);
 
@@ -3398,7 +3378,7 @@ intel_execlists_create_virtual(struct intel_engine_cs **siblings,
 		 * layering if we handle cloning of the requests and
 		 * submitting a copy into each backend.
 		 */
-		if (sibling->execlists.tasklet.callback !=
+		if (sibling->sched.tasklet.callback !=
 		    execlists_submission_tasklet) {
 			err = -ENODEV;
 			goto err_put;

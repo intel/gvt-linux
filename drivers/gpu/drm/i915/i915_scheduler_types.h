@@ -7,6 +7,7 @@
 #ifndef _I915_SCHEDULER_TYPES_H_
 #define _I915_SCHEDULER_TYPES_H_
 
+#include <linux/interrupt.h>
 #include <linux/list.h>
 #include <linux/workqueue.h>
 
@@ -53,6 +54,14 @@ struct i915_sched {
 	 * frontend to the back.
 	 */
 	struct rb_root_cached queue;
+
+	/**
+	 * @tasklet: softirq tasklet for bottom half
+	 *
+	 * The tasklet is responsible for transferring the priority queue
+	 * to HW, and for handling responses from HW.
+	 */
+	struct tasklet_struct tasklet;
 
 	/* Inter-engine scheduling delegate */
 	struct i915_sched_ipi {

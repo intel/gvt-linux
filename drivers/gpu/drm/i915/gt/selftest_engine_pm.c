@@ -103,7 +103,7 @@ static int __measure_timestamps(struct intel_context *ce,
 	intel_ring_advance(rq, cs);
 	i915_request_get(rq);
 	i915_request_add(rq);
-	intel_engine_flush_submission(engine);
+	intel_engine_flush_scheduler(engine);
 
 	/* Wait for the request to start executing, that then waits for us */
 	while (READ_ONCE(sema[2]) == 0)

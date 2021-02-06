@@ -221,7 +221,7 @@ void igt_spinner_fini(struct igt_spinner *spin)
 bool igt_wait_for_spinner(struct igt_spinner *spin, struct i915_request *rq)
 {
 	if (i915_request_is_ready(rq))
-		intel_engine_flush_submission(rq->engine);
+		__i915_sched_flush(i915_request_get_scheduler(rq), false);
 
 	return !(wait_for_us(i915_seqno_passed(hws_seqno(spin, rq),
 					       rq->fence.seqno),

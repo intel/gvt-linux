@@ -222,9 +222,7 @@ timeslice_store(struct kobject *kobj, struct kobj_attribute *attr,
 		return -EINVAL;
 
 	WRITE_ONCE(engine->props.timeslice_duration_ms, duration);
-
-	if (execlists_active(&engine->execlists))
-		set_timer_ms(&engine->execlists.timer, duration);
+	intel_engine_kick_scheduler(engine);
 
 	return count;
 }
@@ -326,9 +324,7 @@ preempt_timeout_store(struct kobject *kobj, struct kobj_attribute *attr,
 		return -EINVAL;
 
 	WRITE_ONCE(engine->props.preempt_timeout_ms, timeout);
-
-	if (READ_ONCE(engine->execlists.pending[0]))
-		set_timer_ms(&engine->execlists.preempt, timeout);
+	intel_engine_kick_scheduler(engine);
 
 	return count;
 }

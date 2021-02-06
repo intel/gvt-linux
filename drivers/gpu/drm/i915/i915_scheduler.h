@@ -16,6 +16,13 @@
 struct drm_printer;
 struct intel_engine_cs;
 
+#define SCHED_TRACE(se, fmt, ...) do {					\
+	const struct i915_sched *se__ __maybe_unused = (se);		\
+	GEM_TRACE("%s sched:%s: " fmt,					\
+		  dev_name(se__->dbg.dev), se__->dbg.name,		\
+		  ##__VA_ARGS__);					\
+} while (0)
+
 #define priolist_for_each_request(it, plist) \
 	list_for_each_entry(it, &(plist)->requests, sched.link)
 
@@ -36,7 +43,11 @@ int i915_sched_node_add_dependency(struct i915_sched_node *node,
 
 void i915_sched_node_retire(struct i915_sched_node *node);
 
-void i915_sched_init_ipi(struct i915_sched_ipi *ipi);
+void i915_sched_init(struct i915_sched *se,
+		     struct device *dev,
+		     const char *name,
+		     unsigned long mask,
+		     unsigned int subclass);
 
 void i915_request_set_priority(struct i915_request *request, int prio);
 

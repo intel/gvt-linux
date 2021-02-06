@@ -13,6 +13,7 @@
 #include "i915_globals.h"
 #include "i915_request.h"
 #include "i915_scheduler.h"
+#include "i915_utils.h"
 
 static struct i915_global_scheduler {
 	struct i915_global base;
@@ -30,11 +31,11 @@ static struct i915_global_scheduler {
 	struct i915_request * const rq__ = (rq); \
 	struct intel_engine_cs *engine__ = READ_ONCE(rq__->engine); \
 \
-	spin_lock_irqsave(&engine__->active.lock, (flags)); \
+	spin_lock_irqsave(&engine__->sched.lock, (flags)); \
 	while (engine__ != READ_ONCE((rq__)->engine)) { \
-		spin_unlock(&engine__->active.lock); \
+		spin_unlock(&engine__->sched.lock); \
 		engine__ = READ_ONCE(rq__->engine); \
-		spin_lock(&engine__->active.lock); \
+		spin_lock(&engine__->sched.lock); \
 	} \
 \
 	engine__; \
@@ -105,16 +106,37 @@ static void ipi_schedule(struct work_struct *wrk)
 	} while (rq);
 }
 
-void i915_sched_init_ipi(struct i915_sched_ipi *ipi)
+static void init_ipi(struct i915_sched_ipi *ipi)
 {
 	INIT_WORK(&ipi->work, ipi_schedule);
 	ipi->list = NULL;
 }
 
+void i915_sched_init(struct i915_sched *se,
+		     struct device *dev,
+		     const char *name,
+		     unsigned long mask,
+		     unsigned int subclass)
+{
+	spin_lock_init(&se->lock);
+	lockdep_set_subclass(&se->lock, subclass);
+	mark_lock_used_irq(&se->lock);
+
+	se->dbg.dev = dev;
+	se->dbg.name = name;
+
+	se->mask = mask;
+
+	INIT_LIST_HEAD(&se->requests);
+	INIT_LIST_HEAD(&se->hold);
+
+	init_ipi(&se->ipi);
+}
+
 static void __ipi_add(struct i915_request *rq)
 {
 #define STUB ((struct i915_request *)1)
-	struct intel_engine_cs *engine = READ_ONCE(rq->engine);
+	struct i915_sched *se = i915_request_get_scheduler(rq);
 	struct i915_request *first;
 
 	if (!i915_request_get_rcu(rq))
@@ -134,13 +156,13 @@ static void __ipi_add(struct i915_request *rq)
 	}
 
 	/* Carefully insert ourselves into the head of the llist */
-	first = READ_ONCE(engine->execlists.ipi.list);
+	first = READ_ONCE(se->ipi.list);
 	do {
 		rq->sched.ipi_link = ptr_pack_bits(first, 1, 1);
-	} while (!try_cmpxchg(&engine->execlists.ipi.list, &first, rq));
+	} while (!try_cmpxchg(&se->ipi.list, &first, rq));
 
 	if (!first)
-		queue_work(system_unbound_wq, &engine->execlists.ipi.work);
+		queue_work(system_unbound_wq, &se->ipi.work);
 }
 
 static const struct i915_request *
@@ -303,12 +325,11 @@ static void kick_submission(struct intel_engine_cs *engine,
 	if (inflight->context == rq->context)
 		return;
 
-	ENGINE_TRACE(engine,
-		     "bumping queue-priority-hint:%d for rq:%llx:%lld, inflight:%llx:%lld prio %d\n",
-		     prio,
-		     rq->fence.context, rq->fence.seqno,
-		     inflight->fence.context, inflight->fence.seqno,
-		     inflight->sched.attr.priority);
+	SCHED_TRACE(&engine->sched,
+		    "bumping queue-priority-hint:%d for rq:" RQ_FMT ", inflight:" RQ_FMT " prio %d\n",
+		    prio,
+		    RQ_ARG(rq), RQ_ARG(inflight),
+		    inflight->sched.attr.priority);
 
 	engine->execlists.queue_priority_hint = prio;
 	if (need_preempt(prio, rq_prio(inflight)))
@@ -332,6 +353,9 @@ static void __i915_request_set_priority(struct i915_request *rq, int prio)
 	struct intel_engine_cs *engine = rq->engine;
 	struct list_head *pos = &rq->sched.signalers_list;
 	struct list_head *plist;
+
+	SCHED_TRACE(&engine->sched, "PI for " RQ_FMT ", prio:%d\n",
+		    RQ_ARG(rq), prio);
 
 	plist = lookup_priolist(engine, prio);
 
@@ -461,7 +485,7 @@ void i915_request_set_priority(struct i915_request *rq, int prio)
 	GEM_BUG_ON(rq_prio(rq) != prio);
 
 unlock:
-	spin_unlock_irqrestore(&engine->active.lock, flags);
+	spin_unlock_irqrestore(&engine->sched.lock, flags);
 }
 
 void __i915_sched_defer_request(struct intel_engine_cs *engine,
@@ -470,6 +494,8 @@ void __i915_sched_defer_request(struct intel_engine_cs *engine,
 	struct i915_sched *se = intel_engine_get_scheduler(engine);
 	struct list_head *pl;
 	LIST_HEAD(list);
+
+	SCHED_TRACE(se, "defer request " RQ_FMT "\n", RQ_ARG(rq));
 
 	lockdep_assert_held(&se->lock);
 	GEM_BUG_ON(!test_bit(I915_FENCE_FLAG_PQUEUE, &rq->fence.flags));
@@ -577,6 +603,8 @@ void i915_request_enqueue(struct i915_request *rq)
 	unsigned long flags;
 	bool kick = false;
 
+	SCHED_TRACE(se, "queue request " RQ_FMT "\n", RQ_ARG(rq));
+
 	/* Will be called from irq-context when using foreign fences. */
 	spin_lock_irqsave(&se->lock, flags);
 	GEM_BUG_ON(test_bit(I915_FENCE_FLAG_PQUEUE, &rq->fence.flags));
@@ -636,6 +664,10 @@ __i915_sched_rewind_requests(struct intel_engine_cs *engine)
 		active = rq;
 	}
 
+	SCHED_TRACE(se,
+		    "rewind requests, active request " RQ_FMT "\n",
+		    RQ_ARG(active));
+
 	return active;
 }
 
@@ -654,8 +686,7 @@ bool __i915_sched_suspend_request(struct intel_engine_cs *engine,
 	if (i915_request_on_hold(rq))
 		return false;
 
-	ENGINE_TRACE(engine, "suspending request %llx:%lld\n",
-		     rq->fence.context, rq->fence.seqno);
+	SCHED_TRACE(se, "suspending request " RQ_FMT "\n", RQ_ARG(rq));
 
 	/*
 	 * Transfer this request onto the hold queue to prevent it
@@ -737,8 +768,7 @@ void __i915_sched_resume_request(struct intel_engine_cs *engine,
 	if (!i915_request_on_hold(rq))
 		return;
 
-	ENGINE_TRACE(engine, "resuming request %llx:%lld\n",
-		     rq->fence.context, rq->fence.seqno);
+	SCHED_TRACE(se, "resuming request " RQ_FMT "\n", RQ_ARG(rq));
 
 	/*
 	 * Move this request back to the priority queue, and all of its

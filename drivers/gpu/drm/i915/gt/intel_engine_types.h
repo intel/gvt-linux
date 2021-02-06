@@ -258,8 +258,6 @@ struct intel_engine_execlists {
 	struct rb_root_cached queue;
 	struct rb_root_cached virtual;
 
-	struct i915_sched_ipi ipi;
-
 	/**
 	 * @csb_write: control register for Context Switch buffer
 	 *
@@ -329,11 +327,7 @@ struct intel_engine_cs {
 
 	struct intel_sseu sseu;
 
-	struct i915_sched {
-		spinlock_t lock;
-		struct list_head requests;
-		struct list_head hold; /* ready requests, but on hold */
-	} active;
+	struct i915_sched sched;
 
 	/* keep a request in reserve for a [pm] barrier under oom */
 	struct i915_request *request_pool;
@@ -620,7 +614,7 @@ intel_engine_has_relative_mmio(const struct intel_engine_cs * const engine)
 static inline struct i915_sched *
 intel_engine_get_scheduler(struct intel_engine_cs *engine)
 {
-	return &engine->active;
+	return &engine->sched;
 }
 
 #endif /* __INTEL_ENGINE_TYPES_H__ */

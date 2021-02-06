@@ -294,7 +294,7 @@ static int virtual_prio(const struct intel_engine_execlists *el)
 static bool need_preempt(const struct intel_engine_cs *engine,
 			 const struct i915_request *rq)
 {
-	const struct i915_sched *se = &engine->active;
+	const struct i915_sched *se = &engine->sched;
 	int last_prio;
 
 	if (!intel_engine_has_semaphores(engine))
@@ -1020,7 +1020,7 @@ timeslice_yield(const struct intel_engine_execlists *el,
 static bool needs_timeslice(const struct intel_engine_cs *engine,
 			    const struct i915_request *rq)
 {
-	const struct i915_sched *se = &engine->active;
+	const struct i915_sched *se = &engine->sched;
 
 	if (!intel_engine_has_timeslices(engine))
 		return false;
@@ -1277,7 +1277,7 @@ static void execlists_dequeue(struct intel_engine_cs *engine)
 	while ((ve = first_virtual_engine(engine))) {
 		struct i915_request *rq;
 
-		spin_lock(&ve->base.active.lock);
+		spin_lock(&ve->base.sched.lock);
 
 		rq = ve->request;
 		if (unlikely(!virtual_matches(ve, rq, engine)))
@@ -1287,12 +1287,12 @@ static void execlists_dequeue(struct intel_engine_cs *engine)
 		GEM_BUG_ON(rq->context != &ve->context);
 
 		if (unlikely(rq_prio(rq) < queue_prio(execlists))) {
-			spin_unlock(&ve->base.active.lock);
+			spin_unlock(&ve->base.sched.lock);
 			break;
 		}
 
 		if (last && !can_merge_rq(last, rq)) {
-			spin_unlock(&ve->base.active.lock);
+			spin_unlock(&ve->base.sched.lock);
 			spin_unlock(&se->lock);
 			return; /* leave this for another sibling */
 		}
@@ -1339,7 +1339,7 @@ static void execlists_dequeue(struct intel_engine_cs *engine)
 
 		i915_request_put(rq);
 unlock:
-		spin_unlock(&ve->base.active.lock);
+		spin_unlock(&ve->base.sched.lock);
 
 		/*
 		 * Hmm, we have a bunch of virtual engine requests,
@@ -2724,7 +2724,7 @@ static void execlists_reset_cancel(struct intel_engine_cs *engine)
 		rb_erase_cached(rb, &execlists->virtual);
 		RB_CLEAR_NODE(rb);
 
-		spin_lock(&ve->base.active.lock);
+		spin_lock(&ve->base.sched.lock);
 		rq = fetch_and_zero(&ve->request);
 		if (rq) {
 			if (i915_request_mark_eio(rq)) {
@@ -2736,7 +2736,7 @@ static void execlists_reset_cancel(struct intel_engine_cs *engine)
 
 			ve->base.execlists.queue_priority_hint = INT_MIN;
 		}
-		spin_unlock(&ve->base.active.lock);
+		spin_unlock(&ve->base.sched.lock);
 	}
 
 	/* Remaining _unready_ requests will be nop'ed when submitted */
@@ -3029,13 +3029,13 @@ static void rcu_virtual_context_destroy(struct work_struct *wrk)
 		if (RB_EMPTY_NODE(node))
 			continue;
 
-		spin_lock_irq(&sibling->active.lock);
+		spin_lock_irq(&sibling->sched.lock);
 
 		/* Detachment is lazily performed in the execlists tasklet */
 		if (!RB_EMPTY_NODE(node))
 			rb_erase_cached(node, &sibling->execlists.virtual);
 
-		spin_unlock_irq(&sibling->active.lock);
+		spin_unlock_irq(&sibling->sched.lock);
 	}
 	GEM_BUG_ON(__tasklet_is_scheduled(&ve->base.execlists.tasklet));
 	GEM_BUG_ON(!list_empty(virtual_queue(ve)));
@@ -3382,7 +3382,6 @@ intel_execlists_create_virtual(struct intel_engine_cs **siblings,
 
 	snprintf(ve->base.name, sizeof(ve->base.name), "virtual");
 
-	intel_engine_init_active(&ve->base, ENGINE_VIRTUAL);
 	intel_engine_init_execlists(&ve->base);
 
 	ve->base.cops = &virtual_context_ops;
@@ -3467,6 +3466,12 @@ intel_execlists_create_virtual(struct intel_engine_cs **siblings,
 	}
 
 	ve->base.flags |= I915_ENGINE_IS_VIRTUAL;
+
+	i915_sched_init(&ve->base.sched,
+			ve->base.i915->drm.dev,
+			ve->base.name,
+			ve->base.mask,
+			ENGINE_VIRTUAL);
 
 	virtual_engine_initial_hint(ve);
 	return &ve->context;

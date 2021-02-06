@@ -422,11 +422,11 @@ __active_engine(struct i915_request *rq, struct intel_engine_cs **active)
 	 * check that we have acquired the lock on the final engine.
 	 */
 	locked = READ_ONCE(rq->engine);
-	spin_lock_irq(&locked->active.lock);
+	spin_lock_irq(&locked->sched.lock);
 	while (unlikely(locked != (engine = READ_ONCE(rq->engine)))) {
-		spin_unlock(&locked->active.lock);
+		spin_unlock(&locked->sched.lock);
 		locked = engine;
-		spin_lock(&locked->active.lock);
+		spin_lock(&locked->sched.lock);
 	}
 
 	if (i915_request_is_active(rq)) {
@@ -435,7 +435,7 @@ __active_engine(struct i915_request *rq, struct intel_engine_cs **active)
 		ret = true;
 	}
 
-	spin_unlock_irq(&locked->active.lock);
+	spin_unlock_irq(&locked->sched.lock);
 
 	return ret;
 }

@@ -51,11 +51,13 @@ struct i915_capture_list {
 	struct i915_vma *vma;
 };
 
+#define RQ_FMT "%llx:%lld"
+#define RQ_ARG(rq) (rq) ? (rq)->fence.context : 0, (rq) ? (rq)->fence.seqno : 0
+
 #define RQ_TRACE(rq, fmt, ...) do {					\
 	const struct i915_request *rq__ = (rq);				\
-	ENGINE_TRACE(rq__->engine, "fence %llx:%lld, current %d " fmt,	\
-		     rq__->fence.context, rq__->fence.seqno,		\
-		     hwsp_seqno(rq__), ##__VA_ARGS__);			\
+	ENGINE_TRACE(rq__->engine, "fence " RQ_FMT ", current %d " fmt,	\
+		     RQ_ARG(rq__), hwsp_seqno(rq__), ##__VA_ARGS__);	\
 } while (0)
 
 enum {

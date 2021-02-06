@@ -255,10 +255,10 @@ static void remove_from_engine(struct i915_request *rq)
 	 * check that the rq still belongs to the newly locked engine.
 	 */
 	locked = READ_ONCE(rq->engine);
-	spin_lock_irq(&locked->active.lock);
+	spin_lock_irq(&locked->sched.lock);
 	while (unlikely(locked != (engine = READ_ONCE(rq->engine)))) {
-		spin_unlock(&locked->active.lock);
-		spin_lock(&engine->active.lock);
+		spin_unlock(&locked->sched.lock);
+		spin_lock(&engine->sched.lock);
 		locked = engine;
 	}
 	list_del_init(&rq->sched.link);
@@ -269,7 +269,7 @@ static void remove_from_engine(struct i915_request *rq)
 	/* Prevent further __await_execution() registering a cb, then flush */
 	set_bit(I915_FENCE_FLAG_ACTIVE, &rq->fence.flags);
 
-	spin_unlock_irq(&locked->active.lock);
+	spin_unlock_irq(&locked->sched.lock);
 
 	__notify_execute_cb_imm(rq);
 }

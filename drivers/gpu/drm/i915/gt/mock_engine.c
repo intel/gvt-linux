@@ -328,7 +328,12 @@ int mock_engine_init(struct intel_engine_cs *engine)
 {
 	struct intel_context *ce;
 
-	intel_engine_init_active(engine, ENGINE_MOCK);
+	i915_sched_init(&engine->sched,
+			engine->i915->drm.dev,
+			engine->name,
+			engine->mask,
+			ENGINE_MOCK);
+
 	intel_engine_init_execlists(engine);
 	intel_engine_init__pm(engine);
 	intel_engine_init_retire(engine);

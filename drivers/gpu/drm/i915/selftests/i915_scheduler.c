@@ -878,6 +878,7 @@ int i915_scheduler_perf_selftests(struct drm_i915_private *i915)
 #define T(t) { #t, sizeof(struct t) }
 		T(i915_dependency),
 		T(i915_priolist),
+		T(i915_sched),
 		T(i915_sched_attr),
 		T(i915_sched_node),
 		T(i915_request),

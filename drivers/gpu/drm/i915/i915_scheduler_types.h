@@ -14,10 +14,33 @@
 
 struct i915_request;
 
-/* Inter-engine scheduling delegation */
-struct i915_sched_ipi {
-	struct i915_request *list;
-	struct work_struct work;
+/**
+ * struct i915_sched - funnels requests towards hardware
+ *
+ * The struct i915_sched captures all the requests as they become ready
+ * to execute (on waking the i915_request.submit fence) puts them into
+ * a queue where they may be reordered according to priority and then
+ * wakes the backend tasklet to feed the queue to HW.
+ */
+struct i915_sched {
+	spinlock_t lock; /* protects the scheduling lists and queue */
+
+	unsigned long mask; /* available scheduling channels */
+
+	struct list_head requests; /* active request, on HW */
+	struct list_head hold; /* ready requests, but on hold */
+
+	/* Inter-engine scheduling delegate */
+	struct i915_sched_ipi {
+		struct i915_request *list;
+		struct work_struct work;
+	} ipi;
+
+	/* Pretty device names for debug messages */
+	struct {
+		struct device *dev;
+		const char *name;
+	} dbg;
 };
 
 struct i915_sched_attr {

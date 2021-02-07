@@ -645,4 +645,9 @@ static inline bool i915_request_is_executing(const struct i915_request *rq)
 	return intel_context_inflight(rq->context);
 }
 
+static inline bool i915_request_use_semaphores(const struct i915_request *rq)
+{
+	return intel_engine_has_semaphores(rq->engine);
+}
+
 #endif /* I915_REQUEST_H */

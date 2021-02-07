@@ -199,6 +199,14 @@ struct virtual_engine {
 	struct intel_engine_cs *siblings[];
 };
 
+static void execlists_show(struct drm_printer *m,
+			   struct i915_sched *se,
+			   void (*show_request)(struct drm_printer *m,
+						const struct i915_request *rq,
+						const char *prefix,
+						int indent),
+			   unsigned int max);
+
 static struct virtual_engine *to_virtual_engine(struct intel_engine_cs *engine)
 {
 	GEM_BUG_ON(!intel_engine_is_virtual(engine));
@@ -2903,6 +2911,7 @@ static void init_execlists(struct intel_engine_cs *engine)
 	u32 base = engine->mmio_base;
 
 	engine->sched.active_request = execlists_active_request;
+	engine->sched.show = execlists_show;
 	tasklet_setup(&engine->sched.tasklet, execlists_submission_tasklet);
 
 	timer_setup(&engine->execlists.timer, execlists_timeslice, 0);
@@ -3519,75 +3528,72 @@ int intel_virtual_engine_attach_bond(struct intel_engine_cs *engine,
 	return 0;
 }
 
-void intel_execlists_show_requests(struct intel_engine_cs *engine,
-				   struct drm_printer *m,
-				   void (*show_request)(struct drm_printer *m,
-							const struct i915_request *rq,
-							const char *prefix,
-							int indent),
-				   unsigned int max)
+static const char *repr_timer(const struct timer_list *t)
 {
-	const struct intel_engine_execlists *execlists = &engine->execlists;
-	struct i915_sched *se = intel_engine_get_scheduler(engine);
+	if (!READ_ONCE(t->expires))
+		return "inactive";
+
+	if (timer_pending(t))
+		return "active";
+
+	return "expired";
+}
+
+static int print_ring(char *buf, int sz, struct i915_request *rq)
+{
+	int len = 0;
+
+	rcu_read_lock();
+	if (!i915_request_signaled(rq)) {
+		struct intel_timeline *tl = rcu_dereference(rq->timeline);
+
+		len = scnprintf(buf, sz,
+				"ring:{start:%08x, hwsp:%08x, seqno:%08x, runtime:%llums}, ",
+				i915_ggtt_offset(rq->ring->vma),
+				tl ? tl->hwsp_offset : 0,
+				hwsp_seqno(rq),
+				DIV_ROUND_CLOSEST_ULL(intel_context_get_total_runtime_ns(rq->context),
+						      1000 * 1000));
+	}
+	rcu_read_unlock();
+
+	return len;
+}
+
+static void execlists_show(struct drm_printer *m,
+			   struct i915_sched *se,
+			   void (*show_request)(struct drm_printer *m,
+						const struct i915_request *rq,
+						const char *prefix,
+						int indent),
+			   unsigned int max)
+{
+	const struct intel_engine_cs *engine =
+		container_of(se, typeof(*engine), sched);
+	const struct intel_engine_execlists *el = &engine->execlists;
+	const u64 *hws = el->csb_status;
+	const u8 num_entries = el->csb_size;
+	struct i915_request * const *port;
 	struct i915_request *rq, *last;
-	unsigned long flags;
+	intel_wakeref_t wakeref;
 	unsigned int count;
 	struct rb_node *rb;
+	unsigned int idx;
+	u8 read, write;
 
-	spin_lock_irqsave(&se->lock, flags);
-
-	last = NULL;
-	count = 0;
-	list_for_each_entry(rq, &se->requests, sched.link) {
-		if (count++ < max - 1)
-			show_request(m, rq, "\t\t", 0);
-		else
-			last = rq;
-	}
-	if (last) {
-		if (count > max) {
-			drm_printf(m,
-				   "\t\t...skipping %d executing requests...\n",
-				   count - max);
-		}
-		show_request(m, last, "\t\t", 0);
-	}
-
-	if (execlists->queue_priority_hint != INT_MIN)
-		drm_printf(m, "\t\tQueue priority hint: %d\n",
-			   READ_ONCE(execlists->queue_priority_hint));
+	wakeref = intel_runtime_pm_get(engine->uncore->rpm);
+	rcu_read_lock();
 
 	last = NULL;
 	count = 0;
-	for (rb = rb_first_cached(&se->queue); rb; rb = rb_next(rb)) {
-		struct i915_priolist *p = rb_entry(rb, typeof(*p), node);
-
-		priolist_for_each_request(rq, p) {
-			if (count++ < max - 1)
-				show_request(m, rq, "\t\t", 0);
-			else
-				last = rq;
-		}
-	}
-	if (last) {
-		if (count > max) {
-			drm_printf(m,
-				   "\t\t...skipping %d queued requests...\n",
-				   count - max);
-		}
-		show_request(m, last, "\t\t", 0);
-	}
-
-	last = NULL;
-	count = 0;
-	for (rb = rb_first_cached(&execlists->virtual); rb; rb = rb_next(rb)) {
+	for (rb = rb_first_cached(&el->virtual); rb; rb = rb_next(rb)) {
 		struct virtual_engine *ve =
 			rb_entry(rb, typeof(*ve), nodes[engine->id].rb);
 		struct i915_request *rq = READ_ONCE(ve->request);
 
 		if (rq) {
 			if (count++ < max - 1)
-				show_request(m, rq, "\t\t", 0);
+				show_request(m, rq, "\t", 0);
 			else
 				last = rq;
 		}
@@ -3595,13 +3601,71 @@ void intel_execlists_show_requests(struct intel_engine_cs *engine,
 	if (last) {
 		if (count > max) {
 			drm_printf(m,
-				   "\t\t...skipping %d virtual requests...\n",
+				   "\t...skipping %d virtual requests...\n",
 				   count - max);
 		}
-		show_request(m, last, "\t\t", 0);
+		show_request(m, last, "\t", 0);
 	}
 
-	spin_unlock_irqrestore(&se->lock, flags);
+	read = el->csb_head;
+	write = READ_ONCE(*el->csb_write);
+
+	drm_printf(m, "Execlist status: 0x%08x %08x; CSB read:%d, write:%d, entries:%d\n",
+		   ENGINE_READ(engine, RING_EXECLIST_STATUS_LO),
+		   ENGINE_READ(engine, RING_EXECLIST_STATUS_HI),
+		   read, write, num_entries);
+
+	if (read >= num_entries)
+		read = 0;
+	if (write >= num_entries)
+		write = 0;
+	if (read > write)
+		write += num_entries;
+	while (read < write) {
+		idx = ++read % num_entries;
+		drm_printf(m, "Execlist CSB[%d]: 0x%08x, context: %d\n",
+			   idx,
+			   lower_32_bits(hws[idx]),
+			   upper_32_bits(hws[idx]));
+	}
+
+	i915_sched_lock_bh(se);
+	for (port = el->active; (rq = *port); port++) {
+		char hdr[160];
+		int len;
+
+		len = scnprintf(hdr, sizeof(hdr),
+				"Active[%d]:  ccid:%08x%s%s, ",
+				(int)(port - el->active),
+				rq->context->lrc.ccid,
+				intel_context_is_closed(rq->context) ? "!" : "",
+				intel_context_is_banned(rq->context) ? "*" : "");
+		len += print_ring(hdr + len, sizeof(hdr) - len, rq);
+		scnprintf(hdr + len, sizeof(hdr) - len, "rq: ");
+		i915_request_show(m, rq, hdr, 0);
+	}
+	for (port = el->pending; (rq = *port); port++) {
+		char hdr[160];
+		int len;
+
+		len = scnprintf(hdr, sizeof(hdr),
+				"Pending[%d]: ccid:%08x%s%s, ",
+				(int)(port - el->pending),
+				rq->context->lrc.ccid,
+				intel_context_is_closed(rq->context) ? "!" : "",
+				intel_context_is_banned(rq->context) ? "*" : "");
+		len += print_ring(hdr + len, sizeof(hdr) - len, rq);
+		scnprintf(hdr + len, sizeof(hdr) - len, "rq: ");
+		i915_request_show(m, rq, hdr, 0);
+	}
+	i915_sched_unlock_bh(se);
+
+	drm_printf(m, "Execlists preempt? %s, timeslice? %s\n",
+		   repr_timer(&el->preempt),
+		   repr_timer(&el->timer));
+
+	rcu_read_unlock();
+	intel_runtime_pm_put(engine->uncore->rpm, wakeref);
 }
 
 #if IS_ENABLED(CONFIG_DRM_I915_SELFTEST)

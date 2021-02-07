@@ -1095,6 +1095,178 @@ void i915_request_show_with_schedule(struct drm_printer *m,
 	rcu_read_unlock();
 }
 
+static void hexdump(struct drm_printer *m, const void *buf, size_t len)
+{
+	const size_t rowsize = 8 * sizeof(u32);
+	const void *prev = NULL;
+	bool skip = false;
+	size_t pos;
+
+	for (pos = 0; pos < len; pos += rowsize) {
+		char line[128];
+
+		if (prev && !memcmp(prev, buf + pos, rowsize)) {
+			if (!skip) {
+				drm_printf(m, "*\n");
+				skip = true;
+			}
+			continue;
+		}
+
+		WARN_ON_ONCE(hex_dump_to_buffer(buf + pos, len - pos,
+						rowsize, sizeof(u32),
+						line, sizeof(line),
+						false) >= sizeof(line));
+		drm_printf(m, "[%04zx] %s\n", pos, line);
+
+		prev = buf + pos;
+		skip = false;
+	}
+}
+
+static void
+print_request_ring(struct drm_printer *m, const struct i915_request *rq)
+{
+	void *ring;
+	int size;
+
+	drm_printf(m,
+		   "[head %04x, postfix %04x, tail %04x, batch 0x%08x_%08x]:\n",
+		   rq->head, rq->postfix, rq->tail,
+		   rq->batch ? upper_32_bits(rq->batch->node.start) : ~0u,
+		   rq->batch ? lower_32_bits(rq->batch->node.start) : ~0u);
+
+	size = rq->tail - rq->head;
+	if (rq->tail < rq->head)
+		size += rq->ring->size;
+
+	ring = kmalloc(size, GFP_ATOMIC);
+	if (ring) {
+		const void *vaddr = rq->ring->vaddr;
+		unsigned int head = rq->head;
+		unsigned int len = 0;
+
+		if (rq->tail < head) {
+			len = rq->ring->size - head;
+			memcpy(ring, vaddr + head, len);
+			head = 0;
+		}
+		memcpy(ring + len, vaddr + head, size - len);
+
+		hexdump(m, ring, size);
+		kfree(ring);
+	}
+}
+
+void i915_sched_show(struct drm_printer *m,
+		     struct i915_sched *se,
+		     void (*show_request)(struct drm_printer *m,
+					  const struct i915_request *rq,
+					  const char *prefix,
+					  int indent),
+		     unsigned int max)
+{
+	const struct i915_request *rq, *last;
+	unsigned long flags;
+	unsigned int count;
+	struct rb_node *rb;
+
+	rcu_read_lock();
+	spin_lock_irqsave(&se->lock, flags);
+
+	rq = i915_sched_get_active_request(se);
+	if (rq) {
+		i915_request_show(m, rq, "Active ", 0);
+
+		drm_printf(m, "\tring->start:  0x%08x\n",
+			   i915_ggtt_offset(rq->ring->vma));
+		drm_printf(m, "\tring->head:   0x%08x\n",
+			   rq->ring->head);
+		drm_printf(m, "\tring->tail:   0x%08x\n",
+			   rq->ring->tail);
+		drm_printf(m, "\tring->emit:   0x%08x\n",
+			   rq->ring->emit);
+		drm_printf(m, "\tring->space:  0x%08x\n",
+			   rq->ring->space);
+		drm_printf(m, "\tring->hwsp:   0x%08x\n",
+			   i915_request_active_timeline(rq)->hwsp_offset);
+
+		print_request_ring(m, rq);
+
+		if (rq->context->lrc_reg_state) {
+			drm_printf(m, "Logical Ring Context:\n");
+			hexdump(m, rq->context->lrc_reg_state, PAGE_SIZE);
+		}
+	}
+
+	drm_printf(m, "Tasklet queued? %s (%s)\n",
+		   yesno(test_bit(TASKLET_STATE_SCHED, &se->tasklet.state)),
+		   enableddisabled(!atomic_read(&se->tasklet.count)));
+
+	drm_printf(m, "Requests:\n");
+
+	last = NULL;
+	count = 0;
+	list_for_each_entry(rq, &se->requests, sched.link) {
+		if (count++ < max - 1)
+			show_request(m, rq, "\t", 0);
+		else
+			last = rq;
+	}
+	if (last) {
+		if (count > max) {
+			drm_printf(m,
+				   "\t...skipping %d executing requests...\n",
+				   count - max);
+		}
+		show_request(m, last, "\t", 0);
+	}
+
+	last = NULL;
+	count = 0;
+	for (rb = rb_first_cached(&se->queue); rb; rb = rb_next(rb)) {
+		struct i915_priolist *p = rb_entry(rb, typeof(*p), node);
+
+		priolist_for_each_request(rq, p) {
+			if (count++ < max - 1)
+				show_request(m, rq, "\t", 0);
+			else
+				last = rq;
+		}
+	}
+	if (last) {
+		if (count > max) {
+			drm_printf(m,
+				   "\t...skipping %d queued requests...\n",
+				   count - max);
+		}
+		show_request(m, last, "\t", 0);
+	}
+
+	last = NULL;
+	count = 0;
+	list_for_each_entry(rq, &se->hold, sched.link) {
+		if (count++ < max - 1)
+			show_request(m, rq, "\t", 0);
+		else
+			last = rq;
+	}
+	if (last) {
+		if (count > max) {
+			drm_printf(m,
+				   "\t...skipping %d suspended requests...\n",
+				   count - max);
+		}
+		show_request(m, last, "\t", 0);
+	}
+
+	spin_unlock_irqrestore(&se->lock, flags);
+	rcu_read_unlock();
+
+	if (se->show)
+		se->show(m, se, show_request, max);
+}
+
 #if IS_ENABLED(CONFIG_DRM_I915_SELFTEST)
 #include "selftests/i915_scheduler.c"
 #endif

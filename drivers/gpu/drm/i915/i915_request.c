@@ -1827,6 +1827,9 @@ static char queue_status(const struct i915_request *rq)
 	if (i915_request_is_active(rq))
 		return 'E';
 
+	if (i915_request_on_hold(rq))
+		return 'S';
+
 	if (i915_request_is_ready(rq))
 		return intel_engine_is_virtual(rq->engine) ? 'V' : 'R';
 
@@ -1895,6 +1898,9 @@ void i915_request_show(struct drm_printer *m,
 	 *    - a completed request may still be regarded as executing, its
 	 *      status may not be updated until it is retired and removed
 	 *      from the lists
+	 *
+	 *  S [Suspended]
+	 *    - the request has been temporarily suspended from execution
 	 */
 
 	x = print_sched_attr(&rq->sched.attr, buf, x, sizeof(buf));

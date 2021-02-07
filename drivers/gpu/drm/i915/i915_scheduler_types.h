@@ -13,6 +13,7 @@
 
 #include "i915_priolist_types.h"
 
+struct drm_printer;
 struct i915_request;
 
 /**
@@ -38,6 +39,14 @@ struct i915_sched {
 	void (*submit_request)(struct i915_request *rq);
 
 	struct i915_request *(*active_request)(const struct i915_sched *se);
+
+	void (*show)(struct drm_printer *m,
+		     struct i915_sched *se,
+		     void (*show_request)(struct drm_printer *m,
+					  const struct i915_request *rq,
+					  const char *prefix,
+					  int indent),
+		     unsigned int max);
 
 	struct list_head requests; /* active request, on HW */
 	struct list_head hold; /* ready requests, but on hold */

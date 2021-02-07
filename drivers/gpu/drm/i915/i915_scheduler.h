@@ -155,4 +155,12 @@ void i915_request_show_with_schedule(struct drm_printer *m,
 				     const char *prefix,
 				     int indent);
 
+void i915_sched_show(struct drm_printer *m,
+		     struct i915_sched *se,
+		     void (*show_request)(struct drm_printer *m,
+					  const struct i915_request *rq,
+					  const char *prefix,
+					  int indent),
+		     unsigned int max);
+
 #endif /* _I915_SCHEDULER_H_ */

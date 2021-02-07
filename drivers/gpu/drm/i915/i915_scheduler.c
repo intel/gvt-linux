@@ -132,6 +132,8 @@ void i915_sched_init(struct i915_sched *se,
 	se->queue = RB_ROOT_CACHED;
 
 	init_ipi(&se->ipi);
+
+	se->submit_request = i915_request_enqueue;
 }
 
 void i915_sched_park(struct i915_sched *se)

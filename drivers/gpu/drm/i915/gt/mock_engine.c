@@ -301,7 +301,8 @@ struct intel_engine_cs *mock_engine(struct drm_i915_private *i915,
 	engine->base.request_alloc = mock_request_alloc;
 	engine->base.emit_flush = mock_emit_flush;
 	engine->base.emit_fini_breadcrumb = mock_emit_breadcrumb;
-	engine->base.submit_request = mock_submit_request;
+
+	engine->base.sched.submit_request = mock_submit_request;
 
 	engine->base.reset.prepare = mock_reset_prepare;
 	engine->base.reset.rewind = mock_reset_rewind;
@@ -332,6 +333,7 @@ int mock_engine_init(struct intel_engine_cs *engine)
 			engine->name,
 			engine->mask,
 			ENGINE_MOCK);
+	engine->sched.submit_request = mock_submit_request;
 
 	intel_engine_init_execlists(engine);
 	intel_engine_init__pm(engine);

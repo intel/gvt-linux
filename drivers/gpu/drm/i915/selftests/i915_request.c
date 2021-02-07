@@ -242,9 +242,8 @@ static int igt_request_rewind(void *arg)
 	i915_request_get(vip);
 	i915_request_add(vip);
 	rcu_read_lock();
-	request->engine->submit_request(request);
+	i915_request_get_scheduler(request)->submit_request(request);
 	rcu_read_unlock();
-
 
 	if (i915_request_wait(vip, 0, HZ) == -ETIME) {
 		pr_err("timed out waiting for high priority request\n");

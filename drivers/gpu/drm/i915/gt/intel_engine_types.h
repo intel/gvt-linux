@@ -417,14 +417,6 @@ struct intel_engine_cs {
 						 u32 *cs);
 	unsigned int	emit_fini_breadcrumb_dw;
 
-	/* Pass the request to the hardware queue (e.g. directly into
-	 * the legacy ringbuffer or to the end of an execlist).
-	 *
-	 * This is called from an atomic context with irqs disabled; must
-	 * be irq safe.
-	 */
-	void		(*submit_request)(struct i915_request *rq);
-
 	/*
 	 * Called on signaling of a SUBMIT_FENCE, passing along the signaling
 	 * request down to the bonded pairs.

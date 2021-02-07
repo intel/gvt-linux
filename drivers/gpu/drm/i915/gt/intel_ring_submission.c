@@ -966,12 +966,12 @@ static void gen6_bsd_submit_request(struct i915_request *request)
 
 static void i9xx_set_default_submission(struct intel_engine_cs *engine)
 {
-	engine->submit_request = i9xx_submit_request;
+	engine->sched.submit_request = i9xx_submit_request;
 }
 
 static void gen6_bsd_set_default_submission(struct intel_engine_cs *engine)
 {
-	engine->submit_request = gen6_bsd_submit_request;
+	engine->sched.submit_request = gen6_bsd_submit_request;
 }
 
 static void ring_release(struct intel_engine_cs *engine)

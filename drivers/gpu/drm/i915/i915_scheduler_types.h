@@ -28,6 +28,15 @@ struct i915_sched {
 
 	unsigned long mask; /* available scheduling channels */
 
+	/*
+	 * Pass the request to the submission backend (e.g. directly into
+	 * the legacy ringbuffer, or to the end of an execlist, or to the GuC).
+	 *
+	 * This is called from an atomic context with irqs disabled; must
+	 * be irq safe.
+	 */
+	void (*submit_request)(struct i915_request *rq);
+
 	struct list_head requests; /* active request, on HW */
 	struct list_head hold; /* ready requests, but on hold */
 

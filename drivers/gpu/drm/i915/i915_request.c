@@ -700,7 +700,7 @@ submit_notify(struct i915_sw_fence *fence, enum i915_sw_fence_notify state)
 		 * proceeding.
 		 */
 		rcu_read_lock();
-		request->engine->submit_request(request);
+		i915_request_get_scheduler(request)->submit_request(request);
 		rcu_read_unlock();
 		break;
 

@@ -484,7 +484,7 @@ resubmit_virtual_request(struct i915_request *rq, struct virtual_engine *ve)
 
 	clear_bit(I915_FENCE_FLAG_PQUEUE, &rq->fence.flags);
 	WRITE_ONCE(rq->engine, &ve->base);
-	ve->base.submit_request(rq);
+	ve->base.sched.submit_request(rq);
 
 	spin_unlock_irq(&se->lock);
 }
@@ -2763,7 +2763,7 @@ static bool can_preempt(struct intel_engine_cs *engine)
 
 static void execlists_set_default_submission(struct intel_engine_cs *engine)
 {
-	engine->submit_request = i915_request_enqueue;
+	engine->sched.submit_request = i915_request_enqueue;
 	engine->sched.tasklet.callback = execlists_submission_tasklet;
 }
 
@@ -3231,7 +3231,7 @@ static void virtual_submit_request(struct i915_request *rq)
 		     rq->fence.context,
 		     rq->fence.seqno);
 
-	GEM_BUG_ON(ve->base.submit_request != virtual_submit_request);
+	GEM_BUG_ON(ve->base.sched.submit_request != virtual_submit_request);
 
 	spin_lock_irqsave(&se->lock, flags);
 
@@ -3345,12 +3345,10 @@ intel_execlists_create_virtual(struct intel_engine_cs **siblings,
 	ve->base.cops = &virtual_context_ops;
 	ve->base.request_alloc = execlists_request_alloc;
 
-	ve->base.submit_request = virtual_submit_request;
 	ve->base.bond_execute = virtual_bond_execute;
 
 	INIT_LIST_HEAD(virtual_queue(ve));
 	ve->base.execlists.queue_priority_hint = INT_MIN;
-	tasklet_setup(&ve->base.sched.tasklet, virtual_submission_tasklet);
 
 	intel_context_init(&ve->context, &ve->base);
 
@@ -3430,6 +3428,9 @@ intel_execlists_create_virtual(struct intel_engine_cs **siblings,
 			ve->base.name,
 			ve->base.mask,
 			ENGINE_VIRTUAL);
+
+	ve->base.sched.submit_request = virtual_submit_request;
+	tasklet_setup(&ve->base.sched.tasklet, virtual_submission_tasklet);
 
 	virtual_engine_initial_hint(ve);
 	return &ve->context;

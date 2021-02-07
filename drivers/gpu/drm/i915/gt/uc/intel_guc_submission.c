@@ -558,7 +558,7 @@ static int guc_resume(struct intel_engine_cs *engine)
 
 static void guc_set_default_submission(struct intel_engine_cs *engine)
 {
-	engine->submit_request = i915_request_enqueue;
+	engine->sched.submit_request = i915_request_enqueue;
 }
 
 static void guc_release(struct intel_engine_cs *engine)

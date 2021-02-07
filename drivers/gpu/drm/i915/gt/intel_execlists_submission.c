@@ -2376,7 +2376,7 @@ static void sanitize_hwsp(struct intel_engine_cs *engine)
 
 static void execlists_sanitize(struct intel_engine_cs *engine)
 {
-	GEM_BUG_ON(execlists_active(&engine->execlists));
+	GEM_BUG_ON(*engine->execlists.active);
 
 	/*
 	 * Poison residual state on resume, in case the suspend didn't!
@@ -2752,6 +2752,20 @@ static void execlists_park(struct intel_engine_cs *engine)
 	cancel_timer(&engine->execlists.preempt);
 }
 
+static struct i915_request *
+execlists_active_request(const struct i915_sched *se)
+{
+	const struct intel_engine_cs *engine =
+		container_of(se, typeof(*engine), sched);
+	struct i915_request *rq;
+
+	rq = execlists_active(&engine->execlists);
+	if (rq)
+		rq = active_request(rq->context->timeline, rq);
+
+	return rq;
+}
+
 static bool can_preempt(struct intel_engine_cs *engine)
 {
 	if (INTEL_GEN(engine->i915) > 8)
@@ -2888,6 +2902,7 @@ static void init_execlists(struct intel_engine_cs *engine)
 	struct intel_uncore *uncore = engine->uncore;
 	u32 base = engine->mmio_base;
 
+	engine->sched.active_request = execlists_active_request;
 	tasklet_setup(&engine->sched.tasklet, execlists_submission_tasklet);
 
 	timer_setup(&engine->execlists.timer, execlists_timeslice, 0);

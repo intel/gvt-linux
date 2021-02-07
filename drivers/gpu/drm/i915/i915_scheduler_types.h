@@ -37,6 +37,8 @@ struct i915_sched {
 	 */
 	void (*submit_request)(struct i915_request *rq);
 
+	struct i915_request *(*active_request)(const struct i915_sched *se);
+
 	struct list_head requests; /* active request, on HW */
 	struct list_head hold; /* ready requests, but on hold */
 

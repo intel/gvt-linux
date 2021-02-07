@@ -324,20 +324,11 @@ static void reset_prepare(struct intel_engine_cs *engine)
 static void reset_rewind(struct intel_engine_cs *engine, bool stalled)
 {
 	struct i915_sched *se = intel_engine_get_scheduler(engine);
-	struct i915_request *pos, *rq;
+	struct i915_request *rq;
 	unsigned long flags;
 	u32 head;
 
-	rq = NULL;
 	spin_lock_irqsave(&se->lock, flags);
-	rcu_read_lock();
-	list_for_each_entry(pos, &se->requests, sched.link) {
-		if (!__i915_request_is_complete(pos)) {
-			rq = pos;
-			break;
-		}
-	}
-	rcu_read_unlock();
 
 	/*
 	 * The guilty request will get skipped on a hung engine.
@@ -361,6 +352,7 @@ static void reset_rewind(struct intel_engine_cs *engine, bool stalled)
 	 * subsequent hangs.
 	 */
 
+	rq = i915_sched_get_active_request(se);
 	if (rq) {
 		/*
 		 * Try to restore the logical GPU state to match the
@@ -379,9 +371,20 @@ static void reset_rewind(struct intel_engine_cs *engine, bool stalled)
 		 */
 		__i915_request_reset(rq, stalled);
 
+		ENGINE_TRACE(engine,
+			     "active (guilty:%s) request, replaying HEAD:%x\n",
+			     yesno(stalled), rq->head);
+
 		GEM_BUG_ON(rq->ring != engine->legacy.ring);
 		head = rq->head;
 	} else {
+		ENGINE_TRACE(engine, "idle reset, clearing ring, HEAD:%x\n",
+			     engine->legacy.ring->tail);
+
+		/* Sometimes the GPU just dies; cleanup afterwards */
+		list_for_each_entry(rq, &se->requests, sched.link)
+			i915_request_put(i915_request_mark_eio(rq));
+
 		head = engine->legacy.ring->tail;
 	}
 	engine->legacy.ring->head = intel_ring_wrap(engine->legacy.ring, head);

@@ -629,4 +629,20 @@ static inline bool i915_request_use_scheduler(const struct i915_request *rq)
 	return intel_engine_has_scheduler(rq->engine);
 }
 
+static inline bool i915_request_is_executing(const struct i915_request *rq)
+{
+	/* Is the request presently on the HW execution queue? */
+	if (i915_request_is_active(rq))
+		return true;
+
+	/*
+	 * However, if it is not presently on the HW execution queue, it
+	 * may have been recently removed from the queue, but is in fact
+	 * still executing until the HW has completed a preemption. We
+	 * need to double check with the backend for it to query the HW
+	 * to see if the request is still executing.
+	 */
+	return intel_context_inflight(rq->context);
+}
+
 #endif /* I915_REQUEST_H */

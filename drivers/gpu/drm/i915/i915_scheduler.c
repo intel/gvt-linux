@@ -112,6 +112,29 @@ static void init_ipi(struct i915_sched_ipi *ipi)
 	ipi->list = NULL;
 }
 
+static struct i915_request *
+i915_sched_default_active_request(const struct i915_sched *se)
+{
+	struct i915_request *rq, *active = NULL;
+
+	/*
+	 * We assume the simplest in-order execution queue with no preemption,
+	 * i.e. the order of se->erquests matches exactly the execution order
+	 * of the HW.
+	 */
+	list_for_each_entry(rq, &se->requests, sched.link) {
+		if (__i915_request_is_complete(rq))
+			continue;
+
+		if (__i915_request_has_started(rq))
+			active = rq;
+
+		break;
+	}
+
+	return active;
+}
+
 void i915_sched_init(struct i915_sched *se,
 		     struct device *dev,
 		     const char *name,
@@ -134,6 +157,7 @@ void i915_sched_init(struct i915_sched *se,
 	init_ipi(&se->ipi);
 
 	se->submit_request = i915_request_enqueue;
+	se->active_request = i915_sched_default_active_request;
 }
 
 void i915_sched_park(struct i915_sched *se)

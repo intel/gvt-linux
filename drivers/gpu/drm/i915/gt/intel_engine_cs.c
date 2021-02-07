@@ -1175,31 +1175,6 @@ void intel_engine_get_instdone(const struct intel_engine_cs *engine,
 	}
 }
 
-static bool ring_is_idle(struct intel_engine_cs *engine)
-{
-	bool idle = true;
-
-	if (I915_SELFTEST_ONLY(!engine->mmio_base))
-		return true;
-
-	if (!intel_engine_pm_get_if_awake(engine))
-		return true;
-
-	/* First check that no commands are left in the ring */
-	if ((ENGINE_READ(engine, RING_HEAD) & HEAD_ADDR) !=
-	    (ENGINE_READ(engine, RING_TAIL) & TAIL_ADDR))
-		idle = false;
-
-	/* No bit for gen2, so assume the CS parser is idle */
-	if (INTEL_GEN(engine->i915) > 2 &&
-	    !(ENGINE_READ(engine, RING_MI_MODE) & MODE_IDLE))
-		idle = false;
-
-	intel_engine_pm_put(engine);
-
-	return idle;
-}
-
 /**
  * intel_engine_is_idle() - Report if the engine has finished process all work
  * @engine: the intel_engine_cs
@@ -1210,12 +1185,10 @@ static bool ring_is_idle(struct intel_engine_cs *engine)
 bool intel_engine_is_idle(struct intel_engine_cs *engine)
 {
 	struct i915_sched *se = intel_engine_get_scheduler(engine);
+	struct i915_request *rq = NULL;
 
 	/* More white lies, if wedged, hw state is inconsistent */
 	if (intel_gt_is_wedged(engine->gt))
-		return true;
-
-	if (!intel_engine_pm_is_awake(engine))
 		return true;
 
 	/* Waiting to drain ELSP? */
@@ -1226,8 +1199,16 @@ bool intel_engine_is_idle(struct intel_engine_cs *engine)
 	if (!i915_sched_is_idle(se))
 		return false;
 
-	/* Ring stopped? */
-	return ring_is_idle(engine);
+	/* Execution complete? */
+	if (intel_engine_pm_get_if_awake(engine)) {
+		spin_lock_irq(&se->lock);
+		rq = i915_sched_get_active_request(se);
+		spin_unlock_irq(&se->lock);
+
+		intel_engine_pm_put(engine);
+	}
+
+	return !rq;
 }
 
 bool intel_engines_are_idle(struct intel_gt *gt)
@@ -1284,7 +1265,7 @@ bool intel_engine_can_store_dword(struct intel_engine_cs *engine)
 	}
 }
 
-static struct intel_timeline *get_timeline(struct i915_request *rq)
+static struct intel_timeline *get_timeline(const struct i915_request *rq)
 {
 	struct intel_timeline *tl;
 
@@ -1512,7 +1493,8 @@ static void intel_engine_print_registers(struct intel_engine_cs *engine,
 	}
 }
 
-static void print_request_ring(struct drm_printer *m, struct i915_request *rq)
+static void
+print_request_ring(struct drm_printer *m, const struct i915_request *rq)
 {
 	void *ring;
 	int size;
@@ -1597,7 +1579,7 @@ void intel_engine_dump(struct intel_engine_cs *engine,
 {
 	struct i915_gpu_error * const error = &engine->i915->gpu_error;
 	struct i915_sched *se = intel_engine_get_scheduler(engine);
-	struct i915_request *rq;
+	const struct i915_request *rq;
 	intel_wakeref_t wakeref;
 	unsigned long flags;
 	ktime_t dummy;
@@ -1638,8 +1620,9 @@ void intel_engine_dump(struct intel_engine_cs *engine,
 
 	drm_printf(m, "\tRequests:\n");
 
+	rcu_read_lock();
 	spin_lock_irqsave(&se->lock, flags);
-	rq = intel_engine_find_active_request(engine);
+	rq = i915_sched_get_active_request(se);
 	if (rq) {
 		struct intel_timeline *tl = get_timeline(rq);
 
@@ -1671,6 +1654,7 @@ void intel_engine_dump(struct intel_engine_cs *engine,
 	}
 	drm_printf(m, "\tOn hold?: %lu\n", list_count(&se->hold));
 	spin_unlock_irqrestore(&se->lock, flags);
+	rcu_read_unlock();
 
 	drm_printf(m, "\tMMIO base:  0x%08x\n", engine->mmio_base);
 	wakeref = intel_runtime_pm_get_if_in_use(engine->uncore->rpm);
@@ -1717,66 +1701,6 @@ ktime_t intel_engine_get_busy_time(struct intel_engine_cs *engine, ktime_t *now)
 	}
 
 	return ktime_add(total, start);
-}
-
-static bool match_ring(struct i915_request *rq)
-{
-	u32 ring = ENGINE_READ(rq->engine, RING_START);
-
-	return ring == i915_ggtt_offset(rq->ring->vma);
-}
-
-struct i915_request *
-intel_engine_find_active_request(struct intel_engine_cs *engine)
-{
-	struct i915_sched *se = intel_engine_get_scheduler(engine);
-	struct i915_request *request, *active = NULL;
-
-	/*
-	 * We are called by the error capture, reset and to dump engine
-	 * state at random points in time. In particular, note that neither is
-	 * crucially ordered with an interrupt. After a hang, the GPU is dead
-	 * and we assume that no more writes can happen (we waited long enough
-	 * for all writes that were in transaction to be flushed) - adding an
-	 * extra delay for a recent interrupt is pointless. Hence, we do
-	 * not need an engine->irq_seqno_barrier() before the seqno reads.
-	 * At all other times, we must assume the GPU is still running, but
-	 * we only care about the snapshot of this moment.
-	 */
-	lockdep_assert_held(&se->lock);
-
-	rcu_read_lock();
-	request = execlists_active(&engine->execlists);
-	if (request) {
-		struct intel_timeline *tl = request->context->timeline;
-
-		list_for_each_entry_from_reverse(request, &tl->requests, link) {
-			if (__i915_request_is_complete(request))
-				break;
-
-			active = request;
-		}
-	}
-	rcu_read_unlock();
-	if (active)
-		return active;
-
-	list_for_each_entry(request, &se->requests, sched.link) {
-		if (__i915_request_is_complete(request))
-			continue;
-
-		if (!__i915_request_has_started(request))
-			continue;
-
-		/* More than one preemptible request may match! */
-		if (!match_ring(request))
-			continue;
-
-		active = request;
-		break;
-	}
-
-	return active;
 }
 
 #if IS_ENABLED(CONFIG_DRM_I915_SELFTEST)

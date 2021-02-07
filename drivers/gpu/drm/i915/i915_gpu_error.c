@@ -1262,15 +1262,11 @@ static bool record_context(struct i915_gem_context_coredump *e,
 	struct i915_gem_context *ctx;
 	bool simulated;
 
-	rcu_read_lock();
-
 	ctx = rcu_dereference(rq->context->gem_context);
 	if (ctx && !kref_get_unless_zero(&ctx->ref))
 		ctx = NULL;
-	if (!ctx) {
-		rcu_read_unlock();
+	if (!ctx)
 		return true;
-	}
 
 	if (I915_SELFTEST_ONLY(!ctx->client)) {
 		strcpy(e->comm, "[kernel]");
@@ -1278,8 +1274,6 @@ static bool record_context(struct i915_gem_context_coredump *e,
 		strcpy(e->comm, i915_drm_client_name(ctx->client));
 		e->pid = pid_nr(i915_drm_client_pid(ctx->client));
 	}
-
-	rcu_read_unlock();
 
 	e->sched_attr = ctx->sched;
 	e->guilty = atomic_read(&ctx->guilty_count);
@@ -1368,12 +1362,14 @@ intel_engine_coredump_alloc(struct intel_engine_cs *engine, gfp_t gfp)
 
 struct intel_engine_capture_vma *
 intel_engine_coredump_add_request(struct intel_engine_coredump *ee,
-				  struct i915_request *rq,
+				  const struct i915_request *rq,
 				  gfp_t gfp)
 {
 	struct intel_engine_capture_vma *vma = NULL;
 
+	rcu_read_lock();
 	ee->simulated |= record_context(&ee->context, rq);
+	rcu_read_unlock();
 	if (ee->simulated)
 		return NULL;
 
@@ -1436,19 +1432,21 @@ capture_engine(struct intel_engine_cs *engine,
 	struct i915_sched *se = intel_engine_get_scheduler(engine);
 	struct intel_engine_capture_vma *capture = NULL;
 	struct intel_engine_coredump *ee;
-	struct i915_request *rq;
+	const struct i915_request *rq;
 	unsigned long flags;
 
 	ee = intel_engine_coredump_alloc(engine, GFP_KERNEL);
 	if (!ee)
 		return NULL;
 
+	rcu_read_lock();
 	spin_lock_irqsave(&se->lock, flags);
-	rq = intel_engine_find_active_request(engine);
+	rq = i915_sched_get_active_request(se);
 	if (rq)
 		capture = intel_engine_coredump_add_request(ee, rq,
 							    ATOMIC_MAYFAIL);
 	spin_unlock_irqrestore(&se->lock, flags);
+	rcu_read_unlock();
 	if (!capture) {
 		kfree(ee);
 		return NULL;

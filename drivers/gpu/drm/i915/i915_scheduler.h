@@ -138,6 +138,18 @@ static inline void i915_sched_flush(struct i915_sched *se)
 	__i915_sched_flush(se, true);
 }
 
+/* Find the currently executing request on the backend */
+static inline struct i915_request *
+i915_sched_get_active_request(const struct i915_sched *se)
+{
+	lockdep_assert_held(&se->lock);
+
+	if (se->active_request)
+		return se->active_request(se);
+
+	return NULL;
+}
+
 void i915_request_show_with_schedule(struct drm_printer *m,
 				     const struct i915_request *rq,
 				     const char *prefix,

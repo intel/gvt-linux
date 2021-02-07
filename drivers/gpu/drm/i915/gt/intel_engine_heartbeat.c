@@ -78,6 +78,21 @@ static void show_heartbeat(const struct i915_request *rq,
 			  rq->sched.attr.priority);
 }
 
+static bool is_wait(struct intel_engine_cs *engine)
+{
+	struct i915_sched *se = intel_engine_get_scheduler(engine);
+	struct i915_request *rq;
+	bool wait = true;
+
+	spin_lock_irq(&se->lock);
+	rq = i915_sched_get_active_request(se);
+	if (rq)
+		wait = !i915_sw_fence_signaled(&rq->submit);
+	spin_unlock_irq(&se->lock);
+
+	return wait;
+}
+
 static void heartbeat(struct work_struct *wrk)
 {
 	struct i915_sched_attr attr = { .priority = I915_PRIORITY_MIN };
@@ -92,6 +107,9 @@ static void heartbeat(struct work_struct *wrk)
 
 	rq = engine->heartbeat.systole;
 	if (rq && i915_request_completed(rq)) {
+		ENGINE_TRACE(engine,
+			     "heartbeat " RQ_FMT "completed\n",
+			     RQ_ARG(rq));
 		i915_request_put(rq);
 		engine->heartbeat.systole = NULL;
 	}
@@ -110,7 +128,7 @@ static void heartbeat(struct work_struct *wrk)
 				rq->emitted_jiffies + msecs_to_jiffies(delay)))
 			goto out;
 
-		if (!i915_sw_fence_signaled(&rq->submit)) {
+		if (!i915_sw_fence_signaled(&rq->submit) && is_wait(engine)) {
 			/*
 			 * Not yet submitted, system is stalled.
 			 *
@@ -121,6 +139,9 @@ static void heartbeat(struct work_struct *wrk)
 			 * but all other contexts, including the kernel
 			 * context are stuck waiting for the signal.
 			 */
+			ENGINE_TRACE(engine,
+				     "heartbeat " RQ_FMT " pending\n",
+				     RQ_ARG(rq));
 		} else if (rq->sched.attr.priority < I915_PRIORITY_BARRIER) {
 			/*
 			 * Gradually raise the priority of the heartbeat to
@@ -134,10 +155,18 @@ static void heartbeat(struct work_struct *wrk)
 			if (rq->sched.attr.priority >= attr.priority)
 				attr.priority = I915_PRIORITY_BARRIER;
 
+			ENGINE_TRACE(engine,
+				     "bumping heartbeat " RQ_FMT " prio:%d\n",
+				     RQ_ARG(rq), attr.priority);
+
 			local_bh_disable();
 			i915_request_set_priority(rq, attr.priority);
 			local_bh_enable();
 		} else {
+			ENGINE_TRACE(engine,
+				     "heartbeat " RQ_FMT " stuck\n",
+				     RQ_ARG(rq));
+
 			if (IS_ENABLED(CONFIG_DRM_I915_DEBUG_GEM))
 				show_heartbeat(rq, engine);
 
@@ -169,6 +198,7 @@ static void heartbeat(struct work_struct *wrk)
 	if (IS_ERR(rq))
 		goto unlock;
 
+	ENGINE_TRACE(engine, "heartbeat " RQ_FMT "started\n", RQ_ARG(rq));
 	heartbeat_commit(rq, &attr);
 
 unlock:

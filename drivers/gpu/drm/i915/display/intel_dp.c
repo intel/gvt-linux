@@ -50,6 +50,7 @@
 #include "intel_dp_aux.h"
 #include "intel_dp_link_training.h"
 #include "intel_dp_mst.h"
+#include "intel_dpll.h"
 #include "intel_dpio_phy.h"
 #include "intel_fifo_underrun.h"
 #include "intel_hdcp.h"
@@ -1663,12 +1664,10 @@ void intel_dp_compute_psr_vsc_sdp(struct intel_dp *intel_dp,
 				  const struct drm_connector_state *conn_state,
 				  struct drm_dp_vsc_sdp *vsc)
 {
-	struct drm_i915_private *dev_priv = dp_to_i915(intel_dp);
-
 	vsc->sdp_type = DP_SDP_VSC;
 
-	if (dev_priv->psr.psr2_enabled) {
-		if (dev_priv->psr.colorimetry_support &&
+	if (intel_dp->psr.psr2_enabled) {
+		if (intel_dp->psr.colorimetry_support &&
 		    intel_dp_needs_vsc_sdp(crtc_state, conn_state)) {
 			/* [PSR2, +Colorimetry] */
 			intel_dp_compute_vsc_colorimetry(crtc_state, conn_state,
@@ -2359,7 +2358,7 @@ bool intel_dp_initial_fastset_check(struct intel_encoder *encoder,
 		return false;
 	}
 
-	if (CAN_PSR(i915) && intel_dp_is_edp(intel_dp)) {
+	if (CAN_PSR(intel_dp) && intel_dp_is_edp(intel_dp)) {
 		drm_dbg_kms(&i915->drm, "Forcing full modeset to compute PSR state\n");
 		crtc_state->uapi.mode_changed = true;
 		return false;
@@ -2650,7 +2649,7 @@ void intel_dp_check_frl_training(struct intel_dp *intel_dp)
 	if (intel_dp_pcon_start_frl_training(intel_dp) < 0) {
 		int ret, mode;
 
-		drm_dbg(&dev_priv->drm, "Couldnt set FRL mode, continuing with TMDS mode\n");
+		drm_dbg(&dev_priv->drm, "Couldn't set FRL mode, continuing with TMDS mode\n");
 		ret = drm_dp_pcon_reset_frl_config(&intel_dp->aux);
 		mode = drm_dp_pcon_hdmi_link_mode(&intel_dp->aux, NULL);
 
@@ -6640,6 +6639,8 @@ intel_dp_init_connector(struct intel_digital_port *dig_port,
 
 	intel_dp->frl.is_trained = false;
 	intel_dp->frl.trained_rate_gbps = 0;
+
+	intel_psr_init(intel_dp);
 
 	return true;
 

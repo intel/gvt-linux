@@ -37,6 +37,7 @@
 #include <drm/drm_dp_mst_helper.h>
 #include <drm/drm_encoder.h>
 #include <drm/drm_fb_helper.h>
+#include <drm/drm_fourcc.h>
 #include <drm/drm_probe_helper.h>
 #include <drm/drm_rect.h>
 #include <drm/drm_vblank.h>
@@ -219,6 +220,12 @@ struct intel_encoder {
 	 * encoders have been disabled and suspended.
 	 */
 	void (*shutdown)(struct intel_encoder *encoder);
+	/*
+	 * Enable/disable the clock to the port.
+	 */
+	void (*enable_clock)(struct intel_encoder *encoder,
+			     const struct intel_crtc_state *crtc_state);
+	void (*disable_clock)(struct intel_encoder *encoder);
 	enum hpd_pin hpd_pin;
 	enum intel_display_power_domain power_domain;
 	/* for communication with audio component; protected by av_mutex */
@@ -830,7 +837,6 @@ struct intel_crtc_wm_state {
 };
 
 enum intel_output_format {
-	INTEL_OUTPUT_FORMAT_INVALID,
 	INTEL_OUTPUT_FORMAT_RGB,
 	INTEL_OUTPUT_FORMAT_YCBCR420,
 	INTEL_OUTPUT_FORMAT_YCBCR444,
@@ -1415,6 +1421,43 @@ struct intel_pps {
 	struct edp_power_seq pps_delays;
 };
 
+struct intel_psr {
+	/* Mutex for PSR state of the transcoder */
+	struct mutex lock;
+
+#define I915_PSR_DEBUG_MODE_MASK	0x0f
+#define I915_PSR_DEBUG_DEFAULT		0x00
+#define I915_PSR_DEBUG_DISABLE		0x01
+#define I915_PSR_DEBUG_ENABLE		0x02
+#define I915_PSR_DEBUG_FORCE_PSR1	0x03
+#define I915_PSR_DEBUG_IRQ		0x10
+
+	u32 debug;
+	bool sink_support;
+	bool source_support;
+	bool enabled;
+	enum pipe pipe;
+	enum transcoder transcoder;
+	bool active;
+	struct work_struct work;
+	unsigned int busy_frontbuffer_bits;
+	bool sink_psr2_support;
+	bool link_standby;
+	bool colorimetry_support;
+	bool psr2_enabled;
+	bool psr2_sel_fetch_enabled;
+	u8 sink_sync_latency;
+	ktime_t last_entry_attempt;
+	ktime_t last_exit;
+	bool sink_not_reliable;
+	bool irq_aux_error;
+	u16 su_x_granularity;
+	bool dc3co_enabled;
+	u32 dc3co_exit_delay;
+	struct delayed_work dc3co_work;
+	struct drm_dp_vsc_sdp vsc;
+};
+
 struct intel_dp {
 	i915_reg_t output_reg;
 	u32 DP;
@@ -1517,6 +1560,8 @@ struct intel_dp {
 	bool hobl_active;
 
 	struct intel_dp_pcon_frl frl;
+
+	struct intel_psr psr;
 };
 
 enum lspcon_vendor {
@@ -1753,6 +1798,18 @@ dp_to_i915(struct intel_dp *intel_dp)
 	return to_i915(dp_to_dig_port(intel_dp)->base.base.dev);
 }
 
+#define CAN_PSR(intel_dp)	(HAS_PSR(dp_to_i915(intel_dp)) && \
+				 (intel_dp)->psr.sink_support && \
+				 (intel_dp)->psr.source_support)
+
+static inline bool intel_encoder_can_psr(struct intel_encoder *encoder)
+{
+	if (!intel_encoder_is_dp(encoder))
+		return false;
+
+	return CAN_PSR(enc_to_intel_dp(encoder));
+}
+
 static inline struct intel_digital_port *
 hdmi_to_dig_port(struct intel_hdmi *intel_hdmi)
 {
@@ -1892,6 +1949,41 @@ static inline u32 intel_fdi_link_freq(struct drm_i915_private *dev_priv,
 		return pipe_config->port_clock; /* SPLL */
 	else
 		return dev_priv->fdi_pll_freq;
+}
+
+static inline bool is_ccs_modifier(u64 modifier)
+{
+	return modifier == I915_FORMAT_MOD_Y_TILED_GEN12_RC_CCS ||
+	       modifier == I915_FORMAT_MOD_Y_TILED_GEN12_RC_CCS_CC ||
+	       modifier == I915_FORMAT_MOD_Y_TILED_GEN12_MC_CCS ||
+	       modifier == I915_FORMAT_MOD_Y_TILED_CCS ||
+	       modifier == I915_FORMAT_MOD_Yf_TILED_CCS;
+}
+
+static inline bool is_ccs_plane(const struct drm_framebuffer *fb, int plane)
+{
+	if (!is_ccs_modifier(fb->modifier))
+		return false;
+
+	return plane >= fb->format->num_planes / 2;
+}
+
+static inline bool is_gen12_ccs_modifier(u64 modifier)
+{
+	return modifier == I915_FORMAT_MOD_Y_TILED_GEN12_RC_CCS ||
+	       modifier == I915_FORMAT_MOD_Y_TILED_GEN12_RC_CCS_CC ||
+	       modifier == I915_FORMAT_MOD_Y_TILED_GEN12_MC_CCS;
+}
+
+static inline bool is_gen12_ccs_plane(const struct drm_framebuffer *fb, int plane)
+{
+	return is_gen12_ccs_modifier(fb->modifier) && is_ccs_plane(fb, plane);
+}
+
+static inline bool is_gen12_ccs_cc_plane(const struct drm_framebuffer *fb, int plane)
+{
+	return fb->modifier == I915_FORMAT_MOD_Y_TILED_GEN12_RC_CCS_CC &&
+	       plane == 2;
 }
 
 #endif /*  __INTEL_DISPLAY_TYPES_H__ */

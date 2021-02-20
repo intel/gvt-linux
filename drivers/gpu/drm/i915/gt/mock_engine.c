@@ -1,25 +1,6 @@
+// SPDX-License-Identifier: MIT
 /*
  * Copyright © 2016 Intel Corporation
- *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice (including the next
- * paragraph) shall be included in all copies or substantial portions of the
- * Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
- * IN THE SOFTWARE.
- *
  */
 
 #include "gem/i915_gem_context.h"
@@ -249,26 +230,28 @@ static void mock_reset_cancel(struct intel_engine_cs *engine)
 {
 	struct mock_engine *mock =
 		container_of(engine, typeof(*mock), base);
+	struct i915_sched *se = intel_engine_get_scheduler(engine);
 	struct i915_request *rq;
 	unsigned long flags;
 
 	del_timer_sync(&mock->hw_delay);
 
-	spin_lock_irqsave(&engine->active.lock, flags);
+	spin_lock_irqsave(&se->lock, flags);
 
-	/* Mark all submitted requests as skipped. */
-	list_for_each_entry(rq, &engine->active.requests, sched.link)
-		i915_request_mark_eio(rq);
-	intel_engine_signal_breadcrumbs(engine);
+	__i915_sched_cancel_queue(se);
 
 	/* Cancel and submit all pending requests. */
 	list_for_each_entry(rq, &mock->hw_queue, mock.link) {
-		i915_request_mark_eio(rq);
-		__i915_request_submit(rq);
+		if (i915_request_mark_eio(rq)) {
+			__i915_request_submit(rq);
+			i915_request_put(rq);
+		}
 	}
 	INIT_LIST_HEAD(&mock->hw_queue);
 
-	spin_unlock_irqrestore(&engine->active.lock, flags);
+	intel_engine_signal_breadcrumbs(engine);
+
+	spin_unlock_irqrestore(&se->lock, flags);
 }
 
 static void mock_reset_finish(struct intel_engine_cs *engine)
@@ -318,7 +301,8 @@ struct intel_engine_cs *mock_engine(struct drm_i915_private *i915,
 	engine->base.request_alloc = mock_request_alloc;
 	engine->base.emit_flush = mock_emit_flush;
 	engine->base.emit_fini_breadcrumb = mock_emit_breadcrumb;
-	engine->base.submit_request = mock_submit_request;
+
+	engine->base.sched.submit_request = mock_submit_request;
 
 	engine->base.reset.prepare = mock_reset_prepare;
 	engine->base.reset.rewind = mock_reset_rewind;
@@ -344,7 +328,13 @@ int mock_engine_init(struct intel_engine_cs *engine)
 {
 	struct intel_context *ce;
 
-	intel_engine_init_active(engine, ENGINE_MOCK);
+	i915_sched_init(&engine->sched,
+			engine->i915->drm.dev,
+			engine->name,
+			engine->mask,
+			ENGINE_MOCK);
+	engine->sched.submit_request = mock_submit_request;
+
 	intel_engine_init_execlists(engine);
 	intel_engine_init__pm(engine);
 	intel_engine_init_retire(engine);

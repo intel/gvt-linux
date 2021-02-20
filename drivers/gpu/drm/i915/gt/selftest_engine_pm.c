@@ -1,6 +1,5 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
- * SPDX-License-Identifier: GPL-2.0
- *
  * Copyright © 2018 Intel Corporation
  */
 
@@ -104,20 +103,22 @@ static int __measure_timestamps(struct intel_context *ce,
 	intel_ring_advance(rq, cs);
 	i915_request_get(rq);
 	i915_request_add(rq);
-	intel_engine_flush_submission(engine);
+	intel_engine_flush_scheduler(engine);
 
 	/* Wait for the request to start executing, that then waits for us */
 	while (READ_ONCE(sema[2]) == 0)
 		cpu_relax();
 
 	/* Run the request for a 100us, sampling timestamps before/after */
-	preempt_disable();
-	*dt = local_clock();
+	local_irq_disable();
 	write_semaphore(&sema[2], 0);
+	while (READ_ONCE(sema[1]) == 0) /* wait for the gpu to catch up */
+		cpu_relax();
+	*dt = local_clock();
 	udelay(100);
 	*dt = local_clock() - *dt;
 	write_semaphore(&sema[2], 1);
-	preempt_enable();
+	local_irq_enable();
 
 	if (i915_request_wait(rq, 0, HZ / 2) < 0) {
 		i915_request_put(rq);

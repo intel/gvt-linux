@@ -266,6 +266,8 @@ static inline int list_is_last_rcu(const struct list_head *list,
 	return READ_ONCE(list->next) == head;
 }
 
+void fs_reclaim_taints_mutex(struct mutex *mutex);
+
 static inline unsigned long msecs_to_jiffies_timeout(const unsigned int m)
 {
 	unsigned long j = msecs_to_jiffies(m);
@@ -448,6 +450,13 @@ static inline bool timer_expired(const struct timer_list *t)
 	return timer_active(t) && !timer_pending(t);
 }
 
+#ifdef CONFIG_DEBUG_LOCK_ALLOC
+void __mark_lock_used_irq(struct lockdep_map *lock);
+#define mark_lock_used_irq(lock) __mark_lock_used_irq(&(lock)->dep_map)
+#else
+#define mark_lock_used_irq(lock)
+#endif
+
 /*
  * This is a lookalike for IS_ENABLED() that takes a kconfig value,
  * e.g. CONFIG_DRM_I915_SPIN_REQUEST, and evaluates whether it is non-zero
@@ -460,5 +469,37 @@ static inline bool timer_expired(const struct timer_list *t)
  * Returns 0 if @config is 0, 1 if set to any value.
  */
 #define IS_ACTIVE(config) ((config) != 0)
+
+#ifndef try_cmpxchg64
+#if IS_ENABLED(CONFIG_64BIT)
+#define try_cmpxchg64(_ptr, _pold, _new) try_cmpxchg(_ptr, _pold, _new)
+#else
+#define try_cmpxchg64(_ptr, _pold, _new)				\
+({									\
+	__typeof__(_ptr) _old = (__typeof__(_ptr))(_pold);		\
+	__typeof__(*(_ptr)) __old = *_old;				\
+	__typeof__(*(_ptr)) __cur = cmpxchg64(_ptr, __old, _new);	\
+	bool success = __cur == __old;					\
+	if (unlikely(!success))						\
+		*_old = __cur;						\
+	likely(success);						\
+})
+#endif
+#endif
+
+#ifndef xchg64
+#if IS_ENABLED(CONFIG_64BIT)
+#define xchg64(_ptr, _new) xchg(_ptr, _new)
+#else
+#define xchg64(_ptr, _new)						\
+({									\
+	__typeof__(_ptr) __ptr = (_ptr);				\
+	__typeof__(*(_ptr)) __old = *__ptr;				\
+	while (!try_cmpxchg64(__ptr, &__old, (_new)))			\
+		;							\
+	__old;								\
+})
+#endif
+#endif
 
 #endif /* !__I915_UTILS_H */

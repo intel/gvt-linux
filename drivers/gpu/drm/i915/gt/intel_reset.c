@@ -1,6 +1,5 @@
+// SPDX-License-Identifier: MIT
 /*
- * SPDX-License-Identifier: MIT
- *
  * Copyright © 2008-2018 Intel Corporation
  */
 
@@ -787,18 +786,15 @@ static void reset_finish(struct intel_gt *gt, intel_engine_mask_t awake)
 
 static void nop_submit_request(struct i915_request *request)
 {
-	struct intel_engine_cs *engine = request->engine;
-	unsigned long flags;
-
 	RQ_TRACE(request, "-EIO\n");
-	i915_request_set_error_once(request, -EIO);
 
-	spin_lock_irqsave(&engine->active.lock, flags);
-	__i915_request_submit(request);
-	i915_request_mark_complete(request);
-	spin_unlock_irqrestore(&engine->active.lock, flags);
+	request = i915_request_mark_eio(request);
+	if (request) {
+		i915_request_submit(request);
+		intel_engine_signal_breadcrumbs(request->engine);
 
-	intel_engine_signal_breadcrumbs(engine);
+		i915_request_put(request);
+	}
 }
 
 static void __intel_gt_set_wedged(struct intel_gt *gt)
@@ -824,7 +820,7 @@ static void __intel_gt_set_wedged(struct intel_gt *gt)
 		__intel_gt_reset(gt, ALL_ENGINES);
 
 	for_each_engine(engine, gt, id)
-		engine->submit_request = nop_submit_request;
+		engine->sched.submit_request = nop_submit_request;
 
 	/*
 	 * Make sure no request can slip through without getting completed by
@@ -1117,7 +1113,6 @@ static int intel_gt_reset_engine(struct intel_engine_cs *engine)
 int __intel_engine_reset_bh(struct intel_engine_cs *engine, const char *msg)
 {
 	struct intel_gt *gt = engine->gt;
-	bool uses_guc = intel_engine_in_guc_submission_mode(engine);
 	int ret;
 
 	ENGINE_TRACE(engine, "flags=%lx\n", gt->reset.flags);
@@ -1133,10 +1128,10 @@ int __intel_engine_reset_bh(struct intel_engine_cs *engine, const char *msg)
 			   "Resetting %s for %s\n", engine->name, msg);
 	atomic_inc(&engine->i915->gpu_error.reset_engine_count[engine->uabi_class]);
 
-	if (!uses_guc)
-		ret = intel_gt_reset_engine(engine);
-	else
+	if (intel_engine_uses_guc(engine))
 		ret = intel_guc_reset_engine(&engine->gt->uc.guc, engine);
+	else
+		ret = intel_gt_reset_engine(engine);
 	if (ret) {
 		/* If we fail here, we expect to fallback to a global reset */
 		ENGINE_TRACE(engine, "Failed to reset, err: %d\n", ret);
@@ -1405,7 +1400,7 @@ void intel_gt_init_reset(struct intel_gt *gt)
 	 * within the shrinker, we forbid ourselves from performing any
 	 * fs-reclaim or taking related locks during reset.
 	 */
-	i915_gem_shrinker_taints_mutex(gt->i915, &gt->reset.mutex);
+	fs_reclaim_taints_mutex(&gt->reset.mutex);
 
 	/* no GPU until we are ready! */
 	__set_bit(I915_WEDGED, &gt->reset.flags);

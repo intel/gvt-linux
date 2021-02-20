@@ -1,6 +1,5 @@
+// SPDX-License-Identifier: MIT
 /*
- * SPDX-License-Identifier: MIT
- *
  * Copyright © 2019 Intel Corporation
  */
 
@@ -32,7 +31,7 @@ static bool next_heartbeat(struct intel_engine_cs *engine)
 	delay = msecs_to_jiffies_timeout(delay);
 	if (delay >= HZ)
 		delay = round_jiffies_up_relative(delay);
-	mod_delayed_work(system_highpri_wq, &engine->heartbeat.work, delay);
+	mod_delayed_work(system_highpri_wq, &engine->heartbeat.work, delay + 1);
 
 	return true;
 }
@@ -79,11 +78,24 @@ static void show_heartbeat(const struct i915_request *rq,
 			  rq->sched.attr.priority);
 }
 
+static bool is_wait(struct intel_engine_cs *engine)
+{
+	struct i915_sched *se = intel_engine_get_scheduler(engine);
+	struct i915_request *rq;
+	bool wait = true;
+
+	spin_lock_irq(&se->lock);
+	rq = i915_sched_get_active_request(se);
+	if (rq)
+		wait = !i915_sw_fence_signaled(&rq->submit);
+	spin_unlock_irq(&se->lock);
+
+	return wait;
+}
+
 static void heartbeat(struct work_struct *wrk)
 {
-	struct i915_sched_attr attr = {
-		.priority = I915_USER_PRIORITY(I915_PRIORITY_MIN),
-	};
+	struct i915_sched_attr attr = { .priority = I915_PRIORITY_MIN };
 	struct intel_engine_cs *engine =
 		container_of(wrk, typeof(*engine), heartbeat.work.work);
 	struct intel_context *ce = engine->kernel_context;
@@ -91,10 +103,13 @@ static void heartbeat(struct work_struct *wrk)
 	unsigned long serial;
 
 	/* Just in case everything has gone horribly wrong, give it a kick */
-	intel_engine_flush_submission(engine);
+	intel_engine_flush_scheduler(engine);
 
 	rq = engine->heartbeat.systole;
 	if (rq && i915_request_completed(rq)) {
+		ENGINE_TRACE(engine,
+			     "heartbeat " RQ_FMT "completed\n",
+			     RQ_ARG(rq));
 		i915_request_put(rq);
 		engine->heartbeat.systole = NULL;
 	}
@@ -106,7 +121,14 @@ static void heartbeat(struct work_struct *wrk)
 		goto out;
 
 	if (engine->heartbeat.systole) {
-		if (!i915_sw_fence_signaled(&rq->submit)) {
+		long delay = READ_ONCE(engine->props.heartbeat_interval_ms);
+
+		/* Safeguard against too-fast worker invocations */
+		if (!time_after(jiffies,
+				rq->emitted_jiffies + msecs_to_jiffies(delay)))
+			goto out;
+
+		if (!i915_sw_fence_signaled(&rq->submit) && is_wait(engine)) {
 			/*
 			 * Not yet submitted, system is stalled.
 			 *
@@ -117,24 +139,34 @@ static void heartbeat(struct work_struct *wrk)
 			 * but all other contexts, including the kernel
 			 * context are stuck waiting for the signal.
 			 */
-		} else if (engine->schedule &&
-			   rq->sched.attr.priority < I915_PRIORITY_BARRIER) {
+			ENGINE_TRACE(engine,
+				     "heartbeat " RQ_FMT " pending\n",
+				     RQ_ARG(rq));
+		} else if (rq->sched.attr.priority < I915_PRIORITY_BARRIER) {
 			/*
 			 * Gradually raise the priority of the heartbeat to
 			 * give high priority work [which presumably desires
 			 * low latency and no jitter] the chance to naturally
 			 * complete before being preempted.
 			 */
-			attr.priority = I915_PRIORITY_MASK;
+			attr.priority = 0;
 			if (rq->sched.attr.priority >= attr.priority)
-				attr.priority |= I915_USER_PRIORITY(I915_PRIORITY_HEARTBEAT);
+				attr.priority = I915_PRIORITY_HEARTBEAT;
 			if (rq->sched.attr.priority >= attr.priority)
 				attr.priority = I915_PRIORITY_BARRIER;
 
+			ENGINE_TRACE(engine,
+				     "bumping heartbeat " RQ_FMT " prio:%d\n",
+				     RQ_ARG(rq), attr.priority);
+
 			local_bh_disable();
-			engine->schedule(rq, &attr);
+			i915_request_set_priority(rq, attr.priority);
 			local_bh_enable();
 		} else {
+			ENGINE_TRACE(engine,
+				     "heartbeat " RQ_FMT " stuck\n",
+				     RQ_ARG(rq));
+
 			if (IS_ENABLED(CONFIG_DRM_I915_DEBUG_GEM))
 				show_heartbeat(rq, engine);
 
@@ -143,6 +175,8 @@ static void heartbeat(struct work_struct *wrk)
 					      "stopped heartbeat on %s",
 					      engine->name);
 		}
+
+		rq->emitted_jiffies = jiffies;
 		goto out;
 	}
 
@@ -164,6 +198,7 @@ static void heartbeat(struct work_struct *wrk)
 	if (IS_ERR(rq))
 		goto unlock;
 
+	ENGINE_TRACE(engine, "heartbeat " RQ_FMT "started\n", RQ_ARG(rq));
 	heartbeat_commit(rq, &attr);
 
 unlock:
@@ -285,9 +320,7 @@ int intel_engine_pulse(struct intel_engine_cs *engine)
 
 int intel_engine_flush_barriers(struct intel_engine_cs *engine)
 {
-	struct i915_sched_attr attr = {
-		.priority = I915_USER_PRIORITY(I915_PRIORITY_MIN),
-	};
+	struct i915_sched_attr attr = { .priority = I915_PRIORITY_MIN };
 	struct intel_context *ce = engine->kernel_context;
 	struct i915_request *rq;
 	int err;

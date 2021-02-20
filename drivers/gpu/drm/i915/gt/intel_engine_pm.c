@@ -1,10 +1,10 @@
+// SPDX-License-Identifier: MIT
 /*
- * SPDX-License-Identifier: MIT
- *
  * Copyright © 2019 Intel Corporation
  */
 
 #include "i915_drv.h"
+#include "i915_scheduler.h"
 
 #include "intel_breadcrumbs.h"
 #include "intel_context.h"
@@ -53,7 +53,7 @@ static int __engine_unpark(struct intel_wakeref *wf)
 
 		/* Flush all pending HW writes before we touch the context */
 		while (unlikely(intel_context_inflight(ce)))
-			intel_engine_flush_submission(engine);
+			intel_engine_flush_scheduler(engine);
 
 		/* First poison the image to verify we never fully trust it */
 		dbg_poison_ce(ce);
@@ -277,7 +277,7 @@ static int __engine_park(struct intel_wakeref *wf)
 	if (engine->park)
 		engine->park(engine);
 
-	engine->execlists.no_priolist = false;
+	i915_sched_park(intel_engine_get_scheduler(engine));
 
 	/* While gt calls i915_vma_parked(), we have to break the lock cycle */
 	intel_gt_pm_put_async(engine->gt);

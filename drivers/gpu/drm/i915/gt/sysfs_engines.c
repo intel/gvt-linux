@@ -222,9 +222,7 @@ timeslice_store(struct kobject *kobj, struct kobj_attribute *attr,
 		return -EINVAL;
 
 	WRITE_ONCE(engine->props.timeslice_duration_ms, duration);
-
-	if (execlists_active(&engine->execlists))
-		set_timer_ms(&engine->execlists.timer, duration);
+	intel_engine_kick_scheduler(engine);
 
 	return count;
 }
@@ -326,9 +324,7 @@ preempt_timeout_store(struct kobject *kobj, struct kobj_attribute *attr,
 		return -EINVAL;
 
 	WRITE_ONCE(engine->props.preempt_timeout_ms, timeout);
-
-	if (READ_ONCE(engine->execlists.pending[0]))
-		set_timer_ms(&engine->execlists.preempt, timeout);
+	intel_engine_kick_scheduler(engine);
 
 	return count;
 }
@@ -410,6 +406,19 @@ heartbeat_default(struct kobject *kobj, struct kobj_attribute *attr, char *buf)
 
 static struct kobj_attribute heartbeat_interval_def =
 __ATTR(heartbeat_interval_ms, 0444, heartbeat_default, NULL);
+
+static ssize_t
+runtime_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf)
+{
+	struct intel_engine_cs *engine = kobj_to_engine(kobj);
+	ktime_t dummy;
+
+	return sprintf(buf, "%llu\n",
+		       ktime_to_ms(intel_engine_get_busy_time(engine, &dummy)));
+}
+
+static struct kobj_attribute runtime_attr =
+__ATTR(runtime_ms, 0444, runtime_show, NULL);
 
 static void kobj_engine_release(struct kobject *kobj)
 {
@@ -519,6 +528,10 @@ void intel_engines_add_sysfs(struct drm_i915_private *i915)
 
 		if (intel_engine_has_preempt_reset(engine) &&
 		    sysfs_create_file(kobj, &preempt_timeout_attr.attr))
+			goto err_engine;
+
+		if (intel_engine_supports_stats(engine) &&
+		    sysfs_create_file(kobj, &runtime_attr.attr))
 			goto err_engine;
 
 		add_defaults(container_of(kobj, struct kobj_engine, base));

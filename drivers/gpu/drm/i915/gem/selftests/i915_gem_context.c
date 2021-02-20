@@ -955,8 +955,6 @@ retry:
 	if (!err)
 		err = i915_gem_object_lock(rpcs, &ww);
 	if (!err)
-		err = i915_gem_object_set_to_gtt_domain(obj, false);
-	if (!err)
 		err = i915_vma_pin_ww(vma, &ww, 0, 0, PIN_USER);
 	if (err)
 		goto err_put;
@@ -1622,7 +1620,7 @@ static int read_from_scratch(struct i915_gem_context *ctx,
 		if (err)
 			goto out_vm;
 
-		cmd = i915_gem_object_pin_map(obj, I915_MAP_WB);
+		cmd = i915_gem_object_pin_map(obj, I915_MAP_WC);
 		if (IS_ERR(cmd)) {
 			err = PTR_ERR(cmd);
 			goto out;
@@ -1658,7 +1656,7 @@ static int read_from_scratch(struct i915_gem_context *ctx,
 		if (err)
 			goto out_vm;
 
-		cmd = i915_gem_object_pin_map(obj, I915_MAP_WB);
+		cmd = i915_gem_object_pin_map(obj, I915_MAP_WC);
 		if (IS_ERR(cmd)) {
 			err = PTR_ERR(cmd);
 			goto out;
@@ -1707,15 +1705,17 @@ static int read_from_scratch(struct i915_gem_context *ctx,
 
 	i915_vma_unpin(vma);
 
+	i915_request_get(rq);
 	i915_request_add(rq);
 
-	i915_gem_object_lock(obj, NULL);
-	err = i915_gem_object_set_to_cpu_domain(obj, false);
-	i915_gem_object_unlock(obj);
-	if (err)
+	if (i915_request_wait(rq, 0, HZ / 5) < 0) {
+		i915_request_put(rq);
+		err = -ETIME;
 		goto out_vm;
+	}
+	i915_request_put(rq);
 
-	cmd = i915_gem_object_pin_map(obj, I915_MAP_WB);
+	cmd = i915_gem_object_pin_map(obj, I915_MAP_WC);
 	if (IS_ERR(cmd)) {
 		err = PTR_ERR(cmd);
 		goto out_vm;

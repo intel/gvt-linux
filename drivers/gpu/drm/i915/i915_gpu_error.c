@@ -485,13 +485,10 @@ static void error_print_context(struct drm_i915_error_state_buf *m,
 				const char *header,
 				const struct i915_gem_context_coredump *ctx)
 {
-	const u32 period = m->i915->gt.clock_period_ns;
-
 	err_printf(m, "%s%s[%d] prio %d, guilty %d active %d, runtime total %lluns, avg %lluns\n",
 		   header, ctx->comm, ctx->pid, ctx->sched_attr.priority,
 		   ctx->guilty, ctx->active,
-		   ctx->total_runtime * period,
-		   mul_u32_u32(ctx->avg_runtime, period));
+		   ctx->total_runtime, ctx->avg_runtime);
 }
 
 static struct i915_vma_coredump *
@@ -1240,7 +1237,9 @@ static void record_request(const struct i915_request *request,
 
 		ctx = rcu_dereference(request->context->gem_context);
 		if (ctx)
-			erq->pid = pid_nr(ctx->pid);
+			erq->pid = I915_SELFTEST_ONLY(!ctx->client) ?
+				   0 :
+				   pid_nr(i915_drm_client_pid(ctx->client));
 	}
 	rcu_read_unlock();
 }
@@ -1261,31 +1260,27 @@ static bool record_context(struct i915_gem_context_coredump *e,
 			   const struct i915_request *rq)
 {
 	struct i915_gem_context *ctx;
-	struct task_struct *task;
 	bool simulated;
 
-	rcu_read_lock();
 	ctx = rcu_dereference(rq->context->gem_context);
 	if (ctx && !kref_get_unless_zero(&ctx->ref))
 		ctx = NULL;
-	rcu_read_unlock();
 	if (!ctx)
 		return true;
 
-	rcu_read_lock();
-	task = pid_task(ctx->pid, PIDTYPE_PID);
-	if (task) {
-		strcpy(e->comm, task->comm);
-		e->pid = task->pid;
+	if (I915_SELFTEST_ONLY(!ctx->client)) {
+		strcpy(e->comm, "[kernel]");
+	} else {
+		strcpy(e->comm, i915_drm_client_name(ctx->client));
+		e->pid = pid_nr(i915_drm_client_pid(ctx->client));
 	}
-	rcu_read_unlock();
 
 	e->sched_attr = ctx->sched;
 	e->guilty = atomic_read(&ctx->guilty_count);
 	e->active = atomic_read(&ctx->active_count);
 
-	e->total_runtime = rq->context->runtime.total;
-	e->avg_runtime = ewma_runtime_read(&rq->context->runtime.avg);
+	e->total_runtime = intel_context_get_total_runtime_ns(rq->context);
+	e->avg_runtime = intel_context_get_avg_runtime_ns(rq->context);
 
 	simulated = i915_gem_context_no_error_capture(ctx);
 
@@ -1367,12 +1362,14 @@ intel_engine_coredump_alloc(struct intel_engine_cs *engine, gfp_t gfp)
 
 struct intel_engine_capture_vma *
 intel_engine_coredump_add_request(struct intel_engine_coredump *ee,
-				  struct i915_request *rq,
+				  const struct i915_request *rq,
 				  gfp_t gfp)
 {
 	struct intel_engine_capture_vma *vma = NULL;
 
+	rcu_read_lock();
 	ee->simulated |= record_context(&ee->context, rq);
+	rcu_read_unlock();
 	if (ee->simulated)
 		return NULL;
 
@@ -1432,21 +1429,24 @@ static struct intel_engine_coredump *
 capture_engine(struct intel_engine_cs *engine,
 	       struct i915_vma_compress *compress)
 {
+	struct i915_sched *se = intel_engine_get_scheduler(engine);
 	struct intel_engine_capture_vma *capture = NULL;
 	struct intel_engine_coredump *ee;
-	struct i915_request *rq;
+	const struct i915_request *rq;
 	unsigned long flags;
 
 	ee = intel_engine_coredump_alloc(engine, GFP_KERNEL);
 	if (!ee)
 		return NULL;
 
-	spin_lock_irqsave(&engine->active.lock, flags);
-	rq = intel_engine_find_active_request(engine);
+	rcu_read_lock();
+	spin_lock_irqsave(&se->lock, flags);
+	rq = i915_sched_get_active_request(se);
 	if (rq)
 		capture = intel_engine_coredump_add_request(ee, rq,
 							    ATOMIC_MAYFAIL);
-	spin_unlock_irqrestore(&engine->active.lock, flags);
+	spin_unlock_irqrestore(&se->lock, flags);
+	rcu_read_unlock();
 	if (!capture) {
 		kfree(ee);
 		return NULL;

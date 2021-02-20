@@ -1,6 +1,5 @@
+// SPDX-License-Identifier: MIT
 /*
- * SPDX-License-Identifier: MIT
- *
  * Copyright © 2019 Intel Corporation
  */
 
@@ -41,24 +40,20 @@ static void user_forcewake(struct intel_gt *gt, bool suspend)
 
 static void runtime_begin(struct intel_gt *gt)
 {
-	local_irq_disable();
-	write_seqcount_begin(&gt->stats.lock);
-	gt->stats.start = ktime_get();
-	gt->stats.active = true;
-	write_seqcount_end(&gt->stats.lock);
-	local_irq_enable();
+	smp_wmb(); /* pairs with intel_gt_get_busy_time() */
+	WRITE_ONCE(gt->stats.start, ktime_get());
 }
 
 static void runtime_end(struct intel_gt *gt)
 {
-	local_irq_disable();
-	write_seqcount_begin(&gt->stats.lock);
-	gt->stats.active = false;
-	gt->stats.total =
-		ktime_add(gt->stats.total,
-			  ktime_sub(ktime_get(), gt->stats.start));
-	write_seqcount_end(&gt->stats.lock);
-	local_irq_enable();
+	ktime_t total;
+
+	total = ktime_sub(ktime_get(), gt->stats.start);
+	total = ktime_add(gt->stats.total, total);
+
+	WRITE_ONCE(gt->stats.start, 0);
+	smp_wmb(); /* pairs with intel_gt_get_busy_time() */
+	gt->stats.total = total;
 }
 
 static int __gt_unpark(struct intel_wakeref *wf)
@@ -130,7 +125,6 @@ static const struct intel_wakeref_ops wf_ops = {
 void intel_gt_pm_init_early(struct intel_gt *gt)
 {
 	intel_wakeref_init(&gt->wakeref, gt->uncore->rpm, &wf_ops);
-	seqcount_mutex_init(&gt->stats.lock, &gt->wakeref.mutex);
 }
 
 void intel_gt_pm_init(struct intel_gt *gt)
@@ -364,28 +358,18 @@ int intel_gt_runtime_resume(struct intel_gt *gt)
 	return intel_uc_runtime_resume(&gt->uc);
 }
 
-static ktime_t __intel_gt_get_awake_time(const struct intel_gt *gt)
-{
-	ktime_t total = gt->stats.total;
-
-	if (gt->stats.active)
-		total = ktime_add(total,
-				  ktime_sub(ktime_get(), gt->stats.start));
-
-	return total;
-}
-
 ktime_t intel_gt_get_awake_time(const struct intel_gt *gt)
 {
-	unsigned int seq;
-	ktime_t total;
+	ktime_t total = gt->stats.total;
+	ktime_t start;
 
-	do {
-		seq = read_seqcount_begin(&gt->stats.lock);
-		total = __intel_gt_get_awake_time(gt);
-	} while (read_seqcount_retry(&gt->stats.lock, seq));
+	start = READ_ONCE(gt->stats.start);
+	if (start) {
+		smp_rmb(); /* pairs with runtime_begin/end */
+		start = ktime_sub(ktime_get(), start);
+	}
 
-	return total;
+	return ktime_add(total, start);
 }
 
 #if IS_ENABLED(CONFIG_DRM_I915_SELFTEST)

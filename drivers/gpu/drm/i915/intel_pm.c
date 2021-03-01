@@ -38,6 +38,7 @@
 #include "display/intel_display_types.h"
 #include "display/intel_fbc.h"
 #include "display/intel_sprite.h"
+#include "display/skl_universal_plane.h"
 
 #include "gt/intel_llc.h"
 
@@ -6181,9 +6182,6 @@ void skl_pipe_wm_get_hw_state(struct intel_crtc *crtc,
 
 		skl_wm_level_from_reg_val(val, &wm->trans_wm);
 	}
-
-	if (!crtc->active)
-		return;
 }
 
 void skl_wm_get_hw_state(struct drm_i915_private *dev_priv)
@@ -7072,7 +7070,7 @@ static void gen12lp_init_clock_gating(struct drm_i915_private *dev_priv)
 			   ILK_DPFC_CHICKEN_COMP_DUMMY_PIXEL);
 
 	/* Wa_1409825376:tgl (pre-prod)*/
-	if (IS_TGL_DISP_REVID(dev_priv, TGL_REVID_A0, TGL_REVID_B1))
+	if (IS_TGL_DISP_STEPPING(dev_priv, STEP_A0, STEP_B1))
 		intel_uncore_write(&dev_priv->uncore, GEN9_CLKGATE_DIS_3, intel_uncore_read(&dev_priv->uncore, GEN9_CLKGATE_DIS_3) |
 			   TGL_VRH_GATING_DIS);
 

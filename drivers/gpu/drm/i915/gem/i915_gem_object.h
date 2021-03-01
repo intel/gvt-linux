@@ -16,6 +16,32 @@
 #include "i915_gem_gtt.h"
 #include "i915_vma_types.h"
 
+/*
+ * XXX: There is a prevalence of the assumption that we fit the
+ * object's page count inside a 32bit _signed_ variable. Let's document
+ * this and catch if we ever need to fix it. In the meantime, if you do
+ * spot such a local variable, please consider fixing!
+ *
+ * Aside from our own locals (for which we have no excuse!):
+ * - sg_table embeds unsigned int for num_pages
+ * - get_user_pages*() mixed ints with longs
+ */
+#define GEM_CHECK_SIZE_OVERFLOW(sz) \
+	GEM_WARN_ON((sz) >> PAGE_SHIFT > INT_MAX)
+
+static inline bool i915_gem_object_size_2big(u64 size)
+{
+	struct drm_i915_gem_object *obj;
+
+	if (GEM_CHECK_SIZE_OVERFLOW(size))
+		return true;
+
+	if (overflows_type(size, obj->base.size))
+		return true;
+
+	return false;
+}
+
 void i915_gem_init__objects(struct drm_i915_private *i915);
 
 struct drm_i915_gem_object *i915_gem_object_alloc(void);
@@ -487,12 +513,12 @@ void i915_gem_object_set_cache_coherency(struct drm_i915_gem_object *obj,
 void i915_gem_object_flush_if_display(struct drm_i915_gem_object *obj);
 void i915_gem_object_flush_if_display_locked(struct drm_i915_gem_object *obj);
 
-int __must_check
-i915_gem_object_set_to_wc_domain(struct drm_i915_gem_object *obj, bool write);
-int __must_check
-i915_gem_object_set_to_gtt_domain(struct drm_i915_gem_object *obj, bool write);
-int __must_check
-i915_gem_object_set_to_cpu_domain(struct drm_i915_gem_object *obj, bool write);
+void i915_gem_object_set_to_wc_domain(struct drm_i915_gem_object *obj,
+				      bool write);
+void i915_gem_object_set_to_gtt_domain(struct drm_i915_gem_object *obj,
+				       bool write);
+void i915_gem_object_set_to_cpu_domain(struct drm_i915_gem_object *obj,
+				       bool write);
 struct i915_vma * __must_check
 i915_gem_object_pin_to_display_plane(struct drm_i915_gem_object *obj,
 				     u32 alignment,
@@ -523,15 +549,14 @@ static inline void __start_cpu_write(struct drm_i915_gem_object *obj)
 		obj->cache_dirty = true;
 }
 
-void i915_gem_fence_wait_priority(struct dma_fence *fence,
-				  const struct i915_sched_attr *attr);
+void i915_gem_fence_wait_priority(struct dma_fence *fence, int prio);
 
 int i915_gem_object_wait(struct drm_i915_gem_object *obj,
 			 unsigned int flags,
 			 long timeout);
 int i915_gem_object_wait_priority(struct drm_i915_gem_object *obj,
 				  unsigned int flags,
-				  const struct i915_sched_attr *attr);
+				  int prio);
 
 void __i915_gem_object_flush_frontbuffer(struct drm_i915_gem_object *obj,
 					 enum fb_op_origin origin);

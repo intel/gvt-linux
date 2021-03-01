@@ -1,6 +1,5 @@
+// SPDX-License-Identifier: MIT
 /*
- * SPDX-License-Identifier: MIT
- *
  * Copyright © 2018 Intel Corporation
  */
 
@@ -44,7 +43,7 @@ static int wait_for_submit(struct intel_engine_cs *engine,
 			   unsigned long timeout)
 {
 	/* Ignore our own attempts to suppress excess tasklets */
-	tasklet_hi_schedule(&engine->execlists.tasklet);
+	intel_engine_kick_scheduler(engine);
 
 	timeout += jiffies;
 	do {
@@ -54,7 +53,7 @@ static int wait_for_submit(struct intel_engine_cs *engine,
 			return 0;
 
 		/* Wait until the HW has acknowleged the submission (or err) */
-		intel_engine_flush_submission(engine);
+		intel_engine_flush_scheduler(engine);
 		if (!READ_ONCE(engine->execlists.pending[0]) && is_active(rq))
 			return 0;
 
@@ -73,7 +72,7 @@ static int wait_for_reset(struct intel_engine_cs *engine,
 
 	do {
 		cond_resched();
-		intel_engine_flush_submission(engine);
+		intel_engine_flush_scheduler(engine);
 
 		if (READ_ONCE(engine->execlists.pending[0]))
 			continue;
@@ -269,12 +268,8 @@ static int live_unlite_restore(struct intel_gt *gt, int prio)
 		i915_request_put(rq[0]);
 
 		if (prio) {
-			struct i915_sched_attr attr = {
-				.priority = prio,
-			};
-
 			/* Alternatively preempt the spinner with ce[1] */
-			engine->schedule(rq[1], &attr);
+			i915_request_set_priority(rq[1], prio);
 		}
 
 		/* And switch back to ce[0] for good measure */
@@ -293,7 +288,7 @@ static int live_unlite_restore(struct intel_gt *gt, int prio)
 		i915_request_put(rq[0]);
 
 err_ce:
-		intel_engine_flush_submission(engine);
+		intel_engine_flush_scheduler(engine);
 		igt_spinner_end(&spin);
 		for (n = 0; n < ARRAY_SIZE(ce); n++) {
 			if (IS_ERR_OR_NULL(ce[n]))
@@ -321,7 +316,7 @@ static int live_unlite_switch(void *arg)
 
 static int live_unlite_preempt(void *arg)
 {
-	return live_unlite_restore(arg, I915_USER_PRIORITY(I915_PRIORITY_MAX));
+	return live_unlite_restore(arg, I915_PRIORITY_MAX);
 }
 
 static int live_unlite_ring(void *arg)
@@ -414,10 +409,10 @@ static int live_unlite_ring(void *arg)
 			}
 
 			i915_request_add(tmp);
-			intel_engine_flush_submission(engine);
+			intel_engine_flush_scheduler(engine);
 			n++;
 		}
-		intel_engine_flush_submission(engine);
+		intel_engine_flush_scheduler(engine);
 		pr_debug("%s: Filled ring with %d nop tails {size:%x, tail:%x, emit:%x, rq.tail:%x}\n",
 			 engine->name, n,
 			 ce[0]->ring->size,
@@ -454,7 +449,7 @@ static int live_unlite_ring(void *arg)
 			 ce[1]->ring->tail, ce[1]->ring->emit);
 
 err_ce:
-		intel_engine_flush_submission(engine);
+		intel_engine_flush_scheduler(engine);
 		igt_spinner_end(&spin);
 		for (n = 0; n < ARRAY_SIZE(ce); n++) {
 			if (IS_ERR_OR_NULL(ce[n]))
@@ -573,6 +568,7 @@ static int live_hold_reset(void *arg)
 		return -ENOMEM;
 
 	for_each_engine(engine, gt, id) {
+		struct i915_sched *se = intel_engine_get_scheduler(engine);
 		struct intel_context *ce;
 		struct i915_request *rq;
 
@@ -607,19 +603,19 @@ static int live_hold_reset(void *arg)
 			err = -EBUSY;
 			goto out;
 		}
-		tasklet_disable(&engine->execlists.tasklet);
+		tasklet_disable(&se->tasklet);
 
-		engine->execlists.tasklet.func(engine->execlists.tasklet.data);
+		se->tasklet.callback(&se->tasklet);
 		GEM_BUG_ON(execlists_active(&engine->execlists) != rq);
 
 		i915_request_get(rq);
-		execlists_hold(engine, rq);
+		i915_sched_suspend_request(engine, rq);
 		GEM_BUG_ON(!i915_request_on_hold(rq));
 
 		__intel_engine_reset_bh(engine, NULL);
 		GEM_BUG_ON(rq->fence.error != -EIO);
 
-		tasklet_enable(&engine->execlists.tasklet);
+		tasklet_enable(&se->tasklet);
 		clear_and_wake_up_bit(I915_RESET_ENGINE + id,
 				      &gt->reset.flags);
 		local_bh_enable();
@@ -635,7 +631,7 @@ static int live_hold_reset(void *arg)
 		GEM_BUG_ON(!i915_request_on_hold(rq));
 
 		/* But is resubmitted on release */
-		execlists_unhold(engine, rq);
+		i915_sched_resume_request(engine, rq);
 		if (i915_request_wait(rq, 0, HZ / 5) < 0) {
 			pr_err("%s: held request did not complete!\n",
 			       engine->name);
@@ -767,7 +763,7 @@ static int live_error_interrupt(void *arg)
 				}
 
 				/* Kick the tasklet to process the error */
-				intel_engine_flush_submission(engine);
+				intel_engine_flush_scheduler(engine);
 				if (client[i]->fence.error != p->error[i]) {
 					pr_err("%s: %s request (%s) with wrong error code: %d\n",
 					       engine->name,
@@ -874,9 +870,6 @@ release_queue(struct intel_engine_cs *engine,
 	      struct i915_vma *vma,
 	      int idx, int prio)
 {
-	struct i915_sched_attr attr = {
-		.priority = prio,
-	};
 	struct i915_request *rq;
 	u32 *cs;
 
@@ -901,7 +894,7 @@ release_queue(struct intel_engine_cs *engine,
 	i915_request_add(rq);
 
 	local_bh_disable();
-	engine->schedule(rq, &attr);
+	i915_request_set_priority(rq, prio);
 	local_bh_enable(); /* kick tasklet */
 
 	i915_request_put(rq);
@@ -1081,7 +1074,6 @@ create_rewinder(struct intel_context *ce,
 
 	intel_ring_advance(rq, cs);
 
-	rq->sched.attr.priority = I915_PRIORITY_MASK;
 	err = 0;
 err:
 	i915_request_get(rq);
@@ -1185,8 +1177,8 @@ static int live_timeslice_rewind(void *arg)
 		while (i915_request_is_active(rq[A2])) { /* semaphore yield! */
 			/* Wait for the timeslice to kick in */
 			del_timer(&engine->execlists.timer);
-			tasklet_hi_schedule(&engine->execlists.tasklet);
-			intel_engine_flush_submission(engine);
+			intel_engine_kick_scheduler(engine);
+			intel_engine_flush_scheduler(engine);
 		}
 		/* -> ELSP[] = { { A:rq1 }, { B:rq1 } } */
 		GEM_BUG_ON(!i915_request_is_active(rq[A1]));
@@ -1312,9 +1304,6 @@ static int live_timeslice_queue(void *arg)
 		goto err_pin;
 
 	for_each_engine(engine, gt, id) {
-		struct i915_sched_attr attr = {
-			.priority = I915_USER_PRIORITY(I915_PRIORITY_MAX),
-		};
 		struct i915_request *rq, *nop;
 
 		if (!intel_engine_has_preemption(engine))
@@ -1329,7 +1318,7 @@ static int live_timeslice_queue(void *arg)
 			err = PTR_ERR(rq);
 			goto err_heartbeat;
 		}
-		engine->schedule(rq, &attr);
+		i915_request_set_priority(rq, I915_PRIORITY_MAX);
 		err = wait_for_submit(engine, rq, HZ / 2);
 		if (err) {
 			pr_err("%s: Timed out trying to submit semaphores\n",
@@ -1362,7 +1351,7 @@ static int live_timeslice_queue(void *arg)
 		/* Wait until we ack the release_queue and start timeslicing */
 		do {
 			cond_resched();
-			intel_engine_flush_submission(engine);
+			intel_engine_flush_scheduler(engine);
 		} while (READ_ONCE(engine->execlists.pending[0]));
 
 		/* Timeslice every jiffy, so within 2 we should signal */
@@ -1529,14 +1518,12 @@ static int live_busywait_preempt(void *arg)
 	ctx_hi = kernel_context(gt->i915);
 	if (!ctx_hi)
 		return -ENOMEM;
-	ctx_hi->sched.priority =
-		I915_USER_PRIORITY(I915_CONTEXT_MAX_USER_PRIORITY);
+	ctx_hi->sched.priority = I915_CONTEXT_MAX_USER_PRIORITY;
 
 	ctx_lo = kernel_context(gt->i915);
 	if (!ctx_lo)
 		goto err_ctx_hi;
-	ctx_lo->sched.priority =
-		I915_USER_PRIORITY(I915_CONTEXT_MIN_USER_PRIORITY);
+	ctx_lo->sched.priority = I915_CONTEXT_MIN_USER_PRIORITY;
 
 	obj = i915_gem_object_create_internal(gt->i915, PAGE_SIZE);
 	if (IS_ERR(obj)) {
@@ -1733,14 +1720,12 @@ static int live_preempt(void *arg)
 	ctx_hi = kernel_context(gt->i915);
 	if (!ctx_hi)
 		goto err_spin_lo;
-	ctx_hi->sched.priority =
-		I915_USER_PRIORITY(I915_CONTEXT_MAX_USER_PRIORITY);
+	ctx_hi->sched.priority = I915_CONTEXT_MAX_USER_PRIORITY;
 
 	ctx_lo = kernel_context(gt->i915);
 	if (!ctx_lo)
 		goto err_ctx_hi;
-	ctx_lo->sched.priority =
-		I915_USER_PRIORITY(I915_CONTEXT_MIN_USER_PRIORITY);
+	ctx_lo->sched.priority = I915_CONTEXT_MIN_USER_PRIORITY;
 
 	for_each_engine(engine, gt, id) {
 		struct igt_live_test t;
@@ -1814,7 +1799,6 @@ static int live_late_preempt(void *arg)
 	struct i915_gem_context *ctx_hi, *ctx_lo;
 	struct igt_spinner spin_hi, spin_lo;
 	struct intel_engine_cs *engine;
-	struct i915_sched_attr attr = {};
 	enum intel_engine_id id;
 	int err = -ENOMEM;
 
@@ -1833,7 +1817,7 @@ static int live_late_preempt(void *arg)
 		goto err_ctx_hi;
 
 	/* Make sure ctx_lo stays before ctx_hi until we trigger preemption. */
-	ctx_lo->sched.priority = I915_USER_PRIORITY(1);
+	ctx_lo->sched.priority = 1;
 
 	for_each_engine(engine, gt, id) {
 		struct igt_live_test t;
@@ -1874,8 +1858,7 @@ static int live_late_preempt(void *arg)
 			goto err_wedged;
 		}
 
-		attr.priority = I915_USER_PRIORITY(I915_PRIORITY_MAX);
-		engine->schedule(rq, &attr);
+		i915_request_set_priority(rq, I915_PRIORITY_MAX);
 
 		if (!igt_wait_for_spinner(&spin_hi, rq)) {
 			pr_err("High priority context failed to preempt the low priority context\n");
@@ -1955,7 +1938,7 @@ static int live_nopreempt(void *arg)
 		return -ENOMEM;
 	if (preempt_client_init(gt, &b))
 		goto err_client_a;
-	b.ctx->sched.priority = I915_USER_PRIORITY(I915_PRIORITY_MAX);
+	b.ctx->sched.priority = I915_PRIORITY_MAX;
 
 	for_each_engine(engine, gt, id) {
 		struct i915_request *rq_a, *rq_b;
@@ -2338,9 +2321,9 @@ static int __cancel_fail(struct live_preempt_cancel *arg)
 
 	/* force preempt reset [failure] */
 	while (!engine->execlists.pending[0])
-		intel_engine_flush_submission(engine);
+		intel_engine_flush_scheduler(engine);
 	del_timer_sync(&engine->execlists.preempt);
-	intel_engine_flush_submission(engine);
+	intel_engine_flush_scheduler(engine);
 
 	cancel_reset_timeout(engine);
 
@@ -2422,9 +2405,6 @@ static int live_suppress_self_preempt(void *arg)
 {
 	struct intel_gt *gt = arg;
 	struct intel_engine_cs *engine;
-	struct i915_sched_attr attr = {
-		.priority = I915_USER_PRIORITY(I915_PRIORITY_MAX)
-	};
 	struct preempt_client a, b;
 	enum intel_engine_id id;
 	int err = -ENOMEM;
@@ -2490,7 +2470,7 @@ static int live_suppress_self_preempt(void *arg)
 			i915_request_add(rq_b);
 
 			GEM_BUG_ON(i915_request_completed(rq_a));
-			engine->schedule(rq_a, &attr);
+			i915_request_set_priority(rq_a, I915_PRIORITY_MAX);
 			igt_spinner_end(&a.spin);
 
 			if (!igt_wait_for_spinner(&b.spin, rq_b)) {
@@ -2555,9 +2535,6 @@ static int live_chain_preempt(void *arg)
 		goto err_client_hi;
 
 	for_each_engine(engine, gt, id) {
-		struct i915_sched_attr attr = {
-			.priority = I915_USER_PRIORITY(I915_PRIORITY_MAX),
-		};
 		struct igt_live_test t;
 		struct i915_request *rq;
 		int ring_size, count, i;
@@ -2624,7 +2601,7 @@ static int live_chain_preempt(void *arg)
 
 			i915_request_get(rq);
 			i915_request_add(rq);
-			engine->schedule(rq, &attr);
+			i915_request_set_priority(rq, I915_PRIORITY_MAX);
 
 			igt_spinner_end(&hi.spin);
 			if (i915_request_wait(rq, 0, HZ / 5) < 0) {
@@ -2850,10 +2827,10 @@ static int __live_preempt_ring(struct intel_engine_cs *engine,
 		}
 
 		i915_request_add(tmp);
-		intel_engine_flush_submission(engine);
+		intel_engine_flush_scheduler(engine);
 		n++;
 	}
-	intel_engine_flush_submission(engine);
+	intel_engine_flush_scheduler(engine);
 	pr_debug("%s: Filled %d with %d nop tails {size:%x, tail:%x, emit:%x, rq.tail:%x}\n",
 		 engine->name, queue_sz, n,
 		 ce[0]->ring->size,
@@ -2876,7 +2853,7 @@ static int __live_preempt_ring(struct intel_engine_cs *engine,
 	err = wait_for_submit(engine, rq, HZ / 2);
 	i915_request_put(rq);
 	if (err) {
-		pr_err("%s: preemption request was not submited\n",
+		pr_err("%s: preemption request was not submitted\n",
 		       engine->name);
 		err = -ETIME;
 	}
@@ -2887,7 +2864,7 @@ static int __live_preempt_ring(struct intel_engine_cs *engine,
 		 ce[1]->ring->tail, ce[1]->ring->emit);
 
 err_ce:
-	intel_engine_flush_submission(engine);
+	intel_engine_flush_scheduler(engine);
 	igt_spinner_end(spin);
 	for (n = 0; n < ARRAY_SIZE(ce); n++) {
 		if (IS_ERR_OR_NULL(ce[n]))
@@ -2976,16 +2953,12 @@ static int live_preempt_gang(void *arg)
 			return -EIO;
 
 		do {
-			struct i915_sched_attr attr = {
-				.priority = I915_USER_PRIORITY(prio++),
-			};
-
 			err = create_gang(engine, &rq);
 			if (err)
 				break;
 
 			/* Submit each spinner at increasing priority */
-			engine->schedule(rq, &attr);
+			i915_request_set_priority(rq, prio++);
 		} while (prio <= I915_PRIORITY_MAX &&
 			 !__igt_timeout(end_time, NULL));
 		pr_debug("%s: Preempt chain of %d requests\n",
@@ -3014,7 +2987,7 @@ static int live_preempt_gang(void *arg)
 					drm_info_printer(engine->i915->drm.dev);
 
 				pr_err("Failed to flush chain of %d requests, at %d\n",
-				       prio, rq_prio(rq) >> I915_USER_PRIORITY_SHIFT);
+				       prio, rq_prio(rq));
 				intel_engine_dump(engine, &p,
 						  "%s\n", engine->name);
 
@@ -3206,9 +3179,6 @@ static int preempt_user(struct intel_engine_cs *engine,
 			struct i915_vma *global,
 			int id)
 {
-	struct i915_sched_attr attr = {
-		.priority = I915_PRIORITY_MAX
-	};
 	struct i915_request *rq;
 	int err = 0;
 	u32 *cs;
@@ -3233,7 +3203,7 @@ static int preempt_user(struct intel_engine_cs *engine,
 	i915_request_get(rq);
 	i915_request_add(rq);
 
-	engine->schedule(rq, &attr);
+	i915_request_set_priority(rq, I915_PRIORITY_MAX);
 
 	if (i915_request_wait(rq, 0, HZ / 2) < 0)
 		err = -ETIME;
@@ -3384,14 +3354,12 @@ static int live_preempt_timeout(void *arg)
 	ctx_hi = kernel_context(gt->i915);
 	if (!ctx_hi)
 		goto err_spin_lo;
-	ctx_hi->sched.priority =
-		I915_USER_PRIORITY(I915_CONTEXT_MAX_USER_PRIORITY);
+	ctx_hi->sched.priority = I915_CONTEXT_MAX_USER_PRIORITY;
 
 	ctx_lo = kernel_context(gt->i915);
 	if (!ctx_lo)
 		goto err_ctx_hi;
-	ctx_lo->sched.priority =
-		I915_USER_PRIORITY(I915_CONTEXT_MIN_USER_PRIORITY);
+	ctx_lo->sched.priority = I915_CONTEXT_MIN_USER_PRIORITY;
 
 	for_each_engine(engine, gt, id) {
 		unsigned long saved_timeout;
@@ -3431,7 +3399,7 @@ static int live_preempt_timeout(void *arg)
 		i915_request_get(rq);
 		i915_request_add(rq);
 
-		intel_engine_flush_submission(engine);
+		intel_engine_flush_scheduler(engine);
 		engine->props.preempt_timeout_ms = saved_timeout;
 
 		if (i915_request_wait(rq, 0, HZ / 10) < 0) {
@@ -4471,7 +4439,7 @@ static int bond_virtual_engine(struct intel_gt *gt,
 			}
 		}
 		onstack_fence_fini(&fence);
-		intel_engine_flush_submission(master);
+		intel_engine_flush_scheduler(master);
 		igt_spinner_end(&spin);
 
 		if (i915_request_wait(rq[0], 0, HZ / 10) < 0) {
@@ -4562,6 +4530,7 @@ static int reset_virtual_engine(struct intel_gt *gt,
 	struct intel_context *ve;
 	struct igt_spinner spin;
 	struct i915_request *rq;
+	struct i915_sched *se;
 	unsigned int n;
 	int err = 0;
 
@@ -4598,6 +4567,7 @@ static int reset_virtual_engine(struct intel_gt *gt,
 
 	engine = rq->engine;
 	GEM_BUG_ON(engine == ve->engine);
+	se = intel_engine_get_scheduler(engine);
 
 	/* Take ownership of the reset and tasklet */
 	local_bh_disable();
@@ -4608,26 +4578,26 @@ static int reset_virtual_engine(struct intel_gt *gt,
 		err = -EBUSY;
 		goto out_heartbeat;
 	}
-	tasklet_disable(&engine->execlists.tasklet);
+	tasklet_disable(&se->tasklet);
 
-	engine->execlists.tasklet.func(engine->execlists.tasklet.data);
+	se->tasklet.callback(&se->tasklet);
 	GEM_BUG_ON(execlists_active(&engine->execlists) != rq);
 
 	/* Fake a preemption event; failed of course */
-	spin_lock_irq(&engine->active.lock);
-	__unwind_incomplete_requests(engine);
-	spin_unlock_irq(&engine->active.lock);
+	spin_lock_irq(&se->lock);
+	__i915_sched_rewind_requests(engine);
+	spin_unlock_irq(&se->lock);
 	GEM_BUG_ON(rq->engine != engine);
 
 	/* Reset the engine while keeping our active request on hold */
-	execlists_hold(engine, rq);
+	i915_sched_suspend_request(engine, rq);
 	GEM_BUG_ON(!i915_request_on_hold(rq));
 
 	__intel_engine_reset_bh(engine, NULL);
 	GEM_BUG_ON(rq->fence.error != -EIO);
 
 	/* Release our grasp on the engine, letting CS flow again */
-	tasklet_enable(&engine->execlists.tasklet);
+	tasklet_enable(&se->tasklet);
 	clear_and_wake_up_bit(I915_RESET_ENGINE + engine->id, &gt->reset.flags);
 	local_bh_enable();
 
@@ -4643,7 +4613,7 @@ static int reset_virtual_engine(struct intel_gt *gt,
 	GEM_BUG_ON(!i915_request_on_hold(rq));
 
 	/* But is resubmitted on release */
-	execlists_unhold(engine, rq);
+	i915_sched_resume_request(engine, rq);
 	if (i915_request_wait(rq, 0, HZ / 5) < 0) {
 		pr_err("%s: held request did not complete!\n",
 		       engine->name);
@@ -4731,7 +4701,7 @@ int intel_execlists_live_selftests(struct drm_i915_private *i915)
 		SUBTEST(live_virtual_reset),
 	};
 
-	if (!HAS_EXECLISTS(i915))
+	if (i915->gt.submission_method != INTEL_SUBMISSION_ELSP)
 		return 0;
 
 	if (intel_gt_is_wedged(&i915->gt))

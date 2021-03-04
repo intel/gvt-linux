@@ -12,9 +12,11 @@
 #include "i915_pmu.h"
 #include "i915_reg.h"
 #include "i915_request.h"
+#include "i915_scheduler.h"
 #include "i915_selftest.h"
-#include "gt/intel_timeline.h"
 #include "intel_engine_types.h"
+#include "intel_gt_types.h"
+#include "intel_timeline.h"
 #include "intel_workarounds.h"
 
 struct drm_printer;
@@ -122,23 +124,6 @@ execlists_active(const struct intel_engine_execlists *execlists)
 	return active;
 }
 
-static inline void
-execlists_active_lock_bh(struct intel_engine_execlists *execlists)
-{
-	local_bh_disable(); /* prevent local softirq and lock recursion */
-	tasklet_lock(&execlists->tasklet);
-}
-
-static inline void
-execlists_active_unlock_bh(struct intel_engine_execlists *execlists)
-{
-	tasklet_unlock(&execlists->tasklet);
-	local_bh_enable(); /* restore softirq, and kick ksoftirqd! */
-}
-
-struct i915_request *
-execlists_unwind_incomplete_requests(struct intel_engine_execlists *execlists);
-
 static inline u32
 intel_read_status_page(const struct intel_engine_cs *engine, int reg)
 {
@@ -233,12 +218,6 @@ static inline void __intel_engine_reset(struct intel_engine_cs *engine,
 bool intel_engines_are_idle(struct intel_gt *gt);
 bool intel_engine_is_idle(struct intel_engine_cs *engine);
 
-void __intel_engine_flush_submission(struct intel_engine_cs *engine, bool sync);
-static inline void intel_engine_flush_submission(struct intel_engine_cs *engine)
-{
-	__intel_engine_flush_submission(engine, true);
-}
-
 void intel_engines_reset_default_submission(struct intel_gt *gt);
 
 bool intel_engine_can_store_dword(struct intel_engine_cs *engine);
@@ -251,9 +230,6 @@ void intel_engine_dump(struct intel_engine_cs *engine,
 ktime_t intel_engine_get_busy_time(struct intel_engine_cs *engine,
 				   ktime_t *now);
 
-struct i915_request *
-intel_engine_find_active_request(struct intel_engine_cs *engine);
-
 u32 intel_engine_context_size(struct intel_gt *gt, u8 class);
 
 void intel_engine_init_active(struct intel_engine_cs *engine,
@@ -261,6 +237,11 @@ void intel_engine_init_active(struct intel_engine_cs *engine,
 #define ENGINE_PHYSICAL	0
 #define ENGINE_MOCK	1
 #define ENGINE_VIRTUAL	2
+
+static inline bool intel_engine_uses_guc(const struct intel_engine_cs *engine)
+{
+	return engine->gt->submission_method >= INTEL_SUBMISSION_GUC;
+}
 
 static inline bool
 intel_engine_has_preempt_reset(const struct intel_engine_cs *engine)
@@ -278,6 +259,18 @@ intel_engine_has_heartbeat(const struct intel_engine_cs *engine)
 		return false;
 
 	return READ_ONCE(engine->props.heartbeat_interval_ms);
+}
+
+static inline void
+intel_engine_kick_scheduler(struct intel_engine_cs *engine)
+{
+	i915_sched_kick(intel_engine_get_scheduler(engine));
+}
+
+static inline void
+intel_engine_flush_scheduler(struct intel_engine_cs *engine)
+{
+	i915_sched_flush(intel_engine_get_scheduler(engine));
 }
 
 #endif /* _INTEL_RINGBUFFER_H_ */

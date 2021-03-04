@@ -25,7 +25,5 @@ unsigned long i915_gem_shrink(struct drm_i915_private *i915,
 unsigned long i915_gem_shrink_all(struct drm_i915_private *i915);
 void i915_gem_driver_register__shrinker(struct drm_i915_private *i915);
 void i915_gem_driver_unregister__shrinker(struct drm_i915_private *i915);
-void i915_gem_shrinker_taints_mutex(struct drm_i915_private *i915,
-				    struct mutex *mutex);
 
 #endif /* __I915_GEM_SHRINKER_H__ */

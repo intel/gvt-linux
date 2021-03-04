@@ -183,6 +183,12 @@ struct drm_i915_gem_object {
 	unsigned int cache_coherent:2;
 #define I915_BO_CACHE_COHERENT_FOR_READ BIT(0)
 #define I915_BO_CACHE_COHERENT_FOR_WRITE BIT(1)
+	/*
+	 * Note cache_dirty is only a guide; we know when we have written
+	 * through the CPU cache, but we do not know when the CPU may have
+	 * speculatively populated the cache. Before a read via the cache
+	 * of GPU written memory, we have to cautiously invalidate the cache.
+	 */
 	unsigned int cache_dirty:1;
 
 	/**

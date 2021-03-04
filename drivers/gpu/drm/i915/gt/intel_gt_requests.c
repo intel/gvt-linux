@@ -1,6 +1,5 @@
+// SPDX-License-Identifier: MIT
 /*
- * SPDX-License-Identifier: MIT
- *
  * Copyright © 2019 Intel Corporation
  */
 
@@ -44,7 +43,7 @@ static bool flush_submission(struct intel_gt *gt, long timeout)
 		return false;
 
 	for_each_engine(engine, gt, id) {
-		intel_engine_flush_submission(engine);
+		intel_engine_flush_scheduler(engine);
 
 		/* Flush the background retirement and idle barriers */
 		flush_work(&engine->retire_work);

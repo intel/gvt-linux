@@ -45,14 +45,10 @@ static int mock_phys_object(void *arg)
 
 	/* Make the object dirty so that put_pages must do copy back the data */
 	i915_gem_object_lock(obj, NULL);
-	err = i915_gem_object_set_to_gtt_domain(obj, true);
+	i915_gem_object_set_to_gtt_domain(obj, true);
 	i915_gem_object_unlock(obj);
-	if (err) {
-		pr_err("i915_gem_object_set_to_gtt_domain failed with err=%d\n",
-		       err);
-		goto out_obj;
-	}
 
+	err = 0;
 out_obj:
 	i915_gem_object_put(obj);
 out:

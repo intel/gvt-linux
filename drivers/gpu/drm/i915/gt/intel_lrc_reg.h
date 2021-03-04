@@ -1,6 +1,5 @@
+/* SPDX-License-Identifier: MIT */
 /*
- * SPDX-License-Identifier: MIT
- *
  * Copyright © 2014-2018 Intel Corporation
  */
 
@@ -40,7 +39,7 @@
 
 #define ASSIGN_CTX_PML4(ppgtt, reg_state) do { \
 	u32 *reg_state__ = (reg_state); \
-	const u64 addr__ = px_dma(ppgtt->pd); \
+	const u64 addr__ = px_dma((ppgtt)->pd); \
 	(reg_state__)[CTX_PDP0_UDW] = upper_32_bits(addr__); \
 	(reg_state__)[CTX_PDP0_LDW] = lower_32_bits(addr__); \
 } while (0)
@@ -92,5 +91,8 @@
 #define GEN11_MAX_CONTEXT_HW_ID	(1 << 11) /* exclusive */
 /* in Gen12 ID 0x7FF is reserved to indicate idle */
 #define GEN12_MAX_CONTEXT_HW_ID	(GEN11_MAX_CONTEXT_HW_ID - 1)
+
+#define CTX_DESC_RELOAD_PD BIT_ULL(1)
+#define CTX_DESC_FORCE_RESTORE BIT_ULL(2)
 
 #endif /* _INTEL_LRC_REG_H_ */

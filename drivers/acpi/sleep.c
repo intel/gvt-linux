@@ -80,10 +80,15 @@ static int acpi_sleep_prepare(u32 acpi_state)
 	return 0;
 }
 
+static u8 max_sleep_state = -1;
+
 bool acpi_sleep_state_supported(u8 sleep_state)
 {
 	acpi_status status;
 	u8 type_a, type_b;
+
+	if (sleep_state > max_sleep_state)
+		return false;
 
 	status = acpi_get_sleep_type_data(sleep_state, &type_a, &type_b);
 	return ACPI_SUCCESS(status) && (!acpi_gbl_reduced_hardware
@@ -158,6 +163,13 @@ static int __init init_old_suspend_ordering(const struct dmi_system_id *d)
 static int __init init_nvs_nosave(const struct dmi_system_id *d)
 {
 	acpi_nvs_nosave();
+	return 0;
+}
+
+static int __init init_nosleep(const struct dmi_system_id *d)
+{
+	pr_info("Disabling ACPI suspend\n");
+	max_sleep_state = 0;
 	return 0;
 }
 
@@ -371,6 +383,15 @@ static const struct dmi_system_id acpisleep_dmi_table[] __initconst = {
 	.matches = {
 		DMI_MATCH(DMI_SYS_VENDOR, "LENOVO"),
 		DMI_MATCH(DMI_PRODUCT_NAME, "20GGA00L00"),
+		},
+	},
+
+	{
+	.callback = init_nosleep,
+	.ident = "samus",
+	.matches = {
+		DMI_MATCH(DMI_SYS_VENDOR, "GOOGLE"),
+		DMI_MATCH(DMI_PRODUCT_NAME, "Samus"),
 		},
 	},
 	{},

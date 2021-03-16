@@ -1,34 +1,18 @@
-drm drm-fixes 1e28eed17697bcf343c6743f0028cc3b5dd88bf0
-	Linux 5.12-rc3
-drm-misc drm-misc-fixes 6c5403173a13a08ff61dbdafa4c0ed4a9dedbfe0
-	drm/ttm: make ttm_bo_unpin more defensive
-drm-intel drm-intel-fixes c3d2c6770b4bc34f4de9f4097e5f0ded75d6b98d
-	drm/i915: Wedge the GPU if command parser setup fails
-drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
-	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
-drm drm-next 51c3b916a4d7e24b4918925965867fdd9bd8dd59
-	Merge tag 'drm-misc-next-2021-03-03' of git://anongit.freedesktop.org/drm/drm-misc into drm-next
-drm-misc drm-misc-next-fixes 5fd3de7a51855e086d9ce9d2d752489e9c15b850
-	drm/compat: Clear bounce structures
-drm-intel drm-intel-next-fixes d153e8c156dafeb847fd655f416cf81c007e8706
-	Merge tag 'drm-intel-next-fixes-2021-02-25' of git://anongit.freedesktop.org/drm/drm-intel into drm-next
-drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
-	Linux 4.14-rc1
-drm-misc drm-misc-next ccf953d8f3d68e85e577e843fdcde8872b0a9769
-	fb_defio: Remove custom address_space_operations
-drm-intel drm-intel-next 41ed4005aa0a9d1d9d1ab8e056b0c5f6a4b12407
-	drm/i915/dp_link_training: Convert DRM_DEBUG_KMS to drm_dbg_kms
-drm-intel drm-intel-gt-next 5a1a659762d35a6dc51047c9127c011303c77b7f
-	drm/i915: Wedge the GPU if command parser setup fails
-drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
-	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
-sound-upstream for-linus b95bc12e0412d14d5fc764f0b82631c7bcaf1959
-	ALSA: hda/realtek: apply pin quirk for XiaomiNotebook Pro
-sound-upstream for-next 9c896eeca4578507faa067d62daa2d66b1541bc8
-	ALSA: ppc: keywest: remove outdated comment
-drm-intel topic/core-for-CI 785b066b32b630e4735ca6e51acbb067703e2d3a
-	rtc: cmos: Disable irq around direct invocation of cmos_interrupt()
-drm topic/iomem-mmap-vs-gup fe07bfda2fb9cdef8a4d4008a409bb02f35f1bd8
-	Linux 5.12-rc1
-drm topic/nouveau-ampere-modeset 584265dfec70e78ce2085b82ed389f27e06fbca0
-	Merge branch '04.01-ampere-lite' of git://github.com/skeggsb/linux into topic/nouveau-ampere-modeset
+drm-tip/drm-tip b6445758fbac33d1fc22c6f9bc4d55309bb77830
+	drm-tip: 2021y-03m-16d-07h-09m-06s UTC integration manifest
+vfio-upstream/next 4d83de6da265cd84e74c19d876055fa5f261cde4
+	vfio/type1: Batch page pinning
+vfio-upstream/for-linus e4eccb853664de7bcf9518fb658f35e748bf1f68
+	vfio/pci: Bypass IGD init in case of -ENODEV
+intel-iommu/iommu/next a593472591a5cf2d91244bc3f319c9dd91119343
+	Merge branches 'iommu/fixes', 'arm/omap', 'arm/exynos', 'x86/amd', 'x86/vt-d' and 'core' into next
+intel-iommu/iommu/fixes 444d66a23c1f1e4c4d12aed4812681d0ad835d60
+	iommu/vt-d: Fix status code for Allocate/Free PASID command
+origin/gvt-fixes f40ddce88593482919761f74910f42f4b84c004b
+	Linux 5.11
+origin/gvt-next 9317f356df83a5caeccae2e343d1a569929bcfc9
+	drm/i915/gvt: Fixed couple of spellings in the file gtt.c
+origin/gvt-gt-next e156285b120feaac6207e6bd3fa31d9ae8ffd80d
+	drm/i915/gvt: Purge dev_priv->gt
+origin/gvt-next-fixes 67f1120381df022a7016f4acc8d4880da9a66c03
+	drm/i915/gvt: Introduce per object locking in GVT scheduler.

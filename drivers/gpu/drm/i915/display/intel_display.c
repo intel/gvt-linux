@@ -11382,9 +11382,6 @@ int
 intel_prepare_plane_fb(struct drm_plane *_plane,
 		       struct drm_plane_state *_new_plane_state)
 {
-	struct i915_sched_attr attr = {
-		.priority = I915_USER_PRIORITY(I915_PRIORITY_DISPLAY),
-	};
 	struct intel_plane *plane = to_intel_plane(_plane);
 	struct intel_plane_state *new_plane_state =
 		to_intel_plane_state(_new_plane_state);
@@ -11425,7 +11422,7 @@ intel_prepare_plane_fb(struct drm_plane *_plane,
 
 	if (new_plane_state->uapi.fence) { /* explicit fencing */
 		i915_gem_fence_wait_priority(new_plane_state->uapi.fence,
-					     &attr);
+					     I915_PRIORITY_DISPLAY);
 		ret = i915_sw_fence_await_dma_fence(&state->commit_ready,
 						    new_plane_state->uapi.fence,
 						    i915_fence_timeout(dev_priv),
@@ -11447,7 +11444,7 @@ intel_prepare_plane_fb(struct drm_plane *_plane,
 	if (ret)
 		return ret;
 
-	i915_gem_object_wait_priority(obj, 0, &attr);
+	i915_gem_object_wait_priority(obj, 0, I915_PRIORITY_DISPLAY);
 	i915_gem_object_flush_frontbuffer(obj, ORIGIN_DIRTYFB);
 
 	if (!new_plane_state->uapi.fence) { /* implicit fencing */

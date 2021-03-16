@@ -242,9 +242,8 @@ static int igt_request_rewind(void *arg)
 	i915_request_get(vip);
 	i915_request_add(vip);
 	rcu_read_lock();
-	request->engine->submit_request(request);
+	i915_request_get_scheduler(request)->submit_request(request);
 	rcu_read_unlock();
-
 
 	if (i915_request_wait(vip, 0, HZ) == -ETIME) {
 		pr_err("timed out waiting for high priority request\n");
@@ -1517,7 +1516,7 @@ static int switch_to_kernel_sync(struct intel_context *ce, int err)
 	i915_request_put(rq);
 
 	while (!err && !intel_engine_is_idle(ce->engine))
-		intel_engine_flush_submission(ce->engine);
+		intel_engine_flush_scheduler(ce->engine);
 
 	return err;
 }
@@ -1902,7 +1901,7 @@ static int measure_inter_request(struct intel_context *ce)
 		return -ENOMEM;
 	}
 
-	intel_engine_flush_submission(ce->engine);
+	intel_engine_flush_scheduler(ce->engine);
 	for (i = 1; i <= ARRAY_SIZE(elapsed); i++) {
 		struct i915_request *rq;
 		u32 *cs;
@@ -1934,7 +1933,7 @@ static int measure_inter_request(struct intel_context *ce)
 		i915_request_add(rq);
 	}
 	i915_sw_fence_commit(submit);
-	intel_engine_flush_submission(ce->engine);
+	intel_engine_flush_scheduler(ce->engine);
 	heap_fence_put(submit);
 
 	semaphore_set(sema, 1);
@@ -2030,7 +2029,7 @@ static int measure_context_switch(struct intel_context *ce)
 		}
 	}
 	i915_request_put(fence);
-	intel_engine_flush_submission(ce->engine);
+	intel_engine_flush_scheduler(ce->engine);
 
 	semaphore_set(sema, 1);
 	err = intel_gt_wait_for_idle(ce->engine->gt, HZ / 2);
@@ -2221,7 +2220,7 @@ static int measure_completion(struct intel_context *ce)
 		dma_fence_add_callback(&rq->fence, &cb.base, signal_cb);
 		i915_request_add(rq);
 
-		intel_engine_flush_submission(ce->engine);
+		intel_engine_flush_scheduler(ce->engine);
 		if (wait_for(READ_ONCE(sema[i]) == -1, 50)) {
 			err = -EIO;
 			goto err;

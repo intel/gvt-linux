@@ -35,7 +35,7 @@
 #include "gt/intel_timeline_types.h"
 
 #include "i915_gem.h"
-#include "i915_scheduler.h"
+#include "i915_scheduler_types.h"
 #include "i915_selftest.h"
 #include "i915_sw_fence.h"
 
@@ -51,11 +51,13 @@ struct i915_capture_list {
 	struct i915_vma *vma;
 };
 
+#define RQ_FMT "%llx:%lld"
+#define RQ_ARG(rq) (rq) ? (rq)->fence.context : 0, (rq) ? (rq)->fence.seqno : 0
+
 #define RQ_TRACE(rq, fmt, ...) do {					\
 	const struct i915_request *rq__ = (rq);				\
-	ENGINE_TRACE(rq__->engine, "fence %llx:%lld, current %d " fmt,	\
-		     rq__->fence.context, rq__->fence.seqno,		\
-		     hwsp_seqno(rq__), ##__VA_ARGS__);			\
+	ENGINE_TRACE(rq__->engine, "fence " RQ_FMT ", current %d " fmt,	\
+		     RQ_ARG(rq__), hwsp_seqno(rq__), ##__VA_ARGS__);	\
 } while (0)
 
 enum {
@@ -311,7 +313,7 @@ i915_request_create(struct intel_context *ce);
 
 void __i915_request_skip(struct i915_request *rq);
 void i915_request_set_error_once(struct i915_request *rq, int error);
-void i915_request_mark_eio(struct i915_request *rq);
+struct i915_request *i915_request_mark_eio(struct i915_request *rq);
 
 struct i915_request *__i915_request_commit(struct i915_request *request);
 void __i915_request_queue(struct i915_request *rq,
@@ -589,6 +591,12 @@ static inline void i915_request_clear_hold(struct i915_request *rq)
 	clear_bit(I915_FENCE_FLAG_HOLD, &rq->fence.flags);
 }
 
+static inline struct i915_sched *
+i915_request_get_scheduler(const struct i915_request *rq)
+{
+	return intel_engine_get_scheduler(rq->engine);
+}
+
 static inline struct intel_timeline *
 i915_request_timeline(const struct i915_request *rq)
 {
@@ -613,7 +621,33 @@ i915_request_active_timeline(const struct i915_request *rq)
 	 * this submission.
 	 */
 	return rcu_dereference_protected(rq->timeline,
-					 lockdep_is_held(&rq->engine->active.lock));
+					 lockdep_is_held(&i915_request_get_scheduler(rq)->lock));
+}
+
+static inline bool i915_request_use_scheduler(const struct i915_request *rq)
+{
+	return intel_engine_has_scheduler(rq->engine);
+}
+
+static inline bool i915_request_is_executing(const struct i915_request *rq)
+{
+	/* Is the request presently on the HW execution queue? */
+	if (i915_request_is_active(rq))
+		return true;
+
+	/*
+	 * However, if it is not presently on the HW execution queue, it
+	 * may have been recently removed from the queue, but is in fact
+	 * still executing until the HW has completed a preemption. We
+	 * need to double check with the backend for it to query the HW
+	 * to see if the request is still executing.
+	 */
+	return intel_context_inflight(rq->context);
+}
+
+static inline bool i915_request_use_semaphores(const struct i915_request *rq)
+{
+	return intel_engine_has_semaphores(rq->engine);
 }
 
 #endif /* I915_REQUEST_H */

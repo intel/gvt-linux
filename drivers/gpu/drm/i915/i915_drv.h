@@ -582,7 +582,7 @@ i915_fence_timeout(const struct drm_i915_private *i915)
 
 struct ddi_vbt_port_info {
 	/* Non-NULL if port present. */
-	const struct child_device_config *child;
+	struct intel_bios_encoder_data *devdata;
 
 	int max_tmds_clock;
 
@@ -590,18 +590,9 @@ struct ddi_vbt_port_info {
 	u8 hdmi_level_shift;
 	u8 hdmi_level_shift_set:1;
 
-	u8 supports_dvi:1;
-	u8 supports_hdmi:1;
-	u8 supports_dp:1;
-	u8 supports_edp:1;
-	u8 supports_typec_usb:1;
-	u8 supports_tbt:1;
-
 	u8 alternate_aux_channel;
 	u8 alternate_ddc_pin;
 
-	u8 dp_boost_level;
-	u8 hdmi_boost_level;
 	int dp_max_link_rate;		/* 0 for not limited by VBT */
 };
 
@@ -613,6 +604,9 @@ enum psr_lines_to_wait {
 };
 
 struct intel_vbt_data {
+	/* bdb version */
+	u16 version;
+
 	struct drm_display_mode *lfp_lvds_vbt_mode; /* if any */
 	struct drm_display_mode *sdvo_lvds_vbt_mode; /* if any */
 
@@ -1243,6 +1237,11 @@ static inline struct drm_i915_private *pdev_to_i915(struct pci_dev *pdev)
 #define INTEL_GEN(dev_priv)	(INTEL_INFO(dev_priv)->gen)
 #define INTEL_DEVID(dev_priv)	(RUNTIME_INFO(dev_priv)->device_id)
 
+#define DISPLAY_VER(i915)	(INTEL_INFO(i915)->display.version)
+#define IS_DISPLAY_RANGE(i915, from, until) \
+	(DISPLAY_VER(i915) >= (from) && DISPLAY_VER(i915) <= (until))
+#define IS_DISPLAY_VER(i915, v) (DISPLAY_VER(i915) == (v))
+
 #define REVID_FOREVER		0xff
 #define INTEL_REVID(dev_priv)	(to_pci_dev((dev_priv)->drm.dev)->revision)
 
@@ -1352,6 +1351,7 @@ IS_SUBPLATFORM(const struct drm_i915_private *i915,
 #define IS_IRONLAKE(dev_priv)	IS_PLATFORM(dev_priv, INTEL_IRONLAKE)
 #define IS_IRONLAKE_M(dev_priv) \
 	(IS_PLATFORM(dev_priv, INTEL_IRONLAKE) && IS_MOBILE(dev_priv))
+#define IS_SANDYBRIDGE(dev_priv) IS_PLATFORM(dev_priv, INTEL_SANDYBRIDGE)
 #define IS_IVYBRIDGE(dev_priv)	IS_PLATFORM(dev_priv, INTEL_IVYBRIDGE)
 #define IS_IVB_GT1(dev_priv)	(IS_IVYBRIDGE(dev_priv) && \
 				 INTEL_INFO(dev_priv)->gt == 1)
@@ -1582,12 +1582,6 @@ tgl_stepping_get(struct drm_i915_private *dev_priv)
 
 #define IS_DG1_REVID(p, since, until) \
 	(IS_DG1(p) && IS_REVID(p, since, until))
-
-#define ADLS_REVID_A0		0x0
-#define ADLS_REVID_A2		0x1
-#define ADLS_REVID_B0		0x4
-#define ADLS_REVID_G0		0x8
-#define ADLS_REVID_C0		0xC /*Same as H0 ADLS SOC stepping*/
 
 #define IS_ADLS_DISP_STEPPING(p, since, until) \
 	(IS_ALDERLAKE_S(p) && \

@@ -11,6 +11,7 @@
 
 #include <linux/types.h>
 #include <linux/kernel.h>
+#include <linux/list.h>
 #include <linux/rbtree.h>
 #include <linux/atomic.h>
 #include <linux/dma-mapping.h>
@@ -18,6 +19,7 @@
 /* iova structure */
 struct iova {
 	struct rb_node	node;
+	struct list_head hole;
 	unsigned long	pfn_hi; /* Highest allocated pfn */
 	unsigned long	pfn_lo; /* Lowest allocated pfn */
 };
@@ -68,12 +70,8 @@ struct iova_fq {
 struct iova_domain {
 	spinlock_t	iova_rbtree_lock; /* Lock to protect update of rbtree */
 	struct rb_root	rbroot;		/* iova domain rbtree root */
-	struct rb_node	*cached_node;	/* Save last alloced node */
-	struct rb_node	*cached32_node; /* Save last 32-bit alloced node */
 	unsigned long	granule;	/* pfn granularity for this domain */
-	unsigned long	start_pfn;	/* Lower limit for this domain */
 	unsigned long	dma_32bit_pfn;
-	unsigned long	max32_alloc_size; /* Size of last failed allocation */
 	struct iova_fq __percpu *fq;	/* Flush Queue */
 
 	atomic64_t	fq_flush_start_cnt;	/* Number of TLB flushes that
@@ -82,7 +80,8 @@ struct iova_domain {
 	atomic64_t	fq_flush_finish_cnt;	/* Number of TLB flushes that
 						   have been finished */
 
-	struct iova	anchor;		/* rbtree lookup anchor */
+	struct list_head holes;
+	struct iova	head, tail;		/* rbtree lookup anchors */
 	struct iova_rcache rcaches[IOVA_RANGE_CACHE_MAX_SIZE];	/* IOVA range caches */
 
 	iova_flush_cb	flush_cb;	/* Call-Back function to flush IOMMU
@@ -238,5 +237,10 @@ static inline void free_cpu_cached_iovas(unsigned int cpu,
 {
 }
 #endif
+
+static inline unsigned long iovad_start_pfn(struct iova_domain *iovad)
+{
+	return iovad->head.pfn_hi;
+}
 
 #endif

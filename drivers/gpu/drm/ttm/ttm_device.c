@@ -67,7 +67,6 @@ static int ttm_global_init(void)
 	unsigned long num_pages;
 	struct sysinfo si;
 	int ret = 0;
-	unsigned i;
 
 	mutex_lock(&ttm_global_mutex);
 	if (++ttm_glob_use_count > 1)
@@ -82,7 +81,6 @@ static int ttm_global_init(void)
 	ttm_pool_mgr_init(num_pages * 50 / 100);
 	ttm_tt_mgr_init();
 
-	spin_lock_init(&glob->lru_lock);
 	glob->dummy_read_page = alloc_page(__GFP_ZERO | GFP_DMA32);
 
 	if (unlikely(glob->dummy_read_page == NULL)) {
@@ -90,8 +88,6 @@ static int ttm_global_init(void)
 		goto out;
 	}
 
-	for (i = 0; i < TTM_MAX_BO_PRIORITY; ++i)
-		INIT_LIST_HEAD(&glob->swap_lru[i]);
 	INIT_LIST_HEAD(&glob->device_list);
 	atomic_set(&glob->bo_count, 0);
 
@@ -101,6 +97,67 @@ out:
 	mutex_unlock(&ttm_global_mutex);
 	return ret;
 }
+
+/**
+ * A buffer object shrink method that tries to swap out the first
+ * buffer object on the global::swap_lru list.
+ */
+int ttm_global_swapout(struct ttm_operation_ctx *ctx, gfp_t gfp_flags)
+{
+	struct ttm_global *glob = &ttm_glob;
+	struct ttm_device *bdev;
+	int ret = -EBUSY;
+
+	mutex_lock(&ttm_global_mutex);
+	list_for_each_entry(bdev, &glob->device_list, device_list) {
+		ret = ttm_device_swapout(bdev, ctx, gfp_flags);
+		if (ret > 0) {
+			list_move_tail(&bdev->device_list, &glob->device_list);
+			break;
+		}
+	}
+	mutex_unlock(&ttm_global_mutex);
+	return ret;
+}
+EXPORT_SYMBOL(ttm_global_swapout);
+
+int ttm_device_swapout(struct ttm_device *bdev, struct ttm_operation_ctx *ctx,
+		       gfp_t gfp_flags)
+{
+	struct ttm_resource_manager *man;
+	struct ttm_buffer_object *bo;
+	unsigned i, j;
+	int ret;
+
+	spin_lock(&bdev->lru_lock);
+	for (i = TTM_PL_SYSTEM; i < TTM_NUM_MEM_TYPES; ++i) {
+		man = ttm_manager_type(bdev, i);
+		if (!man || !man->use_tt)
+			continue;
+
+		for (j = 0; j < TTM_MAX_BO_PRIORITY; ++j) {
+			list_for_each_entry(bo, &man->lru[j], lru) {
+				uint32_t num_pages;
+
+				if (!bo->ttm ||
+				    bo->ttm->page_flags & TTM_PAGE_FLAG_SG ||
+				    bo->ttm->page_flags & TTM_PAGE_FLAG_SWAPPED)
+					continue;
+
+				num_pages = bo->ttm->num_pages;
+				ret = ttm_bo_swapout(bo, ctx, gfp_flags);
+				/* ttm_bo_swapout has dropped the lru_lock */
+				if (!ret)
+					return num_pages;
+				if (ret != -EBUSY)
+					return ret;
+			}
+		}
+	}
+	spin_unlock(&bdev->lru_lock);
+	return 0;
+}
+EXPORT_SYMBOL(ttm_device_swapout);
 
 static void ttm_init_sysman(struct ttm_device *bdev)
 {
@@ -164,6 +221,7 @@ int ttm_device_init(struct ttm_device *bdev, struct ttm_device_funcs *funcs,
 
 	bdev->vma_manager = vma_manager;
 	INIT_DELAYED_WORK(&bdev->wq, ttm_device_delayed_workqueue);
+	spin_lock_init(&bdev->lru_lock);
 	INIT_LIST_HEAD(&bdev->ddestroy);
 	bdev->dev_mapping = mapping;
 	mutex_lock(&ttm_global_mutex);
@@ -176,7 +234,6 @@ EXPORT_SYMBOL(ttm_device_init);
 
 void ttm_device_fini(struct ttm_device *bdev)
 {
-	struct ttm_global *glob = &ttm_glob;
 	struct ttm_resource_manager *man;
 	unsigned i;
 
@@ -193,11 +250,11 @@ void ttm_device_fini(struct ttm_device *bdev)
 	if (ttm_bo_delayed_delete(bdev, true))
 		pr_debug("Delayed destroy list was clean\n");
 
-	spin_lock(&glob->lru_lock);
+	spin_lock(&bdev->lru_lock);
 	for (i = 0; i < TTM_MAX_BO_PRIORITY; ++i)
 		if (list_empty(&man->lru[0]))
 			pr_debug("Swap list %d was clean\n", i);
-	spin_unlock(&glob->lru_lock);
+	spin_unlock(&bdev->lru_lock);
 
 	ttm_pool_fini(&bdev->pool);
 	ttm_global_release();

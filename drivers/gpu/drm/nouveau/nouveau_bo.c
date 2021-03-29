@@ -894,9 +894,8 @@ nouveau_bo_move_init(struct nouveau_drm *drm)
 	NV_INFO(drm, "MM: using %s for buffer copies\n", name);
 }
 
-static void
-nouveau_bo_move_ntfy(struct ttm_buffer_object *bo, bool evict,
-		     struct ttm_resource *new_reg)
+static void nouveau_bo_move_ntfy(struct ttm_buffer_object *bo,
+				 struct ttm_resource *new_reg)
 {
 	struct nouveau_mem *mem = new_reg ? nouveau_mem(new_reg) : NULL;
 	struct nouveau_bo *nvbo = nouveau_bo(bo);
@@ -982,7 +981,7 @@ nouveau_bo_move(struct ttm_buffer_object *bo, bool evict,
 			return ret;
 	}
 
-	nouveau_bo_move_ntfy(bo, evict, new_reg);
+	nouveau_bo_move_ntfy(bo, new_reg);
 	ret = ttm_bo_wait_ctx(bo, ctx);
 	if (ret)
 		goto out_ntfy;
@@ -1047,9 +1046,7 @@ out:
 	}
 out_ntfy:
 	if (ret) {
-		swap(*new_reg, bo->mem);
-		nouveau_bo_move_ntfy(bo, false, new_reg);
-		swap(*new_reg, bo->mem);
+		nouveau_bo_move_ntfy(bo, &bo->mem);
 	}
 	return ret;
 }
@@ -1323,7 +1320,7 @@ nouveau_bo_fence(struct nouveau_bo *nvbo, struct nouveau_fence *fence, bool excl
 static void
 nouveau_bo_delete_mem_notify(struct ttm_buffer_object *bo)
 {
-	nouveau_bo_move_ntfy(bo, false, NULL);
+	nouveau_bo_move_ntfy(bo, NULL);
 }
 
 struct ttm_device_funcs nouveau_bo_driver = {

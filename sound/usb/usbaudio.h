@@ -61,6 +61,8 @@ struct snd_usb_audio {
 	struct media_intf_devnode *ctl_intf_media_devnode;
 };
 
+#define USB_AUDIO_IFACE_UNUSED	((void *)-1L)
+
 #define usb_audio_err(chip, fmt, args...) \
 	dev_err(&(chip)->dev->dev, fmt, ##args)
 #define usb_audio_warn(chip, fmt, args...) \
@@ -75,6 +77,7 @@ struct snd_usb_audio {
  */
 
 /* special values for .ifnum */
+#define QUIRK_NODEV_INTERFACE		-3	/* return -ENODEV */
 #define QUIRK_NO_INTERFACE		-2
 #define QUIRK_ANY_INTERFACE		-1
 

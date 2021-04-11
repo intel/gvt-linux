@@ -655,6 +655,13 @@ tgl_dc3co_exitline_compute_config(struct intel_dp *intel_dp,
 	u32 exit_scanlines;
 
 	/*
+	 * FIXME: Due to the changed sequence of activating/deactivating DC3CO,
+	 * disable DC3CO until the changed dc3co activating/deactivating sequence
+	 * is applied. B.Specs:49196
+	 */
+	return;
+
+	/*
 	 * DMC's DC3CO exit mechanism has an issue with Selective Fecth
 	 * TODO: when the issue is addressed, this restriction should be removed.
 	 */
@@ -729,6 +736,12 @@ static bool intel_psr2_config_valid(struct intel_dp *intel_dp,
 	/* JSL and EHL only supports eDP 1.3 */
 	if (IS_JSL_EHL(dev_priv)) {
 		drm_dbg_kms(&dev_priv->drm, "PSR2 not supported by phy\n");
+		return false;
+	}
+
+	/* Wa_16011181250 */
+	if (IS_ROCKETLAKE(dev_priv) || IS_ALDERLAKE_S(dev_priv)) {
+		drm_dbg_kms(&dev_priv->drm, "PSR2 is defeatured for this platform\n");
 		return false;
 	}
 

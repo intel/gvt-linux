@@ -301,10 +301,10 @@ intel_dp_set_source_rates(struct intel_dp *intel_dp)
 			max_rate = ehl_max_source_rate(intel_dp);
 		else
 			max_rate = icl_max_source_rate(intel_dp);
-	} else if (IS_GEN9_LP(dev_priv)) {
+	} else if (IS_GEMINILAKE(dev_priv) || IS_BROXTON(dev_priv)) {
 		source_rates = bxt_rates;
 		size = ARRAY_SIZE(bxt_rates);
-	} else if (IS_GEN9_BC(dev_priv)) {
+	} else if (IS_DISPLAY_VER(dev_priv, 9)) {
 		source_rates = skl_rates;
 		size = ARRAY_SIZE(skl_rates);
 	} else if ((IS_HASWELL(dev_priv) && !IS_HSW_ULX(dev_priv)) ||
@@ -5430,6 +5430,9 @@ void intel_dp_mst_suspend(struct drm_i915_private *dev_priv)
 {
 	struct intel_encoder *encoder;
 
+	if (!HAS_DISPLAY(dev_priv))
+		return;
+
 	for_each_intel_encoder(&dev_priv->drm, encoder) {
 		struct intel_dp *intel_dp;
 
@@ -5449,6 +5452,9 @@ void intel_dp_mst_suspend(struct drm_i915_private *dev_priv)
 void intel_dp_mst_resume(struct drm_i915_private *dev_priv)
 {
 	struct intel_encoder *encoder;
+
+	if (!HAS_DISPLAY(dev_priv))
+		return;
 
 	for_each_intel_encoder(&dev_priv->drm, encoder) {
 		struct intel_dp *intel_dp;

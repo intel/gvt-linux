@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Mediated device interal definitions
+ * Mediated device internal definitions
  *
  * Copyright (c) 2016, NVIDIA CORPORATION. All rights reserved.
  *     Author: Neo Jia <cjia@nvidia.com>
@@ -35,7 +35,10 @@ struct mdev_device {
 	bool active;
 };
 
-#define to_mdev_device(dev)	container_of(dev, struct mdev_device, dev)
+static inline struct mdev_device *to_mdev_device(struct device *dev)
+{
+	return container_of(dev, struct mdev_device, dev);
+}
 #define dev_is_mdev(d)		((d)->bus == &mdev_bus_type)
 
 struct mdev_type {

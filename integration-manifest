@@ -1,34 +1,18 @@
-drm drm-fixes bd119f471299c8692a00b2f5e9bba8e3b81c3466
-	Merge tag 'drm-intel-fixes-2021-04-09' of git://anongit.freedesktop.org/drm/drm-intel into drm-fixes
-drm-misc drm-misc-fixes eb9dfdd1ed40357b99a4201c8534c58c562e48c9
-	drm/vc4: crtc: Reduce PV fifo threshold on hvs4
-drm-intel drm-intel-fixes b6a37a93c9ac3900987c79b726d0bb3699d8db4e
-	drm/i915: Fix invalid access to ACPI _DSM objects
-drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
-	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
-drm drm-next c103b850721e4a79ff9578f131888129c37a4679
-	Merge tag 'drm-misc-next-2021-04-09' of git://anongit.freedesktop.org/drm/drm-misc into drm-next
-drm-misc drm-misc-next-fixes 9c0fed84d5750e1eea6c664e073ffa2534a17743
-	Merge tag 'drm-intel-next-2021-04-01' of git://anongit.freedesktop.org/drm/drm-intel into drm-next
-drm-intel drm-intel-next-fixes d153e8c156dafeb847fd655f416cf81c007e8706
-	Merge tag 'drm-intel-next-fixes-2021-02-25' of git://anongit.freedesktop.org/drm/drm-intel into drm-next
-drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
-	Linux 4.14-rc1
-drm-misc drm-misc-next f4268a4bf1eecb4b38353f6310e561502e04f4dd
-	drm/qxl: Use drm_gem_ttm_dumb_map_offset()
-drm-intel drm-intel-next 8f2546dd3e3e29d3a13e28746ba75cee2b3c850d
-	drm/i915/display: Defeature PSR2 for RKL and ADL-S
-drm-intel drm-intel-gt-next 399cd9797052f5732f7e1db89d15a05bca712be1
-	drm/i915/pmu: Check actual RC6 status
-drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
-	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
-sound-upstream for-linus c8426b2700b57d2760ff335840a02f66a64b6044
-	ALSA: hda/realtek: Fix speaker amp setup on Acer Aspire E1
-sound-upstream for-next 57b138dde3504b79358cd0d95d989bf5eba8280b
-	ALSA: control - double free in snd_ctl_led_init()
-drm-intel topic/core-for-CI 785b066b32b630e4735ca6e51acbb067703e2d3a
-	rtc: cmos: Disable irq around direct invocation of cmos_interrupt()
-drm topic/iomem-mmap-vs-gup ac8b8400620a4b0d9ca903ee9ad440bec736f5fa
-	mm: unexport follow_pfn
-drm topic/nouveau-ampere-modeset 584265dfec70e78ce2085b82ed389f27e06fbca0
-	Merge branch '04.01-ampere-lite' of git://github.com/skeggsb/linux into topic/nouveau-ampere-modeset
+drm-tip/drm-tip 77ebd079c5386d5864fa723222f4367de0cd408f
+	drm-tip: 2021y-04m-11d-18h-52m-57s UTC integration manifest
+vfio-upstream/next 6a2a235aa6275ffd8db3ef9e0e86cb638b1187d1
+	Merge branches 'v5.13/vfio/embed-vfio_device', 'v5.13/vfio/misc' and 'v5.13/vfio/nvlink' into v5.13/vfio/next
+vfio-upstream/for-linus e0146a108ce4d2c22b9510fd12268e3ee72a0161
+	vfio/nvlink: Add missing SPAPR_TCE_IOMMU depends
+intel-iommu/iommu/next a593472591a5cf2d91244bc3f319c9dd91119343
+	Merge branches 'iommu/fixes', 'arm/omap', 'arm/exynos', 'x86/amd', 'x86/vt-d' and 'core' into next
+intel-iommu/iommu/fixes 3431c3f660a39f6ced954548a59dba6541ce3eb1
+	iommu: Fix a boundary issue to avoid performance drop
+origin/gvt-fixes f40ddce88593482919761f74910f42f4b84c004b
+	Linux 5.11
+origin/gvt-next 9317f356df83a5caeccae2e343d1a569929bcfc9
+	drm/i915/gvt: Fixed couple of spellings in the file gtt.c
+origin/gvt-gt-next e156285b120feaac6207e6bd3fa31d9ae8ffd80d
+	drm/i915/gvt: Purge dev_priv->gt
+origin/gvt-next-fixes 67f1120381df022a7016f4acc8d4880da9a66c03
+	drm/i915/gvt: Introduce per object locking in GVT scheduler.

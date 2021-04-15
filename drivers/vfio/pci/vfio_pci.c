@@ -1639,6 +1639,8 @@ static int vfio_pci_mmap(struct vfio_device *core_vdev, struct vm_area_struct *v
 
 	index = vma->vm_pgoff >> (VFIO_PCI_OFFSET_SHIFT - PAGE_SHIFT);
 
+	if (index >= VFIO_PCI_NUM_REGIONS + vdev->num_regions)
+		return -EINVAL;
 	if (vma->vm_end < vma->vm_start)
 		return -EINVAL;
 	if ((vma->vm_flags & VM_SHARED) == 0)
@@ -1647,7 +1649,7 @@ static int vfio_pci_mmap(struct vfio_device *core_vdev, struct vm_area_struct *v
 		int regnum = index - VFIO_PCI_NUM_REGIONS;
 		struct vfio_pci_region *region = vdev->region + regnum;
 
-		if (region && region->ops && region->ops->mmap &&
+		if (region->ops && region->ops->mmap &&
 		    (region->flags & VFIO_REGION_INFO_FLAG_MMAP))
 			return region->ops->mmap(vdev, region, vma);
 		return -EINVAL;

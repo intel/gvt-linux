@@ -358,9 +358,9 @@ static int iommu_dma_init_domain(struct iommu_domain *domain, dma_addr_t base,
 	}
 
 	/* start_pfn is always nonzero for an already-initialised domain */
-	if (iovad->start_pfn) {
+	if (iovad_start_pfn(iovad)) {
 		if (1UL << order != iovad->granule ||
-		    base_pfn != iovad->start_pfn) {
+		    base_pfn != iovad_start_pfn(iovad)) {
 			pr_warn("Incompatible range for DMA domain\n");
 			return -EFAULT;
 		}
@@ -429,14 +429,6 @@ static dma_addr_t iommu_dma_alloc_iova(struct iommu_domain *domain,
 
 	shift = iova_shift(iovad);
 	iova_len = size >> shift;
-	/*
-	 * Freeing non-power-of-two-sized allocations back into the IOVA caches
-	 * will come back to bite us badly, so we have to waste a bit of space
-	 * rounding up anything cacheable to make sure that can't happen. The
-	 * order of the unadjusted size will still match upon freeing.
-	 */
-	if (iova_len < (1 << (IOVA_RANGE_CACHE_MAX_SIZE - 1)))
-		iova_len = roundup_pow_of_two(iova_len);
 
 	dma_limit = min_not_zero(dma_limit, dev->bus_dma_limit);
 

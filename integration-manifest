@@ -1,36 +1,18 @@
-drm drm-fixes d434405aaab7d0ebc516b68a8fc4100922d7f5ef
-	Linux 5.12-rc7
-drm-misc drm-misc-fixes eb9dfdd1ed40357b99a4201c8534c58c562e48c9
-	drm/vc4: crtc: Reduce PV fifo threshold on hvs4
-drm-intel drm-intel-fixes aee6f25e9c911323aa89a200e1bb160c1613ed3d
-	drm/i915/display/vlv_dsi: Do not skip panel_pwr_cycle_delay when disabling the panel
-drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
-	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
-drm drm-next af8352f1ff54c4fecf84e36315fd1928809a580b
-	Merge tag 'drm-msm-next-2021-04-11' of https://gitlab.freedesktop.org/drm/msm into drm-next
-drm-misc drm-misc-next-fixes 9c0fed84d5750e1eea6c664e073ffa2534a17743
-	Merge tag 'drm-intel-next-2021-04-01' of git://anongit.freedesktop.org/drm/drm-intel into drm-next
-drm-intel drm-intel-next-fixes d153e8c156dafeb847fd655f416cf81c007e8706
-	Merge tag 'drm-intel-next-fixes-2021-02-25' of git://anongit.freedesktop.org/drm/drm-intel into drm-next
-drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
-	Linux 4.14-rc1
-drm-misc drm-misc-next 0d11375476fb528571a46525f1b00dcf01c04828
-	drm/imx: Don't set allow_fb_modifiers explicitly
-drm-intel drm-intel-next 1884b579c0cfbb52a92462184406558ac633cafb
-	drm/i915/display/psr: Fix cppcheck warnings
-drm-intel drm-intel-gt-next 399cd9797052f5732f7e1db89d15a05bca712be1
-	drm/i915/pmu: Check actual RC6 status
-drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
-	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
-sound-upstream for-linus c8426b2700b57d2760ff335840a02f66a64b6044
-	ALSA: hda/realtek: Fix speaker amp setup on Acer Aspire E1
-sound-upstream for-next ebe8dc5afb3912e2d4f5c62cf7c492a13143a77a
-	ALSA: usb-audio: Apply implicit feedback mode for BOSS devices
-drm-intel topic/core-for-CI 785b066b32b630e4735ca6e51acbb067703e2d3a
-	rtc: cmos: Disable irq around direct invocation of cmos_interrupt()
-drm topic/iomem-mmap-vs-gup ac8b8400620a4b0d9ca903ee9ad440bec736f5fa
-	mm: unexport follow_pfn
-drm topic/nouveau-ampere-modeset 584265dfec70e78ce2085b82ed389f27e06fbca0
-	Merge branch '04.01-ampere-lite' of git://github.com/skeggsb/linux into topic/nouveau-ampere-modeset
-drm-intel topic/intel-gen-to-ver 425390c5dce6da76578389629d19517fcd79c959
-	drm/i915: split dgfx features from gen 12
+drm-tip/drm-tip 033848934ee5a6b32e34bb9b86117ab0a5c519d6
+	drm-tip: 2021y-04m-15d-11h-49m-48s UTC integration manifest
+vfio-upstream/next 43dcf6ccf8953a868dfd194ff2fad279eb55883e
+	vfio/iommu_type1: Remove unused pinned_page_dirty_scope in vfio_iommu
+vfio-upstream/for-linus 909290786ea335366e21d7f1ed5812b90f2f0a92
+	vfio/pci: Add missing range check in vfio_pci_mmap
+intel-iommu/iommu/next a593472591a5cf2d91244bc3f319c9dd91119343
+	Merge branches 'iommu/fixes', 'arm/omap', 'arm/exynos', 'x86/amd', 'x86/vt-d' and 'core' into next
+intel-iommu/iommu/fixes 3431c3f660a39f6ced954548a59dba6541ce3eb1
+	iommu: Fix a boundary issue to avoid performance drop
+origin/gvt-fixes b6a37a93c9ac3900987c79b726d0bb3699d8db4e
+	drm/i915: Fix invalid access to ACPI _DSM objects
+origin/gvt-next 81f1f8f1e1489c0bf051d5241ec10da07869b911
+	drm/i915: Fix docbook header for __intel_runtime_pm_get_if_active()
+origin/gvt-gt-next e156285b120feaac6207e6bd3fa31d9ae8ffd80d
+	drm/i915/gvt: Purge dev_priv->gt
+origin/gvt-next-fixes 01f98ffd51adf08bc2e4074afa0b9a4d2932e0c5
+	drm/i915/gvt: Remove duplicated register accessible check

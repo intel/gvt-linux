@@ -655,6 +655,13 @@ tgl_dc3co_exitline_compute_config(struct intel_dp *intel_dp,
 	u32 exit_scanlines;
 
 	/*
+	 * FIXME: Due to the changed sequence of activating/deactivating DC3CO,
+	 * disable DC3CO until the changed dc3co activating/deactivating sequence
+	 * is applied. B.Specs:49196
+	 */
+	return;
+
+	/*
 	 * DMC's DC3CO exit mechanism has an issue with Selective Fecth
 	 * TODO: when the issue is addressed, this restriction should be removed.
 	 */
@@ -729,6 +736,12 @@ static bool intel_psr2_config_valid(struct intel_dp *intel_dp,
 	/* JSL and EHL only supports eDP 1.3 */
 	if (IS_JSL_EHL(dev_priv)) {
 		drm_dbg_kms(&dev_priv->drm, "PSR2 not supported by phy\n");
+		return false;
+	}
+
+	/* Wa_16011181250 */
+	if (IS_ROCKETLAKE(dev_priv) || IS_ALDERLAKE_S(dev_priv)) {
+		drm_dbg_kms(&dev_priv->drm, "PSR2 is defeatured for this platform\n");
 		return false;
 	}
 
@@ -1154,21 +1167,7 @@ static void psr_force_hw_tracking_exit(struct intel_dp *intel_dp)
 {
 	struct drm_i915_private *dev_priv = dp_to_i915(intel_dp);
 
-	if (IS_TIGERLAKE(dev_priv))
-		/*
-		 * Writes to CURSURFLIVE in TGL are causing IOMMU errors and
-		 * visual glitches that are often reproduced when executing
-		 * CPU intensive workloads while a eDP 4K panel is attached.
-		 *
-		 * Manually exiting PSR causes the frontbuffer to be updated
-		 * without glitches and the IOMMU errors are also gone but
-		 * this comes at the cost of less time with PSR active.
-		 *
-		 * So using this workaround until this issue is root caused
-		 * and a better fix is found.
-		 */
-		intel_psr_exit(intel_dp);
-	else if (DISPLAY_VER(dev_priv) >= 9)
+	if (DISPLAY_VER(dev_priv) >= 9)
 		/*
 		 * Display WA #0884: skl+
 		 * This documented WA for bxt can be safely applied
@@ -1519,8 +1518,7 @@ void intel_psr_wait_for_idle(const struct intel_crtc_state *new_crtc_state)
 		u32 psr_status;
 
 		mutex_lock(&intel_dp->psr.lock);
-		if (!intel_dp->psr.enabled ||
-		    (intel_dp->psr.enabled && intel_dp->psr.psr2_enabled)) {
+		if (!intel_dp->psr.enabled || intel_dp->psr.psr2_enabled) {
 			mutex_unlock(&intel_dp->psr.lock);
 			continue;
 		}

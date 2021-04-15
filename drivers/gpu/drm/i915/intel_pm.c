@@ -3654,13 +3654,13 @@ u8 intel_enabled_dbuf_slices_mask(struct drm_i915_private *dev_priv)
  */
 static bool skl_needs_memory_bw_wa(struct drm_i915_private *dev_priv)
 {
-	return IS_GEN9_BC(dev_priv) || IS_BROXTON(dev_priv);
+	return IS_DISPLAY_VER(dev_priv, 9);
 }
 
 static bool
 intel_has_sagv(struct drm_i915_private *dev_priv)
 {
-	return (IS_GEN9_BC(dev_priv) || DISPLAY_VER(dev_priv) >= 11 || IS_CANNONLAKE(dev_priv)) &&
+	return DISPLAY_VER(dev_priv) >= 9 && !IS_LP(dev_priv) &&
 		dev_priv->sagv_status != I915_SAGV_NOT_CONTROLLED;
 }
 
@@ -5258,7 +5258,7 @@ static void skl_compute_plane_wm(const struct intel_crtc_state *crtc_state,
 	lines = div_round_up_fixed16(selected_result,
 				     wp->plane_blocks_per_line);
 
-	if (IS_GEN9_BC(dev_priv) || IS_BROXTON(dev_priv)) {
+	if (IS_DISPLAY_VER(dev_priv, 9)) {
 		/* Display WA #1125: skl,bxt,kbl */
 		if (level == 0 && wp->rc_surface)
 			blocks += fixed16_to_u32_round_up(wp->y_tile_minimum);
@@ -5375,7 +5375,7 @@ static void skl_compute_transition_wm(struct drm_i915_private *dev_priv,
 	 * WaDisableTWM:skl,kbl,cfl,bxt
 	 * Transition WM are not recommended by HW team for GEN9
 	 */
-	if (IS_GEN9_BC(dev_priv) || IS_BROXTON(dev_priv))
+	if (IS_DISPLAY_VER(dev_priv, 9))
 		return;
 
 	if (DISPLAY_VER(dev_priv) >= 11)
@@ -7141,6 +7141,11 @@ static void gen12lp_init_clock_gating(struct drm_i915_private *dev_priv)
 	/* Wa_14011059788:tgl,rkl,adl_s,dg1 */
 	intel_uncore_rmw(&dev_priv->uncore, GEN10_DFR_RATIO_EN_AND_CHICKEN,
 			 0, DFR_DISABLE);
+
+	/* Wa_14013723622:tgl,rkl,dg1,adl-s */
+	if (DISPLAY_VER(dev_priv) == 12)
+		intel_uncore_rmw(&dev_priv->uncore, CLKREQ_POLICY,
+				 CLKREQ_POLICY_MEM_UP_OVRD, 0);
 }
 
 static void dg1_init_clock_gating(struct drm_i915_private *dev_priv)

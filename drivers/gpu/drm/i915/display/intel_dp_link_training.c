@@ -37,7 +37,7 @@ intel_dp_dump_link_status(struct drm_device *drm,
 
 static void intel_dp_reset_lttpr_common_caps(struct intel_dp *intel_dp)
 {
-	memset(&intel_dp->lttpr_common_caps, 0, sizeof(intel_dp->lttpr_common_caps));
+	memset(intel_dp->lttpr_common_caps, 0, sizeof(intel_dp->lttpr_common_caps));
 }
 
 static void intel_dp_reset_lttpr_count(struct intel_dp *intel_dp)
@@ -882,7 +882,8 @@ void intel_dp_start_link_train(struct intel_dp *intel_dp,
 	int lttpr_count = intel_dp_init_lttpr_and_dprx_caps(intel_dp);
 
 	if (lttpr_count < 0)
-		return;
+		/* Still continue with enabling the port and link training. */
+		lttpr_count = 0;
 
 	if (!intel_dp_link_train_all_phys(intel_dp, crtc_state, lttpr_count))
 		intel_dp_schedule_fallback_link_training(intel_dp, crtc_state);

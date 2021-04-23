@@ -215,7 +215,7 @@ bool intel_dp_can_bigjoiner(struct intel_dp *intel_dp)
 	struct drm_i915_private *dev_priv = to_i915(encoder->base.dev);
 
 	return DISPLAY_VER(dev_priv) >= 12 ||
-		(IS_DISPLAY_VER(dev_priv, 11) &&
+		(DISPLAY_VER(dev_priv) == 11 &&
 		 encoder->port != PORT_A);
 }
 
@@ -295,16 +295,16 @@ intel_dp_set_source_rates(struct intel_dp *intel_dp)
 	if (DISPLAY_VER(dev_priv) >= 11 || IS_CANNONLAKE(dev_priv)) {
 		source_rates = cnl_rates;
 		size = ARRAY_SIZE(cnl_rates);
-		if (IS_DISPLAY_VER(dev_priv, 10))
+		if (DISPLAY_VER(dev_priv) == 10)
 			max_rate = cnl_max_source_rate(intel_dp);
 		else if (IS_JSL_EHL(dev_priv))
 			max_rate = ehl_max_source_rate(intel_dp);
 		else
 			max_rate = icl_max_source_rate(intel_dp);
-	} else if (IS_GEN9_LP(dev_priv)) {
+	} else if (IS_GEMINILAKE(dev_priv) || IS_BROXTON(dev_priv)) {
 		source_rates = bxt_rates;
 		size = ARRAY_SIZE(bxt_rates);
-	} else if (IS_GEN9_BC(dev_priv)) {
+	} else if (DISPLAY_VER(dev_priv) == 9) {
 		source_rates = skl_rates;
 		size = ARRAY_SIZE(skl_rates);
 	} else if ((IS_HASWELL(dev_priv) && !IS_HSW_ULX(dev_priv)) ||
@@ -916,7 +916,7 @@ static bool intel_dp_source_supports_fec(struct intel_dp *intel_dp,
 	if (DISPLAY_VER(dev_priv) >= 12)
 		return true;
 
-	if (IS_DISPLAY_VER(dev_priv, 11) && pipe_config->cpu_transcoder != TRANSCODER_A)
+	if (DISPLAY_VER(dev_priv) == 11 && pipe_config->cpu_transcoder != TRANSCODER_A)
 		return true;
 
 	return false;
@@ -1077,44 +1077,6 @@ intel_dp_compute_link_config_wide(struct intel_dp *intel_dp,
 			for (lane_count = limits->min_lane_count;
 			     lane_count <= limits->max_lane_count;
 			     lane_count <<= 1) {
-				link_clock = intel_dp->common_rates[clock];
-				link_avail = intel_dp_max_data_rate(link_clock,
-								    lane_count);
-
-				if (mode_rate <= link_avail) {
-					pipe_config->lane_count = lane_count;
-					pipe_config->pipe_bpp = bpp;
-					pipe_config->port_clock = link_clock;
-
-					return 0;
-				}
-			}
-		}
-	}
-
-	return -EINVAL;
-}
-
-/* Optimize link config in order: max bpp, min lanes, min clock */
-static int
-intel_dp_compute_link_config_fast(struct intel_dp *intel_dp,
-				  struct intel_crtc_state *pipe_config,
-				  const struct link_config_limits *limits)
-{
-	const struct drm_display_mode *adjusted_mode = &pipe_config->hw.adjusted_mode;
-	int bpp, clock, lane_count;
-	int mode_rate, link_clock, link_avail;
-
-	for (bpp = limits->max_bpp; bpp >= limits->min_bpp; bpp -= 2 * 3) {
-		int output_bpp = intel_dp_output_bpp(pipe_config->output_format, bpp);
-
-		mode_rate = intel_dp_link_required(adjusted_mode->crtc_clock,
-						   output_bpp);
-
-		for (lane_count = limits->min_lane_count;
-		     lane_count <= limits->max_lane_count;
-		     lane_count <<= 1) {
-			for (clock = limits->min_clock; clock <= limits->max_clock; clock++) {
 				link_clock = intel_dp->common_rates[clock];
 				link_avail = intel_dp_max_data_rate(link_clock,
 								    lane_count);
@@ -1382,22 +1344,11 @@ intel_dp_compute_link_config(struct intel_encoder *encoder,
 	    intel_dp_can_bigjoiner(intel_dp))
 		pipe_config->bigjoiner = true;
 
-	if (intel_dp_is_edp(intel_dp))
-		/*
-		 * Optimize for fast and narrow. eDP 1.3 section 3.3 and eDP 1.4
-		 * section A.1: "It is recommended that the minimum number of
-		 * lanes be used, using the minimum link rate allowed for that
-		 * lane configuration."
-		 *
-		 * Note that we fall back to the max clock and lane count for eDP
-		 * panels that fail with the fast optimal settings (see
-		 * intel_dp->use_max_params), in which case the fast vs. wide
-		 * choice doesn't matter.
-		 */
-		ret = intel_dp_compute_link_config_fast(intel_dp, pipe_config, &limits);
-	else
-		/* Optimize for slow and wide. */
-		ret = intel_dp_compute_link_config_wide(intel_dp, pipe_config, &limits);
+	/*
+	 * Optimize for slow and wide for everything, because there are some
+	 * eDP 1.3 and 1.4 panels don't work well with fast and narrow.
+	 */
+	ret = intel_dp_compute_link_config_wide(intel_dp, pipe_config, &limits);
 
 	/* enable compression if the mode doesn't fit available BW */
 	drm_dbg_kms(&i915->drm, "Force DSC en = %d\n", intel_dp->force_dsc_en);
@@ -1861,7 +1812,7 @@ void intel_dp_sink_set_decompression_state(struct intel_dp *intel_dp,
 	if (ret < 0)
 		drm_dbg_kms(&i915->drm,
 			    "Failed to %s sink decompression state\n",
-			    enable ? "enable" : "disable");
+			    enabledisable(enable));
 }
 
 static void
@@ -2293,8 +2244,8 @@ void intel_dp_configure_protocol_converter(struct intel_dp *intel_dp,
 
 	if (drm_dp_dpcd_writeb(&intel_dp->aux,
 			       DP_PROTOCOL_CONVERTER_CONTROL_0, tmp) != 1)
-		drm_dbg_kms(&i915->drm, "Failed to set protocol converter HDMI mode to %s\n",
-			    enableddisabled(intel_dp->has_hdmi_sink));
+		drm_dbg_kms(&i915->drm, "Failed to %s protocol converter HDMI mode\n",
+			    enabledisable(intel_dp->has_hdmi_sink));
 
 	tmp = crtc_state->output_format == INTEL_OUTPUT_FORMAT_YCBCR444 &&
 		intel_dp->dfp.ycbcr_444_to_420 ? DP_CONVERSION_TO_YCBCR420_ENABLE : 0;
@@ -2302,8 +2253,8 @@ void intel_dp_configure_protocol_converter(struct intel_dp *intel_dp,
 	if (drm_dp_dpcd_writeb(&intel_dp->aux,
 			       DP_PROTOCOL_CONVERTER_CONTROL_1, tmp) != 1)
 		drm_dbg_kms(&i915->drm,
-			    "Failed to set protocol converter YCbCr 4:2:0 conversion mode to %s\n",
-			    enableddisabled(intel_dp->dfp.ycbcr_444_to_420));
+			    "Failed to %s protocol converter YCbCr 4:2:0 conversion mode\n",
+			    enabledisable(intel_dp->dfp.ycbcr_444_to_420));
 
 	tmp = 0;
 	if (intel_dp->dfp.rgb_to_ycbcr) {
@@ -2340,8 +2291,8 @@ void intel_dp_configure_protocol_converter(struct intel_dp *intel_dp,
 
 	if (drm_dp_pcon_convert_rgb_to_ycbcr(&intel_dp->aux, tmp) < 0)
 		drm_dbg_kms(&i915->drm,
-			   "Failed to set protocol converter RGB->YCbCr conversion mode to %s\n",
-			   enableddisabled(tmp ? true : false));
+			   "Failed to %s protocol converter RGB->YCbCr conversion mode\n",
+			   enabledisable(tmp));
 }
 
 
@@ -5430,6 +5381,9 @@ void intel_dp_mst_suspend(struct drm_i915_private *dev_priv)
 {
 	struct intel_encoder *encoder;
 
+	if (!HAS_DISPLAY(dev_priv))
+		return;
+
 	for_each_intel_encoder(&dev_priv->drm, encoder) {
 		struct intel_dp *intel_dp;
 
@@ -5449,6 +5403,9 @@ void intel_dp_mst_suspend(struct drm_i915_private *dev_priv)
 void intel_dp_mst_resume(struct drm_i915_private *dev_priv)
 {
 	struct intel_encoder *encoder;
+
+	if (!HAS_DISPLAY(dev_priv))
+		return;
 
 	for_each_intel_encoder(&dev_priv->drm, encoder) {
 		struct intel_dp *intel_dp;

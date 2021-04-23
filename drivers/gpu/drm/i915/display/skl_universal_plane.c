@@ -286,22 +286,51 @@ bool icl_is_hdr_plane(struct drm_i915_private *dev_priv, enum plane_id plane_id)
 		icl_hdr_plane_mask() & BIT(plane_id);
 }
 
+static int icl_plane_min_cdclk(const struct intel_crtc_state *crtc_state,
+			       const struct intel_plane_state *plane_state)
+{
+	unsigned int pixel_rate = intel_plane_pixel_rate(crtc_state, plane_state);
+
+	/* two pixels per clock */
+	return DIV_ROUND_UP(pixel_rate, 2);
+}
+
 static void
-skl_plane_ratio(const struct intel_crtc_state *crtc_state,
-		const struct intel_plane_state *plane_state,
+glk_plane_ratio(const struct intel_plane_state *plane_state,
 		unsigned int *num, unsigned int *den)
 {
-	struct drm_i915_private *dev_priv = to_i915(plane_state->uapi.plane->dev);
 	const struct drm_framebuffer *fb = plane_state->hw.fb;
 
 	if (fb->format->cpp[0] == 8) {
-		if (DISPLAY_VER(dev_priv) >= 10) {
-			*num = 10;
-			*den = 8;
-		} else {
-			*num = 9;
-			*den = 8;
-		}
+		*num = 10;
+		*den = 8;
+	} else {
+		*num = 1;
+		*den = 1;
+	}
+}
+
+static int glk_plane_min_cdclk(const struct intel_crtc_state *crtc_state,
+			       const struct intel_plane_state *plane_state)
+{
+	unsigned int pixel_rate = intel_plane_pixel_rate(crtc_state, plane_state);
+	unsigned int num, den;
+
+	glk_plane_ratio(plane_state, &num, &den);
+
+	/* two pixels per clock */
+	return DIV_ROUND_UP(pixel_rate * num, 2 * den);
+}
+
+static void
+skl_plane_ratio(const struct intel_plane_state *plane_state,
+		unsigned int *num, unsigned int *den)
+{
+	const struct drm_framebuffer *fb = plane_state->hw.fb;
+
+	if (fb->format->cpp[0] == 8) {
+		*num = 9;
+		*den = 8;
 	} else {
 		*num = 1;
 		*den = 1;
@@ -311,15 +340,10 @@ skl_plane_ratio(const struct intel_crtc_state *crtc_state,
 static int skl_plane_min_cdclk(const struct intel_crtc_state *crtc_state,
 			       const struct intel_plane_state *plane_state)
 {
-	struct drm_i915_private *dev_priv = to_i915(plane_state->uapi.plane->dev);
-	unsigned int num, den;
 	unsigned int pixel_rate = intel_plane_pixel_rate(crtc_state, plane_state);
+	unsigned int num, den;
 
-	skl_plane_ratio(crtc_state, plane_state, &num, &den);
-
-	/* two pixels per clock on glk+ */
-	if (DISPLAY_VER(dev_priv) >= 10)
-		den *= 2;
+	skl_plane_ratio(plane_state, &num, &den);
 
 	return DIV_ROUND_UP(pixel_rate * num, den);
 }
@@ -829,7 +853,7 @@ static u32 skl_plane_ctl(const struct intel_crtc_state *crtc_state,
 
 	plane_ctl = PLANE_CTL_ENABLE;
 
-	if (DISPLAY_VER(dev_priv) < 10 && !IS_GEMINILAKE(dev_priv)) {
+	if (DISPLAY_VER(dev_priv) < 10) {
 		plane_ctl |= skl_plane_ctl_alpha(plane_state);
 		plane_ctl |= PLANE_CTL_PLANE_GAMMA_DISABLE;
 
@@ -1184,7 +1208,7 @@ static int skl_plane_check_dst_coordinates(const struct intel_crtc_state *crtc_s
 	 * than the cursor ending less than 4 pixels from the left edge of the
 	 * screen may cause FIFO underflow and display corruption.
 	 */
-	if (IS_DISPLAY_VER(dev_priv, 10) &&
+	if (DISPLAY_VER(dev_priv) == 10 &&
 	    (crtc_x + crtc_w < 4 || crtc_x > pipe_src_w - 4)) {
 		drm_dbg_kms(&dev_priv->drm,
 			    "requested plane X %s position %d invalid (valid range %d-%d)\n",
@@ -1671,7 +1695,7 @@ static bool skl_plane_has_planar(struct drm_i915_private *dev_priv,
 	if (IS_SKYLAKE(dev_priv) || IS_BROXTON(dev_priv))
 		return false;
 
-	if (IS_DISPLAY_VER(dev_priv, 9) && pipe == PIPE_C)
+	if (DISPLAY_VER(dev_priv) == 9 && pipe == PIPE_C)
 		return false;
 
 	if (plane_id != PLANE_PRIMARY && plane_id != PLANE_SPRITE0)
@@ -1965,12 +1989,15 @@ skl_universal_plane_create(struct drm_i915_private *dev_priv,
 		plane->min_width = icl_plane_min_width;
 		plane->max_width = icl_plane_max_width;
 		plane->max_height = icl_plane_max_height;
+		plane->min_cdclk = icl_plane_min_cdclk;
 	} else if (DISPLAY_VER(dev_priv) >= 10) {
 		plane->max_width = glk_plane_max_width;
 		plane->max_height = skl_plane_max_height;
+		plane->min_cdclk = glk_plane_min_cdclk;
 	} else {
 		plane->max_width = skl_plane_max_width;
 		plane->max_height = skl_plane_max_height;
+		plane->min_cdclk = skl_plane_min_cdclk;
 	}
 
 	plane->max_stride = skl_plane_max_stride;
@@ -1978,11 +2005,10 @@ skl_universal_plane_create(struct drm_i915_private *dev_priv,
 	plane->disable_plane = skl_disable_plane;
 	plane->get_hw_state = skl_plane_get_hw_state;
 	plane->check_plane = skl_plane_check;
-	plane->min_cdclk = skl_plane_min_cdclk;
 
 	if (plane_id == PLANE_PRIMARY) {
-		plane->need_async_flip_disable_wa = IS_DISPLAY_RANGE(dev_priv,
-								     9, 10);
+		plane->need_async_flip_disable_wa = IS_DISPLAY_VER(dev_priv,
+								   9, 10);
 		plane->async_flip = skl_plane_async_flip;
 		plane->enable_flip_done = skl_plane_enable_flip_done;
 		plane->disable_flip_done = skl_plane_disable_flip_done;

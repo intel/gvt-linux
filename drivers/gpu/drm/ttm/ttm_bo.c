@@ -274,7 +274,7 @@ static void ttm_bo_flush_all_fences(struct ttm_buffer_object *bo)
 }
 
 /**
- * function ttm_bo_cleanup_refs
+ * ttm_bo_cleanup_refs
  * If bo idle, remove from lru lists, and unref.
  * If not idle, block if possible.
  *
@@ -401,6 +401,8 @@ static void ttm_bo_release(struct kref *kref)
 	struct ttm_device *bdev = bo->bdev;
 	int ret;
 
+	WARN_ON_ONCE(bo->pin_count);
+
 	if (!bo->deleted) {
 		ret = ttm_bo_individualize_resv(bo);
 		if (ret) {
@@ -434,7 +436,7 @@ static void ttm_bo_release(struct kref *kref)
 		 * FIXME: QXL is triggering this. Can be removed when the
 		 * driver is fixed.
 		 */
-		if (WARN_ON_ONCE(bo->pin_count)) {
+		if (bo->pin_count) {
 			bo->pin_count = 0;
 			ttm_bo_move_to_lru_tail(bo, &bo->mem, NULL);
 		}
@@ -458,8 +460,6 @@ static void ttm_bo_release(struct kref *kref)
 
 	atomic_dec(&ttm_glob.bo_count);
 	dma_fence_put(bo->moving);
-	if (!ttm_bo_uses_embedded_gem_object(bo))
-		dma_resv_fini(&bo->base._resv);
 	bo->destroy(bo);
 }
 
@@ -903,7 +903,6 @@ static int ttm_bo_move_buffer(struct ttm_buffer_object *bo,
 	memset(&hop, 0, sizeof(hop));
 
 	mem.num_pages = PAGE_ALIGN(bo->base.size) >> PAGE_SHIFT;
-	mem.page_alignment = bo->mem.page_alignment;
 	mem.bus.offset = 0;
 	mem.bus.addr = NULL;
 	mem.mm_node = NULL;
@@ -1038,10 +1037,10 @@ int ttm_bo_init_reserved(struct ttm_device *bdev,
 	INIT_LIST_HEAD(&bo->ddestroy);
 	bo->bdev = bdev;
 	bo->type = type;
+	bo->page_alignment = page_alignment;
 	bo->mem.mem_type = TTM_PL_SYSTEM;
 	bo->mem.num_pages = PAGE_ALIGN(size) >> PAGE_SHIFT;
 	bo->mem.mm_node = NULL;
-	bo->mem.page_alignment = page_alignment;
 	bo->mem.bus.offset = 0;
 	bo->mem.bus.addr = NULL;
 	bo->moving = NULL;
@@ -1053,15 +1052,6 @@ int ttm_bo_init_reserved(struct ttm_device *bdev,
 		dma_resv_assert_held(bo->base.resv);
 	} else {
 		bo->base.resv = &bo->base._resv;
-	}
-	if (!ttm_bo_uses_embedded_gem_object(bo)) {
-		/*
-		 * bo.base is not initialized, so we have to setup the
-		 * struct elements we want use regardless.
-		 */
-		bo->base.size = size;
-		dma_resv_init(&bo->base._resv);
-		drm_vma_node_reset(&bo->base.vma_node);
 	}
 	atomic_inc(&ttm_glob.bo_count);
 

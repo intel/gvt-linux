@@ -1,34 +1,18 @@
-drm drm-fixes d07f6ca923ea0927a1024dfccafc5b53b61cfecc
-	Linux 5.13-rc2
-drm-misc drm-misc-fixes c55b44c9386f3ee1b08752638559f19deaf6040d
-	Merge drm/drm-fixes into drm-misc-fixes
-drm-intel drm-intel-fixes e4527420ed087f99c6aa2ac22c6d3458c7dc1a94
-	drm/i915: Use correct downstream caps for check Src-Ctl mode for PCON
-drm-amd drm-amd-fixes 2b702e72e33bbdec0764cfb6e1dd00fe1142ae55
-	Merge tag 'drm-misc-fixes-2017-09-28-1' of git://anongit.freedesktop.org/git/drm-misc into drm-fixes
-drm drm-next 6efb943b8616ec53a5e444193dccf1af9ad627b5
-	Linux 5.13-rc1
-drm-misc drm-misc-next-fixes b9d79e4ca4ff23543d6b33c736ba07c1f0a9dcb1
-	fbmem: Mark proc_fb_seq_ops as __maybe_unused
-drm-intel drm-intel-next-fixes c7b397e9ca4d6828e3e3f504c80bcb1fe535c348
-	Merge tag 'gvt-next-fixes-2021-04-29' of https://github.com/intel/gvt-linux into drm-intel-next-fixes
-drm-amd drm-amd-next-fixes 2bd6bf03f4c1c59381d62c61d03f6cc3fe71f66e
-	Linux 4.14-rc1
-drm-misc drm-misc-next 76fb351126f1be4f4c339920b84268740d84d2e1
-	drm: correct function name drm_legacy_ctxbitmap_flush()
-drm-intel drm-intel-next 1a7910368cba1e76b992b116fc8ba28503e6dcc1
-	drm/i915/adl_p: Disable CCS on a-step (Wa_22011186057)
-drm-intel drm-intel-gt-next 727ecd99a4c91cd08cea7301d0e97d81d2d11d20
-	drm/doc/rfc: drop the i915_gem_lmem.h header
-drm-amd drm-amd-next 754270c7c56292e97d0eff924a5d5d83f92add07
-	Merge branch 'drm-next-4.15' of git://people.freedesktop.org/~agd5f/linux into drm-next
-sound-upstream for-linus 1d5cfca286178ce81fb0c8a5f5777ef123cd69e4
-	ALSA: hda/realtek: Add some CLOVE SSIDs of ALC293
-sound-upstream for-next bac59054544ebdb89f05c5b9598ca9cb2dea72ce
-	ALSA: gus: Replace unsafe strcpy() with strscpy()
-drm-intel topic/core-for-CI 7276ba63e9166f8eb171a2a5750428a77f4c3083
-	rtc: cmos: Disable irq around direct invocation of cmos_interrupt()
-drm topic/iomem-mmap-vs-gup ac8b8400620a4b0d9ca903ee9ad440bec736f5fa
-	mm: unexport follow_pfn
-drm topic/nouveau-ampere-modeset 584265dfec70e78ce2085b82ed389f27e06fbca0
-	Merge branch '04.01-ampere-lite' of git://github.com/skeggsb/linux into topic/nouveau-ampere-modeset
+drm-tip/drm-tip 4b640acab6ff50504446a72c8ad0be50347fe501
+	drm-tip: 2021y-05m-17d-02h-21m-56s UTC integration manifest
+vfio-upstream/next adaeb718d46f6b42a3fc1dffd4f946f26b33779a
+	vfio/gvt: fix DRM_I915_GVT dependency on VFIO_MDEV
+vfio-upstream/for-linus cc35518d29bc8e38902866b74874b4a3f1ad3617
+	docs: vfio: fix typo
+intel-iommu/iommu/next a593472591a5cf2d91244bc3f319c9dd91119343
+	Merge branches 'iommu/fixes', 'arm/omap', 'arm/exynos', 'x86/amd', 'x86/vt-d' and 'core' into next
+intel-iommu/iommu/fixes 3431c3f660a39f6ced954548a59dba6541ce3eb1
+	iommu: Fix a boundary issue to avoid performance drop
+origin/gvt-fixes 145e06b58f8625becc61792a0554726314297a85
+	drm/i915/gvt: Move mdev attribute groups into kvmgt module
+origin/gvt-next 81f1f8f1e1489c0bf051d5241ec10da07869b911
+	drm/i915: Fix docbook header for __intel_runtime_pm_get_if_active()
+origin/gvt-gt-next e156285b120feaac6207e6bd3fa31d9ae8ffd80d
+	drm/i915/gvt: Purge dev_priv->gt
+origin/gvt-next-fixes d385c16173f28a18866abf54c764200c276dace0
+	drm/i915/gvt: Prevent divided by zero when calculating refresh rate

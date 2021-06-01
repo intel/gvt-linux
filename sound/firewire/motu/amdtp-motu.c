@@ -377,8 +377,8 @@ static inline void compute_next_elapse_from_start(struct amdtp_motu *p)
 		p->next_seconds -= 128;
 }
 
-static void write_sph(struct amdtp_stream *s, __be32 *buffer,
-		      unsigned int data_blocks)
+static void write_sph(struct amdtp_stream *s, __be32 *buffer, unsigned int data_blocks,
+		      const unsigned int rx_start_cycle)
 {
 	struct amdtp_motu *p = s->protocol;
 	unsigned int next_cycles;
@@ -386,7 +386,7 @@ static void write_sph(struct amdtp_stream *s, __be32 *buffer,
 	u32 sph;
 
 	for (i = 0; i < data_blocks; i++) {
-		next_cycles = (s->start_cycle + p->next_cycles) % 8000;
+		next_cycles = (rx_start_cycle + p->next_cycles) % 8000;
 		sph = ((next_cycles << 12) | p->next_ticks) & 0x01ffffff;
 		*buffer = cpu_to_be32(sph);
 
@@ -401,6 +401,7 @@ static unsigned int process_it_ctx_payloads(struct amdtp_stream *s,
 					    unsigned int packets,
 					    struct snd_pcm_substream *pcm)
 {
+	const unsigned int rx_start_cycle = s->domain->processing_cycle.rx_start;
 	struct amdtp_motu *p = s->protocol;
 	unsigned int pcm_frames = 0;
 	int i;
@@ -423,7 +424,7 @@ static unsigned int process_it_ctx_payloads(struct amdtp_stream *s,
 
 		// TODO: how to interact control messages between userspace?
 
-		write_sph(s, buf, data_blocks);
+		write_sph(s, buf, data_blocks, rx_start_cycle);
 	}
 
 	// For tracepoints.
@@ -440,7 +441,7 @@ int amdtp_motu_init(struct amdtp_stream *s, struct fw_unit *unit,
 {
 	amdtp_stream_process_ctx_payloads_t process_ctx_payloads;
 	int fmt = CIP_FMT_MOTU;
-	int flags = CIP_BLOCKING;
+	unsigned int flags = CIP_BLOCKING | CIP_UNAWARE_SYT;
 	int err;
 
 	if (dir == AMDTP_IN_STREAM) {
@@ -478,8 +479,6 @@ int amdtp_motu_init(struct amdtp_stream *s, struct fw_unit *unit,
 	if (dir == AMDTP_OUT_STREAM) {
 		// Use fixed value for FDF field.
 		s->ctx_data.rx.fdf = MOTU_FDF_AM824;
-		// Not used.
-		s->ctx_data.rx.syt_override = 0xffff;
 	}
 
 	return 0;

@@ -8,7 +8,7 @@
 
 #include "dice.h"
 
-#define	CALLBACK_TIMEOUT	200
+#define	READY_TIMEOUT_MS	200
 #define NOTIFICATION_TIMEOUT_MS	(2 * MSEC_PER_SEC)
 
 struct reg_params {
@@ -459,20 +459,13 @@ int snd_dice_stream_start_duplex(struct snd_dice *dice)
 			goto error;
 		}
 
-		err = amdtp_domain_start(&dice->domain, 0);
+		err = amdtp_domain_start(&dice->domain, 0, false, false);
 		if (err < 0)
 			goto error;
 
-		for (i = 0; i < MAX_STREAMS; i++) {
-			if ((i < tx_params.count &&
-			    !amdtp_stream_wait_callback(&dice->tx_stream[i],
-							CALLBACK_TIMEOUT)) ||
-			    (i < rx_params.count &&
-			     !amdtp_stream_wait_callback(&dice->rx_stream[i],
-							 CALLBACK_TIMEOUT))) {
-				err = -ETIMEDOUT;
-				goto error;
-			}
+		if (!amdtp_domain_wait_ready(&dice->domain, READY_TIMEOUT_MS)) {
+			err = -ETIMEDOUT;
+			goto error;
 		}
 	}
 

@@ -7,8 +7,7 @@
 
 #include "./bebob.h"
 
-#define CALLBACK_TIMEOUT	2500
-#define FW_ISO_RESOURCE_DELAY	1000
+#define READY_TIMEOUT_MS	4000
 
 /*
  * NOTE;
@@ -624,9 +623,8 @@ int snd_bebob_stream_start_duplex(struct snd_bebob *bebob)
 
 	if (!amdtp_stream_running(&bebob->rx_stream)) {
 		enum snd_bebob_clock_type src;
-		struct amdtp_stream *master, *slave;
 		unsigned int curr_rate;
-		unsigned int ir_delay_cycle;
+		unsigned int tx_init_skip_cycles;
 
 		if (bebob->maudio_special_quirk) {
 			err = bebob->spec->rate->get(bebob, &curr_rate);
@@ -638,36 +636,23 @@ int snd_bebob_stream_start_duplex(struct snd_bebob *bebob)
 		if (err < 0)
 			return err;
 
-		if (src != SND_BEBOB_CLOCK_TYPE_SYT) {
-			master = &bebob->tx_stream;
-			slave = &bebob->rx_stream;
-		} else {
-			master = &bebob->rx_stream;
-			slave = &bebob->tx_stream;
-		}
-
-		err = start_stream(bebob, master);
+		err = start_stream(bebob, &bebob->rx_stream);
 		if (err < 0)
 			goto error;
 
-		err = start_stream(bebob, slave);
+		err = start_stream(bebob, &bebob->tx_stream);
 		if (err < 0)
 			goto error;
 
-		// The device postpones start of transmission mostly for 1 sec
-		// after receives packets firstly. For safe, IR context starts
-		// 0.4 sec (=3200 cycles) later to version 1 or 2 firmware,
-		// 2.0 sec (=16000 cycles) for version 3 firmware. This is
-		// within 2.5 sec (=CALLBACK_TIMEOUT).
-		// Furthermore, some devices transfer isoc packets with
-		// discontinuous counter in the beginning of packet streaming.
-		// The delay has an effect to avoid detection of this
-		// discontinuity.
-		if (bebob->version < 2)
-			ir_delay_cycle = 3200;
+		if (!bebob->discontinuity_quirk)
+			tx_init_skip_cycles = 0;
 		else
-			ir_delay_cycle = 16000;
-		err = amdtp_domain_start(&bebob->domain, ir_delay_cycle);
+			tx_init_skip_cycles = 16000;
+
+		// MEMO: In the early stage of packet streaming, the device transfers NODATA packets.
+		// After several hundred cycles, it begins to multiplex event into the packet with
+		// syt information.
+		err = amdtp_domain_start(&bebob->domain, tx_init_skip_cycles, false, false);
 		if (err < 0)
 			goto error;
 
@@ -684,10 +669,9 @@ int snd_bebob_stream_start_duplex(struct snd_bebob *bebob)
 			}
 		}
 
-		if (!amdtp_stream_wait_callback(&bebob->rx_stream,
-						CALLBACK_TIMEOUT) ||
-		    !amdtp_stream_wait_callback(&bebob->tx_stream,
-						CALLBACK_TIMEOUT)) {
+		// Some devices postpone start of transmission mostly for 1 sec after receives
+		// packets firstly.
+		if (!amdtp_domain_wait_ready(&bebob->domain, READY_TIMEOUT_MS)) {
 			err = -ETIMEDOUT;
 			goto error;
 		}

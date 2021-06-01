@@ -107,6 +107,7 @@
 #include "amdgpu_gfxhub.h"
 #include "amdgpu_df.h"
 #include "amdgpu_smuio.h"
+#include "amdgpu_fdinfo.h"
 
 #define MAX_GPU_INSTANCE		16
 
@@ -1074,7 +1075,8 @@ struct amdgpu_device {
 
 	atomic_t			throttling_logging_enabled;
 	struct ratelimit_state		throttling_logging_rs;
-	uint32_t			ras_features;
+	uint32_t                        ras_hw_enabled;
+	uint32_t                        ras_enabled;
 
 	bool                            in_pci_err_recovery;
 	struct pci_saved_state          *pci_state;

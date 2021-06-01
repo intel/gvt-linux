@@ -327,7 +327,7 @@ struct drm_i915_display_funcs {
 	void (*read_luts)(struct intel_crtc_state *crtc_state);
 };
 
-struct intel_csr {
+struct intel_dmc {
 	struct work_struct work;
 	const char *fw_path;
 	u32 required_version;
@@ -581,6 +581,8 @@ i915_fence_timeout(const struct drm_i915_private *i915)
 /* Amount of SAGV/QGV points, BSpec precisely defines this */
 #define I915_NUM_QGV_POINTS 8
 
+#define HAS_HW_SAGV_WM(i915) (DISPLAY_VER(i915) >= 13 && !IS_DGFX(i915))
+
 struct ddi_vbt_port_info {
 	/* Non-NULL if port present. */
 	struct intel_bios_encoder_data *devdata;
@@ -816,7 +818,7 @@ struct drm_i915_private {
 
 	struct intel_wopcm wopcm;
 
-	struct intel_csr csr;
+	struct intel_dmc dmc;
 
 	struct intel_gmbus gmbus[GMBUS_NUM_PINS];
 
@@ -1129,6 +1131,9 @@ struct drm_i915_private {
 	} gem;
 
 	u8 framestart_delay;
+
+	/* Window2 specifies time required to program DSB (Window2) in number of scan lines */
+	u8 window2_delay;
 
 	u8 pch_ssc_use;
 
@@ -1654,7 +1659,7 @@ IS_SUBPLATFORM(const struct drm_i915_private *i915,
 
 #define HAS_RPS(dev_priv)	(INTEL_INFO(dev_priv)->has_rps)
 
-#define HAS_CSR(dev_priv)	(INTEL_INFO(dev_priv)->display.has_csr)
+#define HAS_DMC(dev_priv)	(INTEL_INFO(dev_priv)->display.has_dmc)
 
 #define HAS_MSO(i915)		(INTEL_GEN(i915) >= 12)
 

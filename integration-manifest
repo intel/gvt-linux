@@ -1,28 +1,18 @@
-drm drm-fixes c55338d34cc2434d4ff9de89498f91171bd1f120
-	Merge tag 'amd-drm-fixes-5.13-2021-06-16' of https://gitlab.freedesktop.org/agd5f/linux into drm-fixes
-drm-misc drm-misc-fixes 9984d6664ce9dcbbc713962539eaf7636ea246c2
-	drm/vc4: hdmi: Make sure the controller is powered in detect
-drm-intel drm-intel-fixes 009c9aa5be652675a06d5211e1640e02bbb1c33d
-	Linux 5.13-rc6
-drm drm-next 43ccc7831fc4864b99954914537ec3c819997f41
-	Merge tag 'mediatek-drm-next-5.14' of https://git.kernel.org/pub/scm/linux/kernel/git/chunkuang.hu/linux into drm-next
-drm-misc drm-misc-next-fixes 24ff3dc18b99c4b912ab1746e803ddb3be5ced4c
-	drm/dp_mst: Add missing drm parameters to recently added call to drm_dbg_kms()
-drm-intel drm-intel-next-fixes 1bd8a7dc28c1c410f1ceefae1f2a97c06d1a67c2
-	Merge tag 'exynos-drm-next-for-v5.14' of git://git.kernel.org/pub/scm/linux/kernel/git/daeinki/drm-exynos into drm-next
-drm-misc drm-misc-next 51f52547df700819db0d0e2b17b677cb209212b4
-	dma-buf: Document DMA_BUF_IOCTL_SYNC (v3)
-drm-intel drm-intel-next 151ec347b06a2fb6ecd2922475dca71a7af827a5
-	drm/i915: Force a TypeC PHY disconnect during suspend/shutdown
-drm-intel drm-intel-gt-next 3193927421554757e6bee52f9c7e3937edefc589
-	drm/i915: Add support for explicit L3BANK steering
-sound-upstream for-linus 83e197a8414c0ba545e7e3916ce05f836f349273
-	ALSA: seq: Fix race of snd_seq_timer_open()
-sound-upstream for-next 37d122c5768b4184949bbfea1631c0987be7814e
-	ALSA: aoa: remove unnecessary oom message
-drm-intel topic/core-for-CI edbf17fa966bdc3139002a5f86c1fc28d768fe89
-	drm/i915: Add relocation exceptions for two other platforms
-drm topic/nouveau-ampere-modeset 584265dfec70e78ce2085b82ed389f27e06fbca0
-	Merge branch '04.01-ampere-lite' of git://github.com/skeggsb/linux into topic/nouveau-ampere-modeset
-drm-misc topic/i915-ttm cf3e3e86d77970211e0983130e896ae242601003
-	drm/i915: Use ttm mmap handling for ttm bo's.
+drm-tip/drm-tip a31069c62e8586aa92907539ab948412c1d5f5a0
+	drm-tip: 2021y-06m-18d-02h-17m-05s UTC integration manifest
+vfio-upstream/next adaeb718d46f6b42a3fc1dffd4f946f26b33779a
+	vfio/gvt: fix DRM_I915_GVT dependency on VFIO_MDEV
+vfio-upstream/for-linus dc51ff91cf2d1e9a2d941da483602f71d4a51472
+	vfio/platform: fix module_put call in error flow
+intel-iommu/iommu/next a593472591a5cf2d91244bc3f319c9dd91119343
+	Merge branches 'iommu/fixes', 'arm/omap', 'arm/exynos', 'x86/amd', 'x86/vt-d' and 'core' into next
+intel-iommu/iommu/fixes 340ec061f76502befea92d9913886991a60cf15e
+	iommu/amd: Remove redundant assignment of err
+origin/gvt-fixes 145e06b58f8625becc61792a0554726314297a85
+	drm/i915/gvt: Move mdev attribute groups into kvmgt module
+origin/gvt-next 428c051c49229c6db7ab252ceb2a4cb5b00b5550
+	drm/i915/gem: Use list_entry to access list members
+origin/gvt-gt-next e156285b120feaac6207e6bd3fa31d9ae8ffd80d
+	drm/i915/gvt: Purge dev_priv->gt
+origin/gvt-next-fixes d385c16173f28a18866abf54c764200c276dace0
+	drm/i915/gvt: Prevent divided by zero when calculating refresh rate

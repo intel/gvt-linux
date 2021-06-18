@@ -108,6 +108,7 @@ gt-y += \
 	gt/intel_gtt.o \
 	gt/intel_llc.o \
 	gt/intel_lrc.o \
+	gt/intel_migrate.o \
 	gt/intel_mocs.o \
 	gt/intel_ppgtt.o \
 	gt/intel_rc6.o \
@@ -135,7 +136,6 @@ i915-y += $(gt-y)
 gem-y += \
 	gem/i915_gem_busy.o \
 	gem/i915_gem_clflush.o \
-	gem/i915_gem_client_blt.o \
 	gem/i915_gem_context.o \
 	gem/i915_gem_create.o \
 	gem/i915_gem_dmabuf.o \
@@ -143,7 +143,6 @@ gem-y += \
 	gem/i915_gem_execbuffer.o \
 	gem/i915_gem_internal.o \
 	gem/i915_gem_object.o \
-	gem/i915_gem_object_blt.o \
 	gem/i915_gem_lmem.o \
 	gem/i915_gem_mman.o \
 	gem/i915_gem_pages.o \
@@ -162,15 +161,18 @@ gem-y += \
 i915-y += \
 	  $(gem-y) \
 	  i915_active.o \
+	  i915_buddy.o \
 	  i915_cmd_parser.o \
 	  i915_gem_evict.o \
 	  i915_gem_gtt.o \
+	  i915_gem_ww.o \
 	  i915_gem.o \
 	  i915_globals.o \
 	  i915_query.o \
 	  i915_request.o \
 	  i915_scheduler.o \
 	  i915_trace_points.o \
+	  i915_ttm_buddy_manager.o \
 	  i915_vma.o \
 	  intel_wopcm.o
 
@@ -277,6 +279,7 @@ i915-y += i915_perf.o
 # Post-mortem debug and GPU hang state capture
 i915-$(CONFIG_DRM_I915_CAPTURE_ERROR) += i915_gpu_error.o
 i915-$(CONFIG_DRM_I915_SELFTEST) += \
+	gem/selftests/i915_gem_client_blt.o \
 	gem/selftests/igt_gem_utils.o \
 	selftests/i915_random.o \
 	selftests/i915_selftest.o \

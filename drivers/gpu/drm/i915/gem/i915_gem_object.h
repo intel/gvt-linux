@@ -14,6 +14,7 @@
 #include "display/intel_frontbuffer.h"
 #include "i915_gem_object_types.h"
 #include "i915_gem_gtt.h"
+#include "i915_gem_ww.h"
 #include "i915_vma_types.h"
 
 /*
@@ -169,13 +170,17 @@ static inline int __i915_gem_object_lock(struct drm_i915_gem_object *obj,
 	else
 		ret = dma_resv_lock(obj->base.resv, ww ? &ww->ctx : NULL);
 
-	if (!ret && ww)
+	if (!ret && ww) {
+		i915_gem_object_get(obj);
 		list_add_tail(&obj->obj_link, &ww->obj_list);
+	}
 	if (ret == -EALREADY)
 		ret = 0;
 
-	if (ret == -EDEADLK)
+	if (ret == -EDEADLK) {
+		i915_gem_object_get(obj);
 		ww->contended = obj;
+	}
 
 	return ret;
 }
@@ -609,14 +614,12 @@ i915_gem_object_is_userptr(struct drm_i915_gem_object *obj)
 
 int i915_gem_object_userptr_submit_init(struct drm_i915_gem_object *obj);
 int i915_gem_object_userptr_submit_done(struct drm_i915_gem_object *obj);
-void i915_gem_object_userptr_submit_fini(struct drm_i915_gem_object *obj);
 int i915_gem_object_userptr_validate(struct drm_i915_gem_object *obj);
 #else
 static inline bool i915_gem_object_is_userptr(struct drm_i915_gem_object *obj) { return false; }
 
 static inline int i915_gem_object_userptr_submit_init(struct drm_i915_gem_object *obj) { GEM_BUG_ON(1); return -ENODEV; }
 static inline int i915_gem_object_userptr_submit_done(struct drm_i915_gem_object *obj) { GEM_BUG_ON(1); return -ENODEV; }
-static inline void i915_gem_object_userptr_submit_fini(struct drm_i915_gem_object *obj) { GEM_BUG_ON(1); }
 static inline int i915_gem_object_userptr_validate(struct drm_i915_gem_object *obj) { GEM_BUG_ON(1); return -ENODEV; }
 
 #endif

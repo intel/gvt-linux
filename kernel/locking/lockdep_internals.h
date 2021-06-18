@@ -101,14 +101,16 @@ static const unsigned long LOCKF_USED_IN_IRQ_READ =
 #else
 #define MAX_LOCKDEP_ENTRIES	(1UL << CONFIG_LOCKDEP_BITS)
 
-#define MAX_LOCKDEP_CHAINS_BITS	CONFIG_LOCKDEP_CHAINS_BITS
+/* FIXME: This can now be tuned in .config with CONFIG_LOCKDEP_CHAINS_BITS */
+#define MAX_LOCKDEP_CHAINS_BITS	17
 
 /*
  * Stack-trace: tightly packed array of stack backtrace
  * addresses. Protected by the hash_lock.
  */
-#define MAX_STACK_TRACE_ENTRIES	(1UL << CONFIG_LOCKDEP_STACK_TRACE_BITS)
-#define STACK_TRACE_HASH_SIZE	(1 << CONFIG_LOCKDEP_STACK_TRACE_HASH_BITS)
+/* FIXME: These can now be tuned by .config too */
+#define MAX_STACK_TRACE_ENTRIES	1048576UL
+#define STACK_TRACE_HASH_SIZE	16384
 #endif
 
 /*

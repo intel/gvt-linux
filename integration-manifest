@@ -1,30 +1,18 @@
-drm drm-fixes 62fb9874f5da54fdb243003b386128037319b219
-	Linux 5.13
-drm-misc drm-misc-fixes 1988e0d84161dabd99d1c27033fbd6ee439bf432
-	drm/panel: nt35510: Do not fail if DSI read fails
-drm-intel drm-intel-fixes 97ece1dfb2ebabda0be9b2e754d4423a47b60321
-	drm/i915/display: Do not zero past infoframes.vsc
-drm drm-next 8a02ea42bc1d4c448caf1bab0e05899dad503f74
-	Merge tag 'drm-intel-next-fixes-2021-06-29' of git://anongit.freedesktop.org/drm/drm-intel into drm-next
-drm-misc drm-misc-next-fixes cd8f318fbd266b127ffc93cc4c1eaf9a5196fafb
-	drm/gma500: Add the missed drm_gem_object_put() in psb_user_framebuffer_create()
-drm-intel drm-intel-next-fixes c90c4c6574f3feaf2203b5671db1907a1e15c653
-	drm/i915: Reinstate the mmap ioctl for some platforms
-drm-misc drm-misc-next 9ea39a900a1f085942045f5d91bea8e7956f563e
-	drm/zte: Don't set struct drm_device.irq_enabled
-drm-intel drm-intel-next 747aeb2632f6341168b78f28ce16fce0e6cee205
-	drm/i915/ehl: Remove require_force_probe protection
-drm-intel drm-intel-gt-next 53fe9cf2dafe2b0382a4e682e4eebe0a442dcb5a
-	drm/i915/selftest: Extend ctx_timestamp ICL workaround to GEN11
-sound-upstream for-linus 5c6d4f97267f02f47acea8a652265348ec12de51
-	MAINTAINERS: remove Timur Tabi from Freescale SOC sound drivers
-sound-upstream for-next 0cbbeaf370221fc469c95945dd3c1198865c5fe4
-	ALSA: firewire-lib: Fix 'amdtp_domain_start()' when no AMDTP_OUT_STREAM stream is found
-drm-intel topic/core-for-CI fae352efb12196e7110f98bc1297ce533472764d
-	drm/i915: allow DG1 autoprobe for CONFIG_BROKEN
-drm topic/nouveau-ampere-modeset 584265dfec70e78ce2085b82ed389f27e06fbca0
-	Merge branch '04.01-ampere-lite' of git://github.com/skeggsb/linux into topic/nouveau-ampere-modeset
-drm-misc topic/i915-ttm cf3e3e86d77970211e0983130e896ae242601003
-	drm/i915: Use ttm mmap handling for ttm bo's.
-drm-intel topic/gen-removal 0d6695b112762aa7aad28c46e65561389b6f50d6
-	drm/i915/adl_p: Same slices mask is not same Dbuf state
+drm-tip/drm-tip 0a36f63231dfcbc850d12c64dae9f09b07345101
+	drm-tip: 2021y-06m-30d-05h-45m-51s UTC integration manifest
+vfio-upstream/next 742b4c0d1efe7a7640ad17f1bbf696a1305f6495
+	vfio: use the new pci_dev_trylock() helper to simplify try lock
+vfio-upstream/for-linus dc51ff91cf2d1e9a2d941da483602f71d4a51472
+	vfio/platform: fix module_put call in error flow
+intel-iommu/iommu/next a593472591a5cf2d91244bc3f319c9dd91119343
+	Merge branches 'iommu/fixes', 'arm/omap', 'arm/exynos', 'x86/amd', 'x86/vt-d' and 'core' into next
+intel-iommu/iommu/fixes 340ec061f76502befea92d9913886991a60cf15e
+	iommu/amd: Remove redundant assignment of err
+origin/gvt-fixes 145e06b58f8625becc61792a0554726314297a85
+	drm/i915/gvt: Move mdev attribute groups into kvmgt module
+origin/gvt-next 428c051c49229c6db7ab252ceb2a4cb5b00b5550
+	drm/i915/gem: Use list_entry to access list members
+origin/gvt-gt-next e156285b120feaac6207e6bd3fa31d9ae8ffd80d
+	drm/i915/gvt: Purge dev_priv->gt
+origin/gvt-next-fixes d385c16173f28a18866abf54c764200c276dace0
+	drm/i915/gvt: Prevent divided by zero when calculating refresh rate

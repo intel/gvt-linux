@@ -182,6 +182,7 @@ static void schedule_out(struct i915_request *rq)
 static void __guc_dequeue(struct intel_engine_cs *engine)
 {
 	struct intel_engine_execlists * const execlists = &engine->execlists;
+	struct i915_sched_engine * const sched_engine = engine->sched_engine;
 	struct i915_request **first = execlists->inflight;
 	struct i915_request ** const last_port = first + execlists->port_mask;
 	struct i915_request *last = first[0];
@@ -189,7 +190,7 @@ static void __guc_dequeue(struct intel_engine_cs *engine)
 	bool submit = false;
 	struct rb_node *rb;
 
-	lockdep_assert_held(&engine->active.lock);
+	lockdep_assert_held(&sched_engine->lock);
 
 	if (last) {
 		if (*++first)
@@ -204,7 +205,7 @@ static void __guc_dequeue(struct intel_engine_cs *engine)
 	 * event.
 	 */
 	port = first;
-	while ((rb = rb_first_cached(&execlists->queue))) {
+	while ((rb = rb_first_cached(&sched_engine->queue))) {
 		struct i915_priolist *p = to_priolist(rb);
 		struct i915_request *rq, *rn;
 
@@ -224,11 +225,11 @@ static void __guc_dequeue(struct intel_engine_cs *engine)
 			last = rq;
 		}
 
-		rb_erase_cached(&p->node, &execlists->queue);
+		rb_erase_cached(&p->node, &sched_engine->queue);
 		i915_priolist_free(p);
 	}
 done:
-	execlists->queue_priority_hint =
+	sched_engine->queue_priority_hint =
 		rb ? to_priolist(rb)->priority : INT_MIN;
 	if (submit) {
 		*port = schedule_in(last, port - execlists->inflight);
@@ -240,13 +241,14 @@ done:
 
 static void guc_submission_tasklet(struct tasklet_struct *t)
 {
-	struct intel_engine_cs * const engine =
-		from_tasklet(engine, t, execlists.tasklet);
+	struct i915_sched_engine *sched_engine =
+		from_tasklet(sched_engine, t, tasklet);
+	struct intel_engine_cs * const engine = sched_engine->private_data;
 	struct intel_engine_execlists * const execlists = &engine->execlists;
 	struct i915_request **port, *rq;
 	unsigned long flags;
 
-	spin_lock_irqsave(&engine->active.lock, flags);
+	spin_lock_irqsave(&engine->sched_engine->lock, flags);
 
 	for (port = execlists->inflight; (rq = *port); port++) {
 		if (!i915_request_completed(rq))
@@ -262,21 +264,21 @@ static void guc_submission_tasklet(struct tasklet_struct *t)
 
 	__guc_dequeue(engine);
 
-	spin_unlock_irqrestore(&engine->active.lock, flags);
+	i915_sched_engine_reset_on_empty(engine->sched_engine);
+
+	spin_unlock_irqrestore(&engine->sched_engine->lock, flags);
 }
 
 static void cs_irq_handler(struct intel_engine_cs *engine, u16 iir)
 {
 	if (iir & GT_RENDER_USER_INTERRUPT) {
 		intel_engine_signal_breadcrumbs(engine);
-		tasklet_hi_schedule(&engine->execlists.tasklet);
+		tasklet_hi_schedule(&engine->sched_engine->tasklet);
 	}
 }
 
 static void guc_reset_prepare(struct intel_engine_cs *engine)
 {
-	struct intel_engine_execlists * const execlists = &engine->execlists;
-
 	ENGINE_TRACE(engine, "\n");
 
 	/*
@@ -288,7 +290,7 @@ static void guc_reset_prepare(struct intel_engine_cs *engine)
 	 * Turning off the execlists->tasklet until the reset is over
 	 * prevents the race.
 	 */
-	__tasklet_disable_sync_once(&execlists->tasklet);
+	__tasklet_disable_sync_once(&engine->sched_engine->tasklet);
 }
 
 static void guc_reset_state(struct intel_context *ce,
@@ -319,7 +321,7 @@ static void guc_reset_rewind(struct intel_engine_cs *engine, bool stalled)
 	struct i915_request *rq;
 	unsigned long flags;
 
-	spin_lock_irqsave(&engine->active.lock, flags);
+	spin_lock_irqsave(&engine->sched_engine->lock, flags);
 
 	/* Push back any incomplete requests for replay after the reset. */
 	rq = execlists_unwind_incomplete_requests(execlists);
@@ -333,12 +335,12 @@ static void guc_reset_rewind(struct intel_engine_cs *engine, bool stalled)
 	guc_reset_state(rq->context, engine, rq->head, stalled);
 
 out_unlock:
-	spin_unlock_irqrestore(&engine->active.lock, flags);
+	spin_unlock_irqrestore(&engine->sched_engine->lock, flags);
 }
 
 static void guc_reset_cancel(struct intel_engine_cs *engine)
 {
-	struct intel_engine_execlists * const execlists = &engine->execlists;
+	struct i915_sched_engine * const sched_engine = engine->sched_engine;
 	struct i915_request *rq, *rn;
 	struct rb_node *rb;
 	unsigned long flags;
@@ -359,16 +361,16 @@ static void guc_reset_cancel(struct intel_engine_cs *engine)
 	 * submission's irq state, we also wish to remind ourselves that
 	 * it is irq state.)
 	 */
-	spin_lock_irqsave(&engine->active.lock, flags);
+	spin_lock_irqsave(&sched_engine->lock, flags);
 
 	/* Mark all executing requests as skipped. */
-	list_for_each_entry(rq, &engine->active.requests, sched.link) {
+	list_for_each_entry(rq, &sched_engine->requests, sched.link) {
 		i915_request_set_error_once(rq, -EIO);
 		i915_request_mark_complete(rq);
 	}
 
 	/* Flush the queued requests to the timeline list (for retiring). */
-	while ((rb = rb_first_cached(&execlists->queue))) {
+	while ((rb = rb_first_cached(&sched_engine->queue))) {
 		struct i915_priolist *p = to_priolist(rb);
 
 		priolist_for_each_request_consume(rq, rn, p) {
@@ -378,28 +380,26 @@ static void guc_reset_cancel(struct intel_engine_cs *engine)
 			i915_request_mark_complete(rq);
 		}
 
-		rb_erase_cached(&p->node, &execlists->queue);
+		rb_erase_cached(&p->node, &sched_engine->queue);
 		i915_priolist_free(p);
 	}
 
 	/* Remaining _unready_ requests will be nop'ed when submitted */
 
-	execlists->queue_priority_hint = INT_MIN;
-	execlists->queue = RB_ROOT_CACHED;
+	sched_engine->queue_priority_hint = INT_MIN;
+	sched_engine->queue = RB_ROOT_CACHED;
 
-	spin_unlock_irqrestore(&engine->active.lock, flags);
+	spin_unlock_irqrestore(&sched_engine->lock, flags);
 }
 
 static void guc_reset_finish(struct intel_engine_cs *engine)
 {
-	struct intel_engine_execlists * const execlists = &engine->execlists;
-
-	if (__tasklet_enable(&execlists->tasklet))
+	if (__tasklet_enable(&engine->sched_engine->tasklet))
 		/* And kick in case we missed a new request submission. */
-		tasklet_hi_schedule(&execlists->tasklet);
+		tasklet_hi_schedule(&engine->sched_engine->tasklet);
 
 	ENGINE_TRACE(engine, "depth->%d\n",
-		     atomic_read(&execlists->tasklet.count));
+		     atomic_read(&engine->sched_engine->tasklet.count));
 }
 
 /*
@@ -500,7 +500,7 @@ static inline void queue_request(struct intel_engine_cs *engine,
 {
 	GEM_BUG_ON(!list_empty(&rq->sched.link));
 	list_add_tail(&rq->sched.link,
-		      i915_sched_lookup_priolist(engine, prio));
+		      i915_sched_lookup_priolist(engine->sched_engine, prio));
 	set_bit(I915_FENCE_FLAG_PQUEUE, &rq->fence.flags);
 }
 
@@ -510,16 +510,16 @@ static void guc_submit_request(struct i915_request *rq)
 	unsigned long flags;
 
 	/* Will be called from irq-context when using foreign fences. */
-	spin_lock_irqsave(&engine->active.lock, flags);
+	spin_lock_irqsave(&engine->sched_engine->lock, flags);
 
 	queue_request(engine, rq, rq_prio(rq));
 
-	GEM_BUG_ON(RB_EMPTY_ROOT(&engine->execlists.queue.rb_root));
+	GEM_BUG_ON(i915_sched_engine_is_empty(engine->sched_engine));
 	GEM_BUG_ON(list_empty(&rq->sched.link));
 
-	tasklet_hi_schedule(&engine->execlists.tasklet);
+	tasklet_hi_schedule(&engine->sched_engine->tasklet);
 
-	spin_unlock_irqrestore(&engine->active.lock, flags);
+	spin_unlock_irqrestore(&engine->sched_engine->lock, flags);
 }
 
 static void sanitize_hwsp(struct intel_engine_cs *engine)
@@ -597,7 +597,7 @@ static void guc_release(struct intel_engine_cs *engine)
 {
 	engine->sanitize = NULL; /* no longer in control, nothing to sanitize */
 
-	tasklet_kill(&engine->execlists.tasklet);
+	tasklet_kill(&engine->sched_engine->tasklet);
 
 	intel_engine_cleanup_common(engine);
 	lrc_fini_wa_ctx(engine);
@@ -612,7 +612,7 @@ static void guc_default_vfuncs(struct intel_engine_cs *engine)
 	engine->cops = &guc_context_ops;
 	engine->request_alloc = guc_request_alloc;
 
-	engine->schedule = i915_schedule;
+	engine->sched_engine->schedule = i915_schedule;
 
 	engine->reset.prepare = guc_reset_prepare;
 	engine->reset.rewind = guc_reset_rewind;
@@ -676,7 +676,7 @@ int intel_guc_submission_setup(struct intel_engine_cs *engine)
 	 */
 	GEM_BUG_ON(GRAPHICS_VER(i915) < 11);
 
-	tasklet_setup(&engine->execlists.tasklet, guc_submission_tasklet);
+	tasklet_setup(&engine->sched_engine->tasklet, guc_submission_tasklet);
 
 	guc_default_vfuncs(engine);
 	guc_default_irqs(engine);

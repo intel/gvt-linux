@@ -640,15 +640,16 @@ static void gen12_ctx_workarounds_init(struct intel_engine_cs *engine,
 	gen12_ctx_gt_tuning_init(engine, wal);
 
 	/*
-	 * Wa_1409142259:tgl
-	 * Wa_1409347922:tgl
-	 * Wa_1409252684:tgl
-	 * Wa_1409217633:tgl
-	 * Wa_1409207793:tgl
-	 * Wa_1409178076:tgl
-	 * Wa_1408979724:tgl
-	 * Wa_14010443199:rkl
-	 * Wa_14010698770:rkl
+	 * Wa_1409142259:tgl,dg1,adl-p
+	 * Wa_1409347922:tgl,dg1,adl-p
+	 * Wa_1409252684:tgl,dg1,adl-p
+	 * Wa_1409217633:tgl,dg1,adl-p
+	 * Wa_1409207793:tgl,dg1,adl-p
+	 * Wa_1409178076:tgl,dg1,adl-p
+	 * Wa_1408979724:tgl,dg1,adl-p
+	 * Wa_14010443199:tgl,rkl,dg1,adl-p
+	 * Wa_14010698770:tgl,rkl,dg1,adl-s,adl-p
+	 * Wa_1409342910:tgl,rkl,dg1,adl-s,adl-p
 	 */
 	wa_masked_en(wal, GEN11_COMMON_SLICE_CHICKEN3,
 		     GEN12_DISABLE_CPS_AWARE_COLOR_PIPE);
@@ -944,71 +945,37 @@ cfl_gt_workarounds_init(struct drm_i915_private *i915, struct i915_wa_list *wal)
 }
 
 static void
-wa_init_mcr(struct drm_i915_private *i915, struct i915_wa_list *wal)
+icl_wa_init_mcr(struct drm_i915_private *i915, struct i915_wa_list *wal)
 {
 	const struct sseu_dev_info *sseu = &i915->gt.info.sseu;
 	unsigned int slice, subslice;
-	u32 l3_en, mcr, mcr_mask;
+	u32 mcr, mcr_mask;
 
-	GEM_BUG_ON(GRAPHICS_VER(i915) < 10);
+	GEM_BUG_ON(GRAPHICS_VER(i915) < 11);
+	GEM_BUG_ON(hweight8(sseu->slice_mask) > 1);
+	slice = 0;
 
 	/*
-	 * WaProgramMgsrForL3BankSpecificMmioReads: cnl,icl
-	 * L3Banks could be fused off in single slice scenario. If that is
-	 * the case, we might need to program MCR select to a valid L3Bank
-	 * by default, to make sure we correctly read certain registers
-	 * later on (in the range 0xB100 - 0xB3FF).
-	 *
-	 * WaProgramMgsrForCorrectSliceSpecificMmioReads:cnl,icl
-	 * Before any MMIO read into slice/subslice specific registers, MCR
-	 * packet control register needs to be programmed to point to any
-	 * enabled s/ss pair. Otherwise, incorrect values will be returned.
-	 * This means each subsequent MMIO read will be forwarded to an
-	 * specific s/ss combination, but this is OK since these registers
-	 * are consistent across s/ss in almost all cases. In the rare
-	 * occasions, such as INSTDONE, where this value is dependent
-	 * on s/ss combo, the read should be done with read_subslice_reg.
-	 *
-	 * Since GEN8_MCR_SELECTOR contains dual-purpose bits which select both
-	 * to which subslice, or to which L3 bank, the respective mmio reads
-	 * will go, we have to find a common index which works for both
-	 * accesses.
-	 *
-	 * Case where we cannot find a common index fortunately should not
-	 * happen in production hardware, so we only emit a warning instead of
-	 * implementing something more complex that requires checking the range
-	 * of every MMIO read.
+	 * Although a platform may have subslices, we need to always steer
+	 * reads to the lowest instance that isn't fused off.  When Render
+	 * Power Gating is enabled, grabbing forcewake will only power up a
+	 * single subslice (the "minconfig") if there isn't a real workload
+	 * that needs to be run; this means that if we steer register reads to
+	 * one of the higher subslices, we run the risk of reading back 0's or
+	 * random garbage.
 	 */
+	subslice = __ffs(intel_sseu_get_subslices(sseu, slice));
 
-	if (GRAPHICS_VER(i915) >= 10 && is_power_of_2(sseu->slice_mask)) {
-		u32 l3_fuse =
-			intel_uncore_read(&i915->uncore, GEN10_MIRROR_FUSE3) &
-			GEN10_L3BANK_MASK;
+	/*
+	 * If the subslice we picked above also steers us to a valid L3 bank,
+	 * then we can just rely on the default steering and won't need to
+	 * worry about explicitly re-steering L3BANK reads later.
+	 */
+	if (i915->gt.info.l3bank_mask & BIT(subslice))
+		i915->gt.steering_table[L3BANK] = NULL;
 
-		drm_dbg(&i915->drm, "L3 fuse = %x\n", l3_fuse);
-		l3_en = ~(l3_fuse << GEN10_L3BANK_PAIR_COUNT | l3_fuse);
-	} else {
-		l3_en = ~0;
-	}
-
-	slice = fls(sseu->slice_mask) - 1;
-	subslice = fls(l3_en & intel_sseu_get_subslices(sseu, slice));
-	if (!subslice) {
-		drm_warn(&i915->drm,
-			 "No common index found between subslice mask %x and L3 bank mask %x!\n",
-			 intel_sseu_get_subslices(sseu, slice), l3_en);
-		subslice = fls(l3_en);
-		drm_WARN_ON(&i915->drm, !subslice);
-	}
-	subslice--;
-
-	if (GRAPHICS_VER(i915) >= 11) {
-		mcr = GEN11_MCR_SLICE(slice) | GEN11_MCR_SUBSLICE(subslice);
-		mcr_mask = GEN11_MCR_SLICE_MASK | GEN11_MCR_SUBSLICE_MASK;
-	} else {
-		mcr = GEN8_MCR_SLICE(slice) | GEN8_MCR_SUBSLICE(subslice);
-		mcr_mask = GEN8_MCR_SLICE_MASK | GEN8_MCR_SUBSLICE_MASK;
-	}
+	mcr = GEN11_MCR_SLICE(slice) | GEN11_MCR_SUBSLICE(subslice);
+	mcr_mask = GEN11_MCR_SLICE_MASK | GEN11_MCR_SUBSLICE_MASK;
 
 	drm_dbg(&i915->drm, "MCR slice/subslice = %x\n", mcr);
 
@@ -1018,8 +985,6 @@ wa_init_mcr(struct drm_i915_private *i915, struct i915_wa_list *wal)
 static void
 cnl_gt_workarounds_init(struct drm_i915_private *i915, struct i915_wa_list *wal)
 {
-	wa_init_mcr(i915, wal);
-
 	/* WaInPlaceDecompressionHang:cnl */
 	wa_write_or(wal,
 		    GEN9_GAMT_ECO_REG_RW_IA,
@@ -1029,7 +994,7 @@ cnl_gt_workarounds_init(struct drm_i915_private *i915, struct i915_wa_list *wal)
 static void
 icl_gt_workarounds_init(struct drm_i915_private *i915, struct i915_wa_list *wal)
 {
-	wa_init_mcr(i915, wal);
+	icl_wa_init_mcr(i915, wal);
 
 	/* WaInPlaceDecompressionHang:icl */
 	wa_write_or(wal,
@@ -1111,9 +1076,9 @@ static void
 gen12_gt_workarounds_init(struct drm_i915_private *i915,
 			  struct i915_wa_list *wal)
 {
-	wa_init_mcr(i915, wal);
+	icl_wa_init_mcr(i915, wal);
 
-	/* Wa_14011060649:tgl,rkl,dg1,adls */
+	/* Wa_14011060649:tgl,rkl,dg1,adls,adl-p */
 	wa_14011060649(i915, wal);
 }
 
@@ -1247,8 +1212,9 @@ wa_verify(const struct i915_wa *wa, u32 cur, const char *name, const char *from)
 }
 
 static void
-wa_list_apply(struct intel_uncore *uncore, const struct i915_wa_list *wal)
+wa_list_apply(struct intel_gt *gt, const struct i915_wa_list *wal)
 {
+	struct intel_uncore *uncore = gt->uncore;
 	enum forcewake_domains fw;
 	unsigned long flags;
 	struct i915_wa *wa;
@@ -1263,13 +1229,16 @@ wa_list_apply(struct intel_uncore *uncore, const struct i915_wa_list *wal)
 	intel_uncore_forcewake_get__locked(uncore, fw);
 
 	for (i = 0, wa = wal->list; i < wal->count; i++, wa++) {
-		if (wa->clr)
-			intel_uncore_rmw_fw(uncore, wa->reg, wa->clr, wa->set);
-		else
-			intel_uncore_write_fw(uncore, wa->reg, wa->set);
+		u32 val, old = 0;
+
+		/* open-coded rmw due to steering */
+		old = wa->clr ? intel_gt_read_register_fw(gt, wa->reg) : 0;
+		val = (old & ~wa->clr) | wa->set;
+		if (val != old || !wa->clr)
+			intel_uncore_write_fw(uncore, wa->reg, val);
+
 		if (IS_ENABLED(CONFIG_DRM_I915_DEBUG_GEM))
-			wa_verify(wa,
-				  intel_uncore_read_fw(uncore, wa->reg),
+			wa_verify(wa, intel_gt_read_register_fw(gt, wa->reg),
 				  wal->name, "application");
 	}
 
@@ -1279,28 +1248,39 @@ wa_list_apply(struct intel_uncore *uncore, const struct i915_wa_list *wal)
 
 void intel_gt_apply_workarounds(struct intel_gt *gt)
 {
-	wa_list_apply(gt->uncore, &gt->i915->gt_wa_list);
+	wa_list_apply(gt, &gt->i915->gt_wa_list);
 }
 
-static bool wa_list_verify(struct intel_uncore *uncore,
+static bool wa_list_verify(struct intel_gt *gt,
 			   const struct i915_wa_list *wal,
 			   const char *from)
 {
+	struct intel_uncore *uncore = gt->uncore;
 	struct i915_wa *wa;
+	enum forcewake_domains fw;
+	unsigned long flags;
 	unsigned int i;
 	bool ok = true;
 
+	fw = wal_get_fw_for_rmw(uncore, wal);
+
+	spin_lock_irqsave(&uncore->lock, flags);
+	intel_uncore_forcewake_get__locked(uncore, fw);
+
 	for (i = 0, wa = wal->list; i < wal->count; i++, wa++)
 		ok &= wa_verify(wa,
-				intel_uncore_read(uncore, wa->reg),
+				intel_gt_read_register_fw(gt, wa->reg),
 				wal->name, from);
+
+	intel_uncore_forcewake_put__locked(uncore, fw);
+	spin_unlock_irqrestore(&uncore->lock, flags);
 
 	return ok;
 }
 
 bool intel_gt_verify_workarounds(struct intel_gt *gt, const char *from)
 {
-	return wa_list_verify(gt->uncore, &gt->i915->gt_wa_list, from);
+	return wa_list_verify(gt, &gt->i915->gt_wa_list, from);
 }
 
 __maybe_unused
@@ -1633,38 +1613,40 @@ rcs_engine_wa_init(struct intel_engine_cs *engine, struct i915_wa_list *wal)
 			    GEN7_DISABLE_SAMPLER_PREFETCH);
 	}
 
-	if (IS_ALDERLAKE_S(i915) || IS_DG1(i915) ||
+	if (IS_ALDERLAKE_P(i915) || IS_ALDERLAKE_S(i915) || IS_DG1(i915) ||
 	    IS_ROCKETLAKE(i915) || IS_TIGERLAKE(i915)) {
-		/* Wa_1606931601:tgl,rkl,dg1,adl-s */
+		/* Wa_1606931601:tgl,rkl,dg1,adl-s,adl-p */
 		wa_masked_en(wal, GEN7_ROW_CHICKEN2, GEN12_DISABLE_EARLY_READ);
 
 		/*
 		 * Wa_1407928979:tgl A*
 		 * Wa_18011464164:tgl[B0+],dg1[B0+]
 		 * Wa_22010931296:tgl[B0+],dg1[B0+]
-		 * Wa_14010919138:rkl,dg1,adl-s
+		 * Wa_14010919138:rkl,dg1,adl-s,adl-p
 		 */
 		wa_write_or(wal, GEN7_FF_THREAD_MODE,
 			    GEN12_FF_TESSELATION_DOP_GATE_DISABLE);
 
 		/*
-		 * Wa_1606700617:tgl,dg1
-		 * Wa_22010271021:tgl,rkl,dg1, adl-s
+		 * Wa_1606700617:tgl,dg1,adl-p
+		 * Wa_22010271021:tgl,rkl,dg1,adl-s,adl-p
+		 * Wa_14010826681:tgl,dg1,rkl,adl-p
 		 */
 		wa_masked_en(wal,
 			     GEN9_CS_DEBUG_MODE1,
 			     FF_DOP_CLOCK_GATE_DISABLE);
 	}
 
-	if (IS_ALDERLAKE_S(i915) || IS_DG1_REVID(i915, DG1_REVID_A0, DG1_REVID_A0) ||
+	if (IS_ALDERLAKE_P(i915) || IS_ALDERLAKE_S(i915) ||
+	    IS_DG1_REVID(i915, DG1_REVID_A0, DG1_REVID_A0) ||
 	    IS_ROCKETLAKE(i915) || IS_TIGERLAKE(i915)) {
-		/* Wa_1409804808:tgl,rkl,dg1[a0],adl-s */
+		/* Wa_1409804808:tgl,rkl,dg1[a0],adl-s,adl-p */
 		wa_masked_en(wal, GEN7_ROW_CHICKEN2,
 			     GEN12_PUSH_CONST_DEREF_HOLD_DIS);
 
 		/*
 		 * Wa_1409085225:tgl
-		 * Wa_14010229206:tgl,rkl,dg1[a0],adl-s
+		 * Wa_14010229206:tgl,rkl,dg1[a0],adl-s,adl-p
 		 */
 		wa_masked_en(wal, GEN9_ROW_CHICKEN4, GEN12_DISABLE_TDL_PUSH);
 	}
@@ -2081,7 +2063,7 @@ void intel_engine_init_workarounds(struct intel_engine_cs *engine)
 
 void intel_engine_apply_workarounds(struct intel_engine_cs *engine)
 {
-	wa_list_apply(engine->uncore, &engine->wa_list);
+	wa_list_apply(engine->gt, &engine->wa_list);
 }
 
 struct mcr_range {

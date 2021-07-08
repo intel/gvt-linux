@@ -253,10 +253,10 @@ static void mock_reset_cancel(struct intel_engine_cs *engine)
 
 	del_timer_sync(&mock->hw_delay);
 
-	spin_lock_irqsave(&engine->active.lock, flags);
+	spin_lock_irqsave(&engine->sched_engine->lock, flags);
 
 	/* Mark all submitted requests as skipped. */
-	list_for_each_entry(rq, &engine->active.requests, sched.link)
+	list_for_each_entry(rq, &engine->sched_engine->requests, sched.link)
 		i915_request_put(i915_request_mark_eio(rq));
 	intel_engine_signal_breadcrumbs(engine);
 
@@ -269,7 +269,7 @@ static void mock_reset_cancel(struct intel_engine_cs *engine)
 	}
 	INIT_LIST_HEAD(&mock->hw_queue);
 
-	spin_unlock_irqrestore(&engine->active.lock, flags);
+	spin_unlock_irqrestore(&engine->sched_engine->lock, flags);
 }
 
 static void mock_reset_finish(struct intel_engine_cs *engine)
@@ -283,6 +283,7 @@ static void mock_engine_release(struct intel_engine_cs *engine)
 
 	GEM_BUG_ON(timer_pending(&mock->hw_delay));
 
+	i915_sched_engine_put(engine->sched_engine);
 	intel_breadcrumbs_free(engine->breadcrumbs);
 
 	intel_context_unpin(engine->kernel_context);
@@ -345,14 +346,18 @@ int mock_engine_init(struct intel_engine_cs *engine)
 {
 	struct intel_context *ce;
 
-	intel_engine_init_active(engine, ENGINE_MOCK);
+	engine->sched_engine = i915_sched_engine_create(ENGINE_MOCK);
+	if (!engine->sched_engine)
+		return -ENOMEM;
+	engine->sched_engine->private_data = engine;
+
 	intel_engine_init_execlists(engine);
 	intel_engine_init__pm(engine);
 	intel_engine_init_retire(engine);
 
 	engine->breadcrumbs = intel_breadcrumbs_create(NULL);
 	if (!engine->breadcrumbs)
-		return -ENOMEM;
+		goto err_schedule;
 
 	ce = create_kernel_context(engine);
 	if (IS_ERR(ce))
@@ -366,6 +371,8 @@ int mock_engine_init(struct intel_engine_cs *engine)
 
 err_breadcrumbs:
 	intel_breadcrumbs_free(engine->breadcrumbs);
+err_schedule:
+	i915_sched_engine_put(engine->sched_engine);
 	return -ENOMEM;
 }
 

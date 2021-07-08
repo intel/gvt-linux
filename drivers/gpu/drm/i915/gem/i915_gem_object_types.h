@@ -18,6 +18,7 @@
 
 struct drm_i915_gem_object;
 struct intel_fronbuffer;
+struct intel_memory_region;
 
 /*
  * struct i915_lut_handle tracks the fast lookups from handle to vma used
@@ -33,10 +34,9 @@ struct i915_lut_handle {
 
 struct drm_i915_gem_object_ops {
 	unsigned int flags;
-#define I915_GEM_OBJECT_HAS_IOMEM	BIT(1)
-#define I915_GEM_OBJECT_IS_SHRINKABLE	BIT(2)
-#define I915_GEM_OBJECT_IS_PROXY	BIT(3)
-#define I915_GEM_OBJECT_NO_MMAP		BIT(4)
+#define I915_GEM_OBJECT_IS_SHRINKABLE	BIT(1)
+#define I915_GEM_OBJECT_IS_PROXY	BIT(2)
+#define I915_GEM_OBJECT_NO_MMAP		BIT(3)
 
 	/* Interface between the GEM object and its backing storage.
 	 * get_pages() is called once prior to the use of the associated set
@@ -78,6 +78,14 @@ struct drm_i915_gem_object_ops {
 	 * delayed_free - Override the default delayed free implementation
 	 */
 	void (*delayed_free)(struct drm_i915_gem_object *obj);
+
+	/**
+	 * migrate - Migrate object to a different region either for
+	 * pinning or for as long as the object lock is held.
+	 */
+	int (*migrate)(struct drm_i915_gem_object *obj,
+		       struct intel_memory_region *mr);
+
 	void (*release)(struct drm_i915_gem_object *obj);
 
 	const struct vm_operations_struct *mmap_ops;
@@ -201,17 +209,25 @@ struct drm_i915_gem_object {
 	unsigned long flags;
 #define I915_BO_ALLOC_CONTIGUOUS BIT(0)
 #define I915_BO_ALLOC_VOLATILE   BIT(1)
-#define I915_BO_ALLOC_STRUCT_PAGE BIT(2)
-#define I915_BO_ALLOC_CPU_CLEAR  BIT(3)
-#define I915_BO_ALLOC_USER       BIT(4)
+#define I915_BO_ALLOC_CPU_CLEAR  BIT(2)
+#define I915_BO_ALLOC_USER       BIT(3)
 #define I915_BO_ALLOC_FLAGS (I915_BO_ALLOC_CONTIGUOUS | \
 			     I915_BO_ALLOC_VOLATILE | \
-			     I915_BO_ALLOC_STRUCT_PAGE | \
 			     I915_BO_ALLOC_CPU_CLEAR | \
 			     I915_BO_ALLOC_USER)
-#define I915_BO_READONLY         BIT(5)
-#define I915_TILING_QUIRK_BIT    6 /* unknown swizzling; do not release! */
+#define I915_BO_READONLY         BIT(4)
+#define I915_TILING_QUIRK_BIT    5 /* unknown swizzling; do not release! */
 
+	/**
+	 * @mem_flags - Mutable placement-related flags
+	 *
+	 * These are flags that indicate specifics of the memory region
+	 * the object is currently in. As such they are only stable
+	 * either under the object lock or if the object is pinned.
+	 */
+	unsigned int mem_flags;
+#define I915_BO_FLAG_STRUCT_PAGE BIT(0) /* Object backed by struct pages */
+#define I915_BO_FLAG_IOMEM       BIT(1) /* Object backed by IO memory */
 	/*
 	 * Is the object to be mapped as read-only to the GPU
 	 * Only honoured if hardware has relevant pte bit
@@ -265,9 +281,10 @@ struct drm_i915_gem_object {
 		struct intel_memory_region *region;
 
 		/**
-		 * Memory manager node allocated for this object.
+		 * Memory manager resource allocated for this object. Only
+		 * needed for the mock region.
 		 */
-		void *st_mm_node;
+		struct ttm_resource *res;
 
 		/**
 		 * Element within memory_region->objects or region->purgeable

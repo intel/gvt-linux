@@ -556,7 +556,7 @@ struct i915_gem_mm {
 	 * notifier_lock for mmu notifiers, memory may not be allocated
 	 * while holding this lock.
 	 */
-	spinlock_t notifier_lock;
+	rwlock_t notifier_lock;
 #endif
 
 	/* shrinker accounting, also useful for userland debugging */
@@ -1741,9 +1741,6 @@ int i915_gem_init_userptr(struct drm_i915_private *dev_priv);
 void i915_gem_cleanup_userptr(struct drm_i915_private *dev_priv);
 void i915_gem_init_early(struct drm_i915_private *dev_priv);
 void i915_gem_cleanup_early(struct drm_i915_private *dev_priv);
-
-struct intel_memory_region *i915_gem_shmem_setup(struct drm_i915_private *i915,
-						 u16 type, u16 instance);
 
 static inline void i915_gem_drain_freed_objects(struct drm_i915_private *i915)
 {

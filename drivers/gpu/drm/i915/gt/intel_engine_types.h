@@ -59,6 +59,7 @@ struct drm_i915_reg_table;
 struct i915_gem_context;
 struct i915_request;
 struct i915_sched_attr;
+struct i915_sched_engine;
 struct intel_gt;
 struct intel_ring;
 struct intel_uncore;
@@ -138,11 +139,6 @@ struct st_preempt_hang {
  */
 struct intel_engine_execlists {
 	/**
-	 * @tasklet: softirq tasklet for bottom handler
-	 */
-	struct tasklet_struct tasklet;
-
-	/**
 	 * @timer: kick the current context if its timeslice expires
 	 */
 	struct timer_list timer;
@@ -151,11 +147,6 @@ struct intel_engine_execlists {
 	 * @preempt: reset the current context if it fails to give way
 	 */
 	struct timer_list preempt;
-
-	/**
-	 * @default_priolist: priority list for I915_PRIORITY_NORMAL
-	 */
-	struct i915_priolist default_priolist;
 
 	/**
 	 * @ccid: identifier for contexts submitted to this engine
@@ -190,11 +181,6 @@ struct intel_engine_execlists {
 	 * @reset_ccid: Active CCID [EXECLISTS_STATUS_HI] at the time of reset
 	 */
 	u32 reset_ccid;
-
-	/**
-	 * @no_priolist: priority lists disabled
-	 */
-	bool no_priolist;
 
 	/**
 	 * @submit_reg: gen-specific execlist submission register
@@ -238,23 +224,10 @@ struct intel_engine_execlists {
 	unsigned int port_mask;
 
 	/**
-	 * @queue_priority_hint: Highest pending priority.
-	 *
-	 * When we add requests into the queue, or adjust the priority of
-	 * executing requests, we compute the maximum priority of those
-	 * pending requests. We can then use this value to determine if
-	 * we need to preempt the executing requests to service the queue.
-	 * However, since the we may have recorded the priority of an inflight
-	 * request we wanted to preempt but since completed, at the time of
-	 * dequeuing the priority hint may no longer may match the highest
-	 * available request priority.
+	 * @virtual: Queue of requets on a virtual engine, sorted by priority.
+	 * Each RB entry is a struct i915_priolist containing a list of requests
+	 * of the same priority.
 	 */
-	int queue_priority_hint;
-
-	/**
-	 * @queue: queue of requests, in priority lists
-	 */
-	struct rb_root_cached queue;
 	struct rb_root_cached virtual;
 
 	/**
@@ -326,11 +299,7 @@ struct intel_engine_cs {
 
 	struct intel_sseu sseu;
 
-	struct {
-		spinlock_t lock;
-		struct list_head requests;
-		struct list_head hold; /* ready requests, but on hold */
-	} active;
+	struct i915_sched_engine *sched_engine;
 
 	/* keep a request in reserve for a [pm] barrier under oom */
 	struct i915_request *request_pool;
@@ -453,14 +422,6 @@ struct intel_engine_cs {
 	 */
 	void            (*bond_execute)(struct i915_request *rq,
 					struct dma_fence *signal);
-
-	/*
-	 * Call when the priority on a request has changed and it and its
-	 * dependencies may need rescheduling. Note the request itself may
-	 * not be ready to run!
-	 */
-	void		(*schedule)(struct i915_request *request,
-				    const struct i915_sched_attr *attr);
 
 	void		(*release)(struct intel_engine_cs *engine);
 

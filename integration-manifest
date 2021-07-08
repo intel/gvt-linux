@@ -1,0 +1,28 @@
+drm drm-fixes 62fb9874f5da54fdb243003b386128037319b219
+	Linux 5.13
+drm-misc drm-misc-fixes 1988e0d84161dabd99d1c27033fbd6ee439bf432
+	drm/panel: nt35510: Do not fail if DSI read fails
+drm-intel drm-intel-fixes 62fb9874f5da54fdb243003b386128037319b219
+	Linux 5.13
+drm drm-next 21c355b09711e95f8f0e7c1890b343c6cd350042
+	Merge tag 'drm-misc-next-fixes-2021-07-01' of git://anongit.freedesktop.org/drm/drm-misc into drm-next
+drm-misc drm-misc-next-fixes f18f58012ee894039cd59ee8c889bf499d7a3943
+	drm/radeon: Fix NULL dereference when updating memory stats
+drm-intel drm-intel-next-fixes 3dd6c11b60d2f1e4082221a8831f91093c4494aa
+	drm/i915: Drop all references to DRM IRQ midlayer
+drm-misc drm-misc-next 1a3c1959740c1a376fbcdf87916e96fb5cce5518
+	drm/vkms: replace macro in vkms_release()
+drm-intel drm-intel-next cd5606aa39925ad4483e96abffc9cc62bb36c640
+	gpu/drm/i915: nuke old GEN macros
+drm-intel drm-intel-gt-next 7c517f83fa8c35a03a13d7af36bd13fb991eae06
+	drm/i915/gt: finish INTEL_GEN and friends conversion
+sound-upstream for-linus 7cf3dead1ad70c72edb03e2d98e1f3dcd332cdb2
+	Linux 5.13
+sound-upstream for-next 7cf3dead1ad70c72edb03e2d98e1f3dcd332cdb2
+	Linux 5.13
+drm-intel topic/core-for-CI fae352efb12196e7110f98bc1297ce533472764d
+	drm/i915: allow DG1 autoprobe for CONFIG_BROKEN
+drm topic/nouveau-ampere-modeset 584265dfec70e78ce2085b82ed389f27e06fbca0
+	Merge branch '04.01-ampere-lite' of git://github.com/skeggsb/linux into topic/nouveau-ampere-modeset
+drm-misc topic/i915-ttm cf3e3e86d77970211e0983130e896ae242601003
+	drm/i915: Use ttm mmap handling for ttm bo's.

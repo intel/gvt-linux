@@ -1072,6 +1072,9 @@ static const struct pci_device_id pciidlist[] = {
 	INTEL_RKL_IDS(&rkl_info),
 	INTEL_ADLS_IDS(&adl_s_info),
 	INTEL_ADLP_IDS(&adl_p_info),
+#if IS_ENABLED(CONFIG_DRM_I915_UNSTABLE_FAKE_LMEM)
+	INTEL_DG1_IDS(&dg1_info),
+#endif
 	{0, 0, 0}
 };
 MODULE_DEVICE_TABLE(pci, pciidlist);

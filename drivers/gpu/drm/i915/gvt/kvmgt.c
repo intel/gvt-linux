@@ -51,8 +51,6 @@
 
 MODULE_IMPORT_NS(I915_GVT);
 
-static const struct intel_gvt_ops *intel_gvt_ops;
-
 /* helper macros copied from vfio-pci */
 #define VFIO_PCI_OFFSET_SHIFT   40
 #define VFIO_PCI_OFFSET_TO_INDEX(off)   (off >> VFIO_PCI_OFFSET_SHIFT)
@@ -602,9 +600,9 @@ static int handle_edid_regs(struct intel_vgpu *vgpu,
 					gvt_vgpu_err("invalid EDID blob\n");
 					return -EINVAL;
 				}
-				intel_gvt_ops->emulate_hotplug(vgpu, true);
+				intel_vgpu_emulate_hotplug(vgpu, true);
 			} else if (data == VFIO_DEVICE_GFX_LINK_STATE_DOWN)
-				intel_gvt_ops->emulate_hotplug(vgpu, false);
+				intel_vgpu_emulate_hotplug(vgpu, false);
 			else {
 				gvt_vgpu_err("invalid EDID link state %d\n",
 					regs->link_state);
@@ -806,7 +804,7 @@ static int intel_vgpu_create(struct mdev_device *mdev)
 		goto out;
 	}
 
-	vgpu = intel_gvt_ops->vgpu_create(gvt, type);
+	vgpu = intel_gvt_create_vgpu(gvt, type);
 	if (IS_ERR_OR_NULL(vgpu)) {
 		ret = vgpu == NULL ? -EFAULT : PTR_ERR(vgpu);
 		gvt_err("failed to create intel vgpu: %d\n", ret);
@@ -833,7 +831,7 @@ static int intel_vgpu_remove(struct mdev_device *mdev)
 	if (handle_valid(vgpu->handle))
 		return -EBUSY;
 
-	intel_gvt_ops->vgpu_destroy(vgpu);
+	intel_gvt_destroy_vgpu(vgpu);
 	return 0;
 }
 
@@ -936,7 +934,7 @@ static int intel_vgpu_open(struct mdev_device *mdev)
 	if (ret)
 		goto undo_group;
 
-	intel_gvt_ops->vgpu_activate(vgpu);
+	intel_gvt_activate_vgpu(vgpu);
 
 	atomic_set(&vdev->released, 0);
 	return ret;
@@ -981,7 +979,7 @@ static void __intel_vgpu_release(struct intel_vgpu *vgpu)
 	if (atomic_cmpxchg(&vdev->released, 0, 1))
 		return;
 
-	intel_gvt_ops->vgpu_release(vgpu);
+	intel_gvt_release_vgpu(vgpu);
 
 	ret = vfio_unregister_notifier(mdev_dev(vdev->mdev), VFIO_IOMMU_NOTIFY,
 					&vdev->iommu_notifier);
@@ -1055,10 +1053,10 @@ static int intel_vgpu_bar_rw(struct intel_vgpu *vgpu, int bar, u64 off,
 	int ret;
 
 	if (is_write)
-		ret = intel_gvt_ops->emulate_mmio_write(vgpu,
+		ret = intel_vgpu_emulate_mmio_write(vgpu,
 					bar_start + off, buf, count);
 	else
-		ret = intel_gvt_ops->emulate_mmio_read(vgpu,
+		ret = intel_vgpu_emulate_mmio_read(vgpu,
 					bar_start + off, buf, count);
 	return ret;
 }
@@ -1114,10 +1112,10 @@ static ssize_t intel_vgpu_rw(struct mdev_device *mdev, char *buf,
 	switch (index) {
 	case VFIO_PCI_CONFIG_REGION_INDEX:
 		if (is_write)
-			ret = intel_gvt_ops->emulate_cfg_write(vgpu, pos,
+			ret = intel_vgpu_emulate_cfg_write(vgpu, pos,
 						buf, count);
 		else
-			ret = intel_gvt_ops->emulate_cfg_read(vgpu, pos,
+			ret = intel_vgpu_emulate_cfg_read(vgpu, pos,
 						buf, count);
 		break;
 	case VFIO_PCI_BAR0_REGION_INDEX:
@@ -1685,7 +1683,7 @@ static long intel_vgpu_ioctl(struct mdev_device *mdev, unsigned int cmd,
 
 		return ret;
 	} else if (cmd == VFIO_DEVICE_RESET) {
-		intel_gvt_ops->vgpu_reset(vgpu);
+		intel_gvt_reset_vgpu(vgpu);
 		return 0;
 	} else if (cmd == VFIO_DEVICE_QUERY_GFX_PLANE) {
 		struct vfio_device_gfx_plane_info dmabuf;
@@ -1698,7 +1696,7 @@ static long intel_vgpu_ioctl(struct mdev_device *mdev, unsigned int cmd,
 		if (dmabuf.argsz < minsz)
 			return -EINVAL;
 
-		ret = intel_gvt_ops->vgpu_query_plane(vgpu, &dmabuf);
+		ret = intel_vgpu_query_plane(vgpu, &dmabuf);
 		if (ret != 0)
 			return ret;
 
@@ -1706,14 +1704,10 @@ static long intel_vgpu_ioctl(struct mdev_device *mdev, unsigned int cmd,
 								-EFAULT : 0;
 	} else if (cmd == VFIO_DEVICE_GET_GFX_DMABUF) {
 		__u32 dmabuf_id;
-		__s32 dmabuf_fd;
 
 		if (get_user(dmabuf_id, (__u32 __user *)arg))
 			return -EFAULT;
-
-		dmabuf_fd = intel_gvt_ops->vgpu_get_dmabuf(vgpu, dmabuf_id);
-		return dmabuf_fd;
-
+		return intel_vgpu_get_dmabuf(vgpu, dmabuf_id);
 	}
 
 	return -ENOTTY;
@@ -1764,7 +1758,7 @@ static struct mdev_parent_ops intel_vgpu_ops = {
 	.ioctl			= intel_vgpu_ioctl,
 };
 
-static int kvmgt_host_init(struct device *dev, void *gvt, const void *ops)
+static int kvmgt_host_init(struct device *dev, void *gvt)
 {
 	int ret;
 
@@ -1772,7 +1766,6 @@ static int kvmgt_host_init(struct device *dev, void *gvt, const void *ops)
 	if (ret)
 		return ret;
 
-	intel_gvt_ops = ops;
 	intel_vgpu_ops.supported_type_groups = gvt_vgpu_type_groups;
 
 	ret = mdev_register_device(dev, &intel_vgpu_ops);
@@ -1864,7 +1857,7 @@ static void kvmgt_page_track_write(struct kvm_vcpu *vcpu, gpa_t gpa,
 					struct kvmgt_guest_info, track_node);
 
 	if (kvmgt_gfn_is_write_protected(info, gpa_to_gfn(gpa)))
-		intel_gvt_ops->write_protect_handler(info->vgpu, gpa,
+		intel_vgpu_page_track_handler(info->vgpu, gpa,
 						     (void *)val, len);
 }
 

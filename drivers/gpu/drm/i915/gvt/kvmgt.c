@@ -49,6 +49,8 @@
 #include "i915_drv.h"
 #include "gvt.h"
 
+MODULE_IMPORT_NS(I915_GVT);
+
 static const struct intel_gvt_ops *intel_gvt_ops;
 
 /* helper macros copied from vfio-pci */
@@ -2225,20 +2227,9 @@ static const struct intel_gvt_mpt kvmgt_mpt = {
 	.is_valid_gfn = kvmgt_is_valid_gfn,
 };
 
-static int __init kvmgt_init(void)
-{
-	if (intel_gvt_register_hypervisor(&kvmgt_mpt) < 0)
-		return -ENODEV;
-	return 0;
-}
-
-static void __exit kvmgt_exit(void)
-{
-	intel_gvt_unregister_hypervisor();
-}
-
-module_init(kvmgt_init);
-module_exit(kvmgt_exit);
+struct intel_gvt_host intel_gvt_host = {
+	.mpt		= &kvmgt_mpt,
+};
 
 MODULE_LICENSE("GPL and additional rights");
 MODULE_AUTHOR("Intel Corporation");

@@ -290,8 +290,9 @@ i915-$(CONFIG_DRM_I915_SELFTEST) += \
 
 # virtual gpu code
 i915-y += i915_vgpu.o
-i915-$(CONFIG_DRM_I915_GVT) += \
-	intel_gvt.o \
+i915-$(CONFIG_DRM_I915_GVT_KVMGT) += intel_gvt.o
+
+kvmgt-y += gvt/kvmgt.o \
 	gvt/gvt.o \
 	gvt/aperture_gm.o \
 	gvt/handlers.o \
@@ -316,7 +317,7 @@ i915-$(CONFIG_DRM_I915_GVT) += \
 	gvt/page_track.o
 
 obj-$(CONFIG_DRM_I915) += i915.o
-obj-$(CONFIG_DRM_I915_GVT_KVMGT) += gvt/kvmgt.o
+obj-$(CONFIG_DRM_I915_GVT_KVMGT) += kvmgt.o
 
 # header test
 

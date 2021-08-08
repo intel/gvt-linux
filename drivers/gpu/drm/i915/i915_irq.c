@@ -2880,14 +2880,14 @@ static bool gen11_dsi_configure_te(struct intel_crtc *intel_crtc,
 	return true;
 }
 
-int bdw_enable_vblank(struct drm_crtc *crtc)
+int bdw_enable_vblank(struct drm_crtc *_crtc)
 {
-	struct drm_i915_private *dev_priv = to_i915(crtc->dev);
-	struct intel_crtc *intel_crtc = to_intel_crtc(crtc);
-	enum pipe pipe = intel_crtc->pipe;
+	struct intel_crtc *crtc = to_intel_crtc(_crtc);
+	struct drm_i915_private *dev_priv = to_i915(crtc->base.dev);
+	enum pipe pipe = crtc->pipe;
 	unsigned long irqflags;
 
-	if (gen11_dsi_configure_te(intel_crtc, true))
+	if (gen11_dsi_configure_te(crtc, true))
 		return 0;
 
 	spin_lock_irqsave(&dev_priv->irq_lock, irqflags);
@@ -2898,7 +2898,7 @@ int bdw_enable_vblank(struct drm_crtc *crtc)
 	 * PSR is active as no frames are generated, so check only for PSR.
 	 */
 	if (HAS_PSR(dev_priv))
-		drm_crtc_vblank_restore(crtc);
+		drm_crtc_vblank_restore(&crtc->base);
 
 	return 0;
 }
@@ -2952,14 +2952,14 @@ void ilk_disable_vblank(struct drm_crtc *crtc)
 	spin_unlock_irqrestore(&dev_priv->irq_lock, irqflags);
 }
 
-void bdw_disable_vblank(struct drm_crtc *crtc)
+void bdw_disable_vblank(struct drm_crtc *_crtc)
 {
-	struct drm_i915_private *dev_priv = to_i915(crtc->dev);
-	struct intel_crtc *intel_crtc = to_intel_crtc(crtc);
-	enum pipe pipe = intel_crtc->pipe;
+	struct intel_crtc *crtc = to_intel_crtc(_crtc);
+	struct drm_i915_private *dev_priv = to_i915(crtc->base.dev);
+	enum pipe pipe = crtc->pipe;
 	unsigned long irqflags;
 
-	if (gen11_dsi_configure_te(intel_crtc, false))
+	if (gen11_dsi_configure_te(crtc, false))
 		return;
 
 	spin_lock_irqsave(&dev_priv->irq_lock, irqflags);
@@ -4487,14 +4487,14 @@ int intel_irq_install(struct drm_i915_private *dev_priv)
 	 */
 	dev_priv->runtime_pm.irqs_enabled = true;
 
-	dev_priv->drm.irq_enabled = true;
+	dev_priv->irq_enabled = true;
 
 	intel_irq_reset(dev_priv);
 
 	ret = request_irq(irq, intel_irq_handler(dev_priv),
 			  IRQF_SHARED, DRIVER_NAME, dev_priv);
 	if (ret < 0) {
-		dev_priv->drm.irq_enabled = false;
+		dev_priv->irq_enabled = false;
 		return ret;
 	}
 
@@ -4520,10 +4520,10 @@ void intel_irq_uninstall(struct drm_i915_private *dev_priv)
 	 * intel_modeset_driver_remove() calling us out of sequence.
 	 * Would be nice if it didn't do that...
 	 */
-	if (!dev_priv->drm.irq_enabled)
+	if (!dev_priv->irq_enabled)
 		return;
 
-	dev_priv->drm.irq_enabled = false;
+	dev_priv->irq_enabled = false;
 
 	intel_irq_reset(dev_priv);
 

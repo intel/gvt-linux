@@ -72,12 +72,10 @@
  * The DRM core provides very simple support helpers to enable IRQ handling on a
  * device through the drm_irq_install() and drm_irq_uninstall() functions. This
  * only supports devices with a single interrupt on the main device stored in
- * &drm_device.dev and set as the device paramter in drm_dev_alloc().
+ * &drm_device.dev and set as the device parameter in drm_dev_alloc().
  *
- * These IRQ helpers are strictly optional. Drivers which roll their own only
- * need to set &drm_device.irq_enabled to signal the DRM core that vblank
- * interrupts are working. Since these helpers don't automatically clean up the
- * requested interrupt like e.g. devm_request_irq() they're not really
+ * These IRQ helpers are strictly optional. Since these helpers don't automatically
+ * clean up the requested interrupt like e.g. devm_request_irq() they're not really
  * recommended.
  */
 
@@ -91,9 +89,7 @@
  * and after the installation.
  *
  * This is the simplified helper interface provided for drivers with no special
- * needs. Drivers which need to install interrupt handlers for multiple
- * interrupts must instead set &drm_device.irq_enabled to signal the DRM core
- * that vblank interrupts are available.
+ * needs.
  *
  * @irq must match the interrupt number that would be passed to request_irq(),
  * if called directly instead of using this helper function.
@@ -140,7 +136,7 @@ int drm_irq_install(struct drm_device *dev, int irq)
 	if (ret < 0) {
 		dev->irq_enabled = false;
 		if (drm_core_check_feature(dev, DRIVER_LEGACY))
-			vga_client_register(to_pci_dev(dev->dev), NULL, NULL, NULL);
+			vga_client_unregister(to_pci_dev(dev->dev));
 		free_irq(irq, dev);
 	} else {
 		dev->irq = irq;
@@ -156,8 +152,7 @@ EXPORT_SYMBOL(drm_irq_install);
  *
  * Calls the driver's &drm_driver.irq_uninstall function and unregisters the IRQ
  * handler.  This should only be called by drivers which used drm_irq_install()
- * to set up their interrupt handler. Other drivers must only reset
- * &drm_device.irq_enabled to false.
+ * to set up their interrupt handler.
  *
  * Note that for kernel modesetting drivers it is a bug if this function fails.
  * The sanity checks are only to catch buggy user modesetting drivers which call
@@ -203,7 +198,7 @@ int drm_irq_uninstall(struct drm_device *dev)
 	DRM_DEBUG("irq=%d\n", dev->irq);
 
 	if (drm_core_check_feature(dev, DRIVER_LEGACY))
-		vga_client_register(to_pci_dev(dev->dev), NULL, NULL, NULL);
+		vga_client_unregister(to_pci_dev(dev->dev));
 
 	if (dev->driver->irq_uninstall)
 		dev->driver->irq_uninstall(dev);

@@ -25,6 +25,9 @@
 #include "i915_vgpu.h"
 #include "intel_gvt.h"
 #include "gvt/gvt.h"
+#include "gt/intel_context.h"
+#include "gt/intel_ring.h"
+#include "gt/shmem_utils.h"
 
 /**
  * DOC: Intel GVT-g host support
@@ -115,14 +118,23 @@ int intel_gvt_init(struct drm_i915_private *dev_priv)
 		return -EIO;
 	}
 
-	ret = intel_gvt_init_device(dev_priv);
+	request_module("kvmgt");
+	dev_priv->vgpu.ops = symbol_get(intel_gvt_vgpu_ops);
+	if (!dev_priv->vgpu.ops) {
+		drm_dbg(&dev_priv->drm, "Fail to find GVT ops\n");
+		goto bail;
+	}
+
+	ret = dev_priv->vgpu.ops->init_device(dev_priv);
 	if (ret) {
 		drm_dbg(&dev_priv->drm, "Fail to init GVT device\n");
-		goto bail;
+		goto bail_put_ops;
 	}
 
 	return 0;
 
+bail_put_ops:
+	symbol_put(gvt_ops);
 bail:
 	dev_priv->params.enable_gvt = 0;
 	return 0;
@@ -143,10 +155,10 @@ static inline bool intel_gvt_active(struct drm_i915_private *dev_priv)
  */
 void intel_gvt_driver_remove(struct drm_i915_private *dev_priv)
 {
-	if (!intel_gvt_active(dev_priv))
-		return;
-
-	intel_gvt_clean_device(dev_priv);
+	if (intel_gvt_active(dev_priv)) {
+		dev_priv->vgpu.ops->clean_device(dev_priv);
+		symbol_put(dev_priv->vgpu.ops);
+	}
 }
 
 /**
@@ -160,5 +172,43 @@ void intel_gvt_driver_remove(struct drm_i915_private *dev_priv)
 void intel_gvt_resume(struct drm_i915_private *dev_priv)
 {
 	if (intel_gvt_active(dev_priv))
-		intel_gvt_pm_resume(dev_priv->gvt);
+		dev_priv->vgpu.ops->pm_resume(dev_priv);
 }
+
+/*
+ * Exported here so that the exports only get created when GVT support is
+ * actually enabled.
+ */
+EXPORT_SYMBOL_NS_GPL(i915_gem_object_alloc, I915_GVT);
+EXPORT_SYMBOL_NS_GPL(i915_gem_object_create_shmem, I915_GVT);
+EXPORT_SYMBOL_NS_GPL(i915_gem_object_init, I915_GVT);
+EXPORT_SYMBOL_NS_GPL(i915_gem_object_ggtt_pin_ww, I915_GVT);
+EXPORT_SYMBOL_NS_GPL(i915_gem_object_pin_map, I915_GVT);
+EXPORT_SYMBOL_NS_GPL(i915_gem_object_set_to_cpu_domain, I915_GVT);
+EXPORT_SYMBOL_NS_GPL(__i915_gem_object_flush_map, I915_GVT);
+EXPORT_SYMBOL_NS_GPL(__i915_gem_object_set_pages, I915_GVT);
+EXPORT_SYMBOL_NS_GPL(i915_gem_gtt_insert, I915_GVT);
+EXPORT_SYMBOL_NS_GPL(i915_gem_prime_export, I915_GVT);
+EXPORT_SYMBOL_NS_GPL(i915_gem_ww_ctx_init, I915_GVT);
+EXPORT_SYMBOL_NS_GPL(i915_gem_ww_ctx_backoff, I915_GVT);
+EXPORT_SYMBOL_NS_GPL(i915_gem_ww_ctx_fini, I915_GVT);
+EXPORT_SYMBOL_NS_GPL(i915_ppgtt_create, I915_GVT);
+EXPORT_SYMBOL_NS_GPL(i915_request_add, I915_GVT);
+EXPORT_SYMBOL_NS_GPL(i915_request_create, I915_GVT);
+EXPORT_SYMBOL_NS_GPL(i915_request_wait, I915_GVT);
+EXPORT_SYMBOL_NS_GPL(i915_reserve_fence, I915_GVT);
+EXPORT_SYMBOL_NS_GPL(i915_unreserve_fence, I915_GVT);
+EXPORT_SYMBOL_NS_GPL(i915_vm_release, I915_GVT);
+EXPORT_SYMBOL_NS_GPL(i915_vma_move_to_active, I915_GVT);
+EXPORT_SYMBOL_NS_GPL(intel_context_create, I915_GVT);
+EXPORT_SYMBOL_NS_GPL(intel_context_unpin, I915_GVT);
+EXPORT_SYMBOL_NS_GPL(__intel_context_do_pin, I915_GVT);
+EXPORT_SYMBOL_NS_GPL(intel_ring_begin, I915_GVT);
+EXPORT_SYMBOL_NS_GPL(intel_runtime_pm_get, I915_GVT);
+EXPORT_SYMBOL_NS_GPL(intel_runtime_pm_put_unchecked, I915_GVT);
+EXPORT_SYMBOL_NS_GPL(intel_uncore_forcewake_for_reg, I915_GVT);
+EXPORT_SYMBOL_NS_GPL(intel_uncore_forcewake_get, I915_GVT);
+EXPORT_SYMBOL_NS_GPL(intel_uncore_forcewake_put, I915_GVT);
+EXPORT_SYMBOL_NS_GPL(shmem_pin_map, I915_GVT);
+EXPORT_SYMBOL_NS_GPL(shmem_unpin_map, I915_GVT);
+EXPORT_SYMBOL_NS_GPL(__px_dma, I915_GVT);

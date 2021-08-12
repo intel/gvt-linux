@@ -810,10 +810,17 @@ struct i915_frontbuffer_tracking {
 	unsigned flip_bits;
 };
 
+struct i915_virtual_gpu_ops {
+	int (*init_device)(struct drm_i915_private *dev_priv);
+	void (*clean_device)(struct drm_i915_private *dev_priv);
+	void (*pm_resume)(struct drm_i915_private *i915);
+};
+
 struct i915_virtual_gpu {
 	struct mutex lock; /* serialises sending of g2v_notify command pkts */
 	bool active;
 	u32 caps;
+	const struct i915_virtual_gpu_ops *ops;
 };
 
 struct intel_cdclk_config {

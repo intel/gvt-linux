@@ -1,28 +1,18 @@
-drm drm-fixes 1648740b2e355c727c9effe95fb14ee4e2706a28
-	Merge tag 'mediatek-drm-fixes-5.14' of https://git.kernel.org/pub/scm/linux/kernel/git/chunkuang.hu/linux into drm-fixes
-drm-misc drm-misc-fixes bf33677a3c394bb8fddd48d3bbc97adf0262e045
-	drm/meson: fix colour distortion from HDR set during vendor u-boot
-drm-intel drm-intel-fixes d927ae73e1bd5aed59e0afc58016bb11cc4a1549
-	Merge tag 'gvt-fixes-2021-08-10' of https://github.com/intel/gvt-linux into drm-intel-fixes
-drm drm-next a22c074fd1dd52a8b41dd6789220409b64093e9c
-	Merge tag 'drm-intel-next-2021-08-10-1' of git://anongit.freedesktop.org/drm/drm-intel into drm-next
-drm-misc drm-misc-next-fixes 87360168759879d68550b0c052bbcc2a0339ff74
-	drm/vmwgfx: Fix a 64bit regression on svga3
-drm-intel drm-intel-next-fixes 21c355b09711e95f8f0e7c1890b343c6cd350042
-	Merge tag 'drm-misc-next-fixes-2021-07-01' of git://anongit.freedesktop.org/drm/drm-misc into drm-next
-drm-misc drm-misc-next 83326a73a1f2933295d30667ab4996b1b1099708
-	drm/ingenic: Use standard drm_atomic_helper_commit_tail
-drm-intel drm-intel-next c5589bb5dccb0c5cb74910da93663f489589f3ce
-	drm/i915: Only access SFC_DONE when media domain is not fused off
-drm-intel drm-intel-gt-next d16de9a25b5cc458d0c8c978970f8edf9cf710d0
-	drm/i915/xehpsdv: Add compute DSS type
-sound-upstream for-linus 7cf3dead1ad70c72edb03e2d98e1f3dcd332cdb2
-	Linux 5.13
-sound-upstream for-next 7cf3dead1ad70c72edb03e2d98e1f3dcd332cdb2
-	Linux 5.13
-drm-intel topic/core-for-CI fae352efb12196e7110f98bc1297ce533472764d
-	drm/i915: allow DG1 autoprobe for CONFIG_BROKEN
-drm topic/nouveau-ampere-modeset 584265dfec70e78ce2085b82ed389f27e06fbca0
-	Merge branch '04.01-ampere-lite' of git://github.com/skeggsb/linux into topic/nouveau-ampere-modeset
-drm-misc topic/i915-ttm cf3e3e86d77970211e0983130e896ae242601003
-	drm/i915: Use ttm mmap handling for ttm bo's.
+drm-tip/drm-tip c5c1fcf35511df21cf435b1dcea1082db8de11a0
+	drm-tip: 2021y-08m-12d-02h-24m-26s UTC integration manifest
+vfio-upstream/next eb24c1007e6852e024dc33b0dd9617b8500a1291
+	vfio: Remove struct vfio_device_ops open/release
+vfio-upstream/for-linus dc51ff91cf2d1e9a2d941da483602f71d4a51472
+	vfio/platform: fix module_put call in error flow
+intel-iommu/iommu/next a593472591a5cf2d91244bc3f319c9dd91119343
+	Merge branches 'iommu/fixes', 'arm/omap', 'arm/exynos', 'x86/amd', 'x86/vt-d' and 'core' into next
+intel-iommu/iommu/fixes 5aa95d8834e07907e64937d792c12ffef7fb271f
+	iommu: Check if group is NULL before remove device
+origin/gvt-fixes 699aa57b35672c3b2f230e2b7e5d0ab8c2bde80a
+	drm/i915/gvt: Fix cached atomics setting for Windows VM
+origin/gvt-next f32c276ae3de9061c3604e558550c8b4f00723fe
+	drm/i915/gvt: remove struct intel_gvt_mpt
+origin/gvt-gt-next e156285b120feaac6207e6bd3fa31d9ae8ffd80d
+	drm/i915/gvt: Purge dev_priv->gt
+origin/gvt-next-fixes d385c16173f28a18866abf54c764200c276dace0
+	drm/i915/gvt: Prevent divided by zero when calculating refresh rate

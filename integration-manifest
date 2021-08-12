@@ -1,0 +1,28 @@
+drm drm-fixes 1648740b2e355c727c9effe95fb14ee4e2706a28
+	Merge tag 'mediatek-drm-fixes-5.14' of https://git.kernel.org/pub/scm/linux/kernel/git/chunkuang.hu/linux into drm-fixes
+drm-misc drm-misc-fixes bf33677a3c394bb8fddd48d3bbc97adf0262e045
+	drm/meson: fix colour distortion from HDR set during vendor u-boot
+drm-intel drm-intel-fixes d927ae73e1bd5aed59e0afc58016bb11cc4a1549
+	Merge tag 'gvt-fixes-2021-08-10' of https://github.com/intel/gvt-linux into drm-intel-fixes
+drm drm-next a22c074fd1dd52a8b41dd6789220409b64093e9c
+	Merge tag 'drm-intel-next-2021-08-10-1' of git://anongit.freedesktop.org/drm/drm-intel into drm-next
+drm-misc drm-misc-next-fixes 87360168759879d68550b0c052bbcc2a0339ff74
+	drm/vmwgfx: Fix a 64bit regression on svga3
+drm-intel drm-intel-next-fixes 21c355b09711e95f8f0e7c1890b343c6cd350042
+	Merge tag 'drm-misc-next-fixes-2021-07-01' of git://anongit.freedesktop.org/drm/drm-misc into drm-next
+drm-misc drm-misc-next 83326a73a1f2933295d30667ab4996b1b1099708
+	drm/ingenic: Use standard drm_atomic_helper_commit_tail
+drm-intel drm-intel-next c5589bb5dccb0c5cb74910da93663f489589f3ce
+	drm/i915: Only access SFC_DONE when media domain is not fused off
+drm-intel drm-intel-gt-next d16de9a25b5cc458d0c8c978970f8edf9cf710d0
+	drm/i915/xehpsdv: Add compute DSS type
+sound-upstream for-linus 7cf3dead1ad70c72edb03e2d98e1f3dcd332cdb2
+	Linux 5.13
+sound-upstream for-next 7cf3dead1ad70c72edb03e2d98e1f3dcd332cdb2
+	Linux 5.13
+drm-intel topic/core-for-CI fae352efb12196e7110f98bc1297ce533472764d
+	drm/i915: allow DG1 autoprobe for CONFIG_BROKEN
+drm topic/nouveau-ampere-modeset 584265dfec70e78ce2085b82ed389f27e06fbca0
+	Merge branch '04.01-ampere-lite' of git://github.com/skeggsb/linux into topic/nouveau-ampere-modeset
+drm-misc topic/i915-ttm cf3e3e86d77970211e0983130e896ae242601003
+	drm/i915: Use ttm mmap handling for ttm bo's.

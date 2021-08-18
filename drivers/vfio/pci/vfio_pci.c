@@ -222,9 +222,11 @@ no_mmap:
 	}
 }
 
-static void vfio_pci_try_bus_reset(struct vfio_pci_device *vdev);
+struct vfio_pci_group_info;
+static bool vfio_pci_dev_set_try_reset(struct vfio_device_set *dev_set);
 static void vfio_pci_disable(struct vfio_pci_device *vdev);
-static int vfio_pci_try_zap_and_vma_lock_cb(struct pci_dev *pdev, void *data);
+static int vfio_pci_dev_set_hot_reset(struct vfio_device_set *dev_set,
+				      struct vfio_pci_group_info *groups);
 
 /*
  * INTx masking requires the ability to disable INTx signaling via PCI_COMMAND
@@ -403,6 +405,9 @@ static void vfio_pci_disable(struct vfio_pci_device *vdev)
 	struct vfio_pci_ioeventfd *ioeventfd, *ioeventfd_tmp;
 	int i, bar;
 
+	/* For needs_reset */
+	lockdep_assert_held(&vdev->vdev.dev_set->lock);
+
 	/* Stop the device from further DMA */
 	pci_clear_master(pdev);
 
@@ -486,9 +491,7 @@ static void vfio_pci_disable(struct vfio_pci_device *vdev)
 out:
 	pci_disable_device(pdev);
 
-	vfio_pci_try_bus_reset(vdev);
-
-	if (!disable_idle_d3)
+	if (!vfio_pci_dev_set_try_reset(vdev->vdev.dev_set) && !disable_idle_d3)
 		vfio_pci_set_power_state(vdev, PCI_D3hot);
 }
 
@@ -529,53 +532,40 @@ static void vfio_pci_vf_token_user_add(struct vfio_pci_device *vdev, int val)
 	vfio_device_put(&pf_vdev->vdev);
 }
 
-static void vfio_pci_release(struct vfio_device *core_vdev)
+static void vfio_pci_close_device(struct vfio_device *core_vdev)
 {
 	struct vfio_pci_device *vdev =
 		container_of(core_vdev, struct vfio_pci_device, vdev);
 
-	mutex_lock(&vdev->reflck->lock);
+	vfio_pci_vf_token_user_add(vdev, -1);
+	vfio_spapr_pci_eeh_release(vdev->pdev);
+	vfio_pci_disable(vdev);
 
-	if (!(--vdev->refcnt)) {
-		vfio_pci_vf_token_user_add(vdev, -1);
-		vfio_spapr_pci_eeh_release(vdev->pdev);
-		vfio_pci_disable(vdev);
-
-		mutex_lock(&vdev->igate);
-		if (vdev->err_trigger) {
-			eventfd_ctx_put(vdev->err_trigger);
-			vdev->err_trigger = NULL;
-		}
-		if (vdev->req_trigger) {
-			eventfd_ctx_put(vdev->req_trigger);
-			vdev->req_trigger = NULL;
-		}
-		mutex_unlock(&vdev->igate);
+	mutex_lock(&vdev->igate);
+	if (vdev->err_trigger) {
+		eventfd_ctx_put(vdev->err_trigger);
+		vdev->err_trigger = NULL;
 	}
-
-	mutex_unlock(&vdev->reflck->lock);
+	if (vdev->req_trigger) {
+		eventfd_ctx_put(vdev->req_trigger);
+		vdev->req_trigger = NULL;
+	}
+	mutex_unlock(&vdev->igate);
 }
 
-static int vfio_pci_open(struct vfio_device *core_vdev)
+static int vfio_pci_open_device(struct vfio_device *core_vdev)
 {
 	struct vfio_pci_device *vdev =
 		container_of(core_vdev, struct vfio_pci_device, vdev);
 	int ret = 0;
 
-	mutex_lock(&vdev->reflck->lock);
+	ret = vfio_pci_enable(vdev);
+	if (ret)
+		return ret;
 
-	if (!vdev->refcnt) {
-		ret = vfio_pci_enable(vdev);
-		if (ret)
-			goto error;
-
-		vfio_spapr_pci_eeh_open(vdev->pdev);
-		vfio_pci_vf_token_user_add(vdev, 1);
-	}
-	vdev->refcnt++;
-error:
-	mutex_unlock(&vdev->reflck->lock);
-	return ret;
+	vfio_spapr_pci_eeh_open(vdev->pdev);
+	vfio_pci_vf_token_user_add(vdev, 1);
+	return 0;
 }
 
 static int vfio_pci_get_irq_count(struct vfio_pci_device *vdev, int irq_type)
@@ -654,36 +644,10 @@ static int vfio_pci_fill_devs(struct pci_dev *pdev, void *data)
 	return 0;
 }
 
-struct vfio_pci_group_entry {
-	struct vfio_group *group;
-	int id;
-};
-
 struct vfio_pci_group_info {
 	int count;
-	struct vfio_pci_group_entry *groups;
+	struct vfio_group **groups;
 };
-
-static int vfio_pci_validate_devs(struct pci_dev *pdev, void *data)
-{
-	struct vfio_pci_group_info *info = data;
-	struct iommu_group *group;
-	int id, i;
-
-	group = iommu_group_get(&pdev->dev);
-	if (!group)
-		return -EPERM;
-
-	id = iommu_group_id(group);
-
-	for (i = 0; i < info->count; i++)
-		if (info->groups[i].id == id)
-			break;
-
-	iommu_group_put(group);
-
-	return (i == info->count) ? -EINVAL : 0;
-}
 
 static bool vfio_pci_dev_below_slot(struct pci_dev *pdev, struct pci_slot *slot)
 {
@@ -761,12 +725,6 @@ int vfio_pci_register_dev_region(struct vfio_pci_device *vdev,
 
 	return 0;
 }
-
-struct vfio_devices {
-	struct vfio_pci_device **devices;
-	int cur_index;
-	int max_index;
-};
 
 static long vfio_pci_ioctl(struct vfio_device *core_vdev,
 			   unsigned int cmd, unsigned long arg)
@@ -1136,11 +1094,10 @@ reset_info_exit:
 	} else if (cmd == VFIO_DEVICE_PCI_HOT_RESET) {
 		struct vfio_pci_hot_reset hdr;
 		int32_t *group_fds;
-		struct vfio_pci_group_entry *groups;
+		struct vfio_group **groups;
 		struct vfio_pci_group_info info;
-		struct vfio_devices devs = { .cur_index = 0 };
 		bool slot = false;
-		int i, group_idx, mem_idx = 0, count = 0, ret = 0;
+		int group_idx, count = 0, ret = 0;
 
 		minsz = offsetofend(struct vfio_pci_hot_reset, count);
 
@@ -1207,9 +1164,7 @@ reset_info_exit:
 				break;
 			}
 
-			groups[group_idx].group = group;
-			groups[group_idx].id =
-					vfio_external_user_iommu_id(group);
+			groups[group_idx] = group;
 		}
 
 		kfree(group_fds);
@@ -1221,64 +1176,11 @@ reset_info_exit:
 		info.count = hdr.count;
 		info.groups = groups;
 
-		/*
-		 * Test whether all the affected devices are contained
-		 * by the set of groups provided by the user.
-		 */
-		ret = vfio_pci_for_each_slot_or_bus(vdev->pdev,
-						    vfio_pci_validate_devs,
-						    &info, slot);
-		if (ret)
-			goto hot_reset_release;
-
-		devs.max_index = count;
-		devs.devices = kcalloc(count, sizeof(struct vfio_device *),
-				       GFP_KERNEL);
-		if (!devs.devices) {
-			ret = -ENOMEM;
-			goto hot_reset_release;
-		}
-
-		/*
-		 * We need to get memory_lock for each device, but devices
-		 * can share mmap_lock, therefore we need to zap and hold
-		 * the vma_lock for each device, and only then get each
-		 * memory_lock.
-		 */
-		ret = vfio_pci_for_each_slot_or_bus(vdev->pdev,
-					    vfio_pci_try_zap_and_vma_lock_cb,
-					    &devs, slot);
-		if (ret)
-			goto hot_reset_release;
-
-		for (; mem_idx < devs.cur_index; mem_idx++) {
-			struct vfio_pci_device *tmp = devs.devices[mem_idx];
-
-			ret = down_write_trylock(&tmp->memory_lock);
-			if (!ret) {
-				ret = -EBUSY;
-				goto hot_reset_release;
-			}
-			mutex_unlock(&tmp->vma_lock);
-		}
-
-		/* User has access, do the reset */
-		ret = pci_reset_bus(vdev->pdev);
+		ret = vfio_pci_dev_set_hot_reset(vdev->vdev.dev_set, &info);
 
 hot_reset_release:
-		for (i = 0; i < devs.cur_index; i++) {
-			struct vfio_pci_device *tmp = devs.devices[i];
-
-			if (i < mem_idx)
-				up_write(&tmp->memory_lock);
-			else
-				mutex_unlock(&tmp->vma_lock);
-			vfio_device_put(&tmp->vdev);
-		}
-		kfree(devs.devices);
-
 		for (group_idx--; group_idx >= 0; group_idx--)
-			vfio_group_put_external_user(groups[group_idx].group);
+			vfio_group_put_external_user(groups[group_idx]);
 
 		kfree(groups);
 		return ret;
@@ -1869,8 +1771,8 @@ static int vfio_pci_match(struct vfio_device *core_vdev, char *buf)
 
 static const struct vfio_device_ops vfio_pci_ops = {
 	.name		= "vfio-pci",
-	.open		= vfio_pci_open,
-	.release	= vfio_pci_release,
+	.open_device	= vfio_pci_open_device,
+	.close_device	= vfio_pci_close_device,
 	.ioctl		= vfio_pci_ioctl,
 	.read		= vfio_pci_read,
 	.write		= vfio_pci_write,
@@ -1878,9 +1780,6 @@ static const struct vfio_device_ops vfio_pci_ops = {
 	.request	= vfio_pci_request,
 	.match		= vfio_pci_match,
 };
-
-static int vfio_pci_reflck_attach(struct vfio_pci_device *vdev);
-static void vfio_pci_reflck_put(struct vfio_pci_reflck *reflck);
 
 static int vfio_pci_bus_notifier(struct notifier_block *nb,
 				 unsigned long action, void *data)
@@ -2019,12 +1918,23 @@ static int vfio_pci_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	INIT_LIST_HEAD(&vdev->vma_list);
 	init_rwsem(&vdev->memory_lock);
 
-	ret = vfio_pci_reflck_attach(vdev);
+	if (pci_is_root_bus(pdev->bus)) {
+		ret = vfio_assign_device_set(&vdev->vdev, vdev);
+	} else if (!pci_probe_reset_slot(pdev->slot)) {
+		ret = vfio_assign_device_set(&vdev->vdev, pdev->slot);
+	} else {
+		/*
+		 * If there is no slot reset support for this device, the whole
+		 * bus needs to be grouped together to support bus-wide resets.
+		 */
+		ret = vfio_assign_device_set(&vdev->vdev, pdev->bus);
+	}
+
 	if (ret)
-		goto out_free;
+		goto out_uninit;
 	ret = vfio_pci_vf_init(vdev);
 	if (ret)
-		goto out_reflck;
+		goto out_uninit;
 	ret = vfio_pci_vga_init(vdev);
 	if (ret)
 		goto out_vf;
@@ -2056,9 +1966,8 @@ out_power:
 		vfio_pci_set_power_state(vdev, PCI_D0);
 out_vf:
 	vfio_pci_vf_uninit(vdev);
-out_reflck:
-	vfio_pci_reflck_put(vdev->reflck);
-out_free:
+out_uninit:
+	vfio_uninit_group_dev(&vdev->vdev);
 	kfree(vdev->pm_save);
 	kfree(vdev);
 out_group_put:
@@ -2075,7 +1984,7 @@ static void vfio_pci_remove(struct pci_dev *pdev)
 	vfio_unregister_group_dev(&vdev->vdev);
 
 	vfio_pci_vf_uninit(vdev);
-	vfio_pci_reflck_put(vdev->reflck);
+	vfio_uninit_group_dev(&vdev->vdev);
 	vfio_pci_vga_uninit(vdev);
 
 	vfio_iommu_group_put(pdev->dev.iommu_group, &pdev->dev);
@@ -2150,222 +2059,182 @@ static struct pci_driver vfio_pci_driver = {
 	.err_handler		= &vfio_err_handlers,
 };
 
-static DEFINE_MUTEX(reflck_lock);
-
-static struct vfio_pci_reflck *vfio_pci_reflck_alloc(void)
+static bool vfio_dev_in_groups(struct vfio_pci_device *vdev,
+			       struct vfio_pci_group_info *groups)
 {
-	struct vfio_pci_reflck *reflck;
+	unsigned int i;
 
-	reflck = kzalloc(sizeof(*reflck), GFP_KERNEL);
-	if (!reflck)
-		return ERR_PTR(-ENOMEM);
-
-	kref_init(&reflck->kref);
-	mutex_init(&reflck->lock);
-
-	return reflck;
+	for (i = 0; i < groups->count; i++)
+		if (groups->groups[i] == vdev->vdev.group)
+			return true;
+	return false;
 }
 
-static void vfio_pci_reflck_get(struct vfio_pci_reflck *reflck)
+static int vfio_pci_is_device_in_set(struct pci_dev *pdev, void *data)
 {
-	kref_get(&reflck->kref);
-}
+	struct vfio_device_set *dev_set = data;
+	struct vfio_device *cur;
 
-static int vfio_pci_reflck_find(struct pci_dev *pdev, void *data)
-{
-	struct vfio_pci_reflck **preflck = data;
-	struct vfio_device *device;
-	struct vfio_pci_device *vdev;
-
-	device = vfio_device_get_from_dev(&pdev->dev);
-	if (!device)
-		return 0;
-
-	if (pci_dev_driver(pdev) != &vfio_pci_driver) {
-		vfio_device_put(device);
-		return 0;
-	}
-
-	vdev = container_of(device, struct vfio_pci_device, vdev);
-
-	if (vdev->reflck) {
-		vfio_pci_reflck_get(vdev->reflck);
-		*preflck = vdev->reflck;
-		vfio_device_put(device);
-		return 1;
-	}
-
-	vfio_device_put(device);
-	return 0;
-}
-
-static int vfio_pci_reflck_attach(struct vfio_pci_device *vdev)
-{
-	bool slot = !pci_probe_reset_slot(vdev->pdev->slot);
-
-	mutex_lock(&reflck_lock);
-
-	if (pci_is_root_bus(vdev->pdev->bus) ||
-	    vfio_pci_for_each_slot_or_bus(vdev->pdev, vfio_pci_reflck_find,
-					  &vdev->reflck, slot) <= 0)
-		vdev->reflck = vfio_pci_reflck_alloc();
-
-	mutex_unlock(&reflck_lock);
-
-	return PTR_ERR_OR_ZERO(vdev->reflck);
-}
-
-static void vfio_pci_reflck_release(struct kref *kref)
-{
-	struct vfio_pci_reflck *reflck = container_of(kref,
-						      struct vfio_pci_reflck,
-						      kref);
-
-	kfree(reflck);
-	mutex_unlock(&reflck_lock);
-}
-
-static void vfio_pci_reflck_put(struct vfio_pci_reflck *reflck)
-{
-	kref_put_mutex(&reflck->kref, vfio_pci_reflck_release, &reflck_lock);
-}
-
-static int vfio_pci_get_unused_devs(struct pci_dev *pdev, void *data)
-{
-	struct vfio_devices *devs = data;
-	struct vfio_device *device;
-	struct vfio_pci_device *vdev;
-
-	if (devs->cur_index == devs->max_index)
-		return -ENOSPC;
-
-	device = vfio_device_get_from_dev(&pdev->dev);
-	if (!device)
-		return -EINVAL;
-
-	if (pci_dev_driver(pdev) != &vfio_pci_driver) {
-		vfio_device_put(device);
-		return -EBUSY;
-	}
-
-	vdev = container_of(device, struct vfio_pci_device, vdev);
-
-	/* Fault if the device is not unused */
-	if (vdev->refcnt) {
-		vfio_device_put(device);
-		return -EBUSY;
-	}
-
-	devs->devices[devs->cur_index++] = vdev;
-	return 0;
-}
-
-static int vfio_pci_try_zap_and_vma_lock_cb(struct pci_dev *pdev, void *data)
-{
-	struct vfio_devices *devs = data;
-	struct vfio_device *device;
-	struct vfio_pci_device *vdev;
-
-	if (devs->cur_index == devs->max_index)
-		return -ENOSPC;
-
-	device = vfio_device_get_from_dev(&pdev->dev);
-	if (!device)
-		return -EINVAL;
-
-	if (pci_dev_driver(pdev) != &vfio_pci_driver) {
-		vfio_device_put(device);
-		return -EBUSY;
-	}
-
-	vdev = container_of(device, struct vfio_pci_device, vdev);
-
-	/*
-	 * Locking multiple devices is prone to deadlock, runaway and
-	 * unwind if we hit contention.
-	 */
-	if (!vfio_pci_zap_and_vma_lock(vdev, true)) {
-		vfio_device_put(device);
-		return -EBUSY;
-	}
-
-	devs->devices[devs->cur_index++] = vdev;
-	return 0;
+	list_for_each_entry(cur, &dev_set->device_list, dev_set_list)
+		if (cur->dev == &pdev->dev)
+			return 0;
+	return -EBUSY;
 }
 
 /*
- * If a bus or slot reset is available for the provided device and:
- *  - All of the devices affected by that bus or slot reset are unused
- *    (!refcnt)
- *  - At least one of the affected devices is marked dirty via
- *    needs_reset (such as by lack of FLR support)
- * Then attempt to perform that bus or slot reset.  Callers are required
- * to hold vdev->reflck->lock, protecting the bus/slot reset group from
- * concurrent opens.  A vfio_device reference is acquired for each device
- * to prevent unbinds during the reset operation.
+ * vfio-core considers a group to be viable and will create a vfio_device even
+ * if some devices are bound to drivers like pci-stub or pcieport. Here we
+ * require all PCI devices to be inside our dev_set since that ensures they stay
+ * put and that every driver controlling the device can co-ordinate with the
+ * device reset.
  *
- * NB: vfio-core considers a group to be viable even if some devices are
- * bound to drivers like pci-stub or pcieport.  Here we require all devices
- * to be bound to vfio_pci since that's the only way we can be sure they
- * stay put.
+ * Returns the pci_dev to pass to pci_reset_bus() if every PCI device to be
+ * reset is inside the dev_set, and pci_reset_bus() can succeed. NULL otherwise.
  */
-static void vfio_pci_try_bus_reset(struct vfio_pci_device *vdev)
+static struct pci_dev *
+vfio_pci_dev_set_resettable(struct vfio_device_set *dev_set)
 {
-	struct vfio_devices devs = { .cur_index = 0 };
-	int i = 0, ret = -EINVAL;
-	bool slot = false;
-	struct vfio_pci_device *tmp;
+	struct pci_dev *pdev;
 
-	if (!pci_probe_reset_slot(vdev->pdev->slot))
-		slot = true;
-	else if (pci_probe_reset_bus(vdev->pdev->bus))
-		return;
+	lockdep_assert_held(&dev_set->lock);
 
-	if (vfio_pci_for_each_slot_or_bus(vdev->pdev, vfio_pci_count_devs,
-					  &i, slot) || !i)
-		return;
+	/*
+	 * By definition all PCI devices in the dev_set share the same PCI
+	 * reset, so any pci_dev will have the same outcomes for
+	 * pci_probe_reset_*() and pci_reset_bus().
+	 */
+	pdev = list_first_entry(&dev_set->device_list, struct vfio_pci_device,
+				vdev.dev_set_list)->pdev;
 
-	devs.max_index = i;
-	devs.devices = kcalloc(i, sizeof(struct vfio_device *), GFP_KERNEL);
-	if (!devs.devices)
-		return;
+	/* pci_reset_bus() is supported */
+	if (pci_probe_reset_slot(pdev->slot) && pci_probe_reset_bus(pdev->bus))
+		return NULL;
 
-	if (vfio_pci_for_each_slot_or_bus(vdev->pdev,
-					  vfio_pci_get_unused_devs,
-					  &devs, slot))
-		goto put_devs;
+	if (vfio_pci_for_each_slot_or_bus(pdev, vfio_pci_is_device_in_set,
+					  dev_set,
+					  !pci_probe_reset_slot(pdev->slot)))
+		return NULL;
+	return pdev;
+}
 
-	/* Does at least one need a reset? */
-	for (i = 0; i < devs.cur_index; i++) {
-		tmp = devs.devices[i];
-		if (tmp->needs_reset) {
-			ret = pci_reset_bus(vdev->pdev);
-			break;
-		}
+/*
+ * We need to get memory_lock for each device, but devices can share mmap_lock,
+ * therefore we need to zap and hold the vma_lock for each device, and only then
+ * get each memory_lock.
+ */
+static int vfio_pci_dev_set_hot_reset(struct vfio_device_set *dev_set,
+				      struct vfio_pci_group_info *groups)
+{
+	struct vfio_pci_device *cur_mem;
+	struct vfio_pci_device *cur_vma;
+	struct vfio_pci_device *cur;
+	struct pci_dev *pdev;
+	bool is_mem = true;
+	int ret;
+
+	mutex_lock(&dev_set->lock);
+	cur_mem = list_first_entry(&dev_set->device_list,
+				   struct vfio_pci_device, vdev.dev_set_list);
+
+	pdev = vfio_pci_dev_set_resettable(dev_set);
+	if (!pdev) {
+		ret = -EINVAL;
+		goto err_unlock;
 	}
 
-put_devs:
-	for (i = 0; i < devs.cur_index; i++) {
-		tmp = devs.devices[i];
+	list_for_each_entry(cur_vma, &dev_set->device_list, vdev.dev_set_list) {
+		/*
+		 * Test whether all the affected devices are contained by the
+		 * set of groups provided by the user.
+		 */
+		if (!vfio_dev_in_groups(cur_vma, groups)) {
+			ret = -EINVAL;
+			goto err_undo;
+		}
 
 		/*
-		 * If reset was successful, affected devices no longer need
-		 * a reset and we should return all the collateral devices
-		 * to low power.  If not successful, we either didn't reset
-		 * the bus or timed out waiting for it, so let's not touch
-		 * the power state.
+		 * Locking multiple devices is prone to deadlock, runaway and
+		 * unwind if we hit contention.
 		 */
-		if (!ret) {
-			tmp->needs_reset = false;
-
-			if (tmp != vdev && !disable_idle_d3)
-				vfio_pci_set_power_state(tmp, PCI_D3hot);
+		if (!vfio_pci_zap_and_vma_lock(cur_vma, true)) {
+			ret = -EBUSY;
+			goto err_undo;
 		}
-
-		vfio_device_put(&tmp->vdev);
 	}
+	cur_vma = NULL;
 
-	kfree(devs.devices);
+	list_for_each_entry(cur_mem, &dev_set->device_list, vdev.dev_set_list) {
+		if (!down_write_trylock(&cur_mem->memory_lock)) {
+			ret = -EBUSY;
+			goto err_undo;
+		}
+		mutex_unlock(&cur_mem->vma_lock);
+	}
+	cur_mem = NULL;
+
+	ret = pci_reset_bus(pdev);
+
+err_undo:
+	list_for_each_entry(cur, &dev_set->device_list, vdev.dev_set_list) {
+		if (cur == cur_mem)
+			is_mem = false;
+		if (cur == cur_vma)
+			break;
+		if (is_mem)
+			up_write(&cur->memory_lock);
+		else
+			mutex_unlock(&cur->vma_lock);
+	}
+err_unlock:
+	mutex_unlock(&dev_set->lock);
+	return ret;
+}
+
+static bool vfio_pci_dev_set_needs_reset(struct vfio_device_set *dev_set)
+{
+	struct vfio_pci_device *cur;
+	bool needs_reset = false;
+
+	list_for_each_entry(cur, &dev_set->device_list, vdev.dev_set_list) {
+		/* No VFIO device in the set can have an open device FD */
+		if (cur->vdev.open_count)
+			return false;
+		needs_reset |= cur->needs_reset;
+	}
+	return needs_reset;
+}
+
+/*
+ * If a bus or slot reset is available for the provided dev_set and:
+ *  - All of the devices affected by that bus or slot reset are unused
+ *  - At least one of the affected devices is marked dirty via
+ *    needs_reset (such as by lack of FLR support)
+ * Then attempt to perform that bus or slot reset.
+ * Returns true if the dev_set was reset.
+ */
+static bool vfio_pci_dev_set_try_reset(struct vfio_device_set *dev_set)
+{
+	struct vfio_pci_device *cur;
+	struct pci_dev *pdev;
+	int ret;
+
+	if (!vfio_pci_dev_set_needs_reset(dev_set))
+		return false;
+
+	pdev = vfio_pci_dev_set_resettable(dev_set);
+	if (!pdev)
+		return false;
+
+	ret = pci_reset_bus(pdev);
+	if (ret)
+		return false;
+
+	list_for_each_entry(cur, &dev_set->device_list, vdev.dev_set_list) {
+		cur->needs_reset = false;
+		if (!disable_idle_d3)
+			vfio_pci_set_power_state(cur, PCI_D3hot);
+	}
+	return true;
 }
 
 static void __exit vfio_pci_cleanup(void)

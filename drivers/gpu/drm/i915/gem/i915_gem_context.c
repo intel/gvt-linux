@@ -442,6 +442,13 @@ set_proto_ctx_engines_bond(struct i915_user_extension __user *base, void *data)
 	u16 idx, num_bonds;
 	int err, n;
 
+	if (GRAPHICS_VER(i915) >= 12 && !IS_TIGERLAKE(i915) &&
+	    !IS_ROCKETLAKE(i915) && !IS_ALDERLAKE_S(i915)) {
+		drm_dbg(&i915->drm,
+			"Bonding on gen12+ aside from TGL, RKL, and ADL_S not supported\n");
+		return -ENODEV;
+	}
+
 	if (get_user(idx, &ext->virtual_index))
 		return -EFAULT;
 
@@ -1277,49 +1284,6 @@ static int __context_set_persistence(struct i915_gem_context *ctx, bool state)
 	return 0;
 }
 
-static inline struct i915_gem_engines *
-__context_engines_await(const struct i915_gem_context *ctx,
-			bool *user_engines)
-{
-	struct i915_gem_engines *engines;
-
-	rcu_read_lock();
-	do {
-		engines = rcu_dereference(ctx->engines);
-		GEM_BUG_ON(!engines);
-
-		if (user_engines)
-			*user_engines = i915_gem_context_user_engines(ctx);
-
-		/* successful await => strong mb */
-		if (unlikely(!i915_sw_fence_await(&engines->fence)))
-			continue;
-
-		if (likely(engines == rcu_access_pointer(ctx->engines)))
-			break;
-
-		i915_sw_fence_complete(&engines->fence);
-	} while (1);
-	rcu_read_unlock();
-
-	return engines;
-}
-
-static void
-context_apply_all(struct i915_gem_context *ctx,
-		  void (*fn)(struct intel_context *ce, void *data),
-		  void *data)
-{
-	struct i915_gem_engines_iter it;
-	struct i915_gem_engines *e;
-	struct intel_context *ce;
-
-	e = __context_engines_await(ctx, NULL);
-	for_each_gem_engine(ce, e, it)
-		fn(ce, data);
-	i915_sw_fence_complete(&e->fence);
-}
-
 static struct i915_gem_context *
 i915_gem_create_context(struct drm_i915_private *i915,
 			const struct i915_gem_proto_context *pc)
@@ -1769,23 +1733,11 @@ set_persistence(struct i915_gem_context *ctx,
 	return __context_set_persistence(ctx, args->value);
 }
 
-static void __apply_priority(struct intel_context *ce, void *arg)
-{
-	struct i915_gem_context *ctx = arg;
-
-	if (!intel_engine_has_timeslices(ce->engine))
-		return;
-
-	if (ctx->sched.priority >= I915_PRIORITY_NORMAL &&
-	    intel_engine_has_semaphores(ce->engine))
-		intel_context_set_use_semaphores(ce);
-	else
-		intel_context_clear_use_semaphores(ce);
-}
-
 static int set_priority(struct i915_gem_context *ctx,
 			const struct drm_i915_gem_context_param *args)
 {
+	struct i915_gem_engines_iter it;
+	struct intel_context *ce;
 	int err;
 
 	err = validate_priority(ctx->i915, args);
@@ -1793,7 +1745,18 @@ static int set_priority(struct i915_gem_context *ctx,
 		return err;
 
 	ctx->sched.priority = args->value;
-	context_apply_all(ctx, __apply_priority, ctx);
+
+	for_each_gem_engine(ce, i915_gem_context_lock_engines(ctx), it) {
+		if (!intel_engine_has_timeslices(ce->engine))
+			continue;
+
+		if (ctx->sched.priority >= I915_PRIORITY_NORMAL &&
+		    intel_engine_has_semaphores(ce->engine))
+			intel_context_set_use_semaphores(ce);
+		else
+			intel_context_clear_use_semaphores(ce);
+	}
+	i915_gem_context_unlock_engines(ctx);
 
 	return 0;
 }

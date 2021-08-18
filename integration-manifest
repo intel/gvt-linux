@@ -1,28 +1,18 @@
-drm drm-fixes 7c60610d476766e128cc4284bb6349732cbd6606
-	Linux 5.14-rc6
-drm-misc drm-misc-fixes fa0b1ef5f7a694f48e00804a391245f3471aa155
-	drm: Copy drm_wait_vblank to user before returning
-drm-intel drm-intel-fixes ffd5caa26f6afde0c1e3ed126806607748a83c6e
-	drm/doc/rfc: drop lmem uapi section
-drm drm-next 397ab98e2d69cede84444a28eab77a171983d14e
-	Merge tag 'drm-msm-next-2021-08-12' of https://gitlab.freedesktop.org/drm/msm into drm-next
-drm-misc drm-misc-next-fixes 17d3d3a6146c72c7b2e1aa97191bbefce167e0ad
-	drm/vc4: hdmi: make vc4_hdmi_codec_pdata static
-drm-intel drm-intel-next-fixes 21c355b09711e95f8f0e7c1890b343c6cd350042
-	Merge tag 'drm-misc-next-fixes-2021-07-01' of git://anongit.freedesktop.org/drm/drm-misc into drm-next
-drm-misc drm-misc-next 072e70d52372c44df90b44fb4cd949a709bb5bef
-	drm: panel-orientation-quirks: Add quirk for the Chuwi Hi10 Pro
-drm-intel drm-intel-next bbaafe536c840d962870d33572d3d5f9051550f3
-	drm/i915: Nuke ORIGIN_GTT
-drm-intel drm-intel-gt-next d5ef86b38e4c2a65d5c1d64d8d0f3fcf58aa0884
-	drm/i915: Add pci ids and uapi for DG1
-sound-upstream for-linus 7cf3dead1ad70c72edb03e2d98e1f3dcd332cdb2
-	Linux 5.13
-sound-upstream for-next 7cf3dead1ad70c72edb03e2d98e1f3dcd332cdb2
-	Linux 5.13
-drm-intel topic/core-for-CI 5363e35a435a0699c8b30936b6ca00db8d85c839
-	drm/i915: Add relocation exceptions for two other platforms
-drm topic/nouveau-ampere-modeset 584265dfec70e78ce2085b82ed389f27e06fbca0
-	Merge branch '04.01-ampere-lite' of git://github.com/skeggsb/linux into topic/nouveau-ampere-modeset
-drm-misc topic/i915-ttm cf3e3e86d77970211e0983130e896ae242601003
-	drm/i915: Use ttm mmap handling for ttm bo's.
+drm-tip/drm-tip 4e3b4b21e57e84869509d7ab0526fded79874689
+	drm-tip: 2021y-08m-18d-07h-43m-16s UTC integration manifest
+vfio-upstream/next eb24c1007e6852e024dc33b0dd9617b8500a1291
+	vfio: Remove struct vfio_device_ops open/release
+vfio-upstream/for-linus dc51ff91cf2d1e9a2d941da483602f71d4a51472
+	vfio/platform: fix module_put call in error flow
+intel-iommu/iommu/next a593472591a5cf2d91244bc3f319c9dd91119343
+	Merge branches 'iommu/fixes', 'arm/omap', 'arm/exynos', 'x86/amd', 'x86/vt-d' and 'core' into next
+intel-iommu/iommu/fixes 5aa95d8834e07907e64937d792c12ffef7fb271f
+	iommu: Check if group is NULL before remove device
+origin/gvt-fixes 699aa57b35672c3b2f230e2b7e5d0ab8c2bde80a
+	drm/i915/gvt: Fix cached atomics setting for Windows VM
+origin/gvt-next f32c276ae3de9061c3604e558550c8b4f00723fe
+	drm/i915/gvt: remove struct intel_gvt_mpt
+origin/gvt-gt-next e156285b120feaac6207e6bd3fa31d9ae8ffd80d
+	drm/i915/gvt: Purge dev_priv->gt
+origin/gvt-next-fixes d385c16173f28a18866abf54c764200c276dace0
+	drm/i915/gvt: Prevent divided by zero when calculating refresh rate

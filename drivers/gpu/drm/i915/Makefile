@@ -299,7 +299,9 @@ i915-$(CONFIG_DRM_I915_SELFTEST) += \
 
 # virtual gpu code
 i915-y += i915_vgpu.o
-i915-$(CONFIG_DRM_I915_GVT_KVMGT) += intel_gvt.o
+ifneq ($(CONFIG_DRM_I915_GVT_KVMGT),)
+i915-y += intel_gvt.o
+endif
 
 kvmgt-y += gvt/kvmgt.o \
 	gvt/gvt.o \

@@ -328,6 +328,11 @@ void __intel_context_do_unpin(struct intel_context *ce, int sub)
 	intel_context_put(ce);
 }
 
+void intel_context_unpin(struct intel_context *ce)
+{
+	_intel_context_unpin(ce);
+}
+
 static void __intel_context_retire(struct i915_active *active)
 {
 	struct intel_context *ce = container_of(active, typeof(*ce), active);

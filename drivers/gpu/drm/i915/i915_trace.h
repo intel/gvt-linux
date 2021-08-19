@@ -17,6 +17,7 @@
 
 #undef TRACE_SYSTEM
 #define TRACE_SYSTEM i915
+#undef TRACE_INCLUDE_FILE
 #define TRACE_INCLUDE_FILE i915_trace
 
 /* watermark/fifo updates */

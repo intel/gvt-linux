@@ -131,7 +131,7 @@ static inline void intel_context_sched_disable_unpin(struct intel_context *ce)
 	__intel_context_do_unpin(ce, 2);
 }
 
-static inline void intel_context_unpin(struct intel_context *ce)
+static inline void _intel_context_unpin(struct intel_context *ce)
 {
 	if (!ce->ops->sched_disable) {
 		__intel_context_do_unpin(ce, 1);
@@ -150,6 +150,7 @@ static inline void intel_context_unpin(struct intel_context *ce)
 		}
 	}
 }
+void intel_context_unpin(struct intel_context *ce);
 
 void intel_context_enter_engine(struct intel_context *ce);
 void intel_context_exit_engine(struct intel_context *ce);

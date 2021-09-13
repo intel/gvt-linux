@@ -416,7 +416,7 @@ execlists_context_status_change(struct i915_request *rq, unsigned long status)
 	 * Only used when GVT-g is enabled now. When GVT-g is disabled,
 	 * The compiler should eliminate this function as dead-code.
 	 */
-	if (!IS_ENABLED(CONFIG_DRM_I915_GVT))
+	if (!IS_ENABLED(CONFIG_DRM_I915_GVT_KVMGT))
 		return;
 
 	atomic_notifier_call_chain(&rq->engine->context_status_notifier,
@@ -926,7 +926,7 @@ static void execlists_submit_ports(struct intel_engine_cs *engine)
 
 static bool ctx_single_port_submission(const struct intel_context *ce)
 {
-	return (IS_ENABLED(CONFIG_DRM_I915_GVT) &&
+	return (IS_ENABLED(CONFIG_DRM_I915_GVT_KVMGT) &&
 		intel_context_force_single_submission(ce));
 }
 

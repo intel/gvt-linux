@@ -1,30 +1,12 @@
-drm drm-fixes 9e1ff307c779ce1f0f810c7ecce3d95bbae40896
-	Linux 5.15-rc4
-drm-misc drm-misc-fixes 0239a1f7b20340fdd0f4890b6fe95773eb7e1e3e
-	DRM: delete DRM IRQ legacy midlayer docs
-drm-intel drm-intel-fixes b2d73debfdc16b742e64948dc4461876af3f8c10
-	drm/i915: Extend the async flip VT-d w/a to skl/bxt
-drm drm-next 1e3944578b749449bd7fa6bf0bae4c3d3f5f1733
-	Merge tag 'amd-drm-next-5.16-2021-09-27' of https://gitlab.freedesktop.org/agd5f/linux into drm-next
-drm-misc drm-misc-next-fixes 70982eef4d7eebb47a3b1ef25ec1bc742f3a21cf
-	drm/ttm: Fix a deadlock if the target BO is not idle during swap
-drm-intel drm-intel-next-fixes fb43ebc83e069625cfeeb2490efc3ffa0013bfa4
-	drm/i915/selftest: Fix use of err in igt_reset_{fail, nop}_engine()
-drm-misc drm-misc-next 61bae132030af4e9aaebe801e547da4a41803d3c
-	Revert "drm: cleanup: drm_modeset_lock_all_ctx() --> DRM_MODESET_LOCK_ALL_BEGIN()"
-drm-intel drm-intel-next 7d396cacaea63bafe68d3a84971845c043b7c579
-	drm/i195: Make the async flip VT-d workaround dynamic
-drm-intel drm-intel-gt-next 84edf53776343d6b5bf5fa59a6f600a22ca23c40
-	drm/i915: Fix bug in user proto-context creation that leaked contexts
-sound-upstream for-linus 7cf3dead1ad70c72edb03e2d98e1f3dcd332cdb2
-	Linux 5.13
-sound-upstream for-next 7cf3dead1ad70c72edb03e2d98e1f3dcd332cdb2
-	Linux 5.13
-drm-intel topic/core-for-CI b4dd0381f66d0bddc2c4bfc75e18a8a6b8a0d4b7
-	component: do not leave master devres group open after bind
-drm topic/nouveau-ampere-modeset 584265dfec70e78ce2085b82ed389f27e06fbca0
-	Merge branch '04.01-ampere-lite' of git://github.com/skeggsb/linux into topic/nouveau-ampere-modeset
-drm-misc topic/i915-ttm 1e3944578b749449bd7fa6bf0bae4c3d3f5f1733
-	Merge tag 'amd-drm-next-5.16-2021-09-27' of https://gitlab.freedesktop.org/agd5f/linux into drm-next
-drm-intel topic/pxp e4e737bb5c170df6135a127739a9e6148ee3da82
-	Linux 5.15-rc2
+drm-tip/drm-tip 2db2331e0b19308750c3b921c2779c4c2da9b04b
+	drm-tip: 2021y-10m-05d-09h-20m-12s UTC integration manifest
+vfio-upstream/for-linus 42de956ca7e5f6c47048dde640f797e783b23198
+	vfio/ap_ops: Add missed vfio_uninit_group_dev()
+vfio-upstream/next d9a0cd510c3383b61db6f70a84e0c3487f836a63
+	Merge branch 'v5.16/vfio/hch-cleanup-vfio-iommu_group-creation-v6' into v5.16/vfio/next
+origin/gvt-fixes d168cd797982db9db617113644c87b8f5f3cf27e
+	drm/i915/gvt: fix the usage of ww lock in gvt scheduler.
+origin/gvt-next 305d514da375eab51a0e3ff57f31299d1d9571ab
+	drm/i915/gvt: Use list_entry to access list members
+origin/gvt-next-fixes d385c16173f28a18866abf54c764200c276dace0
+	drm/i915/gvt: Prevent divided by zero when calculating refresh rate

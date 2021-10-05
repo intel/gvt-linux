@@ -912,7 +912,7 @@ void phy_stop_machine(struct phy_device *phydev)
  */
 void phy_error(struct phy_device *phydev)
 {
-	WARN_ON(1);
+	pr_notice_once("%s\n", __func__);
 
 	mutex_lock(&phydev->lock);
 	phydev->state = PHY_HALTED;
@@ -1007,11 +1007,8 @@ void phy_stop(struct phy_device *phydev)
 {
 	struct net_device *dev = phydev->attached_dev;
 
-	if (!phy_is_started(phydev) && phydev->state != PHY_DOWN) {
-		WARN(1, "called from state %s\n",
-		     phy_state_to_str(phydev->state));
+	if (!phy_is_started(phydev) && phydev->state != PHY_DOWN)
 		return;
-	}
 
 	mutex_lock(&phydev->lock);
 

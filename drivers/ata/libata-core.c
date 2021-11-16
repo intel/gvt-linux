@@ -2207,7 +2207,7 @@ static bool ata_identify_page_supported(struct ata_device *dev, u8 page)
 		 * for drives which implement this ATA level or above.
 		 */
 		if (ata_id_major_version(dev->id) >= 10)
-			ata_dev_warn(dev,
+			ata_dev_notice(dev,
 				"ATA Identify Device Log not supported\n");
 		dev->horkage |= ATA_HORKAGE_NO_ID_DEV_LOG;
 		return false;
@@ -2279,7 +2279,7 @@ static void ata_dev_config_ncq_send_recv(struct ata_device *dev)
 	unsigned int err_mask;
 
 	if (!ata_log_supported(dev, ATA_LOG_NCQ_SEND_RECV)) {
-		ata_dev_warn(dev, "NCQ Send/Recv Log not supported\n");
+		ata_dev_notice(dev, "NCQ Send/Recv Log not supported\n");
 		return;
 	}
 	err_mask = ata_read_log_page(dev, ATA_LOG_NCQ_SEND_RECV,
@@ -2304,8 +2304,8 @@ static void ata_dev_config_ncq_non_data(struct ata_device *dev)
 	unsigned int err_mask;
 
 	if (!ata_log_supported(dev, ATA_LOG_NCQ_NON_DATA)) {
-		ata_dev_warn(dev,
-			     "NCQ Send/Recv Log not supported\n");
+		ata_dev_notice(dev,
+			       "NCQ Send/Recv Log not supported\n");
 		return;
 	}
 	err_mask = ata_read_log_page(dev, ATA_LOG_NCQ_NON_DATA,
@@ -2958,14 +2958,14 @@ int ata_dev_configure(struct ata_device *dev)
 		if (ata_id_is_cfa(id)) {
 			/* CPRM may make this media unusable */
 			if (id[ATA_ID_CFA_KEY_MGMT] & 1)
-				ata_dev_warn(dev,
+				ata_dev_notice(dev,
 	"supports DRM functions and may not be fully accessible\n");
 			snprintf(revbuf, 7, "CFA");
 		} else {
 			snprintf(revbuf, 7, "ATA-%d", ata_id_major_version(id));
 			/* Warn the user if the device has TPM extensions */
 			if (ata_id_has_tpm(id))
-				ata_dev_warn(dev,
+				ata_dev_notice(dev,
 	"supports DRM functions and may not be fully accessible\n");
 		}
 
@@ -3120,8 +3120,8 @@ int ata_dev_configure(struct ata_device *dev)
 	}
 
 	if ((dev->horkage & ATA_HORKAGE_FIRMWARE_WARN) && print_info) {
-		ata_dev_warn(dev, "WARNING: device requires firmware update to be fully functional\n");
-		ata_dev_warn(dev, "         contact the vendor or visit http://ata.wiki.kernel.org\n");
+		ata_dev_notice(dev, "WARNING: device requires firmware update to be fully functional\n");
+		ata_dev_notice(dev, "         contact the vendor or visit http://ata.wiki.kernel.org\n");
 	}
 
 	return 0;

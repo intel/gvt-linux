@@ -3612,11 +3612,11 @@ static int init_bxt_mmio_info(struct intel_gvt *gvt)
 	return 0;
 }
 
-static struct gvt_mmio_block *find_mmio_block(struct intel_gvt *gvt,
-					      unsigned int offset)
+static const struct gvt_mmio_block *find_mmio_block(struct intel_gvt *gvt,
+						    unsigned int offset)
 {
 	unsigned long device = intel_gvt_get_device_type(gvt);
-	struct gvt_mmio_block *block = gvt->mmio.mmio_block;
+	const struct gvt_mmio_block *block = gvt->mmio.mmio_block;
 	int num = gvt->mmio.num_mmio_block;
 	int i;
 
@@ -3655,7 +3655,7 @@ void intel_gvt_clean_mmio_info(struct intel_gvt *gvt)
  * accessible (should have no F_CMD_ACCESS flag).
  * otherwise, need to update cmd_reg_handler in cmd_parser.c
  */
-static struct gvt_mmio_block mmio_blocks[] = {
+static const struct gvt_mmio_block mmio_blocks[] = {
 	{D_SKL_PLUS, _MMIO(DMC_MMIO_START_RANGE), 0x3000, NULL, NULL},
 	{D_ALL, _MMIO(MCHBAR_MIRROR_BASE_SNB), 0x40000, NULL, NULL},
 	{D_ALL, _MMIO(VGT_PVINFO_PAGE), VGT_PVINFO_SIZE,
@@ -3738,7 +3738,7 @@ int intel_gvt_for_each_tracked_mmio(struct intel_gvt *gvt,
 	int (*handler)(struct intel_gvt *gvt, u32 offset, void *data),
 	void *data)
 {
-	struct gvt_mmio_block *block = gvt->mmio.mmio_block;
+	const struct gvt_mmio_block *block = gvt->mmio.mmio_block;
 	struct intel_gvt_mmio_info *e;
 	int i, j, ret;
 
@@ -3856,7 +3856,7 @@ int intel_vgpu_mmio_reg_rw(struct intel_vgpu *vgpu, unsigned int offset,
 	struct drm_i915_private *i915 = vgpu->gvt->gt->i915;
 	struct intel_gvt *gvt = vgpu->gvt;
 	struct intel_gvt_mmio_info *mmio_info;
-	struct gvt_mmio_block *mmio_block;
+	const struct gvt_mmio_block *mmio_block;
 	gvt_mmio_func func;
 	int ret;
 

@@ -65,11 +65,13 @@
 #include "i915_utils.h"
 
 #include "display/intel_bios.h"
+#include "display/intel_cdclk.h"
 #include "display/intel_display.h"
 #include "display/intel_display_power.h"
 #include "display/intel_dmc.h"
 #include "display/intel_dpll_mgr.h"
 #include "display/intel_dsb.h"
+#include "display/intel_fbc.h"
 #include "display/intel_frontbuffer.h"
 #include "display/intel_global_state.h"
 #include "display/intel_gmbus.h"
@@ -89,6 +91,7 @@
 #include "intel_device_info.h"
 #include "intel_memory_region.h"
 #include "intel_pch.h"
+#include "intel_pm_types.h"
 #include "intel_runtime_pm.h"
 #include "intel_step.h"
 #include "intel_uncore.h"
@@ -115,30 +118,6 @@
 #define DRIVER_TIMESTAMP	1604406085
 
 struct drm_i915_gem_object;
-
-enum hpd_pin {
-	HPD_NONE = 0,
-	HPD_TV = HPD_NONE,     /* TV is known to be unreliable */
-	HPD_CRT,
-	HPD_SDVO_B,
-	HPD_SDVO_C,
-	HPD_PORT_A,
-	HPD_PORT_B,
-	HPD_PORT_C,
-	HPD_PORT_D,
-	HPD_PORT_E,
-	HPD_PORT_TC1,
-	HPD_PORT_TC2,
-	HPD_PORT_TC3,
-	HPD_PORT_TC4,
-	HPD_PORT_TC5,
-	HPD_PORT_TC6,
-
-	HPD_NUM_PINS
-};
-
-#define for_each_hpd_pin(__pin) \
-	for ((__pin) = (HPD_NONE + 1); (__pin) < HPD_NUM_PINS; (__pin)++)
 
 /* Threshold == 5 for long IRQs, 50 for short */
 #define HPD_STORM_DEFAULT_THRESHOLD 50
@@ -313,6 +292,7 @@ struct intel_connector;
 struct intel_encoder;
 struct intel_atomic_state;
 struct intel_cdclk_config;
+struct intel_cdclk_funcs;
 struct intel_cdclk_state;
 struct intel_cdclk_vals;
 struct intel_initial_plane_config;
@@ -361,17 +341,6 @@ struct intel_color_funcs {
 	void (*read_luts)(struct intel_crtc_state *crtc_state);
 };
 
-struct intel_cdclk_funcs {
-	void (*get_cdclk)(struct drm_i915_private *dev_priv,
-			  struct intel_cdclk_config *cdclk_config);
-	void (*set_cdclk)(struct drm_i915_private *dev_priv,
-			  const struct intel_cdclk_config *cdclk_config,
-			  enum pipe pipe);
-	int (*bw_calc_min_cdclk)(struct intel_atomic_state *state);
-	int (*modeset_calc_cdclk)(struct intel_cdclk_state *state);
-	u8 (*calc_voltage_level)(int cdclk);
-};
-
 struct intel_hotplug_funcs {
 	void (*hpd_irq_setup)(struct drm_i915_private *dev_priv);
 };
@@ -399,105 +368,7 @@ struct drm_i915_display_funcs {
 	void (*commit_modeset_enables)(struct intel_atomic_state *state);
 };
 
-struct intel_fbc_funcs;
-
 #define I915_COLOR_UNEVICTABLE (-1) /* a non-vma sharing the address space */
-
-struct intel_fbc {
-	struct drm_i915_private *i915;
-	const struct intel_fbc_funcs *funcs;
-
-	/* This is always the inner lock when overlapping with struct_mutex and
-	 * it's the outer lock when overlapping with stolen_lock. */
-	struct mutex lock;
-	unsigned int possible_framebuffer_bits;
-	unsigned int busy_bits;
-	struct intel_crtc *crtc;
-
-	struct drm_mm_node compressed_fb;
-	struct drm_mm_node compressed_llb;
-
-	u8 limit;
-
-	bool false_color;
-
-	bool active;
-	bool activated;
-	bool flip_pending;
-
-	bool underrun_detected;
-	struct work_struct underrun_work;
-
-	/*
-	 * Due to the atomic rules we can't access some structures without the
-	 * appropriate locking, so we cache information here in order to avoid
-	 * these problems.
-	 */
-	struct intel_fbc_state_cache {
-		struct {
-			unsigned int mode_flags;
-			u32 hsw_bdw_pixel_rate;
-		} crtc;
-
-		struct {
-			unsigned int rotation;
-			int src_w;
-			int src_h;
-			bool visible;
-			/*
-			 * Display surface base address adjustement for
-			 * pageflips. Note that on gen4+ this only adjusts up
-			 * to a tile, offsets within a tile are handled in
-			 * the hw itself (with the TILEOFF register).
-			 */
-			int adjusted_x;
-			int adjusted_y;
-
-			u16 pixel_blend_mode;
-		} plane;
-
-		struct {
-			const struct drm_format_info *format;
-			unsigned int stride;
-			u64 modifier;
-		} fb;
-
-		unsigned int fence_y_offset;
-		u16 interval;
-		s8 fence_id;
-		bool psr2_active;
-	} state_cache;
-
-	/*
-	 * This structure contains everything that's relevant to program the
-	 * hardware registers. When we want to figure out if we need to disable
-	 * and re-enable FBC for a new configuration we just check if there's
-	 * something different in the struct. The genx_fbc_activate functions
-	 * are supposed to read from it in order to program the registers.
-	 */
-	struct intel_fbc_reg_params {
-		struct {
-			enum pipe pipe;
-			enum i9xx_plane_id i9xx_plane;
-		} crtc;
-
-		struct {
-			const struct drm_format_info *format;
-			unsigned int stride;
-			u64 modifier;
-		} fb;
-
-		unsigned int cfb_stride;
-		unsigned int cfb_size;
-		unsigned int fence_y_offset;
-		u16 override_cfb_stride;
-		u16 interval;
-		s8 fence_id;
-		bool plane_visible;
-	} params;
-
-	const char *no_fbc_reason;
-};
 
 /*
  * HIGH_RR is the highest eDP panel refresh rate read from EDID
@@ -535,7 +406,6 @@ struct i915_drrs {
 #define QUIRK_NO_PPS_BACKLIGHT_POWER_HOOK (1<<8)
 
 struct intel_fbdev;
-struct intel_fbc_work;
 
 struct intel_gmbus {
 	struct i2c_adapter adapter;
@@ -730,69 +600,6 @@ struct intel_vbt_data {
 	struct sdvo_device_mapping sdvo_mappings[2];
 };
 
-enum intel_ddb_partitioning {
-	INTEL_DDB_PART_1_2,
-	INTEL_DDB_PART_5_6, /* IVB+ */
-};
-
-struct ilk_wm_values {
-	u32 wm_pipe[3];
-	u32 wm_lp[3];
-	u32 wm_lp_spr[3];
-	bool enable_fbc_wm;
-	enum intel_ddb_partitioning partitioning;
-};
-
-struct g4x_pipe_wm {
-	u16 plane[I915_MAX_PLANES];
-	u16 fbc;
-};
-
-struct g4x_sr_wm {
-	u16 plane;
-	u16 cursor;
-	u16 fbc;
-};
-
-struct vlv_wm_ddl_values {
-	u8 plane[I915_MAX_PLANES];
-};
-
-struct vlv_wm_values {
-	struct g4x_pipe_wm pipe[3];
-	struct g4x_sr_wm sr;
-	struct vlv_wm_ddl_values ddl[3];
-	u8 level;
-	bool cxsr;
-};
-
-struct g4x_wm_values {
-	struct g4x_pipe_wm pipe[2];
-	struct g4x_sr_wm sr;
-	struct g4x_sr_wm hpll;
-	bool cxsr;
-	bool hpll_en;
-	bool fbc_en;
-};
-
-struct skl_ddb_entry {
-	u16 start, end;	/* in number of blocks, 'end' is exclusive */
-};
-
-static inline u16 skl_ddb_entry_size(const struct skl_ddb_entry *entry)
-{
-	return entry->end - entry->start;
-}
-
-static inline bool skl_ddb_entry_equal(const struct skl_ddb_entry *e1,
-				       const struct skl_ddb_entry *e2)
-{
-	if (e1->start == e2->start && e1->end == e2->end)
-		return true;
-
-	return false;
-}
-
 struct i915_frontbuffer_tracking {
 	spinlock_t lock;
 
@@ -808,11 +615,6 @@ struct i915_virtual_gpu {
 	struct mutex lock; /* serialises sending of g2v_notify command pkts */
 	bool active;
 	u32 caps;
-};
-
-struct intel_cdclk_config {
-	unsigned int cdclk, vco, ref, bypass;
-	u8 voltage_level;
 };
 
 struct i915_selftest_stash {
@@ -934,7 +736,7 @@ struct drm_i915_private {
 	u32 pipestat_irq_mask[I915_MAX_PIPES];
 
 	struct i915_hotplug hotplug;
-	struct intel_fbc fbc;
+	struct intel_fbc *fbc[I915_MAX_FBCS];
 	struct i915_drrs drrs;
 	struct intel_opregion opregion;
 	struct intel_vbt_data vbt;
@@ -1028,9 +830,6 @@ struct drm_i915_private {
 	struct i915_gem_mm mm;
 
 	/* Kernel Modesetting */
-
-	struct intel_crtc *plane_to_crtc_mapping[I915_MAX_PIPES];
-	struct intel_crtc *pipe_to_crtc_mapping[I915_MAX_PIPES];
 
 	/**
 	 * dpll and cdclk state is protected by connection_mutex
@@ -1469,6 +1268,8 @@ IS_SUBPLATFORM(const struct drm_i915_private *i915,
 	IS_SUBPLATFORM(dev_priv, INTEL_DG2, INTEL_SUBPLATFORM_G10)
 #define IS_DG2_G11(dev_priv) \
 	IS_SUBPLATFORM(dev_priv, INTEL_DG2, INTEL_SUBPLATFORM_G11)
+#define IS_ADLS_RPLS(dev_priv) \
+	IS_SUBPLATFORM(dev_priv, INTEL_ALDERLAKE_S, INTEL_SUBPLATFORM_RPL_S)
 #define IS_HSW_EARLY_SDV(dev_priv) (IS_HASWELL(dev_priv) && \
 				    (INTEL_DEVID(dev_priv) & 0xFF00) == 0x0C00)
 #define IS_BDW_ULT(dev_priv) \
@@ -1598,7 +1399,7 @@ IS_SUBPLATFORM(const struct drm_i915_private *i915,
 	(IS_SUBPLATFORM(__i915, INTEL_DG2, INTEL_SUBPLATFORM_##variant) && \
 	 IS_GRAPHICS_STEP(__i915, since, until))
 
-#define IS_DG2_DISP_STEP(__i915, since, until) \
+#define IS_DG2_DISPLAY_STEP(__i915, since, until) \
 	(IS_DG2(__i915) && \
 	 IS_DISPLAY_STEP(__i915, since, until))
 
@@ -1680,7 +1481,7 @@ IS_SUBPLATFORM(const struct drm_i915_private *i915,
 #define I915_HAS_HOTPLUG(dev_priv)	(INTEL_INFO(dev_priv)->display.has_hotplug)
 
 #define HAS_FW_BLC(dev_priv)	(GRAPHICS_VER(dev_priv) > 2)
-#define HAS_FBC(dev_priv)	(INTEL_INFO(dev_priv)->display.has_fbc)
+#define HAS_FBC(dev_priv)	(INTEL_INFO(dev_priv)->display.fbc_mask != 0)
 #define HAS_CUR_FBC(dev_priv)	(!HAS_GMCH(dev_priv) && GRAPHICS_VER(dev_priv) >= 7)
 
 #define HAS_IPS(dev_priv)	(IS_HSW_ULT(dev_priv) || IS_BROADWELL(dev_priv))
@@ -1695,7 +1496,7 @@ IS_SUBPLATFORM(const struct drm_i915_private *i915,
 #define HAS_PSR_HW_TRACKING(dev_priv) \
 	(INTEL_INFO(dev_priv)->display.has_psr_hw_tracking)
 #define HAS_PSR2_SEL_FETCH(dev_priv)	 (GRAPHICS_VER(dev_priv) >= 12)
-#define HAS_TRANSCODER(dev_priv, trans)	 ((INTEL_INFO(dev_priv)->cpu_transcoder_mask & BIT(trans)) != 0)
+#define HAS_TRANSCODER(dev_priv, trans)	 ((INTEL_INFO(dev_priv)->display.cpu_transcoder_mask & BIT(trans)) != 0)
 
 #define HAS_RC6(dev_priv)		 (INTEL_INFO(dev_priv)->has_rc6)
 #define HAS_RC6p(dev_priv)		 (INTEL_INFO(dev_priv)->has_rc6p)
@@ -1740,9 +1541,9 @@ IS_SUBPLATFORM(const struct drm_i915_private *i915,
 #define GT_FREQUENCY_MULTIPLIER 50
 #define GEN9_FREQ_SCALER 3
 
-#define INTEL_NUM_PIPES(dev_priv) (hweight8(INTEL_INFO(dev_priv)->pipe_mask))
+#define INTEL_NUM_PIPES(dev_priv) (hweight8(INTEL_INFO(dev_priv)->display.pipe_mask))
 
-#define HAS_DISPLAY(dev_priv) (INTEL_INFO(dev_priv)->pipe_mask != 0)
+#define HAS_DISPLAY(dev_priv) (INTEL_INFO(dev_priv)->display.pipe_mask != 0)
 
 #define HAS_VRR(i915)	(GRAPHICS_VER(i915) >= 11)
 
@@ -1967,14 +1768,6 @@ mkwrite_device_info(struct drm_i915_private *dev_priv)
 
 int i915_reg_read_ioctl(struct drm_device *dev, void *data,
 			struct drm_file *file);
-
-/* i915_mm.c */
-int remap_io_mapping(struct vm_area_struct *vma,
-		     unsigned long addr, unsigned long pfn, unsigned long size,
-		     struct io_mapping *iomap);
-int remap_io_sg(struct vm_area_struct *vma,
-		unsigned long addr, unsigned long size,
-		struct scatterlist *sgl, resource_size_t iobase);
 
 static inline int intel_hws_csb_write_index(struct drm_i915_private *i915)
 {

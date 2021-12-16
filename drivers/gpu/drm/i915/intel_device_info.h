@@ -110,6 +110,9 @@ enum intel_platform {
 #define INTEL_SUBPLATFORM_G10	0
 #define INTEL_SUBPLATFORM_G11	1
 
+/* ADL-S */
+#define INTEL_SUBPLATFORM_RPL_S	0
+
 enum intel_ppgtt_type {
 	INTEL_PPGTT_NONE = I915_GEM_PPGTT_NONE,
 	INTEL_PPGTT_ALIASING = I915_GEM_PPGTT_ALIASING,
@@ -152,7 +155,6 @@ enum intel_ppgtt_type {
 	func(has_dp_mst); \
 	func(has_dsb); \
 	func(has_dsc); \
-	func(has_fbc); \
 	func(has_fpga_dbg); \
 	func(has_gmch); \
 	func(has_hdcp); \
@@ -192,11 +194,6 @@ struct intel_device_info {
 
 	u8 gt; /* GT number, 0 if undefined */
 
-	u8 pipe_mask;
-	u8 cpu_transcoder_mask;
-
-	u8 abox_mask;
-
 #define DEFINE_FLAG(name) u8 name:1
 	DEV_INFO_FOR_EACH_FLAG(DEFINE_FLAG);
 #undef DEFINE_FLAG
@@ -204,6 +201,11 @@ struct intel_device_info {
 	struct {
 		u8 ver;
 		u8 rel;
+
+		u8 pipe_mask;
+		u8 cpu_transcoder_mask;
+		u8 fbc_mask;
+		u8 abox_mask;
 
 #define DEFINE_FLAG(name) u8 name:1
 		DEV_INFO_DISPLAY_FOR_EACH_FLAG(DEFINE_FLAG);

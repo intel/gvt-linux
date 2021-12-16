@@ -1,28 +1,12 @@
-drm drm-fixes 2585cf9dfaaddf00b069673f27bb3f8530e2039c
-	Linux 5.16-rc5
-drm-misc drm-misc-fixes fea3fdf975dd9f3e5248afaab8fe023db313f005
-	drm/ast: potential dereference of null pointer
-drm-intel drm-intel-fixes 53b3495273282aa844c4613d19c3b30558c70c84
-	drm/i915/display: Fix an unsigned subtraction which can never be negative.
-drm drm-next 244a36e50da05c33b860d20638ee4628017a5334
-	drm/vc4: kms: Wait for the commit before increasing our clock rate
-drm-misc drm-misc-next-fixes bcae3af286f49bf4f6cda03f165fbe530f4a6bed
-	drm/locking: fix __stack_depot_* name conflict
-drm-intel drm-intel-next-fixes fa55b7dcdc43c1aa1ba12bca9d2dd4318c2a0dbf
-	Linux 5.16-rc1
-drm-misc drm-misc-next 60c9ecd705be3a28f79d70ea21c3939db668bf46
-	drm/vmwgfx: Fix possible usage of an uninitialized variable
-drm-intel drm-intel-next a36e7dc0af1cc7e5eaa89136c35a5305fd693731
-	drm/i915/dg1: Read OPROM via SPI controller
-drm-intel drm-intel-gt-next 0013f5f5c05da6321539df6fad75de150f430909
-	drm/i915/guc: Selftest for stealing of guc ids
-sound-upstream for-linus 7cf3dead1ad70c72edb03e2d98e1f3dcd332cdb2
-	Linux 5.13
-sound-upstream for-next 7cf3dead1ad70c72edb03e2d98e1f3dcd332cdb2
-	Linux 5.13
-drm-intel topic/core-for-CI 4c82fd0506b4cc196a375d1200361fb0c5439acd
-	drm/i915: Add relocation exceptions for two other platforms
-drm topic/nouveau-ampere-modeset 584265dfec70e78ce2085b82ed389f27e06fbca0
-	Merge branch '04.01-ampere-lite' of git://github.com/skeggsb/linux into topic/nouveau-ampere-modeset
-drm-misc topic/i915-ttm 1e3944578b749449bd7fa6bf0bae4c3d3f5f1733
-	Merge tag 'amd-drm-next-5.16-2021-09-27' of https://gitlab.freedesktop.org/agd5f/linux into drm-next
+drm-tip/drm-tip 3bef0218926b7c96d6132f472f1d9b1523665c6c
+	drm-tip: 2021y-12m-16d-16h-42m-05s UTC integration manifest
+vfio-upstream/for-linus 8704e89349080bd640d1755c46d8cdc359a89748
+	vfio/pci: Fix OpRegion read
+vfio-upstream/next 3bf1311f351ef289f2aee79b86bcece2039fa611
+	vfio/ccw: Convert to use vfio_register_emulated_iommu_dev()
+origin/gvt-fixes 3a9ad2db9a282fa8617809372f11c7d439d4182f
+	drm/i915/gvt: clean up kernel-doc in gtt.c
+origin/gvt-next d7a8585430f2b6df5960bbc305edcec5a55180f3
+	drm/i915/gvt: Constify vgpu_types
+origin/gvt-next-fixes d385c16173f28a18866abf54c764200c276dace0
+	drm/i915/gvt: Prevent divided by zero when calculating refresh rate

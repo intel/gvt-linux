@@ -30,7 +30,7 @@ subdir-ccflags-y += -I$(srctree)/$(src)
 # Please keep these build lists sorted!
 
 # core driver code
-i915-y += i915_drv.o \
+i915-y += i915_driver.o \
 	  i915_config.o \
 	  i915_irq.o \
 	  i915_getparam.o \
@@ -60,7 +60,6 @@ i915-y += i915_drv.o \
 
 # core library code
 i915-y += \
-	dma_resv_utils.o \
 	i915_memcpy.o \
 	i915_mm.o \
 	i915_sw_fence.o \
@@ -154,6 +153,7 @@ gem-y += \
 	gem/i915_gem_throttle.o \
 	gem/i915_gem_tiling.o \
 	gem/i915_gem_ttm.o \
+	gem/i915_gem_ttm_move.o \
 	gem/i915_gem_ttm_pm.o \
 	gem/i915_gem_userptr.o \
 	gem/i915_gem_wait.o \
@@ -173,6 +173,7 @@ i915-y += \
 	  i915_trace_points.o \
 	  i915_ttm_buddy_manager.o \
 	  i915_vma.o \
+	  i915_vma_snapshot.o \
 	  intel_wopcm.o
 
 # general-purpose microcontroller (GuC) support
@@ -226,6 +227,8 @@ i915-y += \
 	display/intel_hotplug.o \
 	display/intel_lpe_audio.o \
 	display/intel_overlay.o \
+	display/intel_pch_display.o \
+	display/intel_pch_refclk.o \
 	display/intel_plane_initial.o \
 	display/intel_psr.o \
 	display/intel_quirks.o \

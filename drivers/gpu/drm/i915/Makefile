@@ -174,7 +174,7 @@ i915-y += \
 	  i915_trace_points.o \
 	  i915_ttm_buddy_manager.o \
 	  i915_vma.o \
-	  i915_vma_snapshot.o \
+	  i915_vma_resource.o \
 	  intel_wopcm.o
 
 # general-purpose microcontroller (GuC) support

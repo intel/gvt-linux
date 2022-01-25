@@ -490,16 +490,27 @@ eb_unreserve_vma(struct eb_vma *ev)
 	ev->flags &= ~__EXEC_OBJECT_RESERVED;
 }
 
+static bool platform_has_relocs_enabled(const struct i915_execbuffer *eb)
+{
+	/*
+	 * Relocations are disallowed starting from gen12 with Tigerlake
+	 * as an exception. To unblock CI, we are temporarily allowing it
+	 * for Rocketlake and Alderlake.
+	 */
+	if (GRAPHICS_VER(eb->i915) < 12 || IS_TIGERLAKE(eb->i915) ||
+	    IS_ROCKETLAKE(eb->i915) || IS_ALDERLAKE_S(eb->i915) ||
+	    IS_ALDERLAKE_P(eb->i915))
+		return true;
+
+	return false;
+}
+
 static int
 eb_validate_vma(struct i915_execbuffer *eb,
 		struct drm_i915_gem_exec_object2 *entry,
 		struct i915_vma *vma)
 {
-	/* Relocations are disallowed for all platforms after TGL-LP.  This
-	 * also covers all platforms with local memory.
-	 */
-	if (entry->relocation_count &&
-	    GRAPHICS_VER(eb->i915) >= 12 && !IS_TIGERLAKE(eb->i915))
+	if (entry->relocation_count && !platform_has_relocs_enabled(eb))
 		return -EINVAL;
 
 	if (unlikely(entry->flags & eb->invalid_flags))

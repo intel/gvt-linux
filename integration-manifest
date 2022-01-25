@@ -1,0 +1,28 @@
+drm drm-fixes e783362eb54cd99b2cac8b3a9aeac942e6f6ac07
+	Linux 5.17-rc1
+drm-misc drm-misc-fixes 5ec1cebd59300ddd26dbaa96c17c508764eef911
+	drm/atomic: Add the crtc to affected crtc only if uapi.enable = true
+drm-intel drm-intel-fixes e783362eb54cd99b2cac8b3a9aeac942e6f6ac07
+	Linux 5.17-rc1
+drm drm-next e783362eb54cd99b2cac8b3a9aeac942e6f6ac07
+	Linux 5.17-rc1
+drm-misc drm-misc-next-fixes d3cbc6e323c9299d10c8d2e4127c77c7d05d07b1
+	drm: panel-orientation-quirks: Add quirk for the 1Netbook OneXPlayer
+drm-intel drm-intel-next-fixes e26602be4869c74dd8a0f66f718b8a0ce120edb4
+	drm/i915/display/adlp: Implement new step in the TC voltage swing prog sequence
+drm-misc drm-misc-next a34b14a29d96db74876d2cbb466bbc2b73002f3d
+	drm/vc4: hdmi: Change CSC callback prototype
+drm-intel drm-intel-next cf5b64f7f10b28bebb9b7c9d25e7aee5cbe43918
+	drm/i915/overlay: Prevent divide by zero bugs in scaling
+drm-intel drm-intel-gt-next ff3aeb34deb24f40626c171ce1cfd447a2edafc8
+	drm/i915/dg2: Add Wa_18018781329
+sound-upstream for-linus 7cf3dead1ad70c72edb03e2d98e1f3dcd332cdb2
+	Linux 5.13
+sound-upstream for-next 7cf3dead1ad70c72edb03e2d98e1f3dcd332cdb2
+	Linux 5.13
+drm-intel topic/core-for-CI 4c82fd0506b4cc196a375d1200361fb0c5439acd
+	drm/i915: Add relocation exceptions for two other platforms
+drm topic/nouveau-ampere-modeset 584265dfec70e78ce2085b82ed389f27e06fbca0
+	Merge branch '04.01-ampere-lite' of git://github.com/skeggsb/linux into topic/nouveau-ampere-modeset
+drm-misc topic/i915-ttm 1e3944578b749449bd7fa6bf0bae4c3d3f5f1733
+	Merge tag 'amd-drm-next-5.16-2021-09-27' of https://gitlab.freedesktop.org/agd5f/linux into drm-next

@@ -109,6 +109,7 @@ enum intel_platform {
 /* DG2 */
 #define INTEL_SUBPLATFORM_G10	0
 #define INTEL_SUBPLATFORM_G11	1
+#define INTEL_SUBPLATFORM_G12	2
 
 /* ADL-S */
 #define INTEL_SUBPLATFORM_RPL_S	0

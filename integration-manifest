@@ -1,28 +1,12 @@
-drm drm-fixes 5666b610194705587807a1078753eadc007b9d79
-	Merge tag 'drm-intel-fixes-2022-02-17' of git://anongit.freedesktop.org/drm/drm-intel into drm-fixes
-drm-misc drm-misc-fixes 6764eb690e77ecded48587d6d4e346ba2e196546
-	drm/vc4: crtc: Fix runtime_pm reference counting
-drm-intel drm-intel-fixes 26ace8793aaefbcd0d6bb664573ded35c69cd6ef
-	drm/i915/fbc: Fix the plane end Y offset check
-drm drm-next b9c7babe2c2e37a50aa42401b38d597ea78f506e
-	Backmerge tag 'v5.17-rc4' of git://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux into drm-next
-drm-misc drm-misc-next-fixes d3cbc6e323c9299d10c8d2e4127c77c7d05d07b1
-	drm: panel-orientation-quirks: Add quirk for the 1Netbook OneXPlayer
-drm-intel drm-intel-next-fixes e26602be4869c74dd8a0f66f718b8a0ce120edb4
-	drm/i915/display/adlp: Implement new step in the TC voltage swing prog sequence
-drm-misc drm-misc-next a874aba8bbc529517ed154d88b08e3c437564c88
-	drm/panel-edp: Add eDP sharp panel support
-drm-intel drm-intel-next 2bb116c7fd1fcd80c7727be44876070d1b3ce923
-	drm/i915/lrc: replace include with forward declarations
-drm-intel drm-intel-gt-next f2ed8ef31366467930c98494535a044e33a1b3d4
-	drm/i915/perf: Skip the i915_perf_init for dg2
-sound-upstream for-linus 7cf3dead1ad70c72edb03e2d98e1f3dcd332cdb2
-	Linux 5.13
-sound-upstream for-next 7cf3dead1ad70c72edb03e2d98e1f3dcd332cdb2
-	Linux 5.13
-drm-intel topic/core-for-CI b56d8d7bad86a9badc1d1b9ea2d1730fa1d3978b
-	drm/i915: Add DG2 PCI IDs
-drm topic/nouveau-ampere-modeset 584265dfec70e78ce2085b82ed389f27e06fbca0
-	Merge branch '04.01-ampere-lite' of git://github.com/skeggsb/linux into topic/nouveau-ampere-modeset
-drm-misc topic/i915-ttm 1e3944578b749449bd7fa6bf0bae4c3d3f5f1733
-	Merge tag 'amd-drm-next-5.16-2021-09-27' of https://gitlab.freedesktop.org/agd5f/linux into drm-next
+drm-tip/drm-tip 076e1d3d3d2045bf7c4f2760083417b72f8201fe
+	drm-tip: 2022y-02m-17d-19h-46m-50s UTC integration manifest
+vfio-upstream/for-linus 8704e89349080bd640d1755c46d8cdc359a89748
+	vfio/pci: Fix OpRegion read
+vfio-upstream/next 2bed2ced40c97b8540ff38df0149e8ecb2bf4c65
+	vfio/iommu_type1: replace kfree with kvfree
+origin/gvt-fixes d72d69abfdb6e0375981cfdda8eb45143f12c77d
+	drm/i915/gvt: Make DRM_I915_GVT depend on X86
+origin/gvt-next 3f8bd465a6f083a4112d82c18f4a85c9052d2132
+	drm/i915/gvt: Constify vgpu_types
+origin/gvt-next-fixes d385c16173f28a18866abf54c764200c276dace0
+	drm/i915/gvt: Prevent divided by zero when calculating refresh rate

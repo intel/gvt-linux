@@ -99,7 +99,6 @@
 #include "amdgpu_gem.h"
 #include "amdgpu_doorbell.h"
 #include "amdgpu_amdkfd.h"
-#include "amdgpu_smu.h"
 #include "amdgpu_discovery.h"
 #include "amdgpu_mes.h"
 #include "amdgpu_umc.h"
@@ -109,6 +108,7 @@
 #include "amdgpu_smuio.h"
 #include "amdgpu_fdinfo.h"
 #include "amdgpu_mca.h"
+#include "amdgpu_ras.h"
 
 #define MAX_GPU_INSTANCE		16
 
@@ -197,7 +197,6 @@ extern int amdgpu_emu_mode;
 extern uint amdgpu_smu_memory_pool_size;
 extern int amdgpu_smu_pptable_id;
 extern uint amdgpu_dc_feature_mask;
-extern uint amdgpu_freesync_vid_mode;
 extern uint amdgpu_dc_debug_mask;
 extern uint amdgpu_dm_abm_level;
 extern int amdgpu_backlight;
@@ -373,7 +372,8 @@ int amdgpu_device_ip_block_add(struct amdgpu_device *adev,
  */
 bool amdgpu_get_bios(struct amdgpu_device *adev);
 bool amdgpu_read_bios(struct amdgpu_device *adev);
-
+bool amdgpu_soc15_read_bios_from_rom(struct amdgpu_device *adev,
+				     u8 *bios, u32 length_bytes);
 /*
  * Clocks
  */
@@ -950,12 +950,6 @@ struct amdgpu_device {
 
 	/* powerplay */
 	struct amd_powerplay		powerplay;
-	bool				pp_force_state_enabled;
-
-	/* smu */
-	struct smu_context		smu;
-
-	/* dpm */
 	struct amdgpu_pm		pm;
 	u32				cg_flags;
 	u32				pg_flags;
@@ -1100,6 +1094,8 @@ struct amdgpu_device {
 	uint32_t                        ip_versions[MAX_HWIP][HWIP_MAX_INSTANCE];
 
 	bool				ram_is_direct_mapped;
+
+	struct list_head                ras_list;
 };
 
 static inline struct amdgpu_device *drm_to_adev(struct drm_device *ddev)
@@ -1321,6 +1317,10 @@ void amdgpu_device_invalidate_hdp(struct amdgpu_device *adev,
 		struct amdgpu_ring *ring);
 
 void amdgpu_device_halt(struct amdgpu_device *adev);
+u32 amdgpu_device_pcie_port_rreg(struct amdgpu_device *adev,
+				u32 reg);
+void amdgpu_device_pcie_port_wreg(struct amdgpu_device *adev,
+				u32 reg, u32 v);
 
 /* atpx handler */
 #if defined(CONFIG_VGA_SWITCHEROO)
@@ -1457,6 +1457,15 @@ int amdgpu_device_set_cg_state(struct amdgpu_device *adev,
 			       enum amd_clockgating_state state);
 int amdgpu_device_set_pg_state(struct amdgpu_device *adev,
 			       enum amd_powergating_state state);
+
+static inline bool amdgpu_device_has_timeouts_enabled(struct amdgpu_device *adev)
+{
+	return amdgpu_gpu_recovery != 0 &&
+		adev->gfx_timeout != MAX_SCHEDULE_TIMEOUT &&
+		adev->compute_timeout != MAX_SCHEDULE_TIMEOUT &&
+		adev->sdma_timeout != MAX_SCHEDULE_TIMEOUT &&
+		adev->video_timeout != MAX_SCHEDULE_TIMEOUT;
+}
 
 #include "amdgpu_object.h"
 

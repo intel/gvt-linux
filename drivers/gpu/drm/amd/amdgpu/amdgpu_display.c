@@ -200,8 +200,10 @@ int amdgpu_display_crtc_page_flip_target(struct drm_crtc *crtc,
 		goto unpin;
 	}
 
-	r = dma_resv_get_fences(new_abo->tbo.base.resv, NULL,
-				&work->shared_count, &work->shared);
+	/* TODO: Unify this with other drivers */
+	r = dma_resv_get_fences(new_abo->tbo.base.resv, true,
+				&work->shared_count,
+				&work->shared);
 	if (unlikely(r != 0)) {
 		DRM_ERROR("failed to get fences for buffer\n");
 		goto unpin;
@@ -510,19 +512,24 @@ uint32_t amdgpu_display_supported_domains(struct amdgpu_device *adev,
 		case CHIP_STONEY:
 			domain |= AMDGPU_GEM_DOMAIN_GTT;
 			break;
-		case CHIP_RAVEN:
-			/* enable S/G on PCO and RV2 */
-			if ((adev->apu_flags & AMD_APU_IS_RAVEN2) ||
-			    (adev->apu_flags & AMD_APU_IS_PICASSO))
-				domain |= AMDGPU_GEM_DOMAIN_GTT;
-			break;
-		case CHIP_RENOIR:
-		case CHIP_VANGOGH:
-		case CHIP_YELLOW_CARP:
-			domain |= AMDGPU_GEM_DOMAIN_GTT;
-			break;
-
 		default:
+			switch (adev->ip_versions[DCE_HWIP][0]) {
+			case IP_VERSION(1, 0, 0):
+			case IP_VERSION(1, 0, 1):
+				/* enable S/G on PCO and RV2 */
+				if ((adev->apu_flags & AMD_APU_IS_RAVEN2) ||
+				    (adev->apu_flags & AMD_APU_IS_PICASSO))
+					domain |= AMDGPU_GEM_DOMAIN_GTT;
+				break;
+			case IP_VERSION(2, 1, 0):
+			case IP_VERSION(3, 0, 1):
+			case IP_VERSION(3, 1, 2):
+			case IP_VERSION(3, 1, 3):
+				domain |= AMDGPU_GEM_DOMAIN_GTT;
+				break;
+			default:
+				break;
+			}
 			break;
 		}
 	}

@@ -50,10 +50,15 @@
 #include "i915_drv.h"
 #include "i915_fixed.h"
 #include "i915_irq.h"
+#include "intel_mchbar_regs.h"
 #include "intel_pcode.h"
 #include "intel_pm.h"
 #include "vlv_sideband.h"
 #include "../../../platform/x86/intel_ips.h"
+
+struct drm_i915_clock_gating_funcs {
+	void (*init_clock_gating)(struct drm_i915_private *i915);
+};
 
 /* Stores plane specific WM parameters */
 struct skl_wm_params {
@@ -3175,12 +3180,8 @@ static int ilk_compute_pipe_wm(struct intel_atomic_state *state,
 	}
 
 	pipe_wm->pipe_enabled = crtc_state->hw.active;
-	if (sprstate) {
-		pipe_wm->sprites_enabled = sprstate->uapi.visible;
-		pipe_wm->sprites_scaled = sprstate->uapi.visible &&
-			(drm_rect_width(&sprstate->uapi.dst) != drm_rect_width(&sprstate->uapi.src) >> 16 ||
-			 drm_rect_height(&sprstate->uapi.dst) != drm_rect_height(&sprstate->uapi.src) >> 16);
-	}
+	pipe_wm->sprites_enabled = crtc_state->active_planes & BIT(PLANE_SPRITE0);
+	pipe_wm->sprites_scaled = crtc_state->scaled_planes & BIT(PLANE_SPRITE0);
 
 	usable_level = max_level;
 
@@ -3802,8 +3803,9 @@ void intel_sagv_pre_plane_update(struct intel_atomic_state *state)
 	if (!new_bw_state)
 		return;
 
-	if (DISPLAY_VER(dev_priv) < 11 && !intel_can_enable_sagv(dev_priv, new_bw_state)) {
-		intel_disable_sagv(dev_priv);
+	if (DISPLAY_VER(dev_priv) < 11) {
+		if (!intel_can_enable_sagv(dev_priv, new_bw_state))
+			intel_disable_sagv(dev_priv);
 		return;
 	}
 
@@ -3853,8 +3855,9 @@ void intel_sagv_post_plane_update(struct intel_atomic_state *state)
 	if (!new_bw_state)
 		return;
 
-	if (DISPLAY_VER(dev_priv) < 11 && intel_can_enable_sagv(dev_priv, new_bw_state)) {
-		intel_enable_sagv(dev_priv);
+	if (DISPLAY_VER(dev_priv) < 11) {
+		if (intel_can_enable_sagv(dev_priv, new_bw_state))
+			intel_enable_sagv(dev_priv);
 		return;
 	}
 
@@ -4034,6 +4037,15 @@ static int intel_compute_sagv_mask(struct intel_atomic_state *state)
 	return 0;
 }
 
+static u16 skl_ddb_entry_init(struct skl_ddb_entry *entry,
+			      u16 start, u16 end)
+{
+	entry->start = start;
+	entry->end = end;
+
+	return end;
+}
+
 static int intel_dbuf_slice_size(struct drm_i915_private *dev_priv)
 {
 	return INTEL_INFO(dev_priv)->dbuf.size /
@@ -4172,8 +4184,7 @@ skl_crtc_allocate_ddb(struct intel_atomic_state *state, struct intel_crtc *crtc)
 	int ret;
 
 	if (new_dbuf_state->weight[pipe] == 0) {
-		new_dbuf_state->ddb[pipe].start = 0;
-		new_dbuf_state->ddb[pipe].end = 0;
+		skl_ddb_entry_init(&new_dbuf_state->ddb[pipe], 0, 0);
 		goto out;
 	}
 
@@ -4189,8 +4200,10 @@ skl_crtc_allocate_ddb(struct intel_atomic_state *state, struct intel_crtc *crtc)
 	start = ddb_range_size * weight_start / weight_total;
 	end = ddb_range_size * weight_end / weight_total;
 
-	new_dbuf_state->ddb[pipe].start = ddb_slices.start - mbus_offset + start;
-	new_dbuf_state->ddb[pipe].end = ddb_slices.start - mbus_offset + end;
+	skl_ddb_entry_init(&new_dbuf_state->ddb[pipe],
+			   ddb_slices.start - mbus_offset + start,
+			   ddb_slices.start - mbus_offset + end);
+
 out:
 	if (old_dbuf_state->slices[pipe] == new_dbuf_state->slices[pipe] &&
 	    skl_ddb_entry_equal(&old_dbuf_state->ddb[pipe],
@@ -4268,11 +4281,11 @@ skl_cursor_allocation(const struct intel_crtc_state *crtc_state,
 	return max(num_active == 1 ? 32 : 8, min_ddb_alloc);
 }
 
-static void skl_ddb_entry_init_from_hw(struct drm_i915_private *dev_priv,
-				       struct skl_ddb_entry *entry, u32 reg)
+static void skl_ddb_entry_init_from_hw(struct skl_ddb_entry *entry, u32 reg)
 {
-	entry->start = REG_FIELD_GET(PLANE_BUF_START_MASK, reg);
-	entry->end = REG_FIELD_GET(PLANE_BUF_END_MASK, reg);
+	skl_ddb_entry_init(entry,
+			   REG_FIELD_GET(PLANE_BUF_START_MASK, reg),
+			   REG_FIELD_GET(PLANE_BUF_END_MASK, reg));
 	if (entry->end)
 		entry->end++;
 }
@@ -4290,7 +4303,7 @@ skl_ddb_get_hw_plane_state(struct drm_i915_private *dev_priv,
 	/* Cursor doesn't support NV12/planar, so no extra calculation needed */
 	if (plane_id == PLANE_CURSOR) {
 		val = intel_uncore_read(&dev_priv->uncore, CUR_BUF_CFG(pipe));
-		skl_ddb_entry_init_from_hw(dev_priv, ddb_y, val);
+		skl_ddb_entry_init_from_hw(ddb_y, val);
 		return;
 	}
 
@@ -4304,7 +4317,7 @@ skl_ddb_get_hw_plane_state(struct drm_i915_private *dev_priv,
 
 	if (DISPLAY_VER(dev_priv) >= 11) {
 		val = intel_uncore_read(&dev_priv->uncore, PLANE_BUF_CFG(pipe, plane_id));
-		skl_ddb_entry_init_from_hw(dev_priv, ddb_y, val);
+		skl_ddb_entry_init_from_hw(ddb_y, val);
 	} else {
 		val = intel_uncore_read(&dev_priv->uncore, PLANE_BUF_CFG(pipe, plane_id));
 		val2 = intel_uncore_read(&dev_priv->uncore, PLANE_NV12_BUF_CFG(pipe, plane_id));
@@ -4313,8 +4326,8 @@ skl_ddb_get_hw_plane_state(struct drm_i915_private *dev_priv,
 		    drm_format_info_is_yuv_semiplanar(drm_format_info(fourcc)))
 			swap(val, val2);
 
-		skl_ddb_entry_init_from_hw(dev_priv, ddb_y, val);
-		skl_ddb_entry_init_from_hw(dev_priv, ddb_uv, val2);
+		skl_ddb_entry_init_from_hw(ddb_y, val);
+		skl_ddb_entry_init_from_hw(ddb_uv, val2);
 	}
 }
 
@@ -4340,55 +4353,6 @@ void skl_pipe_ddb_get_hw_state(struct intel_crtc *crtc,
 					   &ddb_uv[plane_id]);
 
 	intel_display_power_put(dev_priv, power_domain, wakeref);
-}
-
-/*
- * Determines the downscale amount of a plane for the purposes of watermark calculations.
- * The bspec defines downscale amount as:
- *
- * """
- * Horizontal down scale amount = maximum[1, Horizontal source size /
- *                                           Horizontal destination size]
- * Vertical down scale amount = maximum[1, Vertical source size /
- *                                         Vertical destination size]
- * Total down scale amount = Horizontal down scale amount *
- *                           Vertical down scale amount
- * """
- *
- * Return value is provided in 16.16 fixed point form to retain fractional part.
- * Caller should take care of dividing & rounding off the value.
- */
-static uint_fixed_16_16_t
-skl_plane_downscale_amount(const struct intel_crtc_state *crtc_state,
-			   const struct intel_plane_state *plane_state)
-{
-	struct drm_i915_private *dev_priv = to_i915(crtc_state->uapi.crtc->dev);
-	u32 src_w, src_h, dst_w, dst_h;
-	uint_fixed_16_16_t fp_w_ratio, fp_h_ratio;
-	uint_fixed_16_16_t downscale_h, downscale_w;
-
-	if (drm_WARN_ON(&dev_priv->drm,
-			!intel_wm_plane_visible(crtc_state, plane_state)))
-		return u32_to_fixed16(0);
-
-	/*
-	 * Src coordinates are already rotated by 270 degrees for
-	 * the 90/270 degree plane rotation cases (to match the
-	 * GTT mapping), hence no need to account for rotation here.
-	 *
-	 * n.b., src is 16.16 fixed point, dst is whole integer.
-	 */
-	src_w = drm_rect_width(&plane_state->uapi.src) >> 16;
-	src_h = drm_rect_height(&plane_state->uapi.src) >> 16;
-	dst_w = drm_rect_width(&plane_state->uapi.dst);
-	dst_h = drm_rect_height(&plane_state->uapi.dst);
-
-	fp_w_ratio = div_fixed16(src_w, dst_w);
-	fp_h_ratio = div_fixed16(src_h, dst_h);
-	downscale_w = max_fixed16(fp_w_ratio, u32_to_fixed16(1));
-	downscale_h = max_fixed16(fp_h_ratio, u32_to_fixed16(1));
-
-	return mul_fixed16(downscale_w, downscale_h);
 }
 
 struct dbuf_slice_conf_entry {
@@ -4946,10 +4910,7 @@ skl_plane_relative_data_rate(const struct intel_crtc_state *crtc_state,
 {
 	struct intel_plane *plane = to_intel_plane(plane_state->uapi.plane);
 	const struct drm_framebuffer *fb = plane_state->hw.fb;
-	u32 data_rate;
-	u32 width = 0, height = 0;
-	uint_fixed_16_16_t down_scale_amount;
-	u64 rate;
+	int width, height;
 
 	if (!plane_state->uapi.visible)
 		return 0;
@@ -4983,14 +4944,7 @@ skl_plane_relative_data_rate(const struct intel_crtc_state *crtc_state,
 		height /= 2;
 	}
 
-	data_rate = width * height;
-
-	down_scale_amount = skl_plane_downscale_amount(crtc_state, plane_state);
-
-	rate = mul_round_up_u32_fixed16(data_rate, down_scale_amount);
-
-	rate *= fb->format->cpp[color_plane];
-	return rate;
+	return width * height * fb->format->cpp[color_plane];
 }
 
 static u64
@@ -5147,9 +5101,31 @@ static bool icl_need_wm1_wa(struct drm_i915_private *i915,
 	       (IS_DISPLAY_VER(i915, 12, 13) && plane_id == PLANE_CURSOR);
 }
 
+struct skl_plane_ddb_iter {
+	u64 data_rate;
+	u16 total[I915_MAX_PLANES];
+	u16 uv_total[I915_MAX_PLANES];
+	u16 start, size;
+};
+
+static u16
+skl_allocate_plane_ddb(struct skl_plane_ddb_iter *iter,
+		       const struct skl_wm_level *wm,
+		       u64 data_rate)
+{
+	u16 extra;
+
+	extra = min_t(u16, iter->size,
+		      DIV64_U64_ROUND_UP(iter->size * data_rate, iter->data_rate));
+	iter->size -= extra;
+	iter->data_rate -= data_rate;
+
+	return wm->min_ddb_alloc + extra;
+}
+
 static int
-skl_allocate_plane_ddb(struct intel_atomic_state *state,
-		       struct intel_crtc *crtc)
+skl_crtc_allocate_plane_ddb(struct intel_atomic_state *state,
+			    struct intel_crtc *crtc)
 {
 	struct drm_i915_private *dev_priv = to_i915(crtc->base.dev);
 	struct intel_crtc_state *crtc_state =
@@ -5158,10 +5134,7 @@ skl_allocate_plane_ddb(struct intel_atomic_state *state,
 		intel_atomic_get_new_dbuf_state(state);
 	const struct skl_ddb_entry *alloc = &dbuf_state->ddb[crtc->pipe];
 	int num_active = hweight8(dbuf_state->active_pipes);
-	u16 alloc_size, start = 0;
-	u16 total[I915_MAX_PLANES] = {};
-	u16 uv_total[I915_MAX_PLANES] = {};
-	u64 total_data_rate;
+	struct skl_plane_ddb_iter iter = {};
 	enum plane_id plane_id;
 	u32 blocks;
 	int level;
@@ -5174,24 +5147,21 @@ skl_allocate_plane_ddb(struct intel_atomic_state *state,
 		return 0;
 
 	if (DISPLAY_VER(dev_priv) >= 11)
-		total_data_rate =
-			icl_get_total_relative_data_rate(state, crtc);
+		iter.data_rate = icl_get_total_relative_data_rate(state, crtc);
 	else
-		total_data_rate =
-			skl_get_total_relative_data_rate(state, crtc);
+		iter.data_rate = skl_get_total_relative_data_rate(state, crtc);
 
-	alloc_size = skl_ddb_entry_size(alloc);
-	if (alloc_size == 0)
+	iter.size = skl_ddb_entry_size(alloc);
+	if (iter.size == 0)
 		return 0;
 
 	/* Allocate fixed number of blocks for cursor. */
-	total[PLANE_CURSOR] = skl_cursor_allocation(crtc_state, num_active);
-	alloc_size -= total[PLANE_CURSOR];
-	crtc_state->wm.skl.plane_ddb_y[PLANE_CURSOR].start =
-		alloc->end - total[PLANE_CURSOR];
-	crtc_state->wm.skl.plane_ddb_y[PLANE_CURSOR].end = alloc->end;
+	iter.total[PLANE_CURSOR] = skl_cursor_allocation(crtc_state, num_active);
+	iter.size -= iter.total[PLANE_CURSOR];
+	skl_ddb_entry_init(&crtc_state->wm.skl.plane_ddb_y[PLANE_CURSOR],
+			   alloc->end - iter.total[PLANE_CURSOR], alloc->end);
 
-	if (total_data_rate == 0)
+	if (iter.data_rate == 0)
 		return 0;
 
 	/*
@@ -5205,7 +5175,7 @@ skl_allocate_plane_ddb(struct intel_atomic_state *state,
 				&crtc_state->wm.skl.optimal.planes[plane_id];
 
 			if (plane_id == PLANE_CURSOR) {
-				if (wm->wm[level].min_ddb_alloc > total[PLANE_CURSOR]) {
+				if (wm->wm[level].min_ddb_alloc > iter.total[PLANE_CURSOR]) {
 					drm_WARN_ON(&dev_priv->drm,
 						    wm->wm[level].min_ddb_alloc != U16_MAX);
 					blocks = U32_MAX;
@@ -5218,8 +5188,8 @@ skl_allocate_plane_ddb(struct intel_atomic_state *state,
 			blocks += wm->uv_wm[level].min_ddb_alloc;
 		}
 
-		if (blocks <= alloc_size) {
-			alloc_size -= blocks;
+		if (blocks <= iter.size) {
+			iter.size -= blocks;
 			break;
 		}
 	}
@@ -5228,7 +5198,7 @@ skl_allocate_plane_ddb(struct intel_atomic_state *state,
 		drm_dbg_kms(&dev_priv->drm,
 			    "Requested display configuration exceeds system DDB limitations");
 		drm_dbg_kms(&dev_priv->drm, "minimum required %d/%d\n",
-			    blocks, alloc_size);
+			    blocks, iter.size);
 		return -EINVAL;
 	}
 
@@ -5240,8 +5210,6 @@ skl_allocate_plane_ddb(struct intel_atomic_state *state,
 	for_each_plane_id_on_crtc(crtc, plane_id) {
 		const struct skl_plane_wm *wm =
 			&crtc_state->wm.skl.optimal.planes[plane_id];
-		u64 rate;
-		u16 extra;
 
 		if (plane_id == PLANE_CURSOR)
 			continue;
@@ -5250,32 +5218,24 @@ skl_allocate_plane_ddb(struct intel_atomic_state *state,
 		 * We've accounted for all active planes; remaining planes are
 		 * all disabled.
 		 */
-		if (total_data_rate == 0)
+		if (iter.data_rate == 0)
 			break;
 
-		rate = crtc_state->plane_data_rate[plane_id];
-		extra = min_t(u16, alloc_size,
-			      DIV64_U64_ROUND_UP(alloc_size * rate,
-						 total_data_rate));
-		total[plane_id] = wm->wm[level].min_ddb_alloc + extra;
-		alloc_size -= extra;
-		total_data_rate -= rate;
+		iter.total[plane_id] =
+			skl_allocate_plane_ddb(&iter, &wm->wm[level],
+					       crtc_state->plane_data_rate[plane_id]);
 
-		if (total_data_rate == 0)
+		if (iter.data_rate == 0)
 			break;
 
-		rate = crtc_state->uv_plane_data_rate[plane_id];
-		extra = min_t(u16, alloc_size,
-			      DIV64_U64_ROUND_UP(alloc_size * rate,
-						 total_data_rate));
-		uv_total[plane_id] = wm->uv_wm[level].min_ddb_alloc + extra;
-		alloc_size -= extra;
-		total_data_rate -= rate;
+		iter.uv_total[plane_id] =
+			skl_allocate_plane_ddb(&iter, &wm->uv_wm[level],
+					       crtc_state->uv_plane_data_rate[plane_id]);
 	}
-	drm_WARN_ON(&dev_priv->drm, alloc_size != 0 || total_data_rate != 0);
+	drm_WARN_ON(&dev_priv->drm, iter.size != 0 || iter.data_rate != 0);
 
 	/* Set the actual DDB start/end points for each plane */
-	start = alloc->start;
+	iter.start = alloc->start;
 	for_each_plane_id_on_crtc(crtc, plane_id) {
 		struct skl_ddb_entry *plane_alloc =
 			&crtc_state->wm.skl.plane_ddb_y[plane_id];
@@ -5287,20 +5247,16 @@ skl_allocate_plane_ddb(struct intel_atomic_state *state,
 
 		/* Gen11+ uses a separate plane for UV watermarks */
 		drm_WARN_ON(&dev_priv->drm,
-			    DISPLAY_VER(dev_priv) >= 11 && uv_total[plane_id]);
+			    DISPLAY_VER(dev_priv) >= 11 && iter.uv_total[plane_id]);
 
 		/* Leave disabled planes at (0,0) */
-		if (total[plane_id]) {
-			plane_alloc->start = start;
-			start += total[plane_id];
-			plane_alloc->end = start;
-		}
+		if (iter.total[plane_id])
+			iter.start = skl_ddb_entry_init(plane_alloc, iter.start,
+							iter.start + iter.total[plane_id]);
 
-		if (uv_total[plane_id]) {
-			uv_plane_alloc->start = start;
-			start += uv_total[plane_id];
-			uv_plane_alloc->end = start;
-		}
+		if (iter.uv_total[plane_id])
+			iter.start = skl_ddb_entry_init(uv_plane_alloc, iter.start,
+							iter.start + iter.uv_total[plane_id]);
 	}
 
 	/*
@@ -5315,7 +5271,8 @@ skl_allocate_plane_ddb(struct intel_atomic_state *state,
 				&crtc_state->wm.skl.optimal.planes[plane_id];
 
 			skl_check_nv12_wm_level(&wm->wm[level], &wm->uv_wm[level],
-						total[plane_id], uv_total[plane_id]);
+						iter.total[plane_id],
+						iter.uv_total[plane_id]);
 
 			if (icl_need_wm1_wa(dev_priv, plane_id) &&
 			    level == 1 && wm->wm[0].enable) {
@@ -5334,9 +5291,9 @@ skl_allocate_plane_ddb(struct intel_atomic_state *state,
 		struct skl_plane_wm *wm =
 			&crtc_state->wm.skl.optimal.planes[plane_id];
 
-		skl_check_wm_level(&wm->trans_wm, total[plane_id]);
-		skl_check_wm_level(&wm->sagv.wm0, total[plane_id]);
-		skl_check_wm_level(&wm->sagv.trans_wm, total[plane_id]);
+		skl_check_wm_level(&wm->trans_wm, iter.total[plane_id]);
+		skl_check_wm_level(&wm->sagv.wm0, iter.total[plane_id]);
+		skl_check_wm_level(&wm->sagv.trans_wm, iter.total[plane_id]);
 	}
 
 	return 0;
@@ -6226,7 +6183,7 @@ skl_compute_ddb(struct intel_atomic_state *state)
 
 	for_each_oldnew_intel_crtc_in_state(state, crtc, old_crtc_state,
 					    new_crtc_state, i) {
-		ret = skl_allocate_plane_ddb(state, crtc);
+		ret = skl_crtc_allocate_plane_ddb(state, crtc);
 		if (ret)
 			return ret;
 

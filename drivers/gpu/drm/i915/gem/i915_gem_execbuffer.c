@@ -504,7 +504,7 @@ static bool platform_has_relocs_enabled(const struct i915_execbuffer *eb)
 	 */
 	if (GRAPHICS_VER(eb->i915) < 12 || IS_TIGERLAKE(eb->i915) ||
 	    IS_ROCKETLAKE(eb->i915) || IS_ALDERLAKE_S(eb->i915) ||
-	    IS_ALDERLAKE_P(eb->i915))
+	    IS_ALDERLAKE_P(eb->i915) || IS_DG2(eb->i915))
 		return true;
 
 	return false;

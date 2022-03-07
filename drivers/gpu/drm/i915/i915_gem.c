@@ -118,6 +118,7 @@ int i915_gem_object_unbind(struct drm_i915_gem_object *obj,
 			   unsigned long flags)
 {
 	struct intel_runtime_pm *rpm = &to_i915(obj->base.dev)->runtime_pm;
+	bool vm_trylock = !!(flags & I915_GEM_OBJECT_UNBIND_VM_TRYLOCK);
 	LIST_HEAD(still_in_list);
 	intel_wakeref_t wakeref;
 	struct i915_vma *vma;
@@ -142,8 +143,6 @@ try_again:
 	while (!ret && (vma = list_first_entry_or_null(&obj->vma.list,
 						       struct i915_vma,
 						       obj_link))) {
-		struct i915_address_space *vm = vma->vm;
-
 		list_move_tail(&vma->obj_link, &still_in_list);
 		if (!i915_vma_is_bound(vma, I915_VMA_BIND_MASK))
 			continue;
@@ -153,40 +152,44 @@ try_again:
 			break;
 		}
 
+		/*
+		 * Requiring the vm destructor to take the object lock
+		 * before destroying a vma would help us eliminate the
+		 * i915_vm_tryget() here, AND thus also the barrier stuff
+		 * at the end. That's an easy fix, but sleeping locks in
+		 * a kthread should generally be avoided.
+		 */
 		ret = -EAGAIN;
-		if (!i915_vm_tryopen(vm))
+		if (!i915_vm_tryget(vma->vm))
 			break;
 
-		/* Prevent vma being freed by i915_vma_parked as we unbind */
-		vma = __i915_vma_get(vma);
 		spin_unlock(&obj->vma.lock);
 
-		if (vma) {
-			bool vm_trylock = !!(flags & I915_GEM_OBJECT_UNBIND_VM_TRYLOCK);
-			ret = -EBUSY;
-			if (flags & I915_GEM_OBJECT_UNBIND_ASYNC) {
-				assert_object_held(vma->obj);
-				ret = i915_vma_unbind_async(vma, vm_trylock);
-			}
+		/*
+		 * Since i915_vma_parked() takes the object lock
+		 * before vma destruction, it won't race us here,
+		 * and destroy the vma from under us.
+		 */
 
-			if (ret == -EBUSY && (flags & I915_GEM_OBJECT_UNBIND_ACTIVE ||
-					      !i915_vma_is_active(vma))) {
-				if (vm_trylock) {
-					if (mutex_trylock(&vma->vm->mutex)) {
-						ret = __i915_vma_unbind(vma);
-						mutex_unlock(&vma->vm->mutex);
-					} else {
-						ret = -EBUSY;
-					}
-				} else {
-					ret = i915_vma_unbind(vma);
-				}
-			}
-
-			__i915_vma_put(vma);
+		ret = -EBUSY;
+		if (flags & I915_GEM_OBJECT_UNBIND_ASYNC) {
+			assert_object_held(vma->obj);
+			ret = i915_vma_unbind_async(vma, vm_trylock);
 		}
 
-		i915_vm_close(vm);
+		if (ret == -EBUSY && (flags & I915_GEM_OBJECT_UNBIND_ACTIVE ||
+				      !i915_vma_is_active(vma))) {
+			if (vm_trylock) {
+				if (mutex_trylock(&vma->vm->mutex)) {
+					ret = __i915_vma_unbind(vma);
+					mutex_unlock(&vma->vm->mutex);
+				}
+			} else {
+				ret = i915_vma_unbind(vma);
+			}
+		}
+
+		i915_vm_put(vma->vm);
 		spin_lock(&obj->vma.lock);
 	}
 	list_splice_init(&still_in_list, &obj->vma.list);

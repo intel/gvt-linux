@@ -613,9 +613,6 @@ struct intel_plane_state {
 
 	struct intel_fb_view view;
 
-	/* Indicates if async flip is required */
-	bool do_async_flip;
-
 	/* Plane pxp decryption state */
 	bool decrypt;
 
@@ -951,10 +948,13 @@ struct intel_crtc_state {
 	bool preload_luts;
 	bool inherited; /* state inherited from BIOS? */
 
+	/* Ask the hardware to actually async flip? */
+	bool do_async_flip;
+
 	/* Pipe source size (ie. panel fitter input size)
 	 * All planes will be positioned inside this space,
 	 * and get clipped at the edges. */
-	int pipe_src_w, pipe_src_h;
+	struct drm_rect pipe_src;
 
 	/*
 	 * Pipe pixel rate, adjusted for
@@ -1154,6 +1154,8 @@ struct intel_crtc_state {
 	/* bitmask of planes that will be updated during the commit */
 	u8 update_planes;
 
+	u8 framestart_delay; /* 1-4 */
+
 	struct {
 		u32 enable;
 		u32 gcp;
@@ -1178,9 +1180,6 @@ struct intel_crtc_state {
 
 	/* enable pipe csc? */
 	bool csc_enable;
-
-	/* enable pipe big joiner? */
-	bool bigjoiner;
 
 	/* big joiner pipe bitmask */
 	u8 bigjoiner_pipes;

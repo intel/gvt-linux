@@ -26,6 +26,7 @@
  */
 
 #include <linux/module.h>
+#include <linux/string_helpers.h>
 #include <linux/pm_runtime.h>
 
 #include <drm/drm_atomic_helper.h>
@@ -418,8 +419,8 @@ static bool _intel_set_memory_cxsr(struct drm_i915_private *dev_priv, bool enabl
 	trace_intel_memory_cxsr(dev_priv, was_enabled, enable);
 
 	drm_dbg_kms(&dev_priv->drm, "memory self-refresh is %s (was %s)\n",
-		    enableddisabled(enable),
-		    enableddisabled(was_enabled));
+		    str_enabled_disabled(enable),
+		    str_enabled_disabled(was_enabled));
 
 	return was_enabled;
 }
@@ -5145,12 +5146,15 @@ skl_allocate_plane_ddb(struct skl_plane_ddb_iter *iter,
 		       const struct skl_wm_level *wm,
 		       u64 data_rate)
 {
-	u16 extra;
+	u16 extra = 0;
 
-	extra = min_t(u16, iter->size,
-		      DIV64_U64_ROUND_UP(iter->size * data_rate, iter->data_rate));
-	iter->size -= extra;
-	iter->data_rate -= data_rate;
+	if (data_rate) {
+		extra = min_t(u16, iter->size,
+			      DIV64_U64_ROUND_UP(iter->size * data_rate,
+						 iter->data_rate));
+		iter->size -= extra;
+		iter->data_rate -= data_rate;
+	}
 
 	return wm->min_ddb_alloc + extra;
 }
@@ -5193,9 +5197,6 @@ skl_crtc_allocate_plane_ddb(struct intel_atomic_state *state,
 	skl_ddb_entry_init(&crtc_state->wm.skl.plane_ddb_y[PLANE_CURSOR],
 			   alloc->end - iter.total[PLANE_CURSOR], alloc->end);
 
-	if (iter.data_rate == 0)
-		return 0;
-
 	/*
 	 * Find the highest watermark level for which we can satisfy the block
 	 * requirement of active planes.
@@ -5234,6 +5235,10 @@ skl_crtc_allocate_plane_ddb(struct intel_atomic_state *state,
 		return -EINVAL;
 	}
 
+	/* avoid the WARN later when we don't allocate any extra DDB */
+	if (iter.data_rate == 0)
+		iter.size = 0;
+
 	/*
 	 * Grant each plane the blocks it requires at the highest achievable
 	 * watermark level, plus an extra share of the leftover blocks
@@ -5246,19 +5251,9 @@ skl_crtc_allocate_plane_ddb(struct intel_atomic_state *state,
 		if (plane_id == PLANE_CURSOR)
 			continue;
 
-		/*
-		 * We've accounted for all active planes; remaining planes are
-		 * all disabled.
-		 */
-		if (iter.data_rate == 0)
-			break;
-
 		iter.total[plane_id] =
 			skl_allocate_plane_ddb(&iter, &wm->wm[level],
 					       crtc_state->plane_data_rate[plane_id]);
-
-		if (iter.data_rate == 0)
-			break;
 
 		iter.uv_total[plane_id] =
 			skl_allocate_plane_ddb(&iter, &wm->uv_wm[level],
@@ -5415,6 +5410,7 @@ skl_compute_wm_params(const struct intel_crtc_state *crtc_state,
 	}
 
 	wp->y_tiled = modifier == I915_FORMAT_MOD_Y_TILED ||
+		      modifier == I915_FORMAT_MOD_4_TILED ||
 		      modifier == I915_FORMAT_MOD_Yf_TILED ||
 		      modifier == I915_FORMAT_MOD_Y_TILED_CCS ||
 		      modifier == I915_FORMAT_MOD_Yf_TILED_CCS;
@@ -5930,7 +5926,7 @@ static void skl_write_wm_level(struct drm_i915_private *dev_priv,
 		val |= PLANE_WM_EN;
 	if (level->ignore_lines)
 		val |= PLANE_WM_IGNORE_LINES;
-	val |= level->blocks;
+	val |= REG_FIELD_PREP(PLANE_WM_BLOCKS_MASK, level->blocks);
 	val |= REG_FIELD_PREP(PLANE_WM_LINES_MASK, level->lines);
 
 	intel_de_write_fw(dev_priv, reg, val);
@@ -6190,8 +6186,8 @@ skl_compute_ddb(struct intel_atomic_state *state)
 			    old_dbuf_state->enabled_slices,
 			    new_dbuf_state->enabled_slices,
 			    INTEL_INFO(dev_priv)->dbuf.slice_mask,
-			    yesno(old_dbuf_state->joined_mbus),
-			    yesno(new_dbuf_state->joined_mbus));
+			    str_yes_no(old_dbuf_state->joined_mbus),
+			    str_yes_no(new_dbuf_state->joined_mbus));
 	}
 
 	for_each_new_intel_crtc_in_state(state, crtc, new_crtc_state, i) {
@@ -6578,7 +6574,7 @@ static void skl_wm_level_from_reg_val(u32 val, struct skl_wm_level *level)
 {
 	level->enable = val & PLANE_WM_EN;
 	level->ignore_lines = val & PLANE_WM_IGNORE_LINES;
-	level->blocks = val & PLANE_WM_BLOCKS_MASK;
+	level->blocks = REG_FIELD_GET(PLANE_WM_BLOCKS_MASK, val);
 	level->lines = REG_FIELD_GET(PLANE_WM_LINES_MASK, val);
 }
 
@@ -6693,7 +6689,7 @@ void skl_wm_get_hw_state(struct drm_i915_private *dev_priv)
 			    crtc->base.base.id, crtc->base.name,
 			    dbuf_state->slices[pipe], dbuf_state->ddb[pipe].start,
 			    dbuf_state->ddb[pipe].end, dbuf_state->active_pipes,
-			    yesno(dbuf_state->joined_mbus));
+			    str_yes_no(dbuf_state->joined_mbus));
 	}
 
 	dbuf_state->enabled_slices = dev_priv->dbuf.enabled_slices;
@@ -7004,7 +7000,8 @@ void g4x_wm_get_hw_state(struct drm_i915_private *dev_priv)
 		    "Initial HPLL watermarks: plane=%d, SR cursor=%d fbc=%d\n",
 		    wm->hpll.plane, wm->hpll.cursor, wm->hpll.fbc);
 	drm_dbg_kms(&dev_priv->drm, "Initial SR=%s HPLL=%s FBC=%s\n",
-		    yesno(wm->cxsr), yesno(wm->hpll_en), yesno(wm->fbc_en));
+		    str_yes_no(wm->cxsr), str_yes_no(wm->hpll_en),
+		    str_yes_no(wm->fbc_en));
 }
 
 void g4x_wm_sanitize(struct drm_i915_private *dev_priv)

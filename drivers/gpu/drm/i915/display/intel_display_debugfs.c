@@ -3,6 +3,8 @@
  * Copyright © 2020 Intel Corporation
  */
 
+#include <linux/string_helpers.h>
+
 #include <drm/drm_debugfs.h>
 #include <drm/drm_fourcc.h>
 
@@ -10,6 +12,7 @@
 #include "intel_de.h"
 #include "intel_display_debugfs.h"
 #include "intel_display_power.h"
+#include "intel_display_power_well.h"
 #include "intel_display_types.h"
 #include "intel_dmc.h"
 #include "intel_dp.h"
@@ -52,7 +55,7 @@ static int i915_ips_status(struct seq_file *m, void *unused)
 	wakeref = intel_runtime_pm_get(&dev_priv->runtime_pm);
 
 	seq_printf(m, "Enabled by kernel parameter: %s\n",
-		   yesno(dev_priv->params.enable_ips));
+		   str_yes_no(dev_priv->params.enable_ips));
 
 	if (DISPLAY_VER(dev_priv) >= 8) {
 		seq_puts(m, "Currently: unknown\n");
@@ -92,7 +95,7 @@ static int i915_sr_status(struct seq_file *m, void *unused)
 
 	intel_display_power_put(dev_priv, POWER_DOMAIN_INIT, wakeref);
 
-	seq_printf(m, "self-refresh: %s\n", enableddisabled(sr_enabled));
+	seq_printf(m, "self-refresh: %s\n", str_enabled_disabled(sr_enabled));
 
 	return 0;
 }
@@ -260,7 +263,7 @@ static int intel_psr_status(struct seq_file *m, struct intel_dp *intel_dp)
 	bool enabled;
 	u32 val;
 
-	seq_printf(m, "Sink support: %s", yesno(psr->sink_support));
+	seq_printf(m, "Sink support: %s", str_yes_no(psr->sink_support));
 	if (psr->sink_support)
 		seq_printf(m, " [0x%02x]", intel_dp->psr_dpcd[0]);
 	seq_puts(m, "\n");
@@ -279,7 +282,7 @@ static int intel_psr_status(struct seq_file *m, struct intel_dp *intel_dp)
 
 	if (!psr->enabled) {
 		seq_printf(m, "PSR sink not reliable: %s\n",
-			   yesno(psr->sink_not_reliable));
+			   str_yes_no(psr->sink_not_reliable));
 
 		goto unlock;
 	}
@@ -294,7 +297,7 @@ static int intel_psr_status(struct seq_file *m, struct intel_dp *intel_dp)
 		enabled = val & EDP_PSR_ENABLE;
 	}
 	seq_printf(m, "Source PSR ctl: %s [0x%08x]\n",
-		   enableddisabled(enabled), val);
+		   str_enabled_disabled(enabled), val);
 	psr_source_status(intel_dp, m);
 	seq_printf(m, "Busy frontbuffer bits: 0x%08x\n",
 		   psr->busy_frontbuffer_bits);
@@ -341,7 +344,7 @@ static int intel_psr_status(struct seq_file *m, struct intel_dp *intel_dp)
 		}
 
 		seq_printf(m, "PSR2 selective fetch: %s\n",
-			   enableddisabled(psr->psr2_sel_fetch_enabled));
+			   str_enabled_disabled(psr->psr2_sel_fetch_enabled));
 	}
 
 unlock:
@@ -446,13 +449,17 @@ static int i915_dmc_info(struct seq_file *m, void *unused)
 
 	wakeref = intel_runtime_pm_get(&dev_priv->runtime_pm);
 
-	seq_printf(m, "fw loaded: %s\n", yesno(intel_dmc_has_payload(dev_priv)));
+	seq_printf(m, "fw loaded: %s\n",
+		   str_yes_no(intel_dmc_has_payload(dev_priv)));
 	seq_printf(m, "path: %s\n", dmc->fw_path);
 	seq_printf(m, "Pipe A fw support: %s\n",
-		   yesno(GRAPHICS_VER(dev_priv) >= 12));
-	seq_printf(m, "Pipe A fw loaded: %s\n", yesno(dmc->dmc_info[DMC_FW_PIPEA].payload));
-	seq_printf(m, "Pipe B fw support: %s\n", yesno(IS_ALDERLAKE_P(dev_priv)));
-	seq_printf(m, "Pipe B fw loaded: %s\n", yesno(dmc->dmc_info[DMC_FW_PIPEB].payload));
+		   str_yes_no(GRAPHICS_VER(dev_priv) >= 12));
+	seq_printf(m, "Pipe A fw loaded: %s\n",
+		   str_yes_no(dmc->dmc_info[DMC_FW_PIPEA].payload));
+	seq_printf(m, "Pipe B fw support: %s\n",
+		   str_yes_no(IS_ALDERLAKE_P(dev_priv)));
+	seq_printf(m, "Pipe B fw loaded: %s\n",
+		   str_yes_no(dmc->dmc_info[DMC_FW_PIPEB].payload));
 
 	if (!intel_dmc_has_payload(dev_priv))
 		goto out;
@@ -577,7 +584,8 @@ static void intel_dp_info(struct seq_file *m,
 	const struct drm_property_blob *edid = intel_connector->base.edid_blob_ptr;
 
 	seq_printf(m, "\tDPCD rev: %x\n", intel_dp->dpcd[DP_DPCD_REV]);
-	seq_printf(m, "\taudio support: %s\n", yesno(intel_dp->has_audio));
+	seq_printf(m, "\taudio support: %s\n",
+		   str_yes_no(intel_dp->has_audio));
 	if (intel_connector->base.connector_type == DRM_MODE_CONNECTOR_eDP)
 		intel_panel_info(m, &intel_connector->panel);
 
@@ -590,7 +598,7 @@ static void intel_dp_mst_info(struct seq_file *m,
 {
 	bool has_audio = intel_connector->port->has_audio;
 
-	seq_printf(m, "\taudio support: %s\n", yesno(has_audio));
+	seq_printf(m, "\taudio support: %s\n", str_yes_no(has_audio));
 }
 
 static void intel_hdmi_info(struct seq_file *m,
@@ -599,7 +607,8 @@ static void intel_hdmi_info(struct seq_file *m,
 	struct intel_encoder *intel_encoder = intel_attached_encoder(intel_connector);
 	struct intel_hdmi *intel_hdmi = enc_to_intel_hdmi(intel_encoder);
 
-	seq_printf(m, "\taudio support: %s\n", yesno(intel_hdmi->has_audio));
+	seq_printf(m, "\taudio support: %s\n",
+		   str_yes_no(intel_hdmi->has_audio));
 }
 
 static void intel_lvds_info(struct seq_file *m,
@@ -757,7 +766,7 @@ static void intel_plane_hw_info(struct seq_file *m, struct intel_plane *plane)
 		   DRM_RECT_FP_FMT ", dst=" DRM_RECT_FMT ", rotation=%s\n",
 		   fb->base.id, &fb->format->format,
 		   fb->modifier, fb->width, fb->height,
-		   yesno(plane_state->uapi.visible),
+		   str_yes_no(plane_state->uapi.visible),
 		   DRM_RECT_FP_ARG(&plane_state->uapi.src),
 		   DRM_RECT_ARG(&plane_state->uapi.dst),
 		   rot_str);
@@ -796,7 +805,7 @@ static void intel_scaler_info(struct seq_file *m, struct intel_crtc *crtc)
 				&crtc_state->scaler_state.scalers[i];
 
 			seq_printf(m, ", scalers[%d]: use=%s, mode=%x",
-				   i, yesno(sc->in_use), sc->mode);
+				   i, str_yes_no(sc->in_use), sc->mode);
 		}
 		seq_puts(m, "\n");
 	} else {
@@ -919,24 +928,24 @@ static void intel_crtc_info(struct seq_file *m, struct intel_crtc *crtc)
 		   crtc->base.base.id, crtc->base.name);
 
 	seq_printf(m, "\tuapi: enable=%s, active=%s, mode=" DRM_MODE_FMT "\n",
-		   yesno(crtc_state->uapi.enable),
-		   yesno(crtc_state->uapi.active),
+		   str_yes_no(crtc_state->uapi.enable),
+		   str_yes_no(crtc_state->uapi.active),
 		   DRM_MODE_ARG(&crtc_state->uapi.mode));
 
 	seq_printf(m, "\thw: enable=%s, active=%s\n",
-		   yesno(crtc_state->hw.enable), yesno(crtc_state->hw.active));
+		   str_yes_no(crtc_state->hw.enable), str_yes_no(crtc_state->hw.active));
 	seq_printf(m, "\tadjusted_mode=" DRM_MODE_FMT "\n",
 		   DRM_MODE_ARG(&crtc_state->hw.adjusted_mode));
 	seq_printf(m, "\tpipe__mode=" DRM_MODE_FMT "\n",
 		   DRM_MODE_ARG(&crtc_state->hw.pipe_mode));
 
-	seq_printf(m, "\tpipe src size=%dx%d, dither=%s, bpp=%d\n",
-		   crtc_state->pipe_src_w, crtc_state->pipe_src_h,
-		   yesno(crtc_state->dither), crtc_state->pipe_bpp);
+	seq_printf(m, "\tpipe src=" DRM_RECT_FMT ", dither=%s, bpp=%d\n",
+		   DRM_RECT_ARG(&crtc_state->pipe_src),
+		   str_yes_no(crtc_state->dither), crtc_state->pipe_bpp);
 
 	intel_scaler_info(m, crtc);
 
-	if (crtc_state->bigjoiner)
+	if (crtc_state->bigjoiner_pipes)
 		seq_printf(m, "\tLinked to 0x%x pipes as a %s\n",
 			   crtc_state->bigjoiner_pipes,
 			   intel_crtc_is_bigjoiner_slave(crtc_state) ? "slave" : "master");
@@ -948,8 +957,8 @@ static void intel_crtc_info(struct seq_file *m, struct intel_crtc *crtc)
 	intel_plane_info(m, crtc);
 
 	seq_printf(m, "\tunderrun reporting: cpu=%s pch=%s\n",
-		   yesno(!crtc->cpu_fifo_underrun_disabled),
-		   yesno(!crtc->pch_fifo_underrun_disabled));
+		   str_yes_no(!crtc->cpu_fifo_underrun_disabled),
+		   str_yes_no(!crtc->pch_fifo_underrun_disabled));
 
 	crtc_updates_info(m, crtc, "\t");
 }
@@ -1005,7 +1014,8 @@ static int i915_shared_dplls_info(struct seq_file *m, void *unused)
 		seq_printf(m, "DPLL%i: %s, id: %i\n", i, pll->info->name,
 			   pll->info->id);
 		seq_printf(m, " pipe_mask: 0x%x, active: 0x%x, on: %s\n",
-			   pll->state.pipe_mask, pll->active_mask, yesno(pll->on));
+			   pll->state.pipe_mask, pll->active_mask,
+			   str_yes_no(pll->on));
 		seq_printf(m, " tracked hardware state:\n");
 		seq_printf(m, " dpll:    0x%08x\n", pll->state.hw_state.dpll);
 		seq_printf(m, " dpll_md: 0x%08x\n",
@@ -1047,7 +1057,7 @@ static int i915_ipc_status_show(struct seq_file *m, void *data)
 	struct drm_i915_private *dev_priv = m->private;
 
 	seq_printf(m, "Isochronous Priority Control: %s\n",
-			yesno(dev_priv->ipc_enabled));
+			str_yes_no(dev_priv->ipc_enabled));
 	return 0;
 }
 
@@ -1156,7 +1166,7 @@ static void drrs_status_per_crtc(struct seq_file *m,
 		    drrs->type == SEAMLESS_DRRS_SUPPORT)
 			supported = true;
 
-		seq_printf(m, "\tDRRS Supported: %s\n", yesno(supported));
+		seq_printf(m, "\tDRRS Supported: %s\n", str_yes_no(supported));
 	}
 	drm_connector_list_iter_end(&conn_iter);
 
@@ -1259,7 +1269,7 @@ static int i915_lpsp_status(struct seq_file *m, void *unused)
 		return 0;
 	}
 
-	seq_printf(m, "LPSP: %s\n", enableddisabled(lpsp_enabled));
+	seq_printf(m, "LPSP: %s\n", str_enabled_disabled(lpsp_enabled));
 
 	return 0;
 }
@@ -1740,7 +1750,7 @@ static int i915_hpd_storm_ctl_show(struct seq_file *m, void *data)
 
 	seq_printf(m, "Threshold: %d\n", hotplug->hpd_storm_threshold);
 	seq_printf(m, "Detected: %s\n",
-		   yesno(delayed_work_pending(&hotplug->reenable_work)));
+		   str_yes_no(delayed_work_pending(&hotplug->reenable_work)));
 
 	return 0;
 }
@@ -1814,7 +1824,7 @@ static int i915_hpd_short_storm_ctl_show(struct seq_file *m, void *data)
 	struct drm_i915_private *dev_priv = m->private;
 
 	seq_printf(m, "Enabled: %s\n",
-		   yesno(dev_priv->hotplug.hpd_short_storm_enabled));
+		   str_yes_no(dev_priv->hotplug.hpd_short_storm_enabled));
 
 	return 0;
 }
@@ -2209,14 +2219,14 @@ static int i915_dsc_fec_support_show(struct seq_file *m, void *data)
 		intel_dp = intel_attached_dp(to_intel_connector(connector));
 		crtc_state = to_intel_crtc_state(crtc->state);
 		seq_printf(m, "DSC_Enabled: %s\n",
-			   yesno(crtc_state->dsc.compression_enable));
+			   str_yes_no(crtc_state->dsc.compression_enable));
 		seq_printf(m, "DSC_Sink_Support: %s\n",
-			   yesno(drm_dp_sink_supports_dsc(intel_dp->dsc_dpcd)));
+			   str_yes_no(drm_dp_sink_supports_dsc(intel_dp->dsc_dpcd)));
 		seq_printf(m, "Force_DSC_Enable: %s\n",
-			   yesno(intel_dp->force_dsc_en));
+			   str_yes_no(intel_dp->force_dsc_en));
 		if (!intel_dp_is_edp(intel_dp))
 			seq_printf(m, "FEC_Sink_Support: %s\n",
-				   yesno(drm_dp_sink_supports_fec(intel_dp->fec_capable)));
+				   str_yes_no(drm_dp_sink_supports_fec(intel_dp->fec_capable)));
 	} while (try_again);
 
 	drm_modeset_drop_locks(&ctx);

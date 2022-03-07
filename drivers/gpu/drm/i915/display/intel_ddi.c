@@ -25,6 +25,8 @@
  *
  */
 
+#include <linux/string_helpers.h>
+
 #include <drm/drm_privacy_screen_consumer.h>
 #include <drm/drm_scdc_helper.h>
 
@@ -2152,7 +2154,7 @@ static void intel_dp_sink_set_msa_timing_par_ignore_state(struct intel_dp *intel
 			       enable ? DP_MSA_TIMING_PAR_IGNORE_EN : 0) <= 0)
 		drm_dbg_kms(&i915->drm,
 			    "Failed to %s MSA_TIMING_PAR_IGNORE in the sink\n",
-			    enabledisable(enable));
+			    str_enable_disable(enable));
 }
 
 static void intel_dp_sink_set_fec_ready(struct intel_dp *intel_dp,
@@ -4305,6 +4307,14 @@ void intel_ddi_init(struct drm_i915_private *dev_priv, enum port port)
 		drm_dbg_kms(&dev_priv->drm,
 			    "VBT says port %c is not DVI/HDMI/DP compatible, respect it\n",
 			    port_name(port));
+		return;
+	}
+
+	if (intel_phy_is_snps(dev_priv, phy) &&
+	    dev_priv->snps_phy_failed_calibration & BIT(phy)) {
+		drm_dbg_kms(&dev_priv->drm,
+			    "SNPS PHY %c failed to calibrate; output will not be used.\n",
+			    phy_name(phy));
 		return;
 	}
 

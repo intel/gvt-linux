@@ -128,6 +128,26 @@ static bool i915_gfx_present(void)
 	return pci_dev_present(ids);
 }
 
+static bool dg1_gfx_present(void)
+{
+	static const struct pci_device_id ids[] = {
+		{ PCI_DEVICE(PCI_VENDOR_ID_INTEL, 0x4905),
+		  .class = PCI_BASE_CLASS_DISPLAY << 16,
+		  .class_mask = 0xff << 16 },
+		{ PCI_DEVICE(PCI_VENDOR_ID_INTEL, 0x4906),
+		  .class = PCI_BASE_CLASS_DISPLAY << 16,
+		  .class_mask = 0xff << 16 },
+		{ PCI_DEVICE(PCI_VENDOR_ID_INTEL, 0x4907),
+		  .class = PCI_BASE_CLASS_DISPLAY << 16,
+		  .class_mask = 0xff << 16 },
+		{ PCI_DEVICE(PCI_VENDOR_ID_INTEL, 0x4908),
+		  .class = PCI_BASE_CLASS_DISPLAY << 16,
+		  .class_mask = 0xff << 16 },
+		{}
+	};
+	return pci_dev_present(ids);
+}
+
 /**
  * snd_hdac_i915_init - Initialize i915 audio component
  * @bus: HDA core bus
@@ -148,6 +168,9 @@ int snd_hdac_i915_init(struct hdac_bus *bus)
 	if (!i915_gfx_present())
 		return -ENODEV;
 
+	if (dg1_gfx_present())
+		return -ENODEV;
+
 	err = snd_hdac_acomp_init(bus, NULL,
 				  i915_component_master_match,
 				  sizeof(struct i915_audio_component) - sizeof(*acomp));
@@ -161,7 +184,7 @@ int snd_hdac_i915_init(struct hdac_bus *bus)
 		    !request_module("i915")) {
 			/* 60s timeout */
 			wait_for_completion_timeout(&acomp->master_bind_complete,
-						    msecs_to_jiffies(60 * 1000));
+						    msecs_to_jiffies(30 * 1000));
 		}
 	}
 	if (!acomp->ops) {

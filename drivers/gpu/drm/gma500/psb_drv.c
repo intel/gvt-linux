@@ -28,6 +28,7 @@
 #include <drm/drm_vblank.h>
 
 #include "framebuffer.h"
+#include "gem.h"
 #include "intel_bios.h"
 #include "mid_bios.h"
 #include "power.h"
@@ -184,17 +185,16 @@ static void psb_driver_unload(struct drm_device *dev)
 	if (dev_priv->mmu) {
 		struct psb_gtt *pg = &dev_priv->gtt;
 
-		down_read(&pg->sem);
 		psb_mmu_remove_pfn_sequence(
 			psb_mmu_get_default_pd
 			(dev_priv->mmu),
 			pg->mmu_gatt_start,
 			dev_priv->vram_stolen_size >> PAGE_SHIFT);
-		up_read(&pg->sem);
 		psb_mmu_driver_takedown(dev_priv->mmu);
 		dev_priv->mmu = NULL;
 	}
-	psb_gtt_takedown(dev);
+	psb_gem_mm_fini(dev);
+	psb_gtt_fini(dev);
 	if (dev_priv->scratch_page) {
 		set_pages_wb(dev_priv->scratch_page, 1);
 		__free_page(dev_priv->scratch_page);
@@ -326,7 +326,10 @@ static int psb_driver_load(struct drm_device *dev, unsigned long flags)
 
 	set_pages_uc(dev_priv->scratch_page, 1);
 
-	ret = psb_gtt_init(dev, 0);
+	ret = psb_gtt_init(dev);
+	if (ret)
+		goto out_err;
+	ret = psb_gem_mm_init(dev);
 	if (ret)
 		goto out_err;
 
@@ -345,12 +348,10 @@ static int psb_driver_load(struct drm_device *dev, unsigned long flags)
 		return ret;
 
 	/* Add stolen memory to SGX MMU */
-	down_read(&pg->sem);
 	ret = psb_mmu_insert_pfn_sequence(psb_mmu_get_default_pd(dev_priv->mmu),
 					  dev_priv->stolen_base >> PAGE_SHIFT,
 					  pg->gatt_start,
 					  pg->stolen_size >> PAGE_SHIFT, 0);
-	up_read(&pg->sem);
 
 	psb_mmu_set_pd_context(psb_mmu_get_default_pd(dev_priv->mmu), 0);
 	psb_mmu_set_pd_context(dev_priv->pf_pd, 1);
@@ -379,7 +380,7 @@ static int psb_driver_load(struct drm_device *dev, unsigned long flags)
 	PSB_WVDC32(0xFFFFFFFF, PSB_INT_MASK_R);
 	spin_unlock_irqrestore(&dev_priv->irqmask_lock, irqflags);
 
-	psb_irq_install(dev, pdev->irq);
+	gma_irq_install(dev, pdev->irq);
 
 	dev->max_vblank_count = 0xffffff; /* only 24 bits of frame count */
 

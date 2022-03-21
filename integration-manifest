@@ -1,28 +1,12 @@
-drm drm-fixes f443e374ae131c168a065ea1748feac6b2e76613
-	Linux 5.17
-drm-misc drm-misc-fixes d14eb80e27795b7b20060f7b151cdfe39722a813
-	drm/panel: ili9341: fix optional regulator handling
-drm-intel drm-intel-fixes 09688c0166e76ce2fb85e86b9d99be8b0084cdf9
-	Linux 5.17-rc8
-drm drm-next c6e90a1c660874736bd09c1fec6312b4b4c2ff7b
-	Merge tag 'amd-drm-next-5.18-2022-03-18' of https://gitlab.freedesktop.org/agd5f/linux into drm-next
-drm-misc drm-misc-next-fixes a860f266a0e19f271b839451d291a6acf6ddcfe8
-	drm/selftest: plane_helper: Put test structures in static storage
-drm-intel drm-intel-next-fixes 00f4150d27d2c01eaeffe1091fc311a7c0872c69
-	drm/i915: Fix renamed struct field
-drm-misc drm-misc-next 6f6f9788d821ee39c8a28e389a35027d6a5f143b
-	drm/vmwgfx: Disable command buffers on svga3 without gbobjects
-drm-intel drm-intel-next ea0839691816b9742ca1371d4e1645192f1a733d
-	drm/i915: Add "maximum pipe read bandwidth" checks
-drm-intel drm-intel-gt-next 230523ba24bda5387637188ad56530bf6abd3f6c
-	drm/i915/gem: Don't evict unmappable VMAs when pinning with PIN_MAPPABLE (v2)
-sound-upstream for-linus 7cf3dead1ad70c72edb03e2d98e1f3dcd332cdb2
-	Linux 5.13
-sound-upstream for-next 7cf3dead1ad70c72edb03e2d98e1f3dcd332cdb2
-	Linux 5.13
-drm-intel topic/core-for-CI c8fa81010ba0974bd56cfa7696ec1595fd04898f
-	sound/hda/hdac_i915: reduce the timeout for component binding
-drm topic/nouveau-ampere-modeset 584265dfec70e78ce2085b82ed389f27e06fbca0
-	Merge branch '04.01-ampere-lite' of git://github.com/skeggsb/linux into topic/nouveau-ampere-modeset
-drm-misc topic/i915-ttm 1e3944578b749449bd7fa6bf0bae4c3d3f5f1733
-	Merge tag 'amd-drm-next-5.16-2021-09-27' of https://gitlab.freedesktop.org/agd5f/linux into drm-next
+drm-tip/drm-tip bb39f08a81da1a7e2d82026eac394394504b7126
+	drm-tip: 2022y-03m-21d-16h-47m-08s UTC integration manifest
+vfio-upstream/for-linus 8704e89349080bd640d1755c46d8cdc359a89748
+	vfio/pci: Fix OpRegion read
+vfio-upstream/next f621eb13facb7681a79f4fec8ec6553ae160da76
+	vfio-pci: Provide reviewers and acceptance criteria for variant drivers
+origin/gvt-fixes ff9df4631c63e64abb780f316ddfdc9b63b84e1f
+	drm/i915/reg: Fix spelling mistake "Unsupport" -> "Unsupported"
+origin/gvt-next 43d26c4fc6c446d766253d546f0083d78023d34a
+	drm/i915/gvt: add the missing mdev attribute "name"
+origin/gvt-next-fixes d385c16173f28a18866abf54c764200c276dace0
+	drm/i915/gvt: Prevent divided by zero when calculating refresh rate

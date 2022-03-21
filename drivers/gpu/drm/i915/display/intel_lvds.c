@@ -389,7 +389,8 @@ intel_lvds_mode_valid(struct drm_connector *connector,
 		      struct drm_display_mode *mode)
 {
 	struct intel_connector *intel_connector = to_intel_connector(connector);
-	struct drm_display_mode *fixed_mode = intel_connector->panel.fixed_mode;
+	const struct drm_display_mode *fixed_mode =
+		intel_panel_fixed_mode(intel_connector, mode);
 	int max_pixclk = to_i915(connector->dev)->max_dotclk_freq;
 	enum drm_mode_status status;
 
@@ -475,19 +476,12 @@ static int intel_lvds_compute_config(struct intel_encoder *intel_encoder,
 static int intel_lvds_get_modes(struct drm_connector *connector)
 {
 	struct intel_connector *intel_connector = to_intel_connector(connector);
-	struct drm_device *dev = connector->dev;
-	struct drm_display_mode *mode;
 
 	/* use cached edid if we have one */
 	if (!IS_ERR_OR_NULL(intel_connector->edid))
 		return drm_add_edid_modes(connector, intel_connector->edid);
 
-	mode = drm_mode_duplicate(dev, intel_connector->panel.fixed_mode);
-	if (mode == NULL)
-		return 0;
-
-	drm_mode_probed_add(connector, mode);
-	return 1;
+	return intel_panel_get_modes(intel_connector);
 }
 
 static const struct drm_connector_helper_funcs intel_lvds_connector_helper_funcs = {
@@ -784,7 +778,8 @@ bool intel_is_dual_link_lvds(struct drm_i915_private *dev_priv)
 	return encoder && to_lvds_encoder(&encoder->base)->is_dual_link;
 }
 
-static bool compute_is_dual_link_lvds(struct intel_lvds_encoder *lvds_encoder)
+static bool compute_is_dual_link_lvds(struct intel_lvds_encoder *lvds_encoder,
+				      const struct drm_display_mode *fixed_mode)
 {
 	struct drm_device *dev = lvds_encoder->base.base.dev;
 	unsigned int val;
@@ -795,7 +790,7 @@ static bool compute_is_dual_link_lvds(struct intel_lvds_encoder *lvds_encoder)
 		return dev_priv->params.lvds_channel_mode == 2;
 
 	/* single channel LVDS is limited to 112 MHz */
-	if (lvds_encoder->attached_connector->panel.fixed_mode->clock > 112999)
+	if (fixed_mode->clock > 112999)
 		return true;
 
 	if (dmi_check_system(intel_dual_link_lvds))
@@ -1004,7 +999,7 @@ out:
 	intel_panel_init(&intel_connector->panel, fixed_mode, downclock_mode);
 	intel_backlight_setup(intel_connector, INVALID_PIPE);
 
-	lvds_encoder->is_dual_link = compute_is_dual_link_lvds(lvds_encoder);
+	lvds_encoder->is_dual_link = compute_is_dual_link_lvds(lvds_encoder, fixed_mode);
 	drm_dbg_kms(&dev_priv->drm, "detected %s-link lvds configuration\n",
 		    lvds_encoder->is_dual_link ? "dual" : "single");
 

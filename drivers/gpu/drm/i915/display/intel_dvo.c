@@ -226,7 +226,7 @@ intel_dvo_mode_valid(struct drm_connector *connector,
 	struct intel_connector *intel_connector = to_intel_connector(connector);
 	struct intel_dvo *intel_dvo = intel_attached_dvo(intel_connector);
 	const struct drm_display_mode *fixed_mode =
-		intel_connector->panel.fixed_mode;
+		intel_panel_fixed_mode(intel_connector, mode);
 	int max_dotclk = to_i915(connector->dev)->max_dotclk_freq;
 	int target_clock = mode->clock;
 
@@ -257,9 +257,9 @@ static int intel_dvo_compute_config(struct intel_encoder *encoder,
 {
 	struct intel_dvo *intel_dvo = enc_to_dvo(encoder);
 	struct intel_connector *connector = to_intel_connector(conn_state->connector);
-	const struct drm_display_mode *fixed_mode =
-		intel_dvo->attached_connector->panel.fixed_mode;
 	struct drm_display_mode *adjusted_mode = &pipe_config->hw.adjusted_mode;
+	const struct drm_display_mode *fixed_mode =
+		intel_panel_fixed_mode(intel_dvo->attached_connector, adjusted_mode);
 
 	/*
 	 * If we have timings from the BIOS for the panel, put them in
@@ -333,8 +333,6 @@ intel_dvo_detect(struct drm_connector *connector, bool force)
 static int intel_dvo_get_modes(struct drm_connector *connector)
 {
 	struct drm_i915_private *dev_priv = to_i915(connector->dev);
-	const struct drm_display_mode *fixed_mode =
-		to_intel_connector(connector)->panel.fixed_mode;
 	int num_modes;
 
 	/*
@@ -348,17 +346,7 @@ static int intel_dvo_get_modes(struct drm_connector *connector)
 	if (num_modes)
 		return num_modes;
 
-	if (fixed_mode) {
-		struct drm_display_mode *mode;
-
-		mode = drm_mode_duplicate(connector->dev, fixed_mode);
-		if (mode) {
-			drm_mode_probed_add(connector, mode);
-			num_modes++;
-		}
-	}
-
-	return num_modes;
+	return intel_panel_get_modes(to_intel_connector(connector));
 }
 
 static const struct drm_connector_funcs intel_dvo_connector_funcs = {

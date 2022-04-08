@@ -1,0 +1,26 @@
+drm drm-fixes 88711fa9a14f6f473f4a7645155ca51386e36c21
+	Merge tag 'drm-misc-fixes-2022-04-07' of git://anongit.freedesktop.org/drm/drm-misc into drm-fixes
+drm-misc drm-misc-fixes 1ecc0c09f19f8e10a2c52676f8ca47c28c9f73c7
+	dt-bindings: display: panel: mipi-dbi-spi: Make width-mm/height-mm mandatory
+drm-intel drm-intel-fixes 3123109284176b1532874591f7c81f3837bbdc17
+	Linux 5.18-rc1
+drm drm-next 3123109284176b1532874591f7c81f3837bbdc17
+	Linux 5.18-rc1
+drm-misc drm-misc-next-fixes 67bae5f28c895f8737a1974c3f31cf12b9170b14
+	drm: of: Properly try all possible cases for bridge/panel detection
+drm-intel drm-intel-next-fixes 00f4150d27d2c01eaeffe1091fc311a7c0872c69
+	drm/i915: Fix renamed struct field
+drm-misc drm-misc-next 3870b54e0684a17ac95ae7ec8fffbcb6357731ea
+	drm/vc4: kms: Improve logging
+drm-intel drm-intel-next 4b276ed3c7ace7ca41e8963b199358fd55f493af
+	drm/i915/uncore: Warn on previous unclaimed accesses
+drm-intel drm-intel-gt-next 56758cc4595509b6f6d0be56d08003bd87b75635
+	drm/i915/rps: Centralize computation of freq caps
+sound-upstream for-linus 7cf3dead1ad70c72edb03e2d98e1f3dcd332cdb2
+	Linux 5.13
+sound-upstream for-next 7cf3dead1ad70c72edb03e2d98e1f3dcd332cdb2
+	Linux 5.13
+drm-intel topic/core-for-CI 0dc2696a4623d55f40e925e9185a0fcd4d34e568
+	ALSA: hda/i915 - skip acomp init if no matching display
+drm-misc topic/i915-ttm 1e3944578b749449bd7fa6bf0bae4c3d3f5f1733
+	Merge tag 'amd-drm-next-5.16-2021-09-27' of https://gitlab.freedesktop.org/agd5f/linux into drm-next

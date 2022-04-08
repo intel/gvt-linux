@@ -1344,7 +1344,8 @@ static bool amdgpu_ttm_bo_eviction_valuable(struct ttm_buffer_object *bo,
 	 * If true, then return false as any KFD process needs all its BOs to
 	 * be resident to run successfully
 	 */
-	dma_resv_for_each_fence(&resv_cursor, bo->base.resv, true, f) {
+	dma_resv_for_each_fence(&resv_cursor, bo->base.resv,
+				DMA_RESV_USAGE_BOOKKEEP, f) {
 		if (amdkfd_fence_check_mm(f, current->mm))
 			return false;
 	}
@@ -1547,7 +1548,6 @@ static struct ttm_device_funcs amdgpu_bo_driver = {
 	.io_mem_reserve = &amdgpu_ttm_io_mem_reserve,
 	.io_mem_pfn = amdgpu_ttm_io_mem_pfn,
 	.access_memory = &amdgpu_ttm_access_memory,
-	.del_from_lru_notify = &amdgpu_vm_del_from_lru_notify
 };
 
 /*

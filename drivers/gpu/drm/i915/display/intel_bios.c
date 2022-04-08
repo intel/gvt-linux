@@ -180,11 +180,11 @@ get_lvds_dvo_timing(const struct bdb_lvds_lfp_data *lvds_lfp_data,
 	 */
 
 	int lfp_data_size =
-		lvds_lfp_data_ptrs->ptr[1].dvo_timing_offset -
-		lvds_lfp_data_ptrs->ptr[0].dvo_timing_offset;
+		lvds_lfp_data_ptrs->ptr[1].dvo_timing.offset -
+		lvds_lfp_data_ptrs->ptr[0].dvo_timing.offset;
 	int dvo_timing_offset =
-		lvds_lfp_data_ptrs->ptr[0].dvo_timing_offset -
-		lvds_lfp_data_ptrs->ptr[0].fp_timing_offset;
+		lvds_lfp_data_ptrs->ptr[0].dvo_timing.offset -
+		lvds_lfp_data_ptrs->ptr[0].fp_timing.offset;
 	char *entry = (char *)lvds_lfp_data->data + lfp_data_size * index;
 
 	return (struct lvds_dvo_timing *)(entry + dvo_timing_offset);
@@ -205,7 +205,7 @@ get_lvds_fp_timing(const struct bdb_header *bdb,
 
 	if (index >= ARRAY_SIZE(ptrs->ptr))
 		return NULL;
-	ofs = ptrs->ptr[index].fp_timing_offset;
+	ofs = ptrs->ptr[index].fp_timing.offset;
 	if (ofs < data_ofs ||
 	    ofs + sizeof(struct lvds_fp_timing) > data_ofs + data_size)
 		return NULL;
@@ -257,16 +257,16 @@ parse_panel_options(struct drm_i915_private *i915,
 	 */
 	switch (drrs_mode) {
 	case 0:
-		i915->vbt.drrs_type = STATIC_DRRS_SUPPORT;
+		i915->vbt.drrs_type = DRRS_TYPE_STATIC;
 		drm_dbg_kms(&i915->drm, "DRRS supported mode is static\n");
 		break;
 	case 2:
-		i915->vbt.drrs_type = SEAMLESS_DRRS_SUPPORT;
+		i915->vbt.drrs_type = DRRS_TYPE_SEAMLESS;
 		drm_dbg_kms(&i915->drm,
 			    "DRRS supported mode is seamless\n");
 		break;
 	default:
-		i915->vbt.drrs_type = DRRS_NOT_SUPPORTED;
+		i915->vbt.drrs_type = DRRS_TYPE_NONE;
 		drm_dbg_kms(&i915->drm,
 			    "DRRS not supported (VBT input)\n");
 		break;
@@ -306,8 +306,8 @@ parse_lfp_panel_dtd(struct drm_i915_private *i915,
 	i915->vbt.lfp_lvds_vbt_mode = panel_fixed_mode;
 
 	drm_dbg_kms(&i915->drm,
-		    "Found panel mode in BIOS VBT legacy lfp table:\n");
-	drm_mode_debug_printmodeline(panel_fixed_mode);
+		    "Found panel mode in BIOS VBT legacy lfp table: " DRM_MODE_FMT "\n",
+		    DRM_MODE_ARG(panel_fixed_mode));
 
 	fp_timing = get_lvds_fp_timing(bdb, lvds_lfp_data,
 				       lvds_lfp_data_ptrs,
@@ -397,8 +397,8 @@ parse_generic_dtd(struct drm_i915_private *i915,
 		panel_fixed_mode->flags |= DRM_MODE_FLAG_NVSYNC;
 
 	drm_dbg_kms(&i915->drm,
-		    "Found panel mode in BIOS VBT generic dtd table:\n");
-	drm_mode_debug_printmodeline(panel_fixed_mode);
+		    "Found panel mode in BIOS VBT generic dtd table: " DRM_MODE_FMT "\n",
+		    DRM_MODE_ARG(panel_fixed_mode));
 
 	i915->vbt.lfp_lvds_vbt_mode = panel_fixed_mode;
 }
@@ -551,8 +551,8 @@ parse_sdvo_panel_data(struct drm_i915_private *i915,
 	i915->vbt.sdvo_lvds_vbt_mode = panel_fixed_mode;
 
 	drm_dbg_kms(&i915->drm,
-		    "Found SDVO panel mode in BIOS VBT tables:\n");
-	drm_mode_debug_printmodeline(panel_fixed_mode);
+		    "Found SDVO panel mode in BIOS VBT tables: " DRM_MODE_FMT "\n",
+		    DRM_MODE_ARG(panel_fixed_mode));
 }
 
 static int intel_bios_ssc_frequency(struct drm_i915_private *i915,
@@ -740,7 +740,7 @@ parse_driver_features(struct drm_i915_private *i915,
 		 * driver->drrs_enabled=false
 		 */
 		if (!driver->drrs_enabled)
-			i915->vbt.drrs_type = DRRS_NOT_SUPPORTED;
+			i915->vbt.drrs_type = DRRS_TYPE_NONE;
 
 		i915->vbt.psr.enable = driver->psr_enabled;
 	}
@@ -769,7 +769,7 @@ parse_power_conservation_features(struct drm_i915_private *i915,
 	 * power->drrs & BIT(panel_type)=false
 	 */
 	if (!(power->drrs & BIT(panel_type)))
-		i915->vbt.drrs_type = DRRS_NOT_SUPPORTED;
+		i915->vbt.drrs_type = DRRS_TYPE_NONE;
 
 	if (bdb->version >= 232)
 		i915->vbt.edp.hobl = power->hobl & BIT(panel_type);
@@ -888,6 +888,9 @@ parse_edp(struct drm_i915_private *i915, const struct bdb_header *bdb)
 			i915->vbt.edp.low_vswing = vswing == 0;
 		}
 	}
+
+	i915->vbt.edp.drrs_msa_timing_delay =
+		(edp->sdrrs_msa_timing_delay >> (panel_type * 2)) & 3;
 }
 
 static void
@@ -1955,6 +1958,12 @@ static int _intel_bios_max_tmds_clock(const struct intel_bios_encoder_data *devd
 		fallthrough;
 	case HDMI_MAX_DATA_RATE_PLATFORM:
 		return 0;
+	case HDMI_MAX_DATA_RATE_594:
+		return 594000;
+	case HDMI_MAX_DATA_RATE_340:
+		return 340000;
+	case HDMI_MAX_DATA_RATE_300:
+		return 300000;
 	case HDMI_MAX_DATA_RATE_297:
 		return 297000;
 	case HDMI_MAX_DATA_RATE_165:

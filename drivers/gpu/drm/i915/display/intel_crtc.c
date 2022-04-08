@@ -24,6 +24,7 @@
 #include "intel_display_debugfs.h"
 #include "intel_display_trace.h"
 #include "intel_display_types.h"
+#include "intel_drrs.h"
 #include "intel_dsi.h"
 #include "intel_pipe_crc.h"
 #include "intel_psr.h"
@@ -367,6 +368,7 @@ int intel_crtc_init(struct drm_i915_private *dev_priv, enum pipe pipe)
 
 	intel_color_init(crtc);
 
+	intel_crtc_drrs_init(crtc);
 	intel_crtc_crc_init(crtc);
 
 	cpu_latency_qos_add_request(&crtc->vblank_pm_qos, PM_QOS_DEFAULT_VALUE);
@@ -505,6 +507,8 @@ void intel_pipe_update_start(struct intel_crtc_state *new_crtc_state)
 						      VBLANK_EVASION_TIME_US);
 	max = vblank_start - 1;
 
+	intel_psr_lock(new_crtc_state);
+
 	if (min <= 0 || max <= 0)
 		goto irq_disable;
 
@@ -516,7 +520,7 @@ void intel_pipe_update_start(struct intel_crtc_state *new_crtc_state)
 	 * VBL interrupts will start the PSR exit and prevent a PSR
 	 * re-entry as well.
 	 */
-	intel_psr_wait_for_idle(new_crtc_state);
+	intel_psr_wait_for_idle_locked(new_crtc_state);
 
 	local_irq_disable();
 
@@ -680,6 +684,8 @@ void intel_pipe_update_end(struct intel_crtc_state *new_crtc_state)
 	intel_vrr_send_push(new_crtc_state);
 
 	local_irq_enable();
+
+	intel_psr_unlock(new_crtc_state);
 
 	if (intel_vgpu_active(dev_priv))
 		return;

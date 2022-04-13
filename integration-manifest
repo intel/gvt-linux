@@ -1,0 +1,26 @@
+drm drm-fixes 88711fa9a14f6f473f4a7645155ca51386e36c21
+	Merge tag 'drm-misc-fixes-2022-04-07' of git://anongit.freedesktop.org/drm/drm-misc into drm-fixes
+drm-misc drm-misc-fixes f8e6b7babfeb40987e946bc1427609a9976017fa
+	dma-buf-map: remove renamed header file
+drm-intel drm-intel-fixes 1acb34e7dd7720a1fff00cbd4d000ec3219dc9d6
+	drm/i915: Sunset igpu legacy mmap support based on GRAPHICS_VER_FULL
+drm drm-next b85ffe47c4ec172214a38b7e7087c60582c488f0
+	Merge tag 'drm-misc-next-2022-04-07' of git://anongit.freedesktop.org/drm/drm-misc into drm-next
+drm-misc drm-misc-next-fixes 67bae5f28c895f8737a1974c3f31cf12b9170b14
+	drm: of: Properly try all possible cases for bridge/panel detection
+drm-intel drm-intel-next-fixes 00f4150d27d2c01eaeffe1091fc311a7c0872c69
+	drm/i915: Fix renamed struct field
+drm-misc drm-misc-next 83c784e7003625d63ff4609500c9f11736edebed
+	drm/panel: lvds: Use bus_flags from DT panel-timing property
+drm-intel drm-intel-next b39d2c6202426b560641e5800c5523851b5db586
+	drm/i915/fbc: Call intel_fbc_activate() directly from frontbuffer flush
+drm-intel drm-intel-gt-next c16c8bfa09d5f318c1bd65698d058d3739970c24
+	Merge drm/drm-next into drm-intel-gt-next
+sound-upstream for-linus 7cf3dead1ad70c72edb03e2d98e1f3dcd332cdb2
+	Linux 5.13
+sound-upstream for-next 7cf3dead1ad70c72edb03e2d98e1f3dcd332cdb2
+	Linux 5.13
+drm-intel topic/core-for-CI 0dc2696a4623d55f40e925e9185a0fcd4d34e568
+	ALSA: hda/i915 - skip acomp init if no matching display
+drm-misc topic/i915-ttm 1e3944578b749449bd7fa6bf0bae4c3d3f5f1733
+	Merge tag 'amd-drm-next-5.16-2021-09-27' of https://gitlab.freedesktop.org/agd5f/linux into drm-next

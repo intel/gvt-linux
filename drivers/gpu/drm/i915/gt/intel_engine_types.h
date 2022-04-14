@@ -96,7 +96,9 @@ struct i915_ctx_workarounds {
 
 #define I915_MAX_VCS	8
 #define I915_MAX_VECS	4
+#define I915_MAX_SFC	(I915_MAX_VCS / 2)
 #define I915_MAX_CCS	4
+#define I915_MAX_RCS	1
 
 /*
  * Engine IDs definitions.
@@ -526,6 +528,7 @@ struct intel_engine_cs {
 #define I915_ENGINE_WANT_FORCED_PREEMPTION BIT(8)
 #define I915_ENGINE_HAS_RCS_REG_STATE  BIT(9)
 #define I915_ENGINE_HAS_EU_PRIORITY    BIT(10)
+#define I915_ENGINE_FIRST_RENDER_COMPUTE BIT(11)
 	unsigned int flags;
 
 	/*
@@ -643,7 +646,7 @@ intel_engine_has_relative_mmio(const struct intel_engine_cs * const engine)
 
 #define for_each_instdone_gslice_dss_xehp(dev_priv_, sseu_, iter_, gslice_, dss_) \
 	for ((iter_) = 0, (gslice_) = 0, (dss_) = 0; \
-	     (iter_) < GEN_MAX_SUBSLICES; \
+	     (iter_) < GEN_SS_MASK_SIZE; \
 	     (iter_)++, (gslice_) = (iter_) / GEN_DSS_PER_GSLICE, \
 	     (dss_) = (iter_) % GEN_DSS_PER_GSLICE) \
 		for_each_if(intel_sseu_has_subslice((sseu_), 0, (iter_)))

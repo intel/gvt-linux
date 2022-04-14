@@ -46,6 +46,7 @@
 #define   GEN8_MCR_SLICE_MASK			GEN8_MCR_SLICE(3)
 #define   GEN8_MCR_SUBSLICE(subslice)		(((subslice) & 3) << 24)
 #define   GEN8_MCR_SUBSLICE_MASK		GEN8_MCR_SUBSLICE(3)
+#define   GEN11_MCR_MULTICAST			REG_BIT(31)
 #define   GEN11_MCR_SLICE(slice)		(((slice) & 0xf) << 27)
 #define   GEN11_MCR_SLICE_MASK			GEN11_MCR_SLICE(0xf)
 #define   GEN11_MCR_SUBSLICE(subslice)		(((subslice) & 0x7) << 24)
@@ -1087,6 +1088,7 @@
 #define EU_PERF_CNTL3				_MMIO(0xe758)
 
 #define LSC_CHICKEN_BIT_0			_MMIO(0xe7c8)
+#define   DISABLE_D8_D16_COASLESCE		REG_BIT(30)
 #define   FORCE_1_SUB_MESSAGE_PER_FRAGMENT	REG_BIT(15)
 #define LSC_CHICKEN_BIT_0_UDW			_MMIO(0xe7c8 + 4)
 #define   DIS_CHAIN_2XSIMD8			REG_BIT(55 - 32)

@@ -21,6 +21,14 @@ config DRM_I915_DEBUG
 	depends on DRM_I915
 	depends on EXPERT # only for developers
 	depends on !COMPILE_TEST # never built by robots
+	select PCI_MSI # ... for iommu enabled by default
+	select IOMMU_API
+	select IOMMU_IOVA
+	select IOMMU_SUPPORT
+	select NEED_DMA_MAP_STATE
+	select DMAR_TABLE
+	select INTEL_IOMMU
+	select INTEL_IOMMU_DEFAULT_ON
 	select DEBUG_FS
 	select PREEMPT_COUNT
 	select I2C_CHARDEV
@@ -40,6 +48,7 @@ config DRM_I915_DEBUG
 	select DRM_I915_DEBUG_RUNTIME_PM
 	select DRM_I915_SW_FENCE_DEBUG_OBJECTS
 	select DRM_I915_SELFTEST
+	select BROKEN # for prototype uAPI
 	default n
 	help
 	  Choose this option to turn on extra driver debugging that may affect

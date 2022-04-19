@@ -1,0 +1,26 @@
+drm drm-fixes b2d229d4ddb17db541098b83524d901257e93845
+	Linux 5.18-rc3
+drm-misc drm-misc-fixes f8e6b7babfeb40987e946bc1427609a9976017fa
+	dma-buf-map: remove renamed header file
+drm-intel drm-intel-fixes b2d229d4ddb17db541098b83524d901257e93845
+	Linux 5.18-rc3
+drm drm-next c54b39a565227538c52ead2349eb17d54aadd6f7
+	Merge tag 'drm-intel-next-2022-04-13-1' of git://anongit.freedesktop.org/drm/drm-intel into drm-next
+drm-misc drm-misc-next-fixes 67bae5f28c895f8737a1974c3f31cf12b9170b14
+	drm: of: Properly try all possible cases for bridge/panel detection
+drm-intel drm-intel-next-fixes 00f4150d27d2c01eaeffe1091fc311a7c0872c69
+	drm/i915: Fix renamed struct field
+drm-misc drm-misc-next 40f458b7816bd3ddddc068998523b4e039c04818
+	Merge drm/drm-next into drm-misc-next
+drm-intel drm-intel-next b39d2c6202426b560641e5800c5523851b5db586
+	drm/i915/fbc: Call intel_fbc_activate() directly from frontbuffer flush
+drm-intel drm-intel-gt-next bcfc713f11f957711f9494f69c740b95ed335d57
+	drm/i915/hwconfig: Add DG2 support
+sound-upstream for-linus 7cf3dead1ad70c72edb03e2d98e1f3dcd332cdb2
+	Linux 5.13
+sound-upstream for-next 7cf3dead1ad70c72edb03e2d98e1f3dcd332cdb2
+	Linux 5.13
+drm-intel topic/core-for-CI 837f5968e830eac181407d49f969d8e7fa6076f1
+	ALSA: hda/i915: Fix one too many pci_dev_put()
+drm-misc topic/i915-ttm 1e3944578b749449bd7fa6bf0bae4c3d3f5f1733
+	Merge tag 'amd-drm-next-5.16-2021-09-27' of https://gitlab.freedesktop.org/agd5f/linux into drm-next

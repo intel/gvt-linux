@@ -127,14 +127,33 @@ static int i915_gfx_present(struct pci_dev *hdac_pci)
 		display_dev = pci_get_class(class, display_dev);
 
 		if (display_dev && display_dev->vendor == PCI_VENDOR_ID_INTEL &&
-		    connectivity_check(display_dev, hdac_pci))
+		    connectivity_check(display_dev, hdac_pci)) {
+			pci_dev_put(display_dev);
 			match = true;
-
-		pci_dev_put(display_dev);
-
+		}
 	} while (!match && display_dev);
 
 	return match;
+}
+
+static bool dg1_gfx_present(void)
+{
+	static const struct pci_device_id ids[] = {
+		{ PCI_DEVICE(PCI_VENDOR_ID_INTEL, 0x4905),
+		  .class = PCI_BASE_CLASS_DISPLAY << 16,
+		  .class_mask = 0xff << 16 },
+		{ PCI_DEVICE(PCI_VENDOR_ID_INTEL, 0x4906),
+		  .class = PCI_BASE_CLASS_DISPLAY << 16,
+		  .class_mask = 0xff << 16 },
+		{ PCI_DEVICE(PCI_VENDOR_ID_INTEL, 0x4907),
+		  .class = PCI_BASE_CLASS_DISPLAY << 16,
+		  .class_mask = 0xff << 16 },
+		{ PCI_DEVICE(PCI_VENDOR_ID_INTEL, 0x4908),
+		  .class = PCI_BASE_CLASS_DISPLAY << 16,
+		  .class_mask = 0xff << 16 },
+		{}
+	};
+	return pci_dev_present(ids);
 }
 
 /**
@@ -155,6 +174,9 @@ int snd_hdac_i915_init(struct hdac_bus *bus)
 	int err;
 
 	if (!i915_gfx_present(to_pci_dev(bus->dev)))
+		return -ENODEV;
+
+	if (dg1_gfx_present())
 		return -ENODEV;
 
 	err = snd_hdac_acomp_init(bus, NULL,

@@ -1,26 +1,12 @@
-drm drm-fixes b2d229d4ddb17db541098b83524d901257e93845
-	Linux 5.18-rc3
-drm-misc drm-misc-fixes f8e6b7babfeb40987e946bc1427609a9976017fa
-	dma-buf-map: remove renamed header file
-drm-intel drm-intel-fixes bb02330408a7bde33b5f46aa14fd5d7bfe6093b7
-	drm/i915/display/psr: Unset enable_psr2_sel_fetch if other checks in intel_psr2_config_valid() fails
-drm drm-next c54b39a565227538c52ead2349eb17d54aadd6f7
-	Merge tag 'drm-intel-next-2022-04-13-1' of git://anongit.freedesktop.org/drm/drm-intel into drm-next
-drm-misc drm-misc-next-fixes 67bae5f28c895f8737a1974c3f31cf12b9170b14
-	drm: of: Properly try all possible cases for bridge/panel detection
-drm-intel drm-intel-next-fixes 00f4150d27d2c01eaeffe1091fc311a7c0872c69
-	drm/i915: Fix renamed struct field
-drm-misc drm-misc-next ac2f033aa4fbc94a512e703a953ed36e1bb45d0a
-	drm/gma500: fix a potential repeat execution in psb_driver_load
-drm-intel drm-intel-next 72c3c8d6e5275b19fd2d32ec787e8135a421c7ec
-	drm/i915/rpl-p: Add PCI IDs
-drm-intel drm-intel-gt-next 307f722b4e71bf30d0a307aba33bce148d9cdd5e
-	drm/i915/dg2: Enable Wa_22012727170/Wa_22012727685
-sound-upstream for-linus 7cf3dead1ad70c72edb03e2d98e1f3dcd332cdb2
-	Linux 5.13
-sound-upstream for-next 7cf3dead1ad70c72edb03e2d98e1f3dcd332cdb2
-	Linux 5.13
-drm-intel topic/core-for-CI 837f5968e830eac181407d49f969d8e7fa6076f1
-	ALSA: hda/i915: Fix one too many pci_dev_put()
-drm-misc topic/i915-ttm 1e3944578b749449bd7fa6bf0bae4c3d3f5f1733
-	Merge tag 'amd-drm-next-5.16-2021-09-27' of https://gitlab.freedesktop.org/agd5f/linux into drm-next
+drm-tip/drm-tip 540ed2a9ba324cb75b59f463d56b7435f19d3c6f
+	drm-tip: 2022y-04m-20d-07h-17m-44s UTC integration manifest
+vfio-upstream/for-linus 1ef3342a934e235aca72b4bcc0d6854d80a65077
+	vfio/pci: Fix vf_token mechanism when device-specific VF drivers are used
+vfio-upstream/next f621eb13facb7681a79f4fec8ec6553ae160da76
+	vfio-pci: Provide reviewers and acceptance criteria for variant drivers
+origin/gvt-fixes ff9df4631c63e64abb780f316ddfdc9b63b84e1f
+	drm/i915/reg: Fix spelling mistake "Unsupport" -> "Unsupported"
+origin/gvt-next 888471711a80b22c53547f3a625f20f487714f28
+	vfio/mdev: Remove mdev drvdata
+origin/gvt-next-fixes d385c16173f28a18866abf54c764200c276dace0
+	drm/i915/gvt: Prevent divided by zero when calculating refresh rate

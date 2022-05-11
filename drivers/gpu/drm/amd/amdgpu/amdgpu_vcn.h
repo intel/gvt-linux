@@ -24,6 +24,8 @@
 #ifndef __AMDGPU_VCN_H__
 #define __AMDGPU_VCN_H__
 
+#include "amdgpu_ras.h"
+
 #define AMDGPU_VCN_STACK_SIZE		(128*1024)
 #define AMDGPU_VCN_CONTEXT_SIZE 	(512*1024)
 
@@ -164,6 +166,11 @@
 #define AMDGPU_VCN_IB_FLAG_DECODE_BUFFER	0x00000001
 #define AMDGPU_VCN_CMD_FLAG_MSG_BUFFER		0x00000001
 
+#define VCN_CODEC_DISABLE_MASK_AV1  (1 << 0)
+#define VCN_CODEC_DISABLE_MASK_VP9  (1 << 1)
+#define VCN_CODEC_DISABLE_MASK_HEVC (1 << 2)
+#define VCN_CODEC_DISABLE_MASK_H264 (1 << 3)
+
 enum fw_queue_mode {
 	FW_QUEUE_RING_RESET = 1,
 	FW_QUEUE_DPG_HOLD_OFF = 2,
@@ -233,6 +240,10 @@ struct amdgpu_vcn_inst {
 	struct amdgpu_vcn_fw_shared fw_shared;
 };
 
+struct amdgpu_vcn_ras {
+	struct amdgpu_ras_block_object ras_block;
+};
+
 struct amdgpu_vcn {
 	unsigned		fw_version;
 	struct delayed_work	idle_work;
@@ -244,6 +255,7 @@ struct amdgpu_vcn {
 	uint8_t	num_vcn_inst;
 	struct amdgpu_vcn_inst	 inst[AMDGPU_MAX_VCN_INSTANCES];
 	uint8_t			 vcn_config[AMDGPU_MAX_VCN_INSTANCES];
+	uint32_t		 vcn_codec_disable_mask[AMDGPU_MAX_VCN_INSTANCES];
 	struct amdgpu_vcn_reg	 internal;
 	struct mutex		 vcn_pg_lock;
 	struct mutex		vcn1_jpeg1_workaround;
@@ -252,6 +264,9 @@ struct amdgpu_vcn {
 	unsigned	harvest_config;
 	int (*pause_dpg_mode)(struct amdgpu_device *adev,
 		int inst_idx, struct dpg_pause_state *new_state);
+
+	struct ras_common_if    *ras_if;
+	struct amdgpu_vcn_ras   *ras;
 };
 
 struct amdgpu_fw_shared_rb_ptrs_struct {

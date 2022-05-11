@@ -1599,6 +1599,54 @@ static const void *edid_extension_block_data(const struct edid *edid, int index)
 	return edid_block_data(edid, index + 1);
 }
 
+/*
+ * EDID base and extension block iterator.
+ *
+ * struct drm_edid_iter iter;
+ * const u8 *block;
+ *
+ * drm_edid_iter_begin(edid, &iter);
+ * drm_edid_iter_for_each(block, &iter) {
+ *         // do stuff with block
+ * }
+ * drm_edid_iter_end(&iter);
+ */
+struct drm_edid_iter {
+	const struct edid *edid;
+
+	/* Current block index. */
+	int index;
+};
+
+static void drm_edid_iter_begin(const struct edid *edid,
+				struct drm_edid_iter *iter)
+{
+	memset(iter, 0, sizeof(*iter));
+
+	iter->edid = edid;
+}
+
+static const void *__drm_edid_iter_next(struct drm_edid_iter *iter)
+{
+	const void *block = NULL;
+
+	if (!iter->edid)
+		return NULL;
+
+	if (iter->index < edid_block_count(iter->edid))
+		block = edid_block_data(iter->edid, iter->index++);
+
+	return block;
+}
+
+#define drm_edid_iter_for_each(__block, __iter)			\
+	while (((__block) = __drm_edid_iter_next(__iter)))
+
+static void drm_edid_iter_end(struct drm_edid_iter *iter)
+{
+	memset(iter, 0, sizeof(*iter));
+}
+
 static const u8 edid_header[] = {
 	0x00, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00
 };
@@ -3462,15 +3510,21 @@ add_detailed_modes(struct drm_connector *connector, const struct edid *edid,
 	return closure.modes;
 }
 
-#define AUDIO_BLOCK	0x01
-#define VIDEO_BLOCK     0x02
-#define VENDOR_BLOCK    0x03
-#define SPEAKER_BLOCK	0x04
-#define HDR_STATIC_METADATA_BLOCK	0x6
-#define USE_EXTENDED_TAG 0x07
-#define EXT_VIDEO_CAPABILITY_BLOCK 0x00
-#define EXT_VIDEO_DATA_BLOCK_420	0x0E
-#define EXT_VIDEO_CAP_BLOCK_Y420CMDB 0x0F
+/* CTA-861-H Table 60 - CTA Tag Codes */
+#define CTA_DB_AUDIO			1
+#define CTA_DB_VIDEO			2
+#define CTA_DB_VENDOR			3
+#define CTA_DB_SPEAKER			4
+#define CTA_DB_EXTENDED_TAG		7
+
+/* CTA-861-H Table 62 - CTA Extended Tag Codes */
+#define CTA_EXT_DB_VIDEO_CAP		0
+#define CTA_EXT_DB_VENDOR		1
+#define CTA_EXT_DB_HDR_STATIC_METADATA	6
+#define CTA_EXT_DB_420_VIDEO_DATA	14
+#define CTA_EXT_DB_420_VIDEO_CAP_MAP	15
+#define CTA_EXT_DB_HF_SCDB		0x79
+
 #define EDID_BASIC_AUDIO	(1 << 6)
 #define EDID_CEA_YCRCB444	(1 << 5)
 #define EDID_CEA_YCRCB422	(1 << 4)
@@ -3504,30 +3558,29 @@ const u8 *drm_find_edid_extension(const struct edid *edid,
 	return edid_ext;
 }
 
-static const u8 *drm_find_cea_extension(const struct edid *edid)
+/* Return true if the EDID has a CTA extension or a DisplayID CTA data block */
+static bool drm_edid_has_cta_extension(const struct edid *edid)
 {
 	const struct displayid_block *block;
 	struct displayid_iter iter;
-	const u8 *cea;
 	int ext_index = 0;
+	bool found = false;
 
 	/* Look for a top level CEA extension block */
-	/* FIXME: make callers iterate through multiple CEA ext blocks? */
-	cea = drm_find_edid_extension(edid, CEA_EXT, &ext_index);
-	if (cea)
-		return cea;
+	if (drm_find_edid_extension(edid, CEA_EXT, &ext_index))
+		return true;
 
 	/* CEA blocks can also be found embedded in a DisplayID block */
 	displayid_iter_edid_begin(edid, &iter);
 	displayid_iter_for_each(block, &iter) {
 		if (block->tag == DATA_BLOCK_CTA) {
-			cea = (const u8 *)block;
+			found = true;
 			break;
 		}
 	}
 	displayid_iter_end(&iter);
 
-	return cea;
+	return found;
 }
 
 static __always_inline const struct drm_display_mode *cea_mode_for_vic(u8 vic)
@@ -3800,8 +3853,8 @@ add_alternate_cea_modes(struct drm_connector *connector, const struct edid *edid
 	LIST_HEAD(list);
 	int modes = 0;
 
-	/* Don't add CEA modes if the CEA extension block is missing */
-	if (!drm_find_cea_extension(edid))
+	/* Don't add CTA modes if the CTA extension block is missing */
+	if (!drm_edid_has_cta_extension(edid))
 		return 0;
 
 	/*
@@ -4283,24 +4336,6 @@ out:
 }
 
 static int
-cea_db_payload_len(const u8 *db)
-{
-	return db[0] & 0x1f;
-}
-
-static int
-cea_db_extended_tag(const u8 *db)
-{
-	return db[1];
-}
-
-static int
-cea_db_tag(const u8 *db)
-{
-	return db[0] >> 5;
-}
-
-static int
 cea_revision(const u8 *cea)
 {
 	/*
@@ -4313,125 +4348,254 @@ cea_revision(const u8 *cea)
 	return cea[1];
 }
 
-static int
-cea_db_offsets(const u8 *cea, int *start, int *end)
+/*
+ * CTA Data Block iterator.
+ *
+ * Iterate through all CTA Data Blocks in both EDID CTA Extensions and DisplayID
+ * CTA Data Blocks.
+ *
+ * struct cea_db *db:
+ * struct cea_db_iter iter;
+ *
+ * cea_db_iter_edid_begin(edid, &iter);
+ * cea_db_iter_for_each(db, &iter) {
+ *         // do stuff with db
+ * }
+ * cea_db_iter_end(&iter);
+ */
+struct cea_db_iter {
+	struct drm_edid_iter edid_iter;
+	struct displayid_iter displayid_iter;
+
+	/* Current Data Block Collection. */
+	const u8 *collection;
+
+	/* Current Data Block index in current collection. */
+	int index;
+
+	/* End index in current collection. */
+	int end;
+};
+
+/* CTA-861-H section 7.4 CTA Data BLock Collection */
+struct cea_db {
+	u8 tag_length;
+	u8 data[];
+} __packed;
+
+static int cea_db_tag(const struct cea_db *db)
 {
-	/* DisplayID CTA extension blocks and top-level CEA EDID
-	 * block header definitions differ in the following bytes:
-	 *   1) Byte 2 of the header specifies length differently,
-	 *   2) Byte 3 is only present in the CEA top level block.
-	 *
-	 * The different definitions for byte 2 follow.
-	 *
-	 * DisplayID CTA extension block defines byte 2 as:
-	 *   Number of payload bytes
-	 *
-	 * CEA EDID block defines byte 2 as:
-	 *   Byte number (decimal) within this block where the 18-byte
-	 *   DTDs begin. If no non-DTD data is present in this extension
-	 *   block, the value should be set to 04h (the byte after next).
-	 *   If set to 00h, there are no DTDs present in this block and
-	 *   no non-DTD data.
-	 */
-	if (cea[0] == DATA_BLOCK_CTA) {
-		/*
-		 * for_each_displayid_db() has already verified
-		 * that these stay within expected bounds.
-		 */
-		*start = 3;
-		*end = *start + cea[2];
-	} else if (cea[0] == CEA_EXT) {
-		/* Data block offset in CEA extension block */
-		*start = 4;
-		*end = cea[2];
-		if (*end == 0)
-			*end = 127;
-		if (*end < 4 || *end > 127)
-			return -ERANGE;
-	} else {
-		return -EOPNOTSUPP;
+	return db->tag_length >> 5;
+}
+
+static int cea_db_payload_len(const void *_db)
+{
+	/* FIXME: Transition to passing struct cea_db * everywhere. */
+	const struct cea_db *db = _db;
+
+	return db->tag_length & 0x1f;
+}
+
+static const void *cea_db_data(const struct cea_db *db)
+{
+	return db->data;
+}
+
+static bool cea_db_is_extended_tag(const struct cea_db *db, int tag)
+{
+	return cea_db_tag(db) == CTA_DB_EXTENDED_TAG &&
+		cea_db_payload_len(db) >= 1 &&
+		db->data[0] == tag;
+}
+
+static bool cea_db_is_vendor(const struct cea_db *db, int vendor_oui)
+{
+	const u8 *data = cea_db_data(db);
+
+	return cea_db_tag(db) == CTA_DB_VENDOR &&
+		cea_db_payload_len(db) >= 3 &&
+		oui(data[2], data[1], data[0]) == vendor_oui;
+}
+
+static void cea_db_iter_edid_begin(const struct edid *edid, struct cea_db_iter *iter)
+{
+	memset(iter, 0, sizeof(*iter));
+
+	drm_edid_iter_begin(edid, &iter->edid_iter);
+	displayid_iter_edid_begin(edid, &iter->displayid_iter);
+}
+
+static const struct cea_db *
+__cea_db_iter_current_block(const struct cea_db_iter *iter)
+{
+	const struct cea_db *db;
+
+	if (!iter->collection)
+		return NULL;
+
+	db = (const struct cea_db *)&iter->collection[iter->index];
+
+	if (iter->index + sizeof(*db) <= iter->end &&
+	    iter->index + sizeof(*db) + cea_db_payload_len(db) <= iter->end)
+		return db;
+
+	return NULL;
+}
+
+/*
+ * References:
+ * - VESA E-EDID v1.4
+ * - CTA-861-H section 7.3.3 CTA Extension Version 3
+ */
+static const void *__cea_db_iter_edid_next(struct cea_db_iter *iter)
+{
+	const u8 *ext;
+
+	drm_edid_iter_for_each(ext, &iter->edid_iter) {
+		/* Only support CTA Extension revision 3+ */
+		if (ext[0] != CEA_EXT || cea_revision(ext) < 3)
+			continue;
+
+		iter->index = 4;
+		iter->end = ext[2];
+		if (iter->end == 0)
+			iter->end = 127;
+		if (iter->end < 4 || iter->end > 127)
+			continue;
+
+		return ext;
 	}
 
-	return 0;
+	return NULL;
 }
 
-static bool cea_db_is_hdmi_vsdb(const u8 *db)
+/*
+ * References:
+ * - DisplayID v1.3 Appendix C: CEA Data Block within a DisplayID Data Block
+ * - DisplayID v2.0 section 4.10 CTA DisplayID Data Block
+ *
+ * Note that the above do not specify any connection between DisplayID Data
+ * Block revision and CTA Extension versions.
+ */
+static const void *__cea_db_iter_displayid_next(struct cea_db_iter *iter)
 {
-	if (cea_db_tag(db) != VENDOR_BLOCK)
-		return false;
+	const struct displayid_block *block;
 
-	if (cea_db_payload_len(db) < 5)
-		return false;
+	displayid_iter_for_each(block, &iter->displayid_iter) {
+		if (block->tag != DATA_BLOCK_CTA)
+			continue;
 
-	return oui(db[3], db[2], db[1]) == HDMI_IEEE_OUI;
+		/*
+		 * The displayid iterator has already verified the block bounds
+		 * in displayid_iter_block().
+		 */
+		iter->index = sizeof(*block);
+		iter->end = iter->index + block->num_bytes;
+
+		return block;
+	}
+
+	return NULL;
 }
 
-static bool cea_db_is_hdmi_forum_vsdb(const u8 *db)
+static const struct cea_db *__cea_db_iter_next(struct cea_db_iter *iter)
 {
-	if (cea_db_tag(db) != VENDOR_BLOCK)
-		return false;
+	const struct cea_db *db;
 
-	if (cea_db_payload_len(db) < 7)
-		return false;
+	if (iter->collection) {
+		/* Current collection should always be valid. */
+		db = __cea_db_iter_current_block(iter);
+		if (WARN_ON(!db)) {
+			iter->collection = NULL;
+			return NULL;
+		}
 
-	return oui(db[3], db[2], db[1]) == HDMI_FORUM_IEEE_OUI;
+		/* Next block in CTA Data Block Collection */
+		iter->index += sizeof(*db) + cea_db_payload_len(db);
+
+		db = __cea_db_iter_current_block(iter);
+		if (db)
+			return db;
+	}
+
+	for (;;) {
+		/*
+		 * Find the next CTA Data Block Collection. First iterate all
+		 * the EDID CTA Extensions, then all the DisplayID CTA blocks.
+		 *
+		 * Per DisplayID v1.3 Appendix B: DisplayID as an EDID
+		 * Extension, it's recommended that DisplayID extensions are
+		 * exposed after all of the CTA Extensions.
+		 */
+		iter->collection = __cea_db_iter_edid_next(iter);
+		if (!iter->collection)
+			iter->collection = __cea_db_iter_displayid_next(iter);
+
+		if (!iter->collection)
+			return NULL;
+
+		db = __cea_db_iter_current_block(iter);
+		if (db)
+			return db;
+	}
 }
 
-static bool cea_db_is_microsoft_vsdb(const u8 *db)
+#define cea_db_iter_for_each(__db, __iter) \
+	while (((__db) = __cea_db_iter_next(__iter)))
+
+static void cea_db_iter_end(struct cea_db_iter *iter)
 {
-	if (cea_db_tag(db) != VENDOR_BLOCK)
-		return false;
+	displayid_iter_end(&iter->displayid_iter);
+	drm_edid_iter_end(&iter->edid_iter);
 
-	if (cea_db_payload_len(db) != 21)
-		return false;
-
-	return oui(db[3], db[2], db[1]) == MICROSOFT_IEEE_OUI;
+	memset(iter, 0, sizeof(*iter));
 }
 
-static bool cea_db_is_vcdb(const u8 *db)
+static bool cea_db_is_hdmi_vsdb(const struct cea_db *db)
 {
-	if (cea_db_tag(db) != USE_EXTENDED_TAG)
-		return false;
-
-	if (cea_db_payload_len(db) != 2)
-		return false;
-
-	if (cea_db_extended_tag(db) != EXT_VIDEO_CAPABILITY_BLOCK)
-		return false;
-
-	return true;
+	return cea_db_is_vendor(db, HDMI_IEEE_OUI) &&
+		cea_db_payload_len(db) >= 5;
 }
 
-static bool cea_db_is_y420cmdb(const u8 *db)
+static bool cea_db_is_hdmi_forum_vsdb(const struct cea_db *db)
 {
-	if (cea_db_tag(db) != USE_EXTENDED_TAG)
-		return false;
-
-	if (!cea_db_payload_len(db))
-		return false;
-
-	if (cea_db_extended_tag(db) != EXT_VIDEO_CAP_BLOCK_Y420CMDB)
-		return false;
-
-	return true;
+	return cea_db_is_vendor(db, HDMI_FORUM_IEEE_OUI) &&
+		cea_db_payload_len(db) >= 7;
 }
 
-static bool cea_db_is_y420vdb(const u8 *db)
+static bool cea_db_is_microsoft_vsdb(const struct cea_db *db)
 {
-	if (cea_db_tag(db) != USE_EXTENDED_TAG)
-		return false;
-
-	if (!cea_db_payload_len(db))
-		return false;
-
-	if (cea_db_extended_tag(db) != EXT_VIDEO_DATA_BLOCK_420)
-		return false;
-
-	return true;
+	return cea_db_is_vendor(db, MICROSOFT_IEEE_OUI) &&
+		cea_db_payload_len(db) == 21;
 }
 
-#define for_each_cea_db(cea, i, start, end) \
-	for ((i) = (start); (i) < (end) && (i) + cea_db_payload_len(&(cea)[(i)]) < (end); (i) += cea_db_payload_len(&(cea)[(i)]) + 1)
+static bool cea_db_is_vcdb(const struct cea_db *db)
+{
+	return cea_db_is_extended_tag(db, CTA_EXT_DB_VIDEO_CAP) &&
+		cea_db_payload_len(db) == 2;
+}
+
+static bool cea_db_is_hdmi_forum_scdb(const struct cea_db *db)
+{
+	return cea_db_is_extended_tag(db, CTA_EXT_DB_HF_SCDB) &&
+		cea_db_payload_len(db) >= 7;
+}
+
+static bool cea_db_is_y420cmdb(const struct cea_db *db)
+{
+	return cea_db_is_extended_tag(db, CTA_EXT_DB_420_VIDEO_CAP_MAP);
+}
+
+static bool cea_db_is_y420vdb(const struct cea_db *db)
+{
+	return cea_db_is_extended_tag(db, CTA_EXT_DB_420_VIDEO_DATA);
+}
+
+static bool cea_db_is_hdmi_hdr_metadata_block(const struct cea_db *db)
+{
+	return cea_db_is_extended_tag(db, CTA_EXT_DB_HDR_STATIC_METADATA) &&
+		cea_db_payload_len(db) >= 3;
+}
 
 static void drm_parse_y420cmdb_bitmap(struct drm_connector *connector,
 				      const u8 *db)
@@ -4476,46 +4640,41 @@ static void drm_parse_y420cmdb_bitmap(struct drm_connector *connector,
 static int
 add_cea_modes(struct drm_connector *connector, const struct edid *edid)
 {
-	const u8 *cea = drm_find_cea_extension(edid);
-	const u8 *db, *hdmi = NULL, *video = NULL;
-	u8 dbl, hdmi_len, video_len = 0;
+	const struct cea_db *db;
+	struct cea_db_iter iter;
 	int modes = 0;
 
-	if (cea && cea_revision(cea) >= 3) {
-		int i, start, end;
+	cea_db_iter_edid_begin(edid, &iter);
+	cea_db_iter_for_each(db, &iter) {
+		const u8 *hdmi = NULL, *video = NULL;
+		u8 hdmi_len = 0, video_len = 0;
 
-		if (cea_db_offsets(cea, &start, &end))
-			return 0;
+		if (cea_db_tag(db) == CTA_DB_VIDEO) {
+			video = cea_db_data(db);
+			video_len = cea_db_payload_len(db);
+			modes += do_cea_modes(connector, video, video_len);
+		} else if (cea_db_is_hdmi_vsdb(db)) {
+			/* FIXME: Switch to use cea_db_data() */
+			hdmi = (const u8 *)db;
+			hdmi_len = cea_db_payload_len(db);
+		} else if (cea_db_is_y420vdb(db)) {
+			const u8 *vdb420 = cea_db_data(db) + 1;
 
-		for_each_cea_db(cea, i, start, end) {
-			db = &cea[i];
-			dbl = cea_db_payload_len(db);
-
-			if (cea_db_tag(db) == VIDEO_BLOCK) {
-				video = db + 1;
-				video_len = dbl;
-				modes += do_cea_modes(connector, video, dbl);
-			} else if (cea_db_is_hdmi_vsdb(db)) {
-				hdmi = db;
-				hdmi_len = dbl;
-			} else if (cea_db_is_y420vdb(db)) {
-				const u8 *vdb420 = &db[2];
-
-				/* Add 4:2:0(only) modes present in EDID */
-				modes += do_y420vdb_modes(connector,
-							  vdb420,
-							  dbl - 1);
-			}
+			/* Add 4:2:0(only) modes present in EDID */
+			modes += do_y420vdb_modes(connector, vdb420,
+						  cea_db_payload_len(db) - 1);
 		}
-	}
 
-	/*
-	 * We parse the HDMI VSDB after having added the cea modes as we will
-	 * be patching their flags when the sink supports stereo 3D.
-	 */
-	if (hdmi)
-		modes += do_hdmi_vsdb_modes(connector, hdmi, hdmi_len, video,
-					    video_len);
+		/*
+		 * We parse the HDMI VSDB after having added the cea modes as we
+		 * will be patching their flags when the sink supports stereo
+		 * 3D.
+		 */
+		if (hdmi)
+			modes += do_hdmi_vsdb_modes(connector, hdmi, hdmi_len,
+						    video, video_len);
+	}
+	cea_db_iter_end(&iter);
 
 	return modes;
 }
@@ -4561,20 +4720,6 @@ static void fixup_detailed_cea_mode_clock(struct drm_display_mode *mode)
 	DRM_DEBUG("detailed mode matches %s VIC %d, adjusting clock %d -> %d\n",
 		  type, vic, mode->clock, clock);
 	mode->clock = clock;
-}
-
-static bool cea_db_is_hdmi_hdr_metadata_block(const u8 *db)
-{
-	if (cea_db_tag(db) != USE_EXTENDED_TAG)
-		return false;
-
-	if (db[1] != HDR_STATIC_METADATA_BLOCK)
-		return false;
-
-	if (cea_db_payload_len(db) < 3)
-		return false;
-
-	return true;
 }
 
 static uint8_t eotf_supported(const u8 *edid_ext)
@@ -4717,28 +4862,22 @@ static void clear_eld(struct drm_connector *connector)
 static void drm_edid_to_eld(struct drm_connector *connector,
 			    const struct edid *edid)
 {
+	const struct drm_display_info *info = &connector->display_info;
+	const struct cea_db *db;
+	struct cea_db_iter iter;
 	uint8_t *eld = connector->eld;
-	const u8 *cea;
-	const u8 *db;
 	int total_sad_count = 0;
 	int mnl;
-	int dbl;
 
 	clear_eld(connector);
 
 	if (!edid)
 		return;
 
-	cea = drm_find_cea_extension(edid);
-	if (!cea) {
-		DRM_DEBUG_KMS("ELD: no CEA Extension found\n");
-		return;
-	}
-
 	mnl = get_monitor_name(edid, &eld[DRM_ELD_MONITOR_NAME_STRING]);
 	DRM_DEBUG_KMS("ELD monitor %s\n", &eld[DRM_ELD_MONITOR_NAME_STRING]);
 
-	eld[DRM_ELD_CEA_EDID_VER_MNL] = cea[1] << DRM_ELD_CEA_EDID_VER_SHIFT;
+	eld[DRM_ELD_CEA_EDID_VER_MNL] = info->cea_rev << DRM_ELD_CEA_EDID_VER_SHIFT;
 	eld[DRM_ELD_CEA_EDID_VER_MNL] |= mnl;
 
 	eld[DRM_ELD_VER] = DRM_ELD_VER_CEA861D;
@@ -4748,43 +4887,37 @@ static void drm_edid_to_eld(struct drm_connector *connector,
 	eld[DRM_ELD_PRODUCT_CODE0] = edid->prod_code[0];
 	eld[DRM_ELD_PRODUCT_CODE1] = edid->prod_code[1];
 
-	if (cea_revision(cea) >= 3) {
-		int i, start, end;
+	cea_db_iter_edid_begin(edid, &iter);
+	cea_db_iter_for_each(db, &iter) {
+		const u8 *data = cea_db_data(db);
+		int len = cea_db_payload_len(db);
 		int sad_count;
 
-		if (cea_db_offsets(cea, &start, &end)) {
-			start = 0;
-			end = 0;
-		}
-
-		for_each_cea_db(cea, i, start, end) {
-			db = &cea[i];
-			dbl = cea_db_payload_len(db);
-
-			switch (cea_db_tag(db)) {
-			case AUDIO_BLOCK:
-				/* Audio Data Block, contains SADs */
-				sad_count = min(dbl / 3, 15 - total_sad_count);
-				if (sad_count >= 1)
-					memcpy(&eld[DRM_ELD_CEA_SAD(mnl, total_sad_count)],
-					       &db[1], sad_count * 3);
-				total_sad_count += sad_count;
-				break;
-			case SPEAKER_BLOCK:
-				/* Speaker Allocation Data Block */
-				if (dbl >= 1)
-					eld[DRM_ELD_SPEAKER] = db[1];
-				break;
-			case VENDOR_BLOCK:
-				/* HDMI Vendor-Specific Data Block */
-				if (cea_db_is_hdmi_vsdb(db))
-					drm_parse_hdmi_vsdb_audio(connector, db);
-				break;
-			default:
-				break;
-			}
+		switch (cea_db_tag(db)) {
+		case CTA_DB_AUDIO:
+			/* Audio Data Block, contains SADs */
+			sad_count = min(len / 3, 15 - total_sad_count);
+			if (sad_count >= 1)
+				memcpy(&eld[DRM_ELD_CEA_SAD(mnl, total_sad_count)],
+				       data, sad_count * 3);
+			total_sad_count += sad_count;
+			break;
+		case CTA_DB_SPEAKER:
+			/* Speaker Allocation Data Block */
+			if (len >= 1)
+				eld[DRM_ELD_SPEAKER] = data[0];
+			break;
+		case CTA_DB_VENDOR:
+			/* HDMI Vendor-Specific Data Block */
+			if (cea_db_is_hdmi_vsdb(db))
+				drm_parse_hdmi_vsdb_audio(connector, (const u8 *)db);
+			break;
+		default:
+			break;
 		}
 	}
+	cea_db_iter_end(&iter);
+
 	eld[DRM_ELD_SAD_COUNT_CONN_TYPE] |= total_sad_count << DRM_ELD_SAD_COUNT_SHIFT;
 
 	if (connector->connector_type == DRM_MODE_CONNECTOR_DisplayPort ||
@@ -4813,40 +4946,21 @@ static void drm_edid_to_eld(struct drm_connector *connector,
  */
 int drm_edid_to_sad(const struct edid *edid, struct cea_sad **sads)
 {
+	const struct cea_db *db;
+	struct cea_db_iter iter;
 	int count = 0;
-	int i, start, end, dbl;
-	const u8 *cea;
 
-	cea = drm_find_cea_extension(edid);
-	if (!cea) {
-		DRM_DEBUG_KMS("SAD: no CEA Extension found\n");
-		return 0;
-	}
-
-	if (cea_revision(cea) < 3) {
-		DRM_DEBUG_KMS("SAD: wrong CEA revision\n");
-		return 0;
-	}
-
-	if (cea_db_offsets(cea, &start, &end)) {
-		DRM_DEBUG_KMS("SAD: invalid data block offsets\n");
-		return -EPROTO;
-	}
-
-	for_each_cea_db(cea, i, start, end) {
-		const u8 *db = &cea[i];
-
-		if (cea_db_tag(db) == AUDIO_BLOCK) {
+	cea_db_iter_edid_begin(edid, &iter);
+	cea_db_iter_for_each(db, &iter) {
+		if (cea_db_tag(db) == CTA_DB_AUDIO) {
 			int j;
 
-			dbl = cea_db_payload_len(db);
-
-			count = dbl / 3; /* SAD is 3B */
+			count = cea_db_payload_len(db) / 3; /* SAD is 3B */
 			*sads = kcalloc(count, sizeof(**sads), GFP_KERNEL);
 			if (!*sads)
 				return -ENOMEM;
 			for (j = 0; j < count; j++) {
-				const u8 *sad = &db[1 + j * 3];
+				const u8 *sad = &db->data[j * 3];
 
 				(*sads)[j].format = (sad[0] & 0x78) >> 3;
 				(*sads)[j].channels = sad[0] & 0x7;
@@ -4856,6 +4970,9 @@ int drm_edid_to_sad(const struct edid *edid, struct cea_sad **sads)
 			break;
 		}
 	}
+	cea_db_iter_end(&iter);
+
+	DRM_DEBUG_KMS("Found %d Short Audio Descriptors\n", count);
 
 	return count;
 }
@@ -4875,42 +4992,25 @@ EXPORT_SYMBOL(drm_edid_to_sad);
  */
 int drm_edid_to_speaker_allocation(const struct edid *edid, u8 **sadb)
 {
+	const struct cea_db *db;
+	struct cea_db_iter iter;
 	int count = 0;
-	int i, start, end, dbl;
-	const u8 *cea;
 
-	cea = drm_find_cea_extension(edid);
-	if (!cea) {
-		DRM_DEBUG_KMS("SAD: no CEA Extension found\n");
-		return 0;
-	}
-
-	if (cea_revision(cea) < 3) {
-		DRM_DEBUG_KMS("SAD: wrong CEA revision\n");
-		return 0;
-	}
-
-	if (cea_db_offsets(cea, &start, &end)) {
-		DRM_DEBUG_KMS("SAD: invalid data block offsets\n");
-		return -EPROTO;
-	}
-
-	for_each_cea_db(cea, i, start, end) {
-		const u8 *db = &cea[i];
-
-		if (cea_db_tag(db) == SPEAKER_BLOCK) {
-			dbl = cea_db_payload_len(db);
-
-			/* Speaker Allocation Data Block */
-			if (dbl == 3) {
-				*sadb = kmemdup(&db[1], dbl, GFP_KERNEL);
-				if (!*sadb)
-					return -ENOMEM;
-				count = dbl;
-				break;
-			}
+	cea_db_iter_edid_begin(edid, &iter);
+	cea_db_iter_for_each(db, &iter) {
+		if (cea_db_tag(db) == CTA_DB_SPEAKER &&
+		    cea_db_payload_len(db) == 3) {
+			*sadb = kmemdup(db->data, cea_db_payload_len(db),
+					GFP_KERNEL);
+			if (!*sadb)
+				return -ENOMEM;
+			count = cea_db_payload_len(db);
+			break;
 		}
 	}
+	cea_db_iter_end(&iter);
+
+	DRM_DEBUG_KMS("Found %d Speaker Allocation Data Blocks\n", count);
 
 	return count;
 }
@@ -4970,27 +5070,24 @@ EXPORT_SYMBOL(drm_av_sync_delay);
  */
 bool drm_detect_hdmi_monitor(const struct edid *edid)
 {
-	const u8 *edid_ext;
-	int i;
-	int start_offset, end_offset;
-
-	edid_ext = drm_find_cea_extension(edid);
-	if (!edid_ext)
-		return false;
-
-	if (cea_db_offsets(edid_ext, &start_offset, &end_offset))
-		return false;
+	const struct cea_db *db;
+	struct cea_db_iter iter;
+	bool hdmi = false;
 
 	/*
 	 * Because HDMI identifier is in Vendor Specific Block,
 	 * search it from all data blocks of CEA extension.
 	 */
-	for_each_cea_db(edid_ext, i, start_offset, end_offset) {
-		if (cea_db_is_hdmi_vsdb(&edid_ext[i]))
-			return true;
+	cea_db_iter_edid_begin(edid, &iter);
+	cea_db_iter_for_each(db, &iter) {
+		if (cea_db_is_hdmi_vsdb(db)) {
+			hdmi = true;
+			break;
+		}
 	}
+	cea_db_iter_end(&iter);
 
-	return false;
+	return hdmi;
 }
 EXPORT_SYMBOL(drm_detect_hdmi_monitor);
 
@@ -5008,35 +5105,42 @@ EXPORT_SYMBOL(drm_detect_hdmi_monitor);
  */
 bool drm_detect_monitor_audio(const struct edid *edid)
 {
+	struct drm_edid_iter edid_iter;
+	const struct cea_db *db;
+	struct cea_db_iter iter;
 	const u8 *edid_ext;
-	int i, j;
 	bool has_audio = false;
-	int start_offset, end_offset;
 
-	edid_ext = drm_find_cea_extension(edid);
-	if (!edid_ext)
-		goto end;
-
-	has_audio = (edid_ext[0] == CEA_EXT &&
-		    (edid_ext[3] & EDID_BASIC_AUDIO) != 0);
+	drm_edid_iter_begin(edid, &edid_iter);
+	drm_edid_iter_for_each(edid_ext, &edid_iter) {
+		if (edid_ext[0] == CEA_EXT) {
+			has_audio = edid_ext[3] & EDID_BASIC_AUDIO;
+			if (has_audio)
+				break;
+		}
+	}
+	drm_edid_iter_end(&edid_iter);
 
 	if (has_audio) {
 		DRM_DEBUG_KMS("Monitor has basic audio support\n");
 		goto end;
 	}
 
-	if (cea_db_offsets(edid_ext, &start_offset, &end_offset))
-		goto end;
+	cea_db_iter_edid_begin(edid, &iter);
+	cea_db_iter_for_each(db, &iter) {
+		if (cea_db_tag(db) == CTA_DB_AUDIO) {
+			const u8 *data = cea_db_data(db);
+			int i;
 
-	for_each_cea_db(edid_ext, i, start_offset, end_offset) {
-		if (cea_db_tag(&edid_ext[i]) == AUDIO_BLOCK) {
-			has_audio = true;
-			for (j = 1; j < cea_db_payload_len(&edid_ext[i]) + 1; j += 3)
+			for (i = 0; i < cea_db_payload_len(db); i += 3)
 				DRM_DEBUG_KMS("CEA audio format %d\n",
-					      (edid_ext[i + j] >> 3) & 0xf);
-			goto end;
+					      (data[i] >> 3) & 0xf);
+			has_audio = true;
+			break;
 		}
 	}
+	cea_db_iter_end(&iter);
+
 end:
 	return has_audio;
 }
@@ -5117,17 +5221,18 @@ static void drm_parse_ycbcr420_deep_color_info(struct drm_connector *connector,
 	hdmi->y420_dc_modes = dc_mask;
 }
 
-static void drm_parse_hdmi_forum_vsdb(struct drm_connector *connector,
-				 const u8 *hf_vsdb)
+/* Sink Capability Data Structure */
+static void drm_parse_hdmi_forum_scds(struct drm_connector *connector,
+				      const u8 *hf_scds)
 {
 	struct drm_display_info *display = &connector->display_info;
 	struct drm_hdmi_info *hdmi = &display->hdmi;
 
 	display->has_hdmi_infoframe = true;
 
-	if (hf_vsdb[6] & 0x80) {
+	if (hf_scds[6] & 0x80) {
 		hdmi->scdc.supported = true;
-		if (hf_vsdb[6] & 0x40)
+		if (hf_scds[6] & 0x40)
 			hdmi->scdc.read_request = true;
 	}
 
@@ -5140,9 +5245,9 @@ static void drm_parse_hdmi_forum_vsdb(struct drm_connector *connector,
 	 * Lets check it out.
 	 */
 
-	if (hf_vsdb[5]) {
+	if (hf_scds[5]) {
 		/* max clock is 5000 KHz times block value */
-		u32 max_tmds_clock = hf_vsdb[5] * 5000;
+		u32 max_tmds_clock = hf_scds[5] * 5000;
 		struct drm_scdc *scdc = &hdmi->scdc;
 
 		if (max_tmds_clock > 340000) {
@@ -5155,42 +5260,42 @@ static void drm_parse_hdmi_forum_vsdb(struct drm_connector *connector,
 			scdc->scrambling.supported = true;
 
 			/* Few sinks support scrambling for clocks < 340M */
-			if ((hf_vsdb[6] & 0x8))
+			if ((hf_scds[6] & 0x8))
 				scdc->scrambling.low_rates = true;
 		}
 	}
 
-	if (hf_vsdb[7]) {
+	if (hf_scds[7]) {
 		u8 max_frl_rate;
 		u8 dsc_max_frl_rate;
 		u8 dsc_max_slices;
 		struct drm_hdmi_dsc_cap *hdmi_dsc = &hdmi->dsc_cap;
 
 		DRM_DEBUG_KMS("hdmi_21 sink detected. parsing edid\n");
-		max_frl_rate = (hf_vsdb[7] & DRM_EDID_MAX_FRL_RATE_MASK) >> 4;
+		max_frl_rate = (hf_scds[7] & DRM_EDID_MAX_FRL_RATE_MASK) >> 4;
 		drm_get_max_frl_rate(max_frl_rate, &hdmi->max_lanes,
 				     &hdmi->max_frl_rate_per_lane);
-		hdmi_dsc->v_1p2 = hf_vsdb[11] & DRM_EDID_DSC_1P2;
+		hdmi_dsc->v_1p2 = hf_scds[11] & DRM_EDID_DSC_1P2;
 
 		if (hdmi_dsc->v_1p2) {
-			hdmi_dsc->native_420 = hf_vsdb[11] & DRM_EDID_DSC_NATIVE_420;
-			hdmi_dsc->all_bpp = hf_vsdb[11] & DRM_EDID_DSC_ALL_BPP;
+			hdmi_dsc->native_420 = hf_scds[11] & DRM_EDID_DSC_NATIVE_420;
+			hdmi_dsc->all_bpp = hf_scds[11] & DRM_EDID_DSC_ALL_BPP;
 
-			if (hf_vsdb[11] & DRM_EDID_DSC_16BPC)
+			if (hf_scds[11] & DRM_EDID_DSC_16BPC)
 				hdmi_dsc->bpc_supported = 16;
-			else if (hf_vsdb[11] & DRM_EDID_DSC_12BPC)
+			else if (hf_scds[11] & DRM_EDID_DSC_12BPC)
 				hdmi_dsc->bpc_supported = 12;
-			else if (hf_vsdb[11] & DRM_EDID_DSC_10BPC)
+			else if (hf_scds[11] & DRM_EDID_DSC_10BPC)
 				hdmi_dsc->bpc_supported = 10;
 			else
 				hdmi_dsc->bpc_supported = 0;
 
-			dsc_max_frl_rate = (hf_vsdb[12] & DRM_EDID_DSC_MAX_FRL_RATE_MASK) >> 4;
+			dsc_max_frl_rate = (hf_scds[12] & DRM_EDID_DSC_MAX_FRL_RATE_MASK) >> 4;
 			drm_get_max_frl_rate(dsc_max_frl_rate, &hdmi_dsc->max_lanes,
 					     &hdmi_dsc->max_frl_rate_per_lane);
-			hdmi_dsc->total_chunk_kbytes = hf_vsdb[13] & DRM_EDID_DSC_TOTAL_CHUNK_KBYTES;
+			hdmi_dsc->total_chunk_kbytes = hf_scds[13] & DRM_EDID_DSC_TOTAL_CHUNK_KBYTES;
 
-			dsc_max_slices = hf_vsdb[12] & DRM_EDID_DSC_MAX_SLICES;
+			dsc_max_slices = hf_scds[12] & DRM_EDID_DSC_MAX_SLICES;
 			switch (dsc_max_slices) {
 			case 1:
 				hdmi_dsc->max_slices = 1;
@@ -5228,7 +5333,7 @@ static void drm_parse_hdmi_forum_vsdb(struct drm_connector *connector,
 		}
 	}
 
-	drm_parse_ycbcr420_deep_color_info(connector, hf_vsdb);
+	drm_parse_ycbcr420_deep_color_info(connector, hf_scds);
 }
 
 static void drm_parse_hdmi_deep_color_info(struct drm_connector *connector,
@@ -5335,45 +5440,52 @@ static void drm_parse_cea_ext(struct drm_connector *connector,
 			      const struct edid *edid)
 {
 	struct drm_display_info *info = &connector->display_info;
+	struct drm_edid_iter edid_iter;
+	const struct cea_db *db;
+	struct cea_db_iter iter;
 	const u8 *edid_ext;
-	int i, start, end;
 
-	edid_ext = drm_find_cea_extension(edid);
-	if (!edid_ext)
-		return;
+	drm_edid_iter_begin(edid, &edid_iter);
+	drm_edid_iter_for_each(edid_ext, &edid_iter) {
+		if (edid_ext[0] != CEA_EXT)
+			continue;
 
-	info->cea_rev = edid_ext[1];
+		if (!info->cea_rev)
+			info->cea_rev = edid_ext[1];
 
-	/* The existence of a CEA block should imply RGB support */
-	info->color_formats = DRM_COLOR_FORMAT_RGB444;
+		if (info->cea_rev != edid_ext[1])
+			DRM_DEBUG_KMS("CEA extension version mismatch %u != %u\n",
+				      info->cea_rev, edid_ext[1]);
 
-	/* CTA DisplayID Data Block does not have byte #3 */
-	if (edid_ext[0] == CEA_EXT) {
+		/* The existence of a CTA extension should imply RGB support */
+		info->color_formats = DRM_COLOR_FORMAT_RGB444;
 		if (edid_ext[3] & EDID_CEA_YCRCB444)
 			info->color_formats |= DRM_COLOR_FORMAT_YCBCR444;
 		if (edid_ext[3] & EDID_CEA_YCRCB422)
 			info->color_formats |= DRM_COLOR_FORMAT_YCBCR422;
 	}
+	drm_edid_iter_end(&edid_iter);
 
-	if (cea_db_offsets(edid_ext, &start, &end))
-		return;
-
-	for_each_cea_db(edid_ext, i, start, end) {
-		const u8 *db = &edid_ext[i];
+	cea_db_iter_edid_begin(edid, &iter);
+	cea_db_iter_for_each(db, &iter) {
+		/* FIXME: convert parsers to use struct cea_db */
+		const u8 *data = (const u8 *)db;
 
 		if (cea_db_is_hdmi_vsdb(db))
-			drm_parse_hdmi_vsdb_video(connector, db);
-		if (cea_db_is_hdmi_forum_vsdb(db))
-			drm_parse_hdmi_forum_vsdb(connector, db);
+			drm_parse_hdmi_vsdb_video(connector, data);
+		if (cea_db_is_hdmi_forum_vsdb(db) ||
+		    cea_db_is_hdmi_forum_scdb(db))
+			drm_parse_hdmi_forum_scds(connector, data);
 		if (cea_db_is_microsoft_vsdb(db))
-			drm_parse_microsoft_vsdb(connector, db);
+			drm_parse_microsoft_vsdb(connector, data);
 		if (cea_db_is_y420cmdb(db))
-			drm_parse_y420cmdb_bitmap(connector, db);
+			drm_parse_y420cmdb_bitmap(connector, data);
 		if (cea_db_is_vcdb(db))
-			drm_parse_vcdb(connector, db);
+			drm_parse_vcdb(connector, data);
 		if (cea_db_is_hdmi_hdr_metadata_block(db))
-			drm_parse_hdr_metadata_block(connector, db);
+			drm_parse_hdr_metadata_block(connector, data);
 	}
+	cea_db_iter_end(&iter);
 }
 
 static
@@ -5697,11 +5809,10 @@ static int drm_edid_connector_update(struct drm_connector *connector,
 	u32 quirks;
 
 	if (edid == NULL) {
+		drm_reset_display_info(connector);
 		clear_eld(connector);
 		return 0;
 	}
-
-	drm_edid_to_eld(connector, edid);
 
 	/*
 	 * CEA-861-F adds ycbcr capability map block, for HDMI 2.0 sinks.
@@ -5709,6 +5820,9 @@ static int drm_edid_connector_update(struct drm_connector *connector,
 	 * from sink info, before parsing CEA modes.
 	 */
 	quirks = drm_add_display_info(connector, edid);
+
+	/* Depends on info->cea_rev set by drm_add_display_info() above */
+	drm_edid_to_eld(connector, edid);
 
 	/*
 	 * EDID spec says modes should be preferred in this order:

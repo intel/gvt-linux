@@ -323,17 +323,10 @@ static int __uc_init(struct intel_uc *uc)
 	if (ret)
 		return ret;
 
-	if (intel_uc_uses_huc(uc)) {
-		ret = intel_huc_init(huc);
-		if (ret)
-			goto out_guc;
-	}
+	if (intel_uc_uses_huc(uc))
+		intel_huc_init(huc);
 
 	return 0;
-
-out_guc:
-	intel_guc_fini(guc);
-	return ret;
 }
 
 static void __uc_fini(struct intel_uc *uc)
@@ -509,7 +502,16 @@ static int __uc_init_hw(struct intel_uc *uc)
 	if (ret)
 		goto err_log_capture;
 
-	intel_huc_auth(huc);
+	/*
+	 * GSC-loaded HuC is authenticated by the GSC, so we don't need to
+	 * trigger the auth here. However, given that the HuC loaded this way
+	 * survive GT reset, we still need to update our SW bookkeeping to make
+	 * sure it reflects the correct HW status.
+	 */
+	if (intel_huc_is_loaded_by_gsc(huc))
+		intel_huc_update_auth_status(huc);
+	else
+		intel_huc_auth(huc);
 
 	if (intel_uc_uses_guc_submission(uc))
 		intel_guc_submission_enable(guc);

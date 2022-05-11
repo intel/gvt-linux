@@ -376,8 +376,6 @@ static const struct intel_device_info gm45_info = {
 	.platform_engine_mask = BIT(RCS0) | BIT(VCS0), \
 	.has_snoop = true, \
 	.has_coherent_ggtt = true, \
-	/* ilk does support rc6, but we do not implement [power] contexts */ \
-	.has_rc6 = 0, \
 	.dma_mask_size = 36, \
 	I9XX_PIPE_OFFSETS, \
 	I9XX_CURSOR_OFFSETS, \
@@ -407,7 +405,6 @@ static const struct intel_device_info ilk_m_info = {
 	.platform_engine_mask = BIT(RCS0) | BIT(VCS0) | BIT(BCS0), \
 	.has_coherent_ggtt = true, \
 	.has_llc = 1, \
-	.has_rc6 = 1, \
 	.has_rc6p = 1, \
 	.has_rps = true, \
 	.dma_mask_size = 40, \
@@ -458,9 +455,7 @@ static const struct intel_device_info snb_m_gt2_info = {
 	.platform_engine_mask = BIT(RCS0) | BIT(VCS0) | BIT(BCS0), \
 	.has_coherent_ggtt = true, \
 	.has_llc = 1, \
-	.has_rc6 = 1, \
 	.has_rc6p = 1, \
-	.has_reset_engine = true, \
 	.has_rps = true, \
 	.dma_mask_size = 40, \
 	.ppgtt_type = INTEL_PPGTT_ALIASING, \
@@ -518,8 +513,6 @@ static const struct intel_device_info vlv_info = {
 	.display.pipe_mask = BIT(PIPE_A) | BIT(PIPE_B),
 	.display.cpu_transcoder_mask = BIT(TRANSCODER_A) | BIT(TRANSCODER_B),
 	.has_runtime_pm = 1,
-	.has_rc6 = 1,
-	.has_reset_engine = true,
 	.has_rps = true,
 	.display.has_gmch = 1,
 	.display.has_hotplug = 1,
@@ -542,9 +535,7 @@ static const struct intel_device_info vlv_info = {
 	.platform_engine_mask = BIT(RCS0) | BIT(VCS0) | BIT(BCS0) | BIT(VECS0), \
 	.display.cpu_transcoder_mask = BIT(TRANSCODER_A) | BIT(TRANSCODER_B) | \
 		BIT(TRANSCODER_C) | BIT(TRANSCODER_EDP), \
-	.display.has_ddi = 1, \
 	.display.has_fpga_dbg = 1, \
-	.display.has_dp_mst = 1, \
 	.has_rc6p = 0 /* RC6p removed-by HSW */, \
 	HSW_PIPE_OFFSETS, \
 	.has_runtime_pm = 1
@@ -617,14 +608,12 @@ static const struct intel_device_info chv_info = {
 	.platform_engine_mask = BIT(RCS0) | BIT(VCS0) | BIT(BCS0) | BIT(VECS0),
 	.has_64bit_reloc = 1,
 	.has_runtime_pm = 1,
-	.has_rc6 = 1,
 	.has_rps = true,
 	.has_logical_ring_contexts = 1,
 	.display.has_gmch = 1,
 	.dma_mask_size = 39,
 	.ppgtt_type = INTEL_PPGTT_FULL,
 	.ppgtt_size = 32,
-	.has_reset_engine = 1,
 	.has_snoop = true,
 	.has_coherent_ggtt = false,
 	.display_mmio_offset = VLV_DISPLAY_BASE,
@@ -644,10 +633,8 @@ static const struct intel_device_info chv_info = {
 	GEN(9), \
 	GEN9_DEFAULT_PAGE_SIZES, \
 	.display.has_dmc = 1, \
-	.has_gt_uc = 1, \
 	.display.has_hdcp = 1, \
 	.display.has_ipc = 1, \
-	.display.has_psr = 1, \
 	.display.has_psr_hw_tracking = 1, \
 	.dbuf.size = 896 - 4, /* 4 blocks for bypass path allocation */ \
 	.dbuf.slice_mask = BIT(DBUF_S1)
@@ -693,23 +680,17 @@ static const struct intel_device_info skl_gt4_info = {
 		BIT(TRANSCODER_C) | BIT(TRANSCODER_EDP) | \
 		BIT(TRANSCODER_DSI_A) | BIT(TRANSCODER_DSI_C), \
 	.has_64bit_reloc = 1, \
-	.display.has_ddi = 1, \
 	.display.has_fpga_dbg = 1, \
 	.display.fbc_mask = BIT(INTEL_FBC_A), \
 	.display.has_hdcp = 1, \
-	.display.has_psr = 1, \
 	.display.has_psr_hw_tracking = 1, \
 	.has_runtime_pm = 1, \
 	.display.has_dmc = 1, \
-	.has_rc6 = 1, \
 	.has_rps = true, \
-	.display.has_dp_mst = 1, \
 	.has_logical_ring_contexts = 1, \
-	.has_gt_uc = 1, \
 	.dma_mask_size = 39, \
 	.ppgtt_type = INTEL_PPGTT_FULL, \
 	.ppgtt_size = 48, \
-	.has_reset_engine = 1, \
 	.has_snoop = true, \
 	.has_coherent_ggtt = false, \
 	.display.has_ipc = 1, \
@@ -822,8 +803,7 @@ static const struct intel_device_info cml_gt2_info = {
 	.dbuf.size = 2048, \
 	.dbuf.slice_mask = BIT(DBUF_S1) | BIT(DBUF_S2), \
 	.display.has_dsc = 1, \
-	.has_coherent_ggtt = false, \
-	.has_logical_ring_elsq = 1
+	.has_coherent_ggtt = false
 
 static const struct intel_device_info icl_info = {
 	GEN11_FEATURES,
@@ -946,9 +926,7 @@ static const struct intel_device_info adl_s_info = {
 	.dbuf.size = 4096,							\
 	.dbuf.slice_mask = BIT(DBUF_S1) | BIT(DBUF_S2) | BIT(DBUF_S3) |		\
 		BIT(DBUF_S4),							\
-	.display.has_ddi = 1,							\
 	.display.has_dmc = 1,							\
-	.display.has_dp_mst = 1,						\
 	.display.has_dsb = 1,							\
 	.display.has_dsc = 1,							\
 	.display.fbc_mask = BIT(INTEL_FBC_A),					\
@@ -956,7 +934,6 @@ static const struct intel_device_info adl_s_info = {
 	.display.has_hdcp = 1,							\
 	.display.has_hotplug = 1,						\
 	.display.has_ipc = 1,							\
-	.display.has_psr = 1,							\
 	.display.ver = 13,							\
 	.display.pipe_mask = BIT(PIPE_A) | BIT(PIPE_B) | BIT(PIPE_C) | BIT(PIPE_D),	\
 	.pipe_offsets = {							\
@@ -1008,13 +985,9 @@ static const struct intel_device_info adl_p_info = {
 	.has_64bit_reloc = 1, \
 	.has_flat_ccs = 1, \
 	.has_global_mocs = 1, \
-	.has_gt_uc = 1, \
 	.has_llc = 1, \
 	.has_logical_ring_contexts = 1, \
-	.has_logical_ring_elsq = 1, \
 	.has_mslices = 1, \
-	.has_rc6 = 1, \
-	.has_reset_engine = 1, \
 	.has_rps = 1, \
 	.has_runtime_pm = 1, \
 	.ppgtt_size = 48, \
@@ -1077,7 +1050,8 @@ static const struct intel_device_info ats_m_info = {
 
 #define XE_HPC_FEATURES \
 	XE_HP_FEATURES, \
-	.dma_mask_size = 52
+	.dma_mask_size = 52, \
+	.has_l3_ccs_read = 1
 
 __maybe_unused
 static const struct intel_device_info pvc_info = {

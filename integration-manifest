@@ -1,26 +1,12 @@
-drm drm-fixes c5eb0a61238dd6faf37f58c9ce61c9980aaffd7a
-	Linux 5.18-rc6
-drm-misc drm-misc-fixes b7c15a3ce6fea5da3aa836c897a78ac628467d54
-	Merge remote-tracking branch 'drm/drm-fixes' into drm-misc-fixes
-drm-intel drm-intel-fixes 3220c3b2115102bb35f8f07d90d2989a3f5eb452
-	drm/i915: Fix race in __i915_vma_remove_closed
-drm drm-next f83493f7d34da258310ecd3d07f0cc78f884c954
-	Merge tag 'drm-msm-next-2022-05-09' of https://gitlab.freedesktop.org/drm/msm into drm-next
-drm-misc drm-misc-next-fixes 67bae5f28c895f8737a1974c3f31cf12b9170b14
-	drm: of: Properly try all possible cases for bridge/panel detection
-drm-intel drm-intel-next-fixes 00f4150d27d2c01eaeffe1091fc311a7c0872c69
-	drm/i915: Fix renamed struct field
-drm-misc drm-misc-next aebeb02dfccb61d6930112aede2db3db5b8e974e
-	drm/bridge: cdns-dsi: Add support for pre_enable and post_enable control functions.
-drm-intel drm-intel-next ef83e1198f9f7d7db0031c839bb1112cfee45b42
-	drm/i915/dmc: Load DMC on DG2
-drm-intel drm-intel-gt-next ad5f74f3420183052532a220edd9a37aba92724a
-	drm/i915/pvc: read fuses for link copy engines
-sound-upstream for-linus 7cf3dead1ad70c72edb03e2d98e1f3dcd332cdb2
-	Linux 5.13
-sound-upstream for-next 7cf3dead1ad70c72edb03e2d98e1f3dcd332cdb2
-	Linux 5.13
-drm-intel topic/core-for-CI 6c0d9d4135a43b71cd4fea25856ac069b6a75666
-	topic/core-for-CI: Add remaining DG2 and ATS-M device IDs
-drm-misc topic/i915-ttm 1e3944578b749449bd7fa6bf0bae4c3d3f5f1733
-	Merge tag 'amd-drm-next-5.16-2021-09-27' of https://gitlab.freedesktop.org/agd5f/linux into drm-next
+drm-tip/drm-tip cbc8debff0e9aa1c100f5523aff24e0115a77a27
+	drm-tip: 2022y-05m-11d-21h-46m-41s UTC integration manifest
+vfio-upstream/for-linus 1ef3342a934e235aca72b4bcc0d6854d80a65077
+	vfio/pci: Fix vf_token mechanism when device-specific VF drivers are used
+vfio-upstream/next af2d861d4cd2a4da5137f795ee3509e6f944a25b
+	Linux 5.18-rc4
+origin/gvt-fixes ff9df4631c63e64abb780f316ddfdc9b63b84e1f
+	drm/i915/reg: Fix spelling mistake "Unsupport" -> "Unsupported"
+origin/gvt-next 949665a6e237a6fd49ff207e3876d71b20b7e9f2
+	drm/i915: Respect VBT seamless DRRS min refresh rate
+origin/gvt-next-fixes d385c16173f28a18866abf54c764200c276dace0
+	drm/i915/gvt: Prevent divided by zero when calculating refresh rate

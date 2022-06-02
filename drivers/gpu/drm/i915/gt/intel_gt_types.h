@@ -221,9 +221,13 @@ struct intel_gt {
 
 	struct {
 		u8 uc_index;
+		u8 wb_index; /* Only used on HAS_L3_CCS_READ() platforms */
 	} mocs;
 
 	struct intel_pxp pxp;
+
+	/* gt/gtN sysfs */
+	struct kobject sysfs_gt;
 };
 
 enum intel_gt_scratch_field {

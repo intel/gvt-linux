@@ -776,7 +776,9 @@ __intel_engine_init_ctx_wa(struct intel_engine_cs *engine,
 	if (engine->class != RENDER_CLASS)
 		goto done;
 
-	if (IS_DG2(i915))
+	if (IS_PONTEVECCHIO(i915))
+		; /* noop; none at this time */
+	else if (IS_DG2(i915))
 		dg2_ctx_workarounds_init(engine, wal);
 	else if (IS_XEHPSDV(i915))
 		; /* noop; none at this time */
@@ -948,8 +950,8 @@ gen9_wa_init_mcr(struct drm_i915_private *i915, struct i915_wa_list *wal)
 	 * on s/ss combo, the read should be done with read_subslice_reg.
 	 */
 	slice = ffs(sseu->slice_mask) - 1;
-	GEM_BUG_ON(slice >= ARRAY_SIZE(sseu->subslice_mask));
-	subslice = ffs(intel_sseu_get_subslices(sseu, slice));
+	GEM_BUG_ON(slice >= ARRAY_SIZE(sseu->subslice_mask.hsw));
+	subslice = ffs(intel_sseu_get_hsw_subslices(sseu, slice));
 	GEM_BUG_ON(!subslice);
 	subslice--;
 
@@ -1087,11 +1089,10 @@ static void
 icl_wa_init_mcr(struct intel_gt *gt, struct i915_wa_list *wal)
 {
 	const struct sseu_dev_info *sseu = &gt->info.sseu;
-	unsigned int slice, subslice;
+	unsigned int subslice;
 
 	GEM_BUG_ON(GRAPHICS_VER(gt->i915) < 11);
 	GEM_BUG_ON(hweight8(sseu->slice_mask) > 1);
-	slice = 0;
 
 	/*
 	 * Although a platform may have subslices, we need to always steer
@@ -1102,7 +1103,7 @@ icl_wa_init_mcr(struct intel_gt *gt, struct i915_wa_list *wal)
 	 * one of the higher subslices, we run the risk of reading back 0's or
 	 * random garbage.
 	 */
-	subslice = __ffs(intel_sseu_get_subslices(sseu, slice));
+	subslice = __ffs(intel_sseu_get_hsw_subslices(sseu, 0));
 
 	/*
 	 * If the subslice we picked above also steers us to a valid L3 bank,
@@ -1112,7 +1113,7 @@ icl_wa_init_mcr(struct intel_gt *gt, struct i915_wa_list *wal)
 	if (gt->info.l3bank_mask & BIT(subslice))
 		gt->steering_table[L3BANK] = NULL;
 
-	__add_mcr_wa(gt, wal, slice, subslice);
+	__add_mcr_wa(gt, wal, 0, subslice);
 }
 
 static void
@@ -1120,7 +1121,6 @@ xehp_init_mcr(struct intel_gt *gt, struct i915_wa_list *wal)
 {
 	const struct sseu_dev_info *sseu = &gt->info.sseu;
 	unsigned long slice, subslice = 0, slice_mask = 0;
-	u64 dss_mask = 0;
 	u32 lncf_mask = 0;
 	int i;
 
@@ -1151,8 +1151,8 @@ xehp_init_mcr(struct intel_gt *gt, struct i915_wa_list *wal)
 	 */
 
 	/* Find the potential gslice candidates */
-	dss_mask = intel_sseu_get_subslices(sseu, 0);
-	slice_mask = intel_slicemask_from_dssmask(dss_mask, GEN_DSS_PER_GSLICE);
+	slice_mask = intel_slicemask_from_xehp_dssmask(sseu->subslice_mask,
+						       GEN_DSS_PER_GSLICE);
 
 	/*
 	 * Find the potential LNCF candidates.  Either LNCF within a valid
@@ -1177,9 +1177,8 @@ xehp_init_mcr(struct intel_gt *gt, struct i915_wa_list *wal)
 	}
 
 	slice = __ffs(slice_mask);
-	subslice = __ffs(dss_mask >> (slice * GEN_DSS_PER_GSLICE));
+	subslice = intel_sseu_find_first_xehp_dss(sseu, GEN_DSS_PER_GSLICE, slice);
 	WARN_ON(subslice > GEN_DSS_PER_GSLICE);
-	WARN_ON(dss_mask >> (slice * GEN_DSS_PER_GSLICE) == 0);
 
 	__add_mcr_wa(gt, wal, slice, subslice);
 
@@ -1494,7 +1493,9 @@ gt_init_workarounds(struct intel_gt *gt, struct i915_wa_list *wal)
 {
 	struct drm_i915_private *i915 = gt->i915;
 
-	if (IS_DG2(i915))
+	if (IS_PONTEVECCHIO(i915))
+		; /* none yet */
+	else if (IS_DG2(i915))
 		dg2_gt_workarounds_init(gt, wal);
 	else if (IS_XEHPSDV(i915))
 		xehpsdv_gt_workarounds_init(gt, wal);
@@ -1924,6 +1925,32 @@ static void dg2_whitelist_build(struct intel_engine_cs *engine)
 	}
 }
 
+static void blacklist_trtt(struct intel_engine_cs *engine)
+{
+	struct i915_wa_list *w = &engine->whitelist;
+
+	/*
+	 * Prevent read/write access to [0x4400, 0x4600) which covers
+	 * the TRTT range across all engines. Note that normally userspace
+	 * cannot access the other engines' trtt control, but for simplicity
+	 * we cover the entire range on each engine.
+	 */
+	whitelist_reg_ext(w, _MMIO(0x4400),
+			  RING_FORCE_TO_NONPRIV_DENY |
+			  RING_FORCE_TO_NONPRIV_RANGE_64);
+	whitelist_reg_ext(w, _MMIO(0x4500),
+			  RING_FORCE_TO_NONPRIV_DENY |
+			  RING_FORCE_TO_NONPRIV_RANGE_64);
+}
+
+static void pvc_whitelist_build(struct intel_engine_cs *engine)
+{
+	allow_read_ctx_timestamp(engine);
+
+	/* Wa_16014440446:pvc */
+	blacklist_trtt(engine);
+}
+
 void intel_engine_init_whitelist(struct intel_engine_cs *engine)
 {
 	struct drm_i915_private *i915 = engine->i915;
@@ -1931,7 +1958,9 @@ void intel_engine_init_whitelist(struct intel_engine_cs *engine)
 
 	wa_init_start(w, "whitelist", engine->name);
 
-	if (IS_DG2(i915))
+	if (IS_PONTEVECCHIO(i915))
+		pvc_whitelist_build(engine);
+	else if (IS_DG2(i915))
 		dg2_whitelist_build(engine);
 	else if (IS_XEHPSDV(i915))
 		xehpsdv_whitelist_build(engine);
@@ -1994,27 +2023,44 @@ void intel_engine_apply_whitelist(struct intel_engine_cs *engine)
 static void
 engine_fake_wa_init(struct intel_engine_cs *engine, struct i915_wa_list *wal)
 {
-	u8 mocs;
+	u8 mocs_w, mocs_r;
 
 	/*
-	 * RING_CMD_CCTL are need to be programed to un-cached
-	 * for memory writes and reads outputted by Command
-	 * Streamers on Gen12 onward platforms.
+	 * RING_CMD_CCTL specifies the default MOCS entry that will be used
+	 * by the command streamer when executing commands that don't have
+	 * a way to explicitly specify a MOCS setting.  The default should
+	 * usually reference whichever MOCS entry corresponds to uncached
+	 * behavior, although use of a WB cached entry is recommended by the
+	 * spec in certain circumstances on specific platforms.
 	 */
 	if (GRAPHICS_VER(engine->i915) >= 12) {
-		mocs = engine->gt->mocs.uc_index;
+		mocs_r = engine->gt->mocs.uc_index;
+		mocs_w = engine->gt->mocs.uc_index;
+
+		if (HAS_L3_CCS_READ(engine->i915) &&
+		    engine->class == COMPUTE_CLASS) {
+			mocs_r = engine->gt->mocs.wb_index;
+
+			/*
+			 * Even on the few platforms where MOCS 0 is a
+			 * legitimate table entry, it's never the correct
+			 * setting to use here; we can assume the MOCS init
+			 * just forgot to initialize wb_index.
+			 */
+			drm_WARN_ON(&engine->i915->drm, mocs_r == 0);
+		}
+
 		wa_masked_field_set(wal,
 				    RING_CMD_CCTL(engine->mmio_base),
 				    CMD_CCTL_MOCS_MASK,
-				    CMD_CCTL_MOCS_OVERRIDE(mocs, mocs));
+				    CMD_CCTL_MOCS_OVERRIDE(mocs_w, mocs_r));
 	}
 }
 
 static bool needs_wa_1308578152(struct intel_engine_cs *engine)
 {
-	u64 dss_mask = intel_sseu_get_subslices(&engine->gt->info.sseu, 0);
-
-	return (dss_mask & GENMASK(GEN_DSS_PER_GSLICE - 1, 0)) == 0;
+	return intel_sseu_find_first_xehp_dss(&engine->gt->info.sseu, 0, 0) >
+		GEN_DSS_PER_GSLICE;
 }
 
 static void
@@ -2023,9 +2069,6 @@ rcs_engine_wa_init(struct intel_engine_cs *engine, struct i915_wa_list *wal)
 	struct drm_i915_private *i915 = engine->i915;
 
 	if (IS_DG2(i915)) {
-		/* Wa_14015227452:dg2 */
-		wa_masked_en(wal, GEN9_ROW_CHICKEN4, XEHP_DIS_BBL_SYSPIPE);
-
 		/* Wa_1509235366:dg2 */
 		wa_write_or(wal, GEN12_GAMCNTRL_CTRL, INVALIDATION_BROADCAST_MODE_DIS |
 			    GLOBAL_INVALIDATION_MODE);
@@ -2158,6 +2201,16 @@ rcs_engine_wa_init(struct intel_engine_cs *engine, struct i915_wa_list *wal)
 	    IS_DG2_GRAPHICS_STEP(engine->i915, G11, STEP_A0, STEP_B0)) {
 		/* Wa_14012362059:dg2 */
 		wa_write_or(wal, GEN12_MERT_MOD_CTRL, FORCE_MISS_FTLB);
+	}
+
+	if (IS_DG2_GRAPHICS_STEP(i915, G11, STEP_B0, STEP_FOREVER) ||
+	    IS_DG2_G10(i915)) {
+		/* Wa_22014600077:dg2 */
+		wa_add(wal, GEN10_CACHE_MODE_SS, 0,
+		       _MASKED_BIT_ENABLE(ENABLE_EU_COUNT_FOR_TDL_FLUSH),
+		       0 /* Wa_14012342262 :write-only reg, so skip
+			    verification */,
+		       true);
 	}
 
 	if (IS_DG1_GRAPHICS_STEP(i915, STEP_A0, STEP_B0) ||
@@ -2583,6 +2636,15 @@ xcs_engine_wa_init(struct intel_engine_cs *engine, struct i915_wa_list *wal)
 	}
 }
 
+static void
+ccs_engine_wa_init(struct intel_engine_cs *engine, struct i915_wa_list *wal)
+{
+	if (IS_PVC_CT_STEP(engine->i915, STEP_A0, STEP_C0)) {
+		/* Wa_14014999345:pvc */
+		wa_masked_en(wal, GEN10_CACHE_MODE_SS, DISABLE_ECC);
+	}
+}
+
 /*
  * The workarounds in this function apply to shared registers in
  * the general render reset domain that aren't tied to a
@@ -2629,8 +2691,11 @@ general_render_compute_wa_init(struct intel_engine_cs *engine, struct i915_wa_li
 				GLOBAL_INVALIDATION_MODE);
 	}
 
-	if (IS_DG2(i915)) {
-		/* Wa_22014226127:dg2 */
+	if (IS_DG2(i915) || IS_PONTEVECCHIO(i915)) {
+		/* Wa_14015227452:dg2,pvc */
+		wa_masked_en(wal, GEN9_ROW_CHICKEN4, XEHP_DIS_BBL_SYSPIPE);
+
+		/* Wa_22014226127:dg2,pvc */
 		wa_write_or(wal, LSC_CHICKEN_BIT_0, DISABLE_D8_D16_COASLESCE);
 	}
 }
@@ -2651,7 +2716,9 @@ engine_init_workarounds(struct intel_engine_cs *engine, struct i915_wa_list *wal
 	if (engine->flags & I915_ENGINE_FIRST_RENDER_COMPUTE)
 		general_render_compute_wa_init(engine, wal);
 
-	if (engine->class == RENDER_CLASS)
+	if (engine->class == COMPUTE_CLASS)
+		ccs_engine_wa_init(engine, wal);
+	else if (engine->class == RENDER_CLASS)
 		rcs_engine_wa_init(engine, wal);
 	else
 		xcs_engine_wa_init(engine, wal);

@@ -101,14 +101,24 @@ static struct intel_memory_region *setup_lmem(struct intel_gt *gt)
 		return ERR_PTR(-ENODEV);
 
 	if (HAS_FLAT_CCS(i915)) {
+		resource_size_t lmem_range;
 		u64 tile_stolen, flat_ccs_base;
 
-		lmem_size = pci_resource_len(pdev, 2);
+		lmem_range = intel_gt_read_register(&i915->gt0, XEHPSDV_TILE0_ADDR_RANGE) & 0xFFFF;
+		lmem_size = lmem_range >> XEHPSDV_TILE_LMEM_RANGE_SHIFT;
+		lmem_size *= SZ_1G;
+
 		flat_ccs_base = intel_gt_read_register(gt, XEHPSDV_FLAT_CCS_BASE_ADDR);
 		flat_ccs_base = (flat_ccs_base >> XEHPSDV_CCS_BASE_SHIFT) * SZ_64K;
 
+		/* FIXME: Remove this when we have small-bar enabled */
+		if (pci_resource_len(pdev, 2) < lmem_size) {
+			drm_err(&i915->drm, "System requires small-BAR support, which is currently unsupported on this kernel\n");
+			return ERR_PTR(-EINVAL);
+		}
+
 		if (GEM_WARN_ON(lmem_size < flat_ccs_base))
-			return ERR_PTR(-ENODEV);
+			return ERR_PTR(-EIO);
 
 		tile_stolen = lmem_size - flat_ccs_base;
 
@@ -131,7 +141,7 @@ static struct intel_memory_region *setup_lmem(struct intel_gt *gt)
 	io_start = pci_resource_start(pdev, 2);
 	io_size = min(pci_resource_len(pdev, 2), lmem_size);
 	if (!io_size)
-		return ERR_PTR(-ENODEV);
+		return ERR_PTR(-EIO);
 
 	min_page_size = HAS_64K_PAGES(i915) ? I915_GTT_PAGE_SIZE_64K :
 						I915_GTT_PAGE_SIZE_4K;

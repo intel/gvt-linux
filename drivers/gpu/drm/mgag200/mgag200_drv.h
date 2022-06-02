@@ -168,18 +168,11 @@ static inline struct mgag200_crtc_state *to_mgag200_crtc_state(struct drm_crtc_s
 	return container_of(base, struct mgag200_crtc_state, base);
 }
 
-#define to_mga_connector(x) container_of(x, struct mga_connector, base)
-
 struct mga_i2c_chan {
 	struct i2c_adapter adapter;
 	struct drm_device *dev;
 	struct i2c_algo_bit_data bit;
 	int data, clock;
-};
-
-struct mga_connector {
-	struct drm_connector base;
-	struct mga_i2c_chan *i2c;
 };
 
 struct mga_mc {
@@ -237,8 +230,9 @@ struct mga_device {
 		} g200se;
 	} model;
 
-	struct mga_connector connector;
 	struct mgag200_pll pixpll;
+	struct mga_i2c_chan i2c;
+	struct drm_connector connector;
 	struct drm_simple_display_pipe display_pipe;
 };
 
@@ -251,8 +245,7 @@ static inline struct mga_device *to_mga_device(struct drm_device *dev)
 int mgag200_modeset_init(struct mga_device *mdev);
 
 				/* mgag200_i2c.c */
-struct mga_i2c_chan *mgag200_i2c_create(struct drm_device *dev);
-void mgag200_i2c_destroy(struct mga_i2c_chan *i2c);
+int mgag200_i2c_init(struct mga_device *mdev, struct mga_i2c_chan *i2c);
 
 				/* mgag200_mm.c */
 int mgag200_mm_init(struct mga_device *mdev);

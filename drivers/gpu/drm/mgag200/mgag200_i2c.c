@@ -86,10 +86,16 @@ static int mga_gpio_getscl(void *data)
 	return (mga_i2c_read_gpio(mdev) & i2c->clock) ? 1 : 0;
 }
 
-struct mga_i2c_chan *mgag200_i2c_create(struct drm_device *dev)
+static void mgag200_i2c_release(void *res)
 {
-	struct mga_device *mdev = to_mga_device(dev);
-	struct mga_i2c_chan *i2c;
+	struct mga_i2c_chan *i2c = res;
+
+	i2c_del_adapter(&i2c->adapter);
+}
+
+int mgag200_i2c_init(struct mga_device *mdev, struct mga_i2c_chan *i2c)
+{
+	struct drm_device *dev = &mdev->base;
 	int ret;
 	int data, clock;
 
@@ -118,10 +124,6 @@ struct mga_i2c_chan *mgag200_i2c_create(struct drm_device *dev)
 		break;
 	}
 
-	i2c = kzalloc(sizeof(struct mga_i2c_chan), GFP_KERNEL);
-	if (!i2c)
-		return NULL;
-
 	i2c->data = data;
 	i2c->clock = clock;
 	i2c->adapter.owner = THIS_MODULE;
@@ -142,18 +144,8 @@ struct mga_i2c_chan *mgag200_i2c_create(struct drm_device *dev)
 	i2c->bit.getscl		= mga_gpio_getscl;
 
 	ret = i2c_bit_add_bus(&i2c->adapter);
-	if (ret) {
-		kfree(i2c);
-		i2c = NULL;
-	}
-	return i2c;
-}
+	if (ret)
+		return ret;
 
-void mgag200_i2c_destroy(struct mga_i2c_chan *i2c)
-{
-	if (!i2c)
-		return;
-	i2c_del_adapter(&i2c->adapter);
-	kfree(i2c);
+	return devm_add_action_or_reset(dev->dev, mgag200_i2c_release, i2c);
 }
-

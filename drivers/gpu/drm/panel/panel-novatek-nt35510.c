@@ -966,7 +966,7 @@ static int nt35510_probe(struct mipi_dsi_device *dsi)
 	return 0;
 }
 
-static int nt35510_remove(struct mipi_dsi_device *dsi)
+static void nt35510_remove(struct mipi_dsi_device *dsi)
 {
 	struct nt35510 *nt = mipi_dsi_get_drvdata(dsi);
 	int ret;
@@ -974,9 +974,10 @@ static int nt35510_remove(struct mipi_dsi_device *dsi)
 	mipi_dsi_detach(dsi);
 	/* Power off */
 	ret = nt35510_power_off(nt);
-	drm_panel_remove(&nt->panel);
+	if (ret)
+		dev_err(&dsi->dev, "Failed to power off\n");
 
-	return ret;
+	drm_panel_remove(&nt->panel);
 }
 
 /*

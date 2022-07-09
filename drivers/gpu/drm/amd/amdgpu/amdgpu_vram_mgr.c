@@ -48,6 +48,35 @@ to_amdgpu_device(struct amdgpu_vram_mgr *mgr)
 	return container_of(mgr, struct amdgpu_device, mman.vram_mgr);
 }
 
+static inline struct drm_buddy_block *
+amdgpu_vram_mgr_first_block(struct list_head *list)
+{
+	return list_first_entry_or_null(list, struct drm_buddy_block, link);
+}
+
+static inline bool amdgpu_is_vram_mgr_blocks_contiguous(struct list_head *head)
+{
+	struct drm_buddy_block *block;
+	u64 start, size;
+
+	block = amdgpu_vram_mgr_first_block(head);
+	if (!block)
+		return false;
+
+	while (head != block->link.next) {
+		start = amdgpu_vram_mgr_block_start(block);
+		size = amdgpu_vram_mgr_block_size(block);
+
+		block = list_entry(block->link.next, struct drm_buddy_block, link);
+		if (start + size != amdgpu_vram_mgr_block_start(block))
+			return false;
+	}
+
+	return true;
+}
+
+
+
 /**
  * DOC: mem_info_vram_total
  *
@@ -456,8 +485,59 @@ static int amdgpu_vram_mgr_new(struct ttm_resource_manager *man,
 	}
 	spin_unlock(&mgr->lock);
 
-	if (i == 1)
-		node->base.placement |= TTM_PL_FLAG_CONTIGUOUS;
+	if (cur_size != size) {
+		struct drm_buddy_block *block;
+		struct list_head *trim_list;
+		u64 original_size;
+		LIST_HEAD(temp);
+
+		trim_list = &vres->blocks;
+		original_size = vres->base.num_pages << PAGE_SHIFT;
+
+		/*
+		 * If size value is rounded up to min_block_size, trim the last
+		 * block to the required size
+		 */
+		if (!list_is_singular(&vres->blocks)) {
+			block = list_last_entry(&vres->blocks, typeof(*block), link);
+			list_move_tail(&block->link, &temp);
+			trim_list = &temp;
+			/*
+			 * Compute the original_size value by subtracting the
+			 * last block size with (aligned size - original size)
+			 */
+			original_size = amdgpu_vram_mgr_block_size(block) - (size - cur_size);
+		}
+
+		mutex_lock(&mgr->lock);
+		drm_buddy_block_trim(mm,
+				     original_size,
+				     trim_list);
+		mutex_unlock(&mgr->lock);
+
+		if (!list_empty(&temp))
+			list_splice_tail(trim_list, &vres->blocks);
+	}
+
+	vres->base.start = 0;
+	list_for_each_entry(block, &vres->blocks, link) {
+		unsigned long start;
+
+		start = amdgpu_vram_mgr_block_start(block) +
+			amdgpu_vram_mgr_block_size(block);
+		start >>= PAGE_SHIFT;
+
+		if (start > vres->base.num_pages)
+			start -= vres->base.num_pages;
+		else
+			start = 0;
+		vres->base.start = max(vres->base.start, start);
+
+		vis_usage += amdgpu_vram_mgr_vis_size(adev, block);
+	}
+
+	if (amdgpu_is_vram_mgr_blocks_contiguous(&vres->blocks))
+		vres->base.placement |= TTM_PL_FLAG_CONTIGUOUS;
 
 	if (adev->gmc.xgmi.connected_to_cpu)
 		node->base.bus.caching = ttm_cached;

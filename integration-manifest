@@ -1,26 +1,16 @@
-drm drm-fixes b8f0009bc9edf9186b20ae2a9e442ef0af93040e
-	Merge tag 'drm-misc-fixes-2022-06-30' of git://anongit.freedesktop.org/drm/drm-misc into drm-fixes
-drm-misc drm-misc-fixes 925b6e59138cefa47275c67891c65d48d3266d57
-	Revert "drm/amdgpu: add drm buddy support to amdgpu"
-drm-intel drm-intel-fixes 12058077b2e963d16d2d673d46233a7f46add7c9
-	drm/i915: Fix vm use-after-free in vma destruction
-drm drm-next f929217499cf54a30be995aae65e9951ba079c90
-	Merge tag 'drm-misc-next-2022-06-30' of git://anongit.freedesktop.org/drm/drm-misc into drm-next
-drm-misc drm-misc-next-fixes 5ee8c8f930ba7d20717c4fc2d9f1ce0e757d1155
-	drm/rockchip: Change register space names in vop2
-drm-intel drm-intel-next-fixes f2906aa863381afb0015a9eb7fefad885d4e5a56
-	Linux 5.19-rc1
-drm-misc drm-misc-next 6de745238aa30529778a26622a430dfcb171b089
-	drm/fb: Improve drm_framebuffer.offsets documentation
-drm-intel drm-intel-next 859161b952a453b86362f168fadef72a8ba31a05
-	drm/i915/dg2: Bump up CDCLK for DG2
-drm-intel drm-intel-gt-next 7835303982d11ed700ce6bc530303272bfa8562f
-	drm/i915/mtl: Add MeteorLake PCI IDs
-sound-upstream for-linus 7cf3dead1ad70c72edb03e2d98e1f3dcd332cdb2
-	Linux 5.13
-sound-upstream for-next 7cf3dead1ad70c72edb03e2d98e1f3dcd332cdb2
-	Linux 5.13
-drm-intel topic/core-for-CI c10ab299f4c8758563311265f1b05da8c3dfd6ba
-	HAX net/phy: Suppress WARN from phy_error
-drm-misc topic/i915-ttm 1e3944578b749449bd7fa6bf0bae4c3d3f5f1733
-	Merge tag 'amd-drm-next-5.16-2021-09-27' of https://gitlab.freedesktop.org/agd5f/linux into drm-next
+drm-tip/drm-tip ebea934e2651857c9b56cc80bf99460ee18a3592
+	drm-tip: 2022y-07m-09d-14h-01m-16s UTC integration manifest
+vfio-upstream/for-linus afe4e376ac5d568367b447ca90c12858d0935b86
+	vfio: Move IOMMU_CAP_CACHE_COHERENCY test to after we know we have a group
+intel-iommu/iommu/next a593472591a5cf2d91244bc3f319c9dd91119343
+	Merge branches 'iommu/fixes', 'arm/omap', 'arm/exynos', 'x86/amd', 'x86/vt-d' and 'core' into next
+intel-iommu/iommu/fixes c51b8f85c4157eb91c2f4ab34b0c52fea642e77c
+	MAINTAINERS: Remove iommu@lists.linux-foundation.org
+origin/gvt-fixes e87197fbd137c888fd6c871c72fe7e89445dd015
+	drm/i915/gvt: IS_ERR() vs NULL bug in intel_gvt_update_reg_whitelist()
+origin/gvt-next 65ee729aafa9748545436dbbb383a463728888c8
+	drm/i915/reg: Fix spelling mistake "Unsupport" -> "Unsupported"
+origin/gvt-gt-next f25e3908b9cd4a3fe819e9bdcdde58f20bacb34c
+	drm/i915: Get PM ref before accessing HW register
+origin/gvt-next-fixes d385c16173f28a18866abf54c764200c276dace0
+	drm/i915/gvt: Prevent divided by zero when calculating refresh rate

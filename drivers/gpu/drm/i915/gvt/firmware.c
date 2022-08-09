@@ -233,7 +233,7 @@ int intel_gvt_load_firmware(struct intel_gvt *gvt)
 
 	gvt_dbg_core("request hw state firmware %s...\n", path);
 
-	ret = request_firmware(&fw, path, gvt->gt->i915->drm.dev);
+	ret = firmware_request_nowarn(&fw, path, gvt->gt->i915->drm.dev);
 	kfree(path);
 
 	if (ret)

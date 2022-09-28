@@ -31,16 +31,6 @@ unsigned long iova_rcache_range(void)
 	return PAGE_SIZE << (IOVA_RANGE_CACHE_MAX_SIZE - 1);
 }
 
-static int iova_cpuhp_dead(unsigned int cpu, struct hlist_node *node)
-{
-	struct iova_domain *iovad;
-
-	iovad = hlist_entry_safe(node, struct iova_domain, cpuhp_dead);
-
-	free_cpu_cached_iovas(cpu, iovad);
-	return 0;
-}
-
 static void free_global_cached_iovas(struct iova_domain *iovad);
 
 static struct iova *to_iova(struct rb_node *node)
@@ -255,21 +245,10 @@ int iova_cache_get(void)
 {
 	mutex_lock(&iova_cache_mutex);
 	if (!iova_cache_users) {
-		int ret;
-
-		ret = cpuhp_setup_state_multi(CPUHP_IOMMU_IOVA_DEAD, "iommu/iova:dead", NULL,
-					iova_cpuhp_dead);
-		if (ret) {
-			mutex_unlock(&iova_cache_mutex);
-			pr_err("Couldn't register cpuhp handler\n");
-			return ret;
-		}
-
 		iova_cache = kmem_cache_create(
 			"iommu_iova", sizeof(struct iova), 0,
 			SLAB_HWCACHE_ALIGN, NULL);
 		if (!iova_cache) {
-			cpuhp_remove_multi_state(CPUHP_IOMMU_IOVA_DEAD);
 			mutex_unlock(&iova_cache_mutex);
 			pr_err("Couldn't create iova cache\n");
 			return -ENOMEM;
@@ -292,7 +271,6 @@ void iova_cache_put(void)
 	}
 	iova_cache_users--;
 	if (!iova_cache_users) {
-		cpuhp_remove_multi_state(CPUHP_IOMMU_IOVA_DEAD);
 		kmem_cache_destroy(iova_cache);
 	}
 	mutex_unlock(&iova_cache_mutex);
@@ -495,8 +473,6 @@ EXPORT_SYMBOL_GPL(free_iova_fast);
 
 static void iova_domain_free_rcaches(struct iova_domain *iovad)
 {
-	cpuhp_state_remove_instance_nocalls(CPUHP_IOMMU_IOVA_DEAD,
-					    &iovad->cpuhp_dead);
 	free_iova_rcaches(iovad);
 }
 
@@ -748,10 +724,6 @@ int iova_domain_init_rcaches(struct iova_domain *iovad)
 		}
 	}
 
-	ret = cpuhp_state_add_instance_nocalls(CPUHP_IOMMU_IOVA_DEAD,
-					       &iovad->cpuhp_dead);
-	if (ret)
-		goto out_err;
 	return 0;
 
 out_err:

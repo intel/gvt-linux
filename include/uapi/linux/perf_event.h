@@ -167,6 +167,9 @@ enum perf_event_sample_format {
 };
 
 #define PERF_SAMPLE_WEIGHT_TYPE	(PERF_SAMPLE_WEIGHT | PERF_SAMPLE_WEIGHT_STRUCT)
+
+#define __PERF_SAMPLE_CALLCHAIN_EARLY	(1ULL << 63) /* non-ABI; internal use */
+
 /*
  * values to program into branch_sample_type when PERF_SAMPLE_BRANCH is set
  *

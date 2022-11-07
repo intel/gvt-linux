@@ -61,24 +61,6 @@ struct intel_remapped_info;
 struct intel_rotation_info;
 struct pci_dev;
 
-enum i915_gpio {
-	GPIOA,
-	GPIOB,
-	GPIOC,
-	GPIOD,
-	GPIOE,
-	GPIOF,
-	GPIOG,
-	GPIOH,
-	__GPIOI_UNUSED,
-	GPIOJ,
-	GPIOK,
-	GPIOL,
-	GPIOM,
-	GPION,
-	GPIOO,
-};
-
 /*
  * Keep the pipe enum values fixed: the code assumes that PIPE_A=0, the
  * rest have consecutive values and match the enum values of transcoders
@@ -277,17 +259,6 @@ enum tc_port_mode {
 	TC_PORT_TBT_ALT,
 	TC_PORT_DP_ALT,
 	TC_PORT_LEGACY,
-};
-
-enum dpio_channel {
-	DPIO_CH0,
-	DPIO_CH1
-};
-
-enum dpio_phy {
-	DPIO_PHY0,
-	DPIO_PHY1,
-	DPIO_PHY2,
 };
 
 enum aux_ch {

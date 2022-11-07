@@ -1,0 +1,28 @@
+drm drm-fixes 6295f1d8b4503ad8a18519b781dd2d1fe5e88c52
+	Merge tag 'drm-intel-fixes-2022-11-03' of git://anongit.freedesktop.org/drm/drm-intel into drm-fixes
+drm-misc drm-misc-fixes c4299907c09a638c0a30f029338d07941c049d73
+	drm/panfrost: Remove type name from internal struct again
+drm-intel drm-intel-fixes f0c4d9fc9cc9462659728d168387191387e903cc
+	Linux 6.1-rc4
+drm drm-next 60ba8c5bd94e17ab4b024f5cecf8b48e2cf36412
+	Merge tag 'drm-intel-gt-next-2022-11-03' of git://anongit.freedesktop.org/drm/drm-intel into drm-next
+drm-misc drm-misc-next-fixes 39dd0cc2e5bd0d5188dd69f27e18783cea7ff06a
+	drm/amdgpu: Fix VRAM eviction issue
+drm-intel drm-intel-next-fixes ea19684afb545605bbcb690c49a91ce2c8e596dd
+	drm/i915/display: consider DG2_RC_CCS_CC when migrating buffers
+drm-misc drm-misc-next 611fc22c9e5e13276c819a7f7a7d19b794bbed1a
+	drm/arm/hdlcd: remove calls to drm_mode_config_cleanup()
+drm-intel drm-intel-next 882ecff709b50b36128e07a6b0035f476c769f50
+	drm/i915: Use intel_crtc_needs_modeset() more
+drm-intel drm-intel-gt-next 8b693ea26c209757a4c96cf4463cc597a3625e19
+	drm/i915/guc: don't hardcode BCS0 in guc_hang selftest
+sound-upstream for-linus 7cf3dead1ad70c72edb03e2d98e1f3dcd332cdb2
+	Linux 5.13
+sound-upstream for-next 7cf3dead1ad70c72edb03e2d98e1f3dcd332cdb2
+	Linux 5.13
+drm-intel topic/core-for-CI eba8a3edfcbbd58c2151780971fc89af5995607a
+	freezer, sched: Rewrite core freezer logic v2
+drm-misc topic/i915-ttm 1e3944578b749449bd7fa6bf0bae4c3d3f5f1733
+	Merge tag 'amd-drm-next-5.16-2021-09-27' of https://gitlab.freedesktop.org/agd5f/linux into drm-next
+drm topic/nouveau-misc dfc4005f8c172eea359f9db08c3b2b0ff0153699
+	drm/nouveau/disp: move DAC load detection method

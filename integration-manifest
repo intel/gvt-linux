@@ -1,28 +1,16 @@
-drm drm-fixes 6295f1d8b4503ad8a18519b781dd2d1fe5e88c52
-	Merge tag 'drm-intel-fixes-2022-11-03' of git://anongit.freedesktop.org/drm/drm-intel into drm-fixes
-drm-misc drm-misc-fixes c4299907c09a638c0a30f029338d07941c049d73
-	drm/panfrost: Remove type name from internal struct again
-drm-intel drm-intel-fixes f0c4d9fc9cc9462659728d168387191387e903cc
+drm-tip/drm-tip fb2b3ddb471df2f8d305b1bb7f3705e7e0fbf6e4
+	drm-tip: 2022y-11m-07d-20h-49m-19s UTC integration manifest
+vfio-upstream/for-linus 873aefb376bbc0ed1dd2381ea1d6ec88106fdbd4
+	vfio/type1: Unpin zero pages
+intel-iommu/iommu/next a593472591a5cf2d91244bc3f319c9dd91119343
+	Merge branches 'iommu/fixes', 'arm/omap', 'arm/exynos', 'x86/amd', 'x86/vt-d' and 'core' into next
+intel-iommu/iommu/fixes 30a0b95b1335e12efef89dd78518ed3e4a71a763
+	Linux 6.1-rc3
+origin/gvt-fixes f0c4d9fc9cc9462659728d168387191387e903cc
 	Linux 6.1-rc4
-drm drm-next 60ba8c5bd94e17ab4b024f5cecf8b48e2cf36412
-	Merge tag 'drm-intel-gt-next-2022-11-03' of git://anongit.freedesktop.org/drm/drm-intel into drm-next
-drm-misc drm-misc-next-fixes 39dd0cc2e5bd0d5188dd69f27e18783cea7ff06a
-	drm/amdgpu: Fix VRAM eviction issue
-drm-intel drm-intel-next-fixes ea19684afb545605bbcb690c49a91ce2c8e596dd
-	drm/i915/display: consider DG2_RC_CCS_CC when migrating buffers
-drm-misc drm-misc-next 611fc22c9e5e13276c819a7f7a7d19b794bbed1a
-	drm/arm/hdlcd: remove calls to drm_mode_config_cleanup()
-drm-intel drm-intel-next 882ecff709b50b36128e07a6b0035f476c769f50
-	drm/i915: Use intel_crtc_needs_modeset() more
-drm-intel drm-intel-gt-next 8b693ea26c209757a4c96cf4463cc597a3625e19
-	drm/i915/guc: don't hardcode BCS0 in guc_hang selftest
-sound-upstream for-linus 7cf3dead1ad70c72edb03e2d98e1f3dcd332cdb2
-	Linux 5.13
-sound-upstream for-next 7cf3dead1ad70c72edb03e2d98e1f3dcd332cdb2
-	Linux 5.13
-drm-intel topic/core-for-CI eba8a3edfcbbd58c2151780971fc89af5995607a
-	freezer, sched: Rewrite core freezer logic v2
-drm-misc topic/i915-ttm 1e3944578b749449bd7fa6bf0bae4c3d3f5f1733
-	Merge tag 'amd-drm-next-5.16-2021-09-27' of https://gitlab.freedesktop.org/agd5f/linux into drm-next
-drm topic/nouveau-misc dfc4005f8c172eea359f9db08c3b2b0ff0153699
-	drm/nouveau/disp: move DAC load detection method
+origin/gvt-next 50468ca2e2e1ce882f060a8c263f678affe112db
+	drm/i915/gvt: Remove the unused function get_pt_type()
+origin/gvt-gt-next f25e3908b9cd4a3fe819e9bdcdde58f20bacb34c
+	drm/i915: Get PM ref before accessing HW register
+origin/gvt-next-fixes d385c16173f28a18866abf54c764200c276dace0
+	drm/i915/gvt: Prevent divided by zero when calculating refresh rate

@@ -638,7 +638,7 @@ static bool __kvmgt_vgpu_exist(struct intel_vgpu *vgpu)
 
 	mutex_lock(&vgpu->gvt->lock);
 	for_each_active_vgpu(vgpu->gvt, itr, id) {
-		if (!itr->attached)
+		if (!test_bit(INTEL_VGPU_STATUS_ATTACHED, itr->status))
 			continue;
 
 		if (vgpu->vfio_device.kvm == itr->vfio_device.kvm) {
@@ -655,9 +655,6 @@ static int intel_vgpu_open_device(struct vfio_device *vfio_dev)
 {
 	struct intel_vgpu *vgpu = vfio_dev_to_vgpu(vfio_dev);
 
-	if (vgpu->attached)
-		return -EEXIST;
-
 	if (!vgpu->vfio_device.kvm ||
 	    vgpu->vfio_device.kvm->mm != current->mm) {
 		gvt_vgpu_err("KVM is required to use Intel vGPU\n");
@@ -669,8 +666,6 @@ static int intel_vgpu_open_device(struct vfio_device *vfio_dev)
 	if (__kvmgt_vgpu_exist(vgpu))
 		return -EEXIST;
 
-	vgpu->attached = true;
-
 	kvmgt_protect_table_init(vgpu);
 	gvt_cache_init(vgpu);
 
@@ -678,6 +673,8 @@ static int intel_vgpu_open_device(struct vfio_device *vfio_dev)
 	vgpu->track_node.track_flush_slot = kvmgt_page_track_flush_slot;
 	kvm_page_track_register_notifier(vgpu->vfio_device.kvm,
 					 &vgpu->track_node);
+
+	set_bit(INTEL_VGPU_STATUS_ATTACHED, vgpu->status);
 
 	debugfs_create_ulong(KVMGT_DEBUGFS_FILENAME, 0444, vgpu->debugfs,
 			     &vgpu->nr_cache_entries);
@@ -702,10 +699,9 @@ static void intel_vgpu_close_device(struct vfio_device *vfio_dev)
 {
 	struct intel_vgpu *vgpu = vfio_dev_to_vgpu(vfio_dev);
 
-	if (!vgpu->attached)
-		return;
-
 	intel_gvt_release_vgpu(vgpu);
+
+	clear_bit(INTEL_VGPU_STATUS_ATTACHED, vgpu->status);
 
 	debugfs_remove(debugfs_lookup(KVMGT_DEBUGFS_FILENAME, vgpu->debugfs));
 
@@ -715,8 +711,6 @@ static void intel_vgpu_close_device(struct vfio_device *vfio_dev)
 	gvt_cache_destroy(vgpu);
 
 	intel_vgpu_release_msi_eventfd_ctx(vgpu);
-
-	vgpu->attached = false;
 
 	if (vgpu->vfio_device.kvm)
 		kvm_put_kvm(vgpu->vfio_device.kvm);
@@ -1502,9 +1496,6 @@ static void intel_vgpu_remove(struct mdev_device *mdev)
 {
 	struct intel_vgpu *vgpu = dev_get_drvdata(&mdev->dev);
 
-	if (WARN_ON_ONCE(vgpu->attached))
-		return;
-
 	vfio_unregister_group_dev(&vgpu->vfio_device);
 	vfio_put_device(&vgpu->vfio_device);
 }
@@ -1549,7 +1540,7 @@ int intel_gvt_page_track_add(struct intel_vgpu *info, u64 gfn)
 	struct kvm_memory_slot *slot;
 	int idx;
 
-	if (!info->attached)
+	if (!test_bit(INTEL_VGPU_STATUS_ATTACHED, info->status))
 		return -ESRCH;
 
 	idx = srcu_read_lock(&kvm->srcu);
@@ -1579,8 +1570,8 @@ int intel_gvt_page_track_remove(struct intel_vgpu *info, u64 gfn)
 	struct kvm_memory_slot *slot;
 	int idx;
 
-	if (!info->attached)
-		return 0;
+	if (!test_bit(INTEL_VGPU_STATUS_ATTACHED, info->status))
+		return -ESRCH;
 
 	idx = srcu_read_lock(&kvm->srcu);
 	slot = gfn_to_memslot(kvm, gfn);
@@ -1658,7 +1649,7 @@ int intel_gvt_dma_map_guest_page(struct intel_vgpu *vgpu, unsigned long gfn,
 	struct gvt_dma *entry;
 	int ret;
 
-	if (!vgpu->attached)
+	if (!test_bit(INTEL_VGPU_STATUS_ATTACHED, vgpu->status))
 		return -EINVAL;
 
 	mutex_lock(&vgpu->cache_lock);
@@ -1704,8 +1695,8 @@ int intel_gvt_dma_pin_guest_page(struct intel_vgpu *vgpu, dma_addr_t dma_addr)
 	struct gvt_dma *entry;
 	int ret = 0;
 
-	if (!vgpu->attached)
-		return -ENODEV;
+	if (!test_bit(INTEL_VGPU_STATUS_ATTACHED, vgpu->status))
+		return -EINVAL;
 
 	mutex_lock(&vgpu->cache_lock);
 	entry = __gvt_cache_find_dma_addr(vgpu, dma_addr);
@@ -1732,7 +1723,7 @@ void intel_gvt_dma_unmap_guest_page(struct intel_vgpu *vgpu,
 {
 	struct gvt_dma *entry;
 
-	if (!vgpu->attached)
+	if (!test_bit(INTEL_VGPU_STATUS_ATTACHED, vgpu->status))
 		return;
 
 	mutex_lock(&vgpu->cache_lock);
@@ -1768,7 +1759,7 @@ static void intel_gvt_test_and_emulate_vblank(struct intel_gvt *gvt)
 	idr_for_each_entry((&(gvt)->vgpu_idr), (vgpu), (id)) {
 		if (test_and_clear_bit(INTEL_GVT_REQUEST_EMULATE_VBLANK + id,
 				       (void *)&gvt->service_request)) {
-			if (vgpu->active)
+			if (test_bit(INTEL_VGPU_STATUS_ACTIVE, vgpu->status))
 				intel_vgpu_emulate_vblank(vgpu);
 		}
 	}

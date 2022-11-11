@@ -1,28 +1,16 @@
-drm drm-fixes b7ffd9d9ee13de2c5ad88046a5149de4cfb2a74b
-	Merge tag 'drm-intel-fixes-2022-11-10' of git://anongit.freedesktop.org/drm/drm-intel into drm-fixes
-drm-misc drm-misc-fixes 4979524f5a2a8210e87fde2f642b0dc060860821
-	drm: Fix potential null-ptr-deref in drm_vblank_destroy_worker()
-drm-intel drm-intel-fixes 178e31ce82d0308a9e5f2f15bfb4493160136729
-	drm/i915/userptr: restore probe_range behaviour
-drm drm-next a143bc517bf31c4575191efbaac216a11ec016e0
-	Merge branch '00.06-gr-ampere' of https://gitlab.freedesktop.org/skeggsb/nouveau into drm-next
-drm-misc drm-misc-next-fixes 39dd0cc2e5bd0d5188dd69f27e18783cea7ff06a
-	drm/amdgpu: Fix VRAM eviction issue
-drm-intel drm-intel-next-fixes ea19684afb545605bbcb690c49a91ce2c8e596dd
-	drm/i915/display: consider DG2_RC_CCS_CC when migrating buffers
-drm-misc drm-misc-next d23a6e3f764b69c122fc18537cc73548fdc95939
-	drm/v3d: add missing mutex_destroy
-drm-intel drm-intel-next 764afecbbcd26bea57fcd928680d413b2c851590
-	drm/i915: Create resized LUTs for ivb+ split gamma mode
-drm-intel drm-intel-gt-next 9bae30de136a645e29f632313c0ebb02fc00641b
-	drm/i915/perf: Fix kernel-doc warning
-sound-upstream for-linus 7cf3dead1ad70c72edb03e2d98e1f3dcd332cdb2
-	Linux 5.13
-sound-upstream for-next 7cf3dead1ad70c72edb03e2d98e1f3dcd332cdb2
-	Linux 5.13
-drm-intel topic/core-for-CI eba8a3edfcbbd58c2151780971fc89af5995607a
-	freezer, sched: Rewrite core freezer logic v2
-drm-misc topic/i915-ttm 1e3944578b749449bd7fa6bf0bae4c3d3f5f1733
-	Merge tag 'amd-drm-next-5.16-2021-09-27' of https://gitlab.freedesktop.org/agd5f/linux into drm-next
-drm topic/nouveau-misc dfc4005f8c172eea359f9db08c3b2b0ff0153699
-	drm/nouveau/disp: move DAC load detection method
+drm-tip/drm-tip cdcedc1a52e4f4ec01a8f8c51065d651c31bea87
+	drm-tip: 2022y-11m-11d-00h-44m-00s UTC integration manifest
+vfio-upstream/for-linus e806e223621e4f5105170df69d7311dc3fb4bbb4
+	vfio/pci: Check the device set open count on reset
+intel-iommu/iommu/next a593472591a5cf2d91244bc3f319c9dd91119343
+	Merge branches 'iommu/fixes', 'arm/omap', 'arm/exynos', 'x86/amd', 'x86/vt-d' and 'core' into next
+intel-iommu/iommu/fixes 30a0b95b1335e12efef89dd78518ed3e4a71a763
+	Linux 6.1-rc3
+origin/gvt-fixes 3c9fd44b9330adc5006653566f3d386784b2080e
+	drm/i915/gvt: Unconditionally put reference to KVM when detaching vGPU
+origin/gvt-next 50468ca2e2e1ce882f060a8c263f678affe112db
+	drm/i915/gvt: Remove the unused function get_pt_type()
+origin/gvt-gt-next f25e3908b9cd4a3fe819e9bdcdde58f20bacb34c
+	drm/i915: Get PM ref before accessing HW register
+origin/gvt-next-fixes d385c16173f28a18866abf54c764200c276dace0
+	drm/i915/gvt: Prevent divided by zero when calculating refresh rate

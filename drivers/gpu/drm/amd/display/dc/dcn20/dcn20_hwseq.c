@@ -1079,6 +1079,29 @@ void dcn20_blank_pixel_data(
 				0);
 	}
 
+	if (!blank && dc->debug.enable_single_display_2to1_odm_policy) {
+		/* when exiting dynamic ODM need to reinit DPG state for unused pipes */
+		struct pipe_ctx *old_odm_pipe = dc->current_state->res_ctx.pipe_ctx[pipe_ctx->pipe_idx].next_odm_pipe;
+
+		odm_pipe = pipe_ctx->next_odm_pipe;
+
+		while (old_odm_pipe) {
+			if (!odm_pipe || old_odm_pipe->pipe_idx != odm_pipe->pipe_idx)
+				dc->hwss.set_disp_pattern_generator(dc,
+						old_odm_pipe,
+						CONTROLLER_DP_TEST_PATTERN_VIDEOMODE,
+						CONTROLLER_DP_COLOR_SPACE_UDEFINED,
+						COLOR_DEPTH_888,
+						NULL,
+						0,
+						0,
+						0);
+			old_odm_pipe = old_odm_pipe->next_odm_pipe;
+			if (odm_pipe)
+				odm_pipe = odm_pipe->next_odm_pipe;
+		}
+	}
+
 	if (!blank)
 		if (stream_res->abm) {
 			dc->hwss.set_pipe(pipe_ctx);
@@ -1640,10 +1663,7 @@ static void dcn20_program_pipe(
 				pipe_ctx->pipe_dlg_param.vupdate_width);
 
 		if (pipe_ctx->stream->mall_stream_config.type != SUBVP_PHANTOM) {
-			pipe_ctx->stream_res.tg->funcs->wait_for_state(
-				pipe_ctx->stream_res.tg, CRTC_STATE_VBLANK);
-			pipe_ctx->stream_res.tg->funcs->wait_for_state(
-				pipe_ctx->stream_res.tg, CRTC_STATE_VACTIVE);
+			pipe_ctx->stream_res.tg->funcs->wait_for_state(pipe_ctx->stream_res.tg, CRTC_STATE_VACTIVE);
 		}
 
 		pipe_ctx->stream_res.tg->funcs->set_vtg_params(
@@ -2601,14 +2621,6 @@ void dcn20_enable_stream(struct pipe_ctx *pipe_ctx)
 
 	if (dc->hwseq->funcs.set_pixels_per_cycle)
 		dc->hwseq->funcs.set_pixels_per_cycle(pipe_ctx);
-
-	/* enable audio only within mode set */
-	if (pipe_ctx->stream_res.audio != NULL) {
-		if (is_dp_128b_132b_signal(pipe_ctx))
-			pipe_ctx->stream_res.hpo_dp_stream_enc->funcs->dp_audio_enable(pipe_ctx->stream_res.hpo_dp_stream_enc);
-		else if (dc_is_dp_signal(pipe_ctx->stream->signal))
-			pipe_ctx->stream_res.stream_enc->funcs->dp_audio_enable(pipe_ctx->stream_res.stream_enc);
-	}
 }
 
 void dcn20_program_dmdata_engine(struct pipe_ctx *pipe_ctx)

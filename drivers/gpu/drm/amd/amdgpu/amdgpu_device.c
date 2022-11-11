@@ -1568,7 +1568,7 @@ static int amdgpu_device_check_arguments(struct amdgpu_device *adev)
  * @pdev: pci dev pointer
  * @state: vga_switcheroo state
  *
- * Callback for the switcheroo driver.  Suspends or resumes the
+ * Callback for the switcheroo driver.  Suspends or resumes
  * the asics before or after it is powered up using ACPI methods.
  */
 static void amdgpu_switcheroo_set_state(struct pci_dev *pdev,
@@ -2397,7 +2397,7 @@ static int amdgpu_device_ip_init(struct amdgpu_device *adev)
 			adev->ip_blocks[i].status.hw = true;
 
 			/* right after GMC hw init, we create CSA */
-			if (amdgpu_mcbp || amdgpu_sriov_vf(adev)) {
+			if (amdgpu_mcbp) {
 				r = amdgpu_allocate_static_csa(adev, &adev->virt.csa_obj,
 								AMDGPU_GEM_DOMAIN_VRAM,
 								AMDGPU_CSA_SIZE);
@@ -4197,6 +4197,8 @@ int amdgpu_device_resume(struct drm_device *dev, bool fbcon)
 	}
 
 	/* Make sure IB tests flushed */
+	if (amdgpu_sriov_vf(adev))
+		amdgpu_irq_gpu_reset_resume_helper(adev);
 	flush_delayed_work(&adev->delayed_init_work);
 
 	if (adev->in_s0ix) {

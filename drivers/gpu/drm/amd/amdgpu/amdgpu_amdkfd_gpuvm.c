@@ -418,9 +418,9 @@ static uint64_t get_pte_flags(struct amdgpu_device *adev, struct kgd_mem *mem)
 	if (mem->alloc_flags & KFD_IOC_ALLOC_MEM_FLAGS_EXECUTABLE)
 		mapping_flags |= AMDGPU_VM_PAGE_EXECUTABLE;
 
-	switch (adev->asic_type) {
-	case CHIP_ARCTURUS:
-	case CHIP_ALDEBARAN:
+	switch (adev->ip_versions[GC_HWIP][0]) {
+	case IP_VERSION(9, 4, 1):
+	case IP_VERSION(9, 4, 2):
 		if (mem->alloc_flags & KFD_IOC_ALLOC_MEM_FLAGS_VRAM) {
 			if (bo_adev == adev) {
 				if (uncached)
@@ -429,7 +429,7 @@ static uint64_t get_pte_flags(struct amdgpu_device *adev, struct kgd_mem *mem)
 					mapping_flags |= AMDGPU_VM_MTYPE_CC;
 				else
 					mapping_flags |= AMDGPU_VM_MTYPE_RW;
-				if (adev->asic_type == CHIP_ALDEBARAN &&
+				if ((adev->ip_versions[GC_HWIP][0] == IP_VERSION(9, 4, 2)) &&
 				    adev->gmc.xgmi.connected_to_cpu)
 					snoop = true;
 			} else {
@@ -1906,16 +1906,6 @@ int amdgpu_amdkfd_gpuvm_map_memory_to_gpu(
 	 * worker to do the mapping
 	 */
 	mutex_lock(&mem->process_info->lock);
-
-	/* Lock mmap-sem. If we find an invalid userptr BO, we can be
-	 * sure that the MMU notifier is no longer running
-	 * concurrently and the queues are actually stopped
-	 */
-	if (amdgpu_ttm_tt_get_usermm(bo->tbo.ttm)) {
-		mmap_write_lock(current->mm);
-		is_invalid_userptr = atomic_read(&mem->invalid);
-		mmap_write_unlock(current->mm);
-	}
 
 	mutex_lock(&mem->lock);
 

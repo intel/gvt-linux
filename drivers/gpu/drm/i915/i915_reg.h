@@ -1713,6 +1713,20 @@
 #define   PALETTE_RED_MASK		REG_GENMASK(23, 16)
 #define   PALETTE_GREEN_MASK		REG_GENMASK(15, 8)
 #define   PALETTE_BLUE_MASK		REG_GENMASK(7, 0)
+/* pre-i965 10bit interpolated mode ldw */
+#define   PALETTE_10BIT_RED_LDW_MASK	REG_GENMASK(23, 16)
+#define   PALETTE_10BIT_GREEN_LDW_MASK	REG_GENMASK(15, 8)
+#define   PALETTE_10BIT_BLUE_LDW_MASK	REG_GENMASK(7, 0)
+/* pre-i965 10bit interpolated mode udw */
+#define   PALETTE_10BIT_RED_EXP_MASK	REG_GENMASK(23, 22)
+#define   PALETTE_10BIT_RED_MANT_MASK	REG_GENMASK(21, 18)
+#define   PALETTE_10BIT_RED_UDW_MASK	REG_GENMASK(17, 16)
+#define   PALETTE_10BIT_GREEN_EXP_MASK	REG_GENMASK(15, 14)
+#define   PALETTE_10BIT_GREEN_MANT_MASK	REG_GENMASK(13, 10)
+#define   PALETTE_10BIT_GREEN_UDW_MASK	REG_GENMASK(9, 8)
+#define   PALETTE_10BIT_BLUE_EXP_MASK	REG_GENMASK(7, 6)
+#define   PALETTE_10BIT_BLUE_MANT_MASK	REG_GENMASK(5, 2)
+#define   PALETTE_10BIT_BLUE_UDW_MASK	REG_GENMASK(1, 0)
 #define PALETTE(pipe, i)	_MMIO(DISPLAY_MMIO_BASE(dev_priv) + \
 				      _PICK((pipe), _PALETTE_A,		\
 					    _PALETTE_B, _CHV_PALETTE_C) + \
@@ -2574,46 +2588,6 @@
 #define   SDVO_PIPE_SEL_SHIFT_CHV		24
 #define   SDVO_PIPE_SEL_MASK_CHV		(3 << 24)
 #define   SDVO_PIPE_SEL_CHV(pipe)		((pipe) << 24)
-
-
-/* DVO port control */
-#define _DVOA			0x61120
-#define DVOA			_MMIO(_DVOA)
-#define _DVOB			0x61140
-#define DVOB			_MMIO(_DVOB)
-#define _DVOC			0x61160
-#define DVOC			_MMIO(_DVOC)
-#define   DVO_ENABLE			(1 << 31)
-#define   DVO_PIPE_SEL_SHIFT		30
-#define   DVO_PIPE_SEL_MASK		(1 << 30)
-#define   DVO_PIPE_SEL(pipe)		((pipe) << 30)
-#define   DVO_PIPE_STALL_UNUSED		(0 << 28)
-#define   DVO_PIPE_STALL		(1 << 28)
-#define   DVO_PIPE_STALL_TV		(2 << 28)
-#define   DVO_PIPE_STALL_MASK		(3 << 28)
-#define   DVO_USE_VGA_SYNC		(1 << 15)
-#define   DVO_DATA_ORDER_I740		(0 << 14)
-#define   DVO_DATA_ORDER_FP		(1 << 14)
-#define   DVO_VSYNC_DISABLE		(1 << 11)
-#define   DVO_HSYNC_DISABLE		(1 << 10)
-#define   DVO_VSYNC_TRISTATE		(1 << 9)
-#define   DVO_HSYNC_TRISTATE		(1 << 8)
-#define   DVO_BORDER_ENABLE		(1 << 7)
-#define   DVO_DATA_ORDER_GBRG		(1 << 6)
-#define   DVO_DATA_ORDER_RGGB		(0 << 6)
-#define   DVO_DATA_ORDER_GBRG_ERRATA	(0 << 6)
-#define   DVO_DATA_ORDER_RGGB_ERRATA	(1 << 6)
-#define   DVO_VSYNC_ACTIVE_HIGH		(1 << 4)
-#define   DVO_HSYNC_ACTIVE_HIGH		(1 << 3)
-#define   DVO_BLANK_ACTIVE_HIGH		(1 << 2)
-#define   DVO_OUTPUT_CSTATE_PIXELS	(1 << 1)	/* SDG only */
-#define   DVO_OUTPUT_SOURCE_SIZE_PIXELS	(1 << 0)	/* SDG only */
-#define   DVO_PRESERVE_MASK		(0x7 << 24)
-#define DVOA_SRCDIM		_MMIO(0x61124)
-#define DVOB_SRCDIM		_MMIO(0x61144)
-#define DVOC_SRCDIM		_MMIO(0x61164)
-#define   DVO_SRCDIM_HORIZONTAL_SHIFT	12
-#define   DVO_SRCDIM_VERTICAL_SHIFT	0
 
 /* LVDS port control */
 #define LVDS			_MMIO(0x61180)

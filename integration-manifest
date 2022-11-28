@@ -1,28 +1,16 @@
-drm drm-fixes b7b275e60bcd5f89771e865a8239325f86d9927d
-	Linux 6.1-rc7
-drm-misc drm-misc-fixes a6a00d7e8ffd78d1cdb7a43f1278f081038c638f
-	fbcon: Use kzalloc() in fbcon_prepare_logo()
-drm-intel drm-intel-fixes b7b275e60bcd5f89771e865a8239325f86d9927d
-	Linux 6.1-rc7
-drm drm-next 2847b6681547022e5c8f1f6dc104c9256a120c0a
-	Merge tag 'mediatek-drm-next-6.2' of https://git.kernel.org/pub/scm/linux/kernel/git/chunkuang.hu/linux into drm-next
-drm-misc drm-misc-next-fixes b02897e56b4e1fa6445be695ce5d605bb098435c
-	Revert "drm/fb-helper: Perform damage handling in deferred-I/O helper"
-drm-intel drm-intel-next-fixes 3d335a523b938a445a674be24d1dd5c7a4c86fb6
-	Merge tag 'drm-intel-next-2022-11-18' of git://anongit.freedesktop.org/drm/drm-intel into drm-next
-drm-misc drm-misc-next 7783cc67862f9166c901bfa0f80b717aa8d354dd
-	drm: mxsfb: DRM_MXSFB should depend on ARCH_MXS || ARCH_MXC
-drm-intel drm-intel-next af2c3b557e2e66b91ea76f39d110b6023574ded4
-	drm/i915/dvo: Log about what was detected on which DVO port
-drm-intel drm-intel-gt-next f301a29f143760ce8d3d6b6a8436d45d3448cde6
-	drm/i915: Never return 0 if not all requests retired
-sound-upstream for-linus 7cf3dead1ad70c72edb03e2d98e1f3dcd332cdb2
-	Linux 5.13
-sound-upstream for-next 7cf3dead1ad70c72edb03e2d98e1f3dcd332cdb2
-	Linux 5.13
-drm-intel topic/core-for-CI 3e150fbfaf0111fb4ef069dcc77ff558fb02bc3f
-	mei: bus-fixup: change pxp mode only if message was sent
-drm-misc topic/i915-ttm 1e3944578b749449bd7fa6bf0bae4c3d3f5f1733
-	Merge tag 'amd-drm-next-5.16-2021-09-27' of https://gitlab.freedesktop.org/agd5f/linux into drm-next
-drm topic/nouveau-misc dfc4005f8c172eea359f9db08c3b2b0ff0153699
-	drm/nouveau/disp: move DAC load detection method
+drm-tip/drm-tip a25c2a69c2f1c9f8e8bc07df1b7185c8749692f3
+	drm-tip: 2022y-11m-28d-09h-18m-06s UTC integration manifest
+vfio-upstream/for-linus e806e223621e4f5105170df69d7311dc3fb4bbb4
+	vfio/pci: Check the device set open count on reset
+intel-iommu/iommu/next a593472591a5cf2d91244bc3f319c9dd91119343
+	Merge branches 'iommu/fixes', 'arm/omap', 'arm/exynos', 'x86/amd', 'x86/vt-d' and 'core' into next
+intel-iommu/iommu/fixes 7fc961cf7ffcb130c4e93ee9a5628134f9de700a
+	iommu/vt-d: Set SRE bit only when hardware has SRS cap
+origin/gvt-fixes 40b97ba06773d0f5f8e8ed71824f67dd05bc01bc
+	drm/i915: unpin on error in intel_vgpu_shadow_mm_pin()
+origin/gvt-next 3a090dae8a44ea1f32dee9dbef27e2da9988634b
+	drm/i915/gvt: use atomic operations to change the vGPU status
+origin/gvt-gt-next f25e3908b9cd4a3fe819e9bdcdde58f20bacb34c
+	drm/i915: Get PM ref before accessing HW register
+origin/gvt-next-fixes d385c16173f28a18866abf54c764200c276dace0
+	drm/i915/gvt: Prevent divided by zero when calculating refresh rate

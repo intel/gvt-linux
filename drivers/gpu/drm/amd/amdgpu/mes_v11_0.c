@@ -129,6 +129,10 @@ static int mes_v11_0_submit_pkt_and_poll_completion(struct amdgpu_mes *mes,
 	if (r < 1) {
 		DRM_ERROR("MES failed to response msg=%d\n",
 			  x_pkt->header.opcode);
+
+		while (halt_if_hws_hang)
+			schedule();
+
 		return -ETIMEDOUT;
 	}
 
@@ -485,10 +489,6 @@ static int mes_v11_0_init_microcode(struct amdgpu_device *adev,
 
 	mes_hdr = (const struct mes_firmware_header_v1_0 *)
 		adev->mes.fw[pipe]->data;
-	adev->mes.ucode_fw_version[pipe] =
-		le32_to_cpu(mes_hdr->mes_ucode_version);
-	adev->mes.ucode_fw_version[pipe] =
-		le32_to_cpu(mes_hdr->mes_ucode_data_version);
 	adev->mes.uc_start_addr[pipe] =
 		le32_to_cpu(mes_hdr->mes_uc_start_addr_lo) |
 		((uint64_t)(le32_to_cpu(mes_hdr->mes_uc_start_addr_hi)) << 32);
@@ -1253,7 +1253,9 @@ static int mes_v11_0_kiq_hw_fini(struct amdgpu_device *adev)
 	if (adev->mes.ring.sched.ready)
 		mes_v11_0_kiq_dequeue_sched(adev);
 
-	mes_v11_0_enable(adev, false);
+	if (!amdgpu_sriov_vf(adev))
+		mes_v11_0_enable(adev, false);
+
 	return 0;
 }
 

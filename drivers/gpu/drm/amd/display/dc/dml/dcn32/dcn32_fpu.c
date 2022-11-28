@@ -531,9 +531,12 @@ void dcn32_set_phantom_stream_timing(struct dc *dc,
 	unsigned int i, pipe_idx;
 	struct pipe_ctx *pipe;
 	uint32_t phantom_vactive, phantom_bp, pstate_width_fw_delay_lines;
+	unsigned int num_dpp;
 	unsigned int vlevel = context->bw_ctx.dml.vba.VoltageLevel;
 	unsigned int dcfclk = context->bw_ctx.dml.vba.DCFCLKState[vlevel][context->bw_ctx.dml.vba.maxMpcComb];
 	unsigned int socclk = context->bw_ctx.dml.vba.SOCCLKPerState[vlevel];
+	struct vba_vars_st *vba = &context->bw_ctx.dml.vba;
+	struct dc_stream_state *main_stream = ref_pipe->stream;
 
 	dc_assert_fp_enabled();
 
@@ -569,13 +572,23 @@ void dcn32_set_phantom_stream_timing(struct dc *dc,
 	phantom_vactive = get_subviewport_lines_needed_in_mall(&context->bw_ctx.dml, pipes, pipe_cnt, pipe_idx) +
 				pstate_width_fw_delay_lines + dc->caps.subvp_swath_height_margin_lines;
 
+	// W/A for DCC corruption with certain high resolution timings.
+	// Determing if pipesplit is used. If so, add meta_row_height to the phantom vactive.
+	num_dpp = vba->NoOfDPP[vba->VoltageLevel][vba->maxMpcComb][vba->pipe_plane[pipe_idx]];
+	phantom_vactive += num_dpp > 1 ? vba->meta_row_height[vba->pipe_plane[pipe_idx]] : 0;
+
 	// For backporch of phantom pipe, use vstartup of the main pipe
 	phantom_bp = get_vstartup(&context->bw_ctx.dml, pipes, pipe_cnt, pipe_idx);
 
 	phantom_stream->dst.y = 0;
 	phantom_stream->dst.height = phantom_vactive;
+	/* When scaling, DML provides the end to end required number of lines for MALL.
+	 * dst.height is always correct for this case, but src.height is not which causes a
+	 * delta between main and phantom pipe scaling outputs. Need to adjust src.height on
+	 * phantom for this case.
+	 */
 	phantom_stream->src.y = 0;
-	phantom_stream->src.height = phantom_vactive;
+	phantom_stream->src.height = (double)phantom_vactive * (double)main_stream->src.height / (double)main_stream->dst.height;
 
 	phantom_stream->timing.v_addressable = phantom_vactive;
 	phantom_stream->timing.v_front_porch = 1;
@@ -1191,9 +1204,7 @@ static void dcn32_full_validate_bw_helper(struct dc *dc,
 			}
 		} else {
 			// Most populate phantom DLG params before programming hardware / timing for phantom pipe
-			DC_FP_START();
 			dcn32_helper_populate_phantom_dlg_params(dc, context, pipes, *pipe_cnt);
-			DC_FP_END();
 
 			/* Call validate_apply_pipe_split flags after calling DML getters for
 			 * phantom dlg params, or some of the VBA params indicating pipe split
@@ -1230,7 +1241,7 @@ static void dcn32_calculate_dlg_params(struct dc *dc, struct dc_state *context,
 				       display_e2e_pipe_params_st *pipes,
 				       int pipe_cnt, int vlevel)
 {
-	int i, pipe_idx;
+	int i, pipe_idx, active_hubp_count = 0;
 	bool usr_retraining_support = false;
 	bool unbounded_req_enabled = false;
 
@@ -1275,6 +1286,8 @@ static void dcn32_calculate_dlg_params(struct dc *dc, struct dc_state *context,
 	for (i = 0, pipe_idx = 0; i < dc->res_pool->pipe_count; i++) {
 		if (!context->res_ctx.pipe_ctx[i].stream)
 			continue;
+		if (context->res_ctx.pipe_ctx[i].plane_state)
+			active_hubp_count++;
 		pipes[pipe_idx].pipe.dest.vstartup_start = get_vstartup(&context->bw_ctx.dml, pipes, pipe_cnt,
 				pipe_idx);
 		pipes[pipe_idx].pipe.dest.vupdate_offset = get_vupdate_offset(&context->bw_ctx.dml, pipes, pipe_cnt,
@@ -1299,6 +1312,16 @@ static void dcn32_calculate_dlg_params(struct dc *dc, struct dc_state *context,
 		context->res_ctx.pipe_ctx[i].plane_res.bw.dppclk_khz = pipes[pipe_idx].clks_cfg.dppclk_mhz * 1000;
 		context->res_ctx.pipe_ctx[i].pipe_dlg_param = pipes[pipe_idx].pipe.dest;
 		pipe_idx++;
+	}
+	/* If DCN isn't making memory requests we can allow pstate change and lower clocks */
+	if (!active_hubp_count) {
+		context->bw_ctx.bw.dcn.clk.socclk_khz = 0;
+		context->bw_ctx.bw.dcn.clk.dppclk_khz = 0;
+		context->bw_ctx.bw.dcn.clk.dcfclk_khz = 0;
+		context->bw_ctx.bw.dcn.clk.dcfclk_deep_sleep_khz = 0;
+		context->bw_ctx.bw.dcn.clk.dramclk_khz = 0;
+		context->bw_ctx.bw.dcn.clk.fclk_khz = 0;
+		context->bw_ctx.bw.dcn.clk.p_state_change_support = true;
 	}
 	/*save a original dppclock copy*/
 	context->bw_ctx.bw.dcn.clk.bw_dppclk_khz = context->bw_ctx.bw.dcn.clk.dppclk_khz;
@@ -1494,11 +1517,8 @@ bool dcn32_internal_validate_bw(struct dc *dc,
 
 	dml_log_pipe_params(&context->bw_ctx.dml, pipes, pipe_cnt);
 
-	if (!fast_validate) {
-		DC_FP_START();
+	if (!fast_validate)
 		dcn32_full_validate_bw_helper(dc, context, pipes, &vlevel, split, merge, &pipe_cnt);
-		DC_FP_END();
-	}
 
 	if (fast_validate ||
 			(dc->debug.dml_disallow_alternate_prefetch_modes &&
@@ -1734,6 +1754,9 @@ bool dcn32_internal_validate_bw(struct dc *dc,
 	}
 
 	if (repopulate_pipes) {
+		int flag_max_mpc_comb = vba->maxMpcComb;
+		int flag_vlevel = vlevel;
+
 		pipe_cnt = dc->res_pool->funcs->populate_dml_pipes(dc, context, pipes, fast_validate);
 
 		/* repopulate_pipes = 1 means the pipes were either split or merged. In this case
@@ -1741,10 +1764,28 @@ bool dcn32_internal_validate_bw(struct dc *dc,
 		 * ensure all the params are calculated correctly. We do not need to run the
 		 * pipe split check again after this call (pipes are already split / merged).
 		 * */
-		if (!fast_validate) {
-			context->bw_ctx.dml.soc.allow_for_pstate_or_stutter_in_vblank_final =
-						dm_prefetch_support_uclk_fclk_and_stutter_if_possible;
-			vlevel = dml_get_voltage_level(&context->bw_ctx.dml, pipes, pipe_cnt);
+		context->bw_ctx.dml.soc.allow_for_pstate_or_stutter_in_vblank_final =
+					dm_prefetch_support_uclk_fclk_and_stutter_if_possible;
+		vlevel = dml_get_voltage_level(&context->bw_ctx.dml, pipes, pipe_cnt);
+		if (vlevel == context->bw_ctx.dml.soc.num_states) {
+			/* failed after DET size changes */
+			goto validate_fail;
+		} else if (flag_max_mpc_comb == 0 &&
+				flag_max_mpc_comb != context->bw_ctx.dml.vba.maxMpcComb) {
+			/* check the context constructed with pipe split flags is still valid*/
+			bool flags_valid = false;
+			for (int i = flag_vlevel; i < context->bw_ctx.dml.soc.num_states; i++) {
+				if (vba->ModeSupport[i][flag_max_mpc_comb]) {
+					vba->maxMpcComb = flag_max_mpc_comb;
+					vba->VoltageLevel = i;
+					vlevel = i;
+					flags_valid = true;
+				}
+			}
+
+			/* this should never happen */
+			if (!flags_valid)
+				goto validate_fail;
 		}
 	}
 	*vlevel_out = vlevel;
@@ -2159,9 +2200,7 @@ static int build_synthetic_soc_states(struct clk_bw_params *bw_params,
 		entry.fabricclk_mhz = 0;
 		entry.dram_speed_mts = 0;
 
-		DC_FP_START();
 		insert_entry_into_table_sorted(table, num_entries, &entry);
-		DC_FP_END();
 	}
 
 	// Insert the max DCFCLK
@@ -2169,9 +2208,7 @@ static int build_synthetic_soc_states(struct clk_bw_params *bw_params,
 	entry.fabricclk_mhz = 0;
 	entry.dram_speed_mts = 0;
 
-	DC_FP_START();
 	insert_entry_into_table_sorted(table, num_entries, &entry);
-	DC_FP_END();
 
 	// Insert the UCLK DPMS
 	for (i = 0; i < num_uclk_dpms; i++) {
@@ -2179,9 +2216,7 @@ static int build_synthetic_soc_states(struct clk_bw_params *bw_params,
 		entry.fabricclk_mhz = 0;
 		entry.dram_speed_mts = bw_params->clk_table.entries[i].memclk_mhz * 16;
 
-		DC_FP_START();
 		insert_entry_into_table_sorted(table, num_entries, &entry);
-		DC_FP_END();
 	}
 
 	// If FCLK is coarse grained, insert individual DPMs.
@@ -2191,9 +2226,7 @@ static int build_synthetic_soc_states(struct clk_bw_params *bw_params,
 			entry.fabricclk_mhz = bw_params->clk_table.entries[i].fclk_mhz;
 			entry.dram_speed_mts = 0;
 
-			DC_FP_START();
 			insert_entry_into_table_sorted(table, num_entries, &entry);
-			DC_FP_END();
 		}
 	}
 	// If FCLK fine grained, only insert max
@@ -2202,9 +2235,7 @@ static int build_synthetic_soc_states(struct clk_bw_params *bw_params,
 		entry.fabricclk_mhz = max_fclk_mhz;
 		entry.dram_speed_mts = 0;
 
-		DC_FP_START();
 		insert_entry_into_table_sorted(table, num_entries, &entry);
-		DC_FP_END();
 	}
 
 	// At this point, the table contains all "points of interest" based on
@@ -2539,3 +2570,11 @@ void dcn32_update_bw_bounding_box_fpu(struct dc *dc, struct clk_bw_params *bw_pa
 	}
 }
 
+void dcn32_zero_pipe_dcc_fraction(display_e2e_pipe_params_st *pipes,
+				  int pipe_cnt)
+{
+	dc_assert_fp_enabled();
+
+	pipes[pipe_cnt].pipe.src.dcc_fraction_of_zs_req_luma = 0;
+	pipes[pipe_cnt].pipe.src.dcc_fraction_of_zs_req_chroma = 0;
+}

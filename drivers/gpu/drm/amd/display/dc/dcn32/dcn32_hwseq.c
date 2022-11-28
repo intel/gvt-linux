@@ -980,15 +980,14 @@ void dcn32_init_hw(struct dc *dc)
 	if (dc->res_pool->hubbub->funcs->init_crb)
 		dc->res_pool->hubbub->funcs->init_crb(dc->res_pool->hubbub);
 
+	if (dc->res_pool->hubbub->funcs->set_request_limit && dc->config.sdpif_request_limit_words_per_umc > 0)
+		dc->res_pool->hubbub->funcs->set_request_limit(dc->res_pool->hubbub, dc->ctx->dc_bios->vram_info.num_chans, dc->config.sdpif_request_limit_words_per_umc);
+
 	// Get DMCUB capabilities
 	if (dc->ctx->dmub_srv) {
 		dc_dmub_srv_query_caps_cmd(dc->ctx->dmub_srv->dmub);
 		dc->caps.dmub_caps.psr = dc->ctx->dmub_srv->dmub->feature_caps.psr;
 	}
-
-	/* Enable support for ODM and windowed MPO if policy flag is set */
-	if (dc->debug.enable_single_display_2to1_odm_policy)
-		dc->config.enable_windowed_mpo_odm = true;
 }
 
 static int calc_mpc_flow_ctrl_cnt(const struct dc_stream_state *stream,
@@ -1180,7 +1179,7 @@ unsigned int dcn32_calculate_dccg_k1_k2_values(struct pipe_ctx *pipe_ctx, unsign
 			*k2_div = PIXEL_RATE_DIV_BY_2;
 		else
 			*k2_div = PIXEL_RATE_DIV_BY_4;
-	} else if (dc_is_dp_signal(pipe_ctx->stream->signal)) {
+	} else if (dc_is_dp_signal(pipe_ctx->stream->signal) || dc_is_virtual_signal(pipe_ctx->stream->signal)) {
 		if (two_pix_per_container) {
 			*k1_div = PIXEL_RATE_DIV_BY_1;
 			*k2_div = PIXEL_RATE_DIV_BY_2;
@@ -1360,6 +1359,33 @@ void dcn32_update_phantom_vp_position(struct dc *dc,
 				phantom_pipe->plane_state->update_flags.bits.position_change = 1;
 				resource_build_scaling_params(phantom_pipe);
 				return;
+			}
+		}
+	}
+}
+
+/* Treat the phantom pipe as if it needs to be fully enabled.
+ * If the pipe was previously in use but not phantom, it would
+ * have been disabled earlier in the sequence so we need to run
+ * the full enable sequence.
+ */
+void dcn32_apply_update_flags_for_phantom(struct pipe_ctx *phantom_pipe)
+{
+	phantom_pipe->update_flags.raw = 0;
+	if (phantom_pipe->stream && phantom_pipe->stream->mall_stream_config.type == SUBVP_PHANTOM) {
+		if (phantom_pipe->stream && phantom_pipe->plane_state) {
+			phantom_pipe->update_flags.bits.enable = 1;
+			phantom_pipe->update_flags.bits.mpcc = 1;
+			phantom_pipe->update_flags.bits.dppclk = 1;
+			phantom_pipe->update_flags.bits.hubp_interdependent = 1;
+			phantom_pipe->update_flags.bits.hubp_rq_dlg_ttu = 1;
+			phantom_pipe->update_flags.bits.gamut_remap = 1;
+			phantom_pipe->update_flags.bits.scaler = 1;
+			phantom_pipe->update_flags.bits.viewport = 1;
+			phantom_pipe->update_flags.bits.det_size = 1;
+			if (!phantom_pipe->top_pipe && !phantom_pipe->prev_odm_pipe) {
+				phantom_pipe->update_flags.bits.odm = 1;
+				phantom_pipe->update_flags.bits.global_sync = 1;
 			}
 		}
 	}

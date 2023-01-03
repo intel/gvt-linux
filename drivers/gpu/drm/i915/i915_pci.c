@@ -132,9 +132,9 @@
 		[PIPE_D] = TGL_CURSOR_D_OFFSET, \
 	}
 
-#define I9XX_COLORS \
+#define I845_COLORS \
 	.display.color = { .gamma_lut_size = 256 }
-#define I965_COLORS \
+#define I9XX_COLORS \
 	.display.color = { .gamma_lut_size = 129, \
 		   .gamma_lut_tests = DRM_COLOR_LUT_NON_DECREASING, \
 	}
@@ -210,7 +210,7 @@
 	.dma_mask_size = 32, \
 	I845_PIPE_OFFSETS, \
 	I845_CURSOR_OFFSETS, \
-	I9XX_COLORS, \
+	I845_COLORS, \
 	GEN_DEFAULT_PAGE_SIZES, \
 	GEN_DEFAULT_REGIONS
 
@@ -341,7 +341,7 @@ static const struct intel_device_info pnv_m_info = {
 	.dma_mask_size = 36, \
 	I9XX_PIPE_OFFSETS, \
 	I9XX_CURSOR_OFFSETS, \
-	I965_COLORS, \
+	I9XX_COLORS, \
 	GEN_DEFAULT_PAGE_SIZES, \
 	GEN_DEFAULT_REGIONS
 
@@ -547,7 +547,7 @@ static const struct intel_device_info vlv_info = {
 	.display.mmio_offset = VLV_DISPLAY_BASE,
 	I9XX_PIPE_OFFSETS,
 	I9XX_CURSOR_OFFSETS,
-	I965_COLORS,
+	I9XX_COLORS,
 	GEN_DEFAULT_PAGE_SIZES,
 	GEN_DEFAULT_REGIONS,
 };
@@ -889,7 +889,7 @@ static const struct intel_device_info jsl_info = {
 	TGL_CURSOR_OFFSETS, \
 	.has_global_mocs = 1, \
 	.has_pxp = 1, \
-	.display.has_dsb = 0 /* FIXME: LUT load is broken with DSB */
+	.display.has_dsb = 1
 
 static const struct intel_device_info tgl_info = {
 	GEN12_FEATURES,
@@ -948,7 +948,7 @@ static const struct intel_device_info adl_s_info = {
 #define XE_LPD_FEATURES \
 	.display.abox_mask = GENMASK(1, 0),					\
 	.display.color = {							\
-		.degamma_lut_size = 128, .gamma_lut_size = 1024,		\
+		.degamma_lut_size = 129, .gamma_lut_size = 1024,		\
 		.degamma_lut_tests = DRM_COLOR_LUT_NON_DECREASING |		\
 				     DRM_COLOR_LUT_EQUAL_CHANNELS,		\
 	},									\
@@ -1017,6 +1017,7 @@ static const struct intel_device_info adl_p_info = {
 	.has_3d_pipeline = 1, \
 	.has_64bit_reloc = 1, \
 	.has_flat_ccs = 1, \
+	.has_4tile = 1, \
 	.has_global_mocs = 1, \
 	.has_gt_uc = 1, \
 	.has_llc = 1, \
@@ -1061,7 +1062,6 @@ static const struct intel_device_info xehpsdv_info = {
 	.__runtime.graphics.ip.rel = 55, \
 	.__runtime.media.ip.rel = 55, \
 	PLATFORM(INTEL_DG2), \
-	.has_4tile = 1, \
 	.has_64k_pages = 1, \
 	.has_guc_deprivilege = 1, \
 	.has_heci_pxp = 1, \
@@ -1117,6 +1117,7 @@ static const struct intel_device_info pvc_info = {
 	XE_LPD_FEATURES,	\
 	.__runtime.display.ip.ver = 14,	\
 	.display.has_cdclk_crawl = 1, \
+	.display.has_cdclk_squash = 1, \
 	.__runtime.fbc_mask = BIT(INTEL_FBC_A) | BIT(INTEL_FBC_B)
 
 static const struct intel_gt_definition xelpmp_extra_gt[] = {

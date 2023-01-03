@@ -5431,11 +5431,14 @@ static struct pin_cookie __lock_pin_lock(struct lockdep_map *lock)
 
 		if (match_held_lock(hlock, lock)) {
 			/*
-			 * Grab 16bits of randomness; this is sufficient to not
-			 * be guessable and still allows some pin nesting in
-			 * our u32 pin_count.
+			 * Grab 6bits of randomness; this is barely sufficient
+			 * to not be guessable and still allows some 32 levels
+			 * of pin nesting in our u12 pin_count.
 			 */
-			cookie.val = 1 + (sched_clock() & 0xffff);
+			cookie.val = 1 + (sched_clock() & 0x3f);
+			if (DEBUG_LOCKS_WARN_ON(hlock->pin_count + cookie.val >= 1 << 12))
+				return NIL_COOKIE;
+
 			hlock->pin_count += cookie.val;
 			return cookie;
 		}

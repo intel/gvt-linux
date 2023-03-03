@@ -133,21 +133,15 @@ static void dmabuf_gem_object_free(struct kref *kref)
 	struct intel_vgpu_dmabuf_obj *obj =
 		container_of(kref, struct intel_vgpu_dmabuf_obj, kref);
 	struct intel_vgpu *vgpu = obj->vgpu;
-	struct list_head *pos;
 	struct intel_vgpu_dmabuf_obj *dmabuf_obj;
 
 	if (vgpu && test_bit(INTEL_VGPU_STATUS_ACTIVE, vgpu->status) &&
-	    !list_empty(&vgpu->dmabuf_obj_list_head)) {
-		list_for_each(pos, &vgpu->dmabuf_obj_list_head) {
-			dmabuf_obj = list_entry(pos, struct intel_vgpu_dmabuf_obj, list);
-			if (dmabuf_obj == obj) {
-				list_del(pos);
-				idr_remove(&vgpu->object_idr,
-					   dmabuf_obj->dmabuf_id);
-				kfree(dmabuf_obj->info);
-				kfree(dmabuf_obj);
-				break;
-			}
+	    !idr_is_empty(&vgpu->object_idr)) {
+		dmabuf_obj = idr_find(&vgpu->object_idr, obj->dmabuf_id);
+		if (dmabuf_obj) {
+			idr_remove(&vgpu->object_idr, obj->dmabuf_id);
+			kfree(dmabuf_obj->info);
+			kfree(dmabuf_obj);
 		}
 	} else {
 		/* Free the orphan dmabuf_objs here */
@@ -340,13 +334,12 @@ static struct intel_vgpu_dmabuf_obj *
 pick_dmabuf_by_info(struct intel_vgpu *vgpu,
 		    struct intel_vgpu_fb_info *latest_info)
 {
-	struct list_head *pos;
 	struct intel_vgpu_fb_info *fb_info;
 	struct intel_vgpu_dmabuf_obj *dmabuf_obj = NULL;
 	struct intel_vgpu_dmabuf_obj *ret = NULL;
+	int id;
 
-	list_for_each(pos, &vgpu->dmabuf_obj_list_head) {
-		dmabuf_obj = list_entry(pos, struct intel_vgpu_dmabuf_obj, list);
+	idr_for_each_entry(&vgpu->object_idr, dmabuf_obj, id) {
 		if (!dmabuf_obj->info)
 			continue;
 
@@ -358,24 +351,6 @@ pick_dmabuf_by_info(struct intel_vgpu *vgpu,
 		    (fb_info->drm_format == latest_info->drm_format) &&
 		    (fb_info->width == latest_info->width) &&
 		    (fb_info->height == latest_info->height)) {
-			ret = dmabuf_obj;
-			break;
-		}
-	}
-
-	return ret;
-}
-
-static struct intel_vgpu_dmabuf_obj *
-pick_dmabuf_by_num(struct intel_vgpu *vgpu, u32 id)
-{
-	struct list_head *pos;
-	struct intel_vgpu_dmabuf_obj *dmabuf_obj = NULL;
-	struct intel_vgpu_dmabuf_obj *ret = NULL;
-
-	list_for_each(pos, &vgpu->dmabuf_obj_list_head) {
-		dmabuf_obj = list_entry(pos, struct intel_vgpu_dmabuf_obj, list);
-		if (dmabuf_obj->dmabuf_id == id) {
 			ret = dmabuf_obj;
 			break;
 		}
@@ -477,11 +452,6 @@ int intel_vgpu_query_plane(struct intel_vgpu *vgpu, void *args)
 
 	update_fb_info(gfx_plane_info, &fb_info);
 
-	INIT_LIST_HEAD(&dmabuf_obj->list);
-	mutex_lock(&vgpu->dmabuf_lock);
-	list_add_tail(&dmabuf_obj->list, &vgpu->dmabuf_obj_list_head);
-	mutex_unlock(&vgpu->dmabuf_lock);
-
 	gvt_dbg_dpy("vgpu%d: %s new dmabuf_obj ref %d, id %d\n", vgpu->id,
 		    __func__, kref_read(&dmabuf_obj->kref), ret);
 
@@ -508,7 +478,7 @@ int intel_vgpu_get_dmabuf(struct intel_vgpu *vgpu, unsigned int dmabuf_id)
 
 	mutex_lock(&vgpu->dmabuf_lock);
 
-	dmabuf_obj = pick_dmabuf_by_num(vgpu, dmabuf_id);
+	dmabuf_obj = idr_find(&vgpu->object_idr, dmabuf_id);
 	if (dmabuf_obj == NULL) {
 		gvt_vgpu_err("invalid dmabuf id:%d\n", dmabuf_id);
 		ret = -EINVAL;
@@ -570,23 +540,19 @@ out:
 
 void intel_vgpu_dmabuf_cleanup(struct intel_vgpu *vgpu)
 {
-	struct list_head *pos, *n;
 	struct intel_vgpu_dmabuf_obj *dmabuf_obj;
+	int id;
 
 	mutex_lock(&vgpu->dmabuf_lock);
-	list_for_each_safe(pos, n, &vgpu->dmabuf_obj_list_head) {
-		dmabuf_obj = list_entry(pos, struct intel_vgpu_dmabuf_obj, list);
+	idr_for_each_entry(&vgpu->object_idr, dmabuf_obj, id) {
 		dmabuf_obj->vgpu = NULL;
 
-		idr_remove(&vgpu->object_idr, dmabuf_obj->dmabuf_id);
-		list_del(pos);
-
+		idr_remove(&vgpu->object_idr, id);
 		/* dmabuf_obj might be freed in dmabuf_obj_put */
 		if (dmabuf_obj->initref) {
 			dmabuf_obj->initref = false;
 			dmabuf_obj_put(dmabuf_obj);
 		}
-
 	}
 	mutex_unlock(&vgpu->dmabuf_lock);
 }

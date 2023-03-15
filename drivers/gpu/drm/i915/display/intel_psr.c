@@ -152,7 +152,7 @@ static void psr_irq_control(struct intel_dp *intel_dp)
 {
 	struct drm_i915_private *dev_priv = dp_to_i915(intel_dp);
 	i915_reg_t imr_reg;
-	u32 mask, val;
+	u32 mask;
 
 	if (DISPLAY_VER(dev_priv) >= 12)
 		imr_reg = TRANS_PSR_IMR(intel_dp->psr.transcoder);
@@ -164,10 +164,7 @@ static void psr_irq_control(struct intel_dp *intel_dp)
 		mask |= psr_irq_post_exit_bit_get(intel_dp) |
 			psr_irq_pre_entry_bit_get(intel_dp);
 
-	val = intel_de_read(dev_priv, imr_reg);
-	val &= ~psr_irq_mask_get(intel_dp);
-	val |= ~mask;
-	intel_de_write(dev_priv, imr_reg, val);
+	intel_de_rmw(dev_priv, imr_reg, psr_irq_mask_get(intel_dp), ~mask);
 }
 
 static void psr_event_print(struct drm_i915_private *i915,
@@ -245,8 +242,6 @@ void intel_psr_irq_handler(struct intel_dp *intel_dp, u32 psr_iir)
 	}
 
 	if (psr_iir & psr_irq_psr_error_bit_get(intel_dp)) {
-		u32 val;
-
 		drm_warn(&dev_priv->drm, "[transcoder %s] PSR aux error\n",
 			 transcoder_name(cpu_transcoder));
 
@@ -260,9 +255,7 @@ void intel_psr_irq_handler(struct intel_dp *intel_dp, u32 psr_iir)
 		 * again so we don't care about unmask the interruption
 		 * or unset irq_aux_error.
 		 */
-		val = intel_de_read(dev_priv, imr_reg);
-		val |= psr_irq_psr_error_bit_get(intel_dp);
-		intel_de_write(dev_priv, imr_reg, val);
+		intel_de_rmw(dev_priv, imr_reg, 0, psr_irq_psr_error_bit_get(intel_dp));
 
 		schedule_work(&intel_dp->psr.work);
 	}
@@ -589,12 +582,6 @@ static void hsw_activate_psr2(struct intel_dp *intel_dp)
 	if (intel_dp->psr.psr2_sel_fetch_enabled) {
 		u32 tmp;
 
-		/* Wa_1408330847 */
-		if (IS_TGL_DISPLAY_STEP(dev_priv, STEP_A0, STEP_B0))
-			intel_de_rmw(dev_priv, CHICKEN_PAR1_1,
-				     DIS_RAM_BYPASS_PSR2_MAN_TRACK,
-				     DIS_RAM_BYPASS_PSR2_MAN_TRACK);
-
 		tmp = intel_de_read(dev_priv, PSR2_MAN_TRK_CTL(intel_dp->psr.transcoder));
 		drm_WARN_ON(&dev_priv->drm, !(tmp & PSR2_MAN_TRK_CTL_ENABLE));
 	} else if (HAS_PSR2_SEL_FETCH(dev_priv)) {
@@ -635,13 +622,10 @@ static void psr2_program_idle_frames(struct intel_dp *intel_dp,
 				     u32 idle_frames)
 {
 	struct drm_i915_private *dev_priv = dp_to_i915(intel_dp);
-	u32 val;
 
 	idle_frames <<=  EDP_PSR2_IDLE_FRAME_SHIFT;
-	val = intel_de_read(dev_priv, EDP_PSR2_CTL(intel_dp->psr.transcoder));
-	val &= ~EDP_PSR2_IDLE_FRAME_MASK;
-	val |= idle_frames;
-	intel_de_write(dev_priv, EDP_PSR2_CTL(intel_dp->psr.transcoder), val);
+	intel_de_rmw(dev_priv, EDP_PSR2_CTL(intel_dp->psr.transcoder),
+		     EDP_PSR2_IDLE_FRAME_MASK, idle_frames);
 }
 
 static void tgl_psr2_enable_dc3co(struct intel_dp *intel_dp)
@@ -706,6 +690,7 @@ tgl_dc3co_exitline_compute_config(struct intel_dp *intel_dp,
 {
 	const u32 crtc_vdisplay = crtc_state->uapi.adjusted_mode.crtc_vdisplay;
 	struct drm_i915_private *dev_priv = dp_to_i915(intel_dp);
+	struct i915_power_domains *power_domains = &dev_priv->display.power.domains;
 	u32 exit_scanlines;
 
 	/*
@@ -722,7 +707,7 @@ tgl_dc3co_exitline_compute_config(struct intel_dp *intel_dp,
 	if (crtc_state->enable_psr2_sel_fetch)
 		return;
 
-	if (!(dev_priv->display.dmc.allowed_dc_mask & DC_STATE_EN_DC3CO))
+	if (!(power_domains->allowed_dc_mask & DC_STATE_EN_DC3CO))
 		return;
 
 	if (!dc3co_is_pipe_port_compatible(intel_dp, crtc_state))
@@ -760,13 +745,6 @@ static bool intel_psr2_sel_fetch_config_valid(struct intel_dp *intel_dp,
 	if (crtc_state->uapi.async_flip) {
 		drm_dbg_kms(&dev_priv->drm,
 			    "PSR2 sel fetch not enabled, async flip enabled\n");
-		return false;
-	}
-
-	/* Wa_14010254185 Wa_14010103792 */
-	if (IS_TGL_DISPLAY_STEP(dev_priv, STEP_A0, STEP_C0)) {
-		drm_dbg_kms(&dev_priv->drm,
-			    "PSR2 sel fetch not enabled, missing the implementation of WAs\n");
 		return false;
 	}
 
@@ -989,13 +967,6 @@ static bool intel_psr2_config_valid(struct intel_dp *intel_dp,
 		}
 	}
 
-	/* Wa_2209313811 */
-	if (!crtc_state->enable_psr2_sel_fetch &&
-	    IS_TGL_DISPLAY_STEP(dev_priv, STEP_A0, STEP_C0)) {
-		drm_dbg_kms(&dev_priv->drm, "PSR2 HW tracking is not supported this Display stepping\n");
-		goto unsupported;
-	}
-
 	if (!psr2_granularity_check(intel_dp, crtc_state)) {
 		drm_dbg_kms(&dev_priv->drm, "PSR2 not enabled, SU granularity not compatible\n");
 		goto unsupported;
@@ -1115,7 +1086,7 @@ void intel_psr_get_config(struct intel_encoder *encoder,
 	}
 
 	if (DISPLAY_VER(dev_priv) >= 12) {
-		val = intel_de_read(dev_priv, EXITLINE(intel_dp->psr.transcoder));
+		val = intel_de_read(dev_priv, TRANS_EXITLINE(intel_dp->psr.transcoder));
 		val &= EXITLINE_MASK;
 		pipe_config->dc3co_exitline = val;
 	}
@@ -1189,19 +1160,13 @@ static void intel_psr_enable_source(struct intel_dp *intel_dp,
 
 	psr_irq_control(intel_dp);
 
-	if (intel_dp->psr.dc3co_exitline) {
-		u32 val;
-
-		/*
-		 * TODO: if future platforms supports DC3CO in more than one
-		 * transcoder, EXITLINE will need to be unset when disabling PSR
-		 */
-		val = intel_de_read(dev_priv, EXITLINE(cpu_transcoder));
-		val &= ~EXITLINE_MASK;
-		val |= intel_dp->psr.dc3co_exitline << EXITLINE_SHIFT;
-		val |= EXITLINE_ENABLE;
-		intel_de_write(dev_priv, EXITLINE(cpu_transcoder), val);
-	}
+	/*
+	 * TODO: if future platforms supports DC3CO in more than one
+	 * transcoder, EXITLINE will need to be unset when disabling PSR
+	 */
+	if (intel_dp->psr.dc3co_exitline)
+		intel_de_rmw(dev_priv, TRANS_EXITLINE(cpu_transcoder), EXITLINE_MASK,
+			     intel_dp->psr.dc3co_exitline << EXITLINE_SHIFT | EXITLINE_ENABLE);
 
 	if (HAS_PSR_HW_TRACKING(dev_priv) && HAS_PSR2_SEL_FETCH(dev_priv))
 		intel_de_rmw(dev_priv, CHICKEN_PAR1_1, IGNORE_PSR2_HW_TRACKING,
@@ -1214,13 +1179,8 @@ static void intel_psr_enable_source(struct intel_dp *intel_dp,
 	 */
 	if (IS_MTL_DISPLAY_STEP(dev_priv, STEP_A0, STEP_B0) ||
 	    IS_DISPLAY_VER(dev_priv, 12, 13)) {
-		u16 vtotal, vblank;
-
-		vtotal = crtc_state->uapi.adjusted_mode.crtc_vtotal -
-			crtc_state->uapi.adjusted_mode.crtc_vdisplay;
-		vblank = crtc_state->uapi.adjusted_mode.crtc_vblank_end -
-			crtc_state->uapi.adjusted_mode.crtc_vblank_start;
-		if (vblank > vtotal)
+		if (crtc_state->hw.adjusted_mode.crtc_vblank_start !=
+		    crtc_state->hw.adjusted_mode.crtc_vdisplay)
 			intel_de_rmw(dev_priv, GEN8_CHICKEN_DCPR_1, 0,
 				     wa_16013835468_bit_get(intel_dp));
 	}
@@ -1242,13 +1202,6 @@ static void intel_psr_enable_source(struct intel_dp *intel_dp,
 		else if (IS_ALDERLAKE_P(dev_priv))
 			intel_de_rmw(dev_priv, CHICKEN_TRANS(cpu_transcoder), 0,
 				     ADLP_1_BASED_X_GRANULARITY);
-
-		/* Wa_16011168373:adl-p */
-		if (IS_ADLP_DISPLAY_STEP(dev_priv, STEP_A0, STEP_B0))
-			intel_de_rmw(dev_priv,
-				     TRANS_SET_CONTEXT_LATENCY(intel_dp->psr.transcoder),
-				     TRANS_SET_CONTEXT_LATENCY_MASK,
-				     TRANS_SET_CONTEXT_LATENCY_VALUE(1));
 
 		/* Wa_16012604467:adlp,mtl[a0,b0] */
 		if (IS_MTL_DISPLAY_STEP(dev_priv, STEP_A0, STEP_B0))
@@ -1404,12 +1357,6 @@ static void intel_psr_disable_locked(struct intel_dp *intel_dp)
 	intel_psr_exit(intel_dp);
 	intel_psr_wait_exit_locked(intel_dp);
 
-	/* Wa_1408330847 */
-	if (intel_dp->psr.psr2_sel_fetch_enabled &&
-	    IS_TGL_DISPLAY_STEP(dev_priv, STEP_A0, STEP_B0))
-		intel_de_rmw(dev_priv, CHICKEN_PAR1_1,
-			     DIS_RAM_BYPASS_PSR2_MAN_TRACK, 0);
-
 	/*
 	 * Wa_16013835468
 	 * Wa_14015648006
@@ -1420,12 +1367,6 @@ static void intel_psr_disable_locked(struct intel_dp *intel_dp)
 			     wa_16013835468_bit_get(intel_dp), 0);
 
 	if (intel_dp->psr.psr2_enabled) {
-		/* Wa_16011168373:adl-p */
-		if (IS_ADLP_DISPLAY_STEP(dev_priv, STEP_A0, STEP_B0))
-			intel_de_rmw(dev_priv,
-				     TRANS_SET_CONTEXT_LATENCY(intel_dp->psr.transcoder),
-				     TRANS_SET_CONTEXT_LATENCY_MASK, 0);
-
 		/* Wa_16012604467:adlp,mtl[a0,b0] */
 		if (IS_MTL_DISPLAY_STEP(dev_priv, STEP_A0, STEP_B0))
 			intel_de_rmw(dev_priv,
@@ -1591,8 +1532,8 @@ static void psr_force_hw_tracking_exit(struct intel_dp *intel_dp)
 	intel_de_write(dev_priv, CURSURFLIVE(intel_dp->psr.pipe), 0);
 }
 
-void intel_psr2_disable_plane_sel_fetch(struct intel_plane *plane,
-					const struct intel_crtc_state *crtc_state)
+void intel_psr2_disable_plane_sel_fetch_arm(struct intel_plane *plane,
+					    const struct intel_crtc_state *crtc_state)
 {
 	struct drm_i915_private *dev_priv = to_i915(plane->base.dev);
 	enum pipe pipe = plane->pipe;
@@ -1603,10 +1544,28 @@ void intel_psr2_disable_plane_sel_fetch(struct intel_plane *plane,
 	intel_de_write_fw(dev_priv, PLANE_SEL_FETCH_CTL(pipe, plane->id), 0);
 }
 
-void intel_psr2_program_plane_sel_fetch(struct intel_plane *plane,
-					const struct intel_crtc_state *crtc_state,
-					const struct intel_plane_state *plane_state,
-					int color_plane)
+void intel_psr2_program_plane_sel_fetch_arm(struct intel_plane *plane,
+					    const struct intel_crtc_state *crtc_state,
+					    const struct intel_plane_state *plane_state)
+{
+	struct drm_i915_private *i915 = to_i915(plane->base.dev);
+	enum pipe pipe = plane->pipe;
+
+	if (!crtc_state->enable_psr2_sel_fetch)
+		return;
+
+	if (plane->id == PLANE_CURSOR)
+		intel_de_write_fw(i915, PLANE_SEL_FETCH_CTL(pipe, plane->id),
+				  plane_state->ctl);
+	else
+		intel_de_write_fw(i915, PLANE_SEL_FETCH_CTL(pipe, plane->id),
+				  PLANE_SEL_FETCH_CTL_ENABLE);
+}
+
+void intel_psr2_program_plane_sel_fetch_noarm(struct intel_plane *plane,
+					      const struct intel_crtc_state *crtc_state,
+					      const struct intel_plane_state *plane_state,
+					      int color_plane)
 {
 	struct drm_i915_private *dev_priv = to_i915(plane->base.dev);
 	enum pipe pipe = plane->pipe;
@@ -1617,11 +1576,8 @@ void intel_psr2_program_plane_sel_fetch(struct intel_plane *plane,
 	if (!crtc_state->enable_psr2_sel_fetch)
 		return;
 
-	if (plane->id == PLANE_CURSOR) {
-		intel_de_write_fw(dev_priv, PLANE_SEL_FETCH_CTL(pipe, plane->id),
-				  plane_state->ctl);
+	if (plane->id == PLANE_CURSOR)
 		return;
-	}
 
 	clip = &plane_state->psr2_sel_fetch_area;
 
@@ -1649,9 +1605,6 @@ void intel_psr2_program_plane_sel_fetch(struct intel_plane *plane,
 	val = (drm_rect_height(clip) - 1) << 16;
 	val |= (drm_rect_width(&plane_state->uapi.src) >> 16) - 1;
 	intel_de_write_fw(dev_priv, PLANE_SEL_FETCH_SIZE(pipe, plane->id), val);
-
-	intel_de_write_fw(dev_priv, PLANE_SEL_FETCH_CTL(pipe, plane->id),
-			  PLANE_SEL_FETCH_CTL_ENABLE);
 }
 
 void intel_psr2_program_trans_man_trk_ctl(const struct intel_crtc_state *crtc_state)

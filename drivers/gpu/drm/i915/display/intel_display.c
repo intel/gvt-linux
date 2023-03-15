@@ -5079,6 +5079,7 @@ intel_crtc_prepare_cleared_state(struct intel_atomic_state *state,
 	 * only fields that are know to not cause problems are preserved. */
 
 	saved_state->uapi = crtc_state->uapi;
+	saved_state->inherited = crtc_state->inherited;
 	saved_state->scaler_state = crtc_state->scaler_state;
 	saved_state->shared_dpll = crtc_state->shared_dpll;
 	saved_state->dpll_hw_state = crtc_state->dpll_hw_state;
@@ -8886,13 +8887,13 @@ void intel_display_driver_register(struct drm_i915_private *i915)
 	if (!HAS_DISPLAY(i915))
 		return;
 
-	intel_display_debugfs_register(i915);
-
 	/* Must be done after probing outputs */
 	intel_opregion_register(i915);
 	intel_acpi_video_register(i915);
 
 	intel_audio_init(i915);
+
+	intel_display_debugfs_register(i915);
 
 	/*
 	 * Some ports require correctly set-up hpd registers for

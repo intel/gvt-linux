@@ -57,7 +57,6 @@ struct intel_vgpu_dmabuf_obj {
 	__u32 dmabuf_id;
 	struct kref kref;
 	bool initref;
-	struct list_head list;
 };
 
 int intel_vgpu_query_plane(struct intel_vgpu *vgpu, void *args);

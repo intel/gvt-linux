@@ -211,7 +211,6 @@ struct intel_vgpu {
 
 	struct dentry *debugfs;
 
-	struct list_head dmabuf_obj_list_head;
 	struct mutex dmabuf_lock;
 	struct idr object_idr;
 	struct intel_vgpu_vblank_timer vblank_timer;

@@ -158,8 +158,8 @@ struct xe_hw_engine {
 struct xe_hw_engine_snapshot {
 	/** @name: name of the hw engine */
 	char *name;
-	/** @class: class of this hw engine */
-	enum xe_engine_class class;
+	/** @hwe: hw engine */
+	struct xe_hw_engine *hwe;
 	/** @logical_instance: logical instance of this hw engine */
 	u16 logical_instance;
 	/** @forcewake: Force Wake information snapshot */
@@ -211,6 +211,22 @@ struct xe_hw_engine_snapshot {
 		u32 ipehr;
 		/** @reg.rcu_mode: RCU_MODE */
 		u32 rcu_mode;
+		struct {
+			/** @reg.instdone.ring: RING_INSTDONE */
+			u32 ring;
+			/** @reg.instdone.slice_common: SC_INSTDONE */
+			u32 *slice_common;
+			/** @reg.instdone.slice_common_extra: SC_INSTDONE_EXTRA */
+			u32 *slice_common_extra;
+			/** @reg.instdone.slice_common_extra2: SC_INSTDONE_EXTRA2 */
+			u32 *slice_common_extra2;
+			/** @reg.instdone.sampler: SAMPLER_INSTDONE */
+			u32 *sampler;
+			/** @reg.instdone.row: ROW_INSTDONE */
+			u32 *row;
+			/** @reg.instdone.geom_svg: INSTDONE_GEOM_SVGUNIT */
+			u32 *geom_svg;
+		} instdone;
 	} reg;
 };
 

@@ -619,9 +619,40 @@ xe_pt_stage_bind(struct xe_tile *tile, struct xe_vma *vma,
 	struct xe_pt *pt = xe_vma_vm(vma)->pt_root[tile->id];
 	int ret;
 
-	if ((vma->gpuva.flags & XE_VMA_ATOMIC_PTE_BIT) &&
-	    (is_devmem || !IS_DGFX(xe)))
-		xe_walk.default_pte |= XE_USM_PPGTT_PTE_AE;
+	/**
+	 * Default atomic expectations for different allocation scenarios are as follows:
+	 *
+	 * 1. Traditional API: When the VM is not in LR mode:
+	 *    - Device atomics are expected to function with all allocations.
+	 *
+	 * 2. Compute/SVM API: When the VM is in LR mode:
+	 *    - Device atomics are the default behavior when the bo is placed in a single region.
+	 *    - In all other cases device atomics will be disabled with AE=0 until an application
+	 *      request differently using a ioctl like madvise.
+	 */
+	if (vma->gpuva.flags & XE_VMA_ATOMIC_PTE_BIT) {
+		if (xe_vm_in_lr_mode(xe_vma_vm(vma))) {
+			if (bo && xe_bo_has_single_placement(bo))
+				xe_walk.default_pte |= XE_USM_PPGTT_PTE_AE;
+			/**
+			 * If a SMEM+LMEM allocation is backed by SMEM, a device
+			 * atomics will cause a gpu page fault and which then
+			 * gets migrated to LMEM, bind such allocations with
+			 * device atomics enabled.
+			 */
+			else if (is_devmem && !xe_bo_has_single_placement(bo))
+				xe_walk.default_pte |= XE_USM_PPGTT_PTE_AE;
+		} else {
+			xe_walk.default_pte |= XE_USM_PPGTT_PTE_AE;
+		}
+
+		/**
+		 * Unset AE if the platform(PVC) doesn't support it on an
+		 * allocation
+		 */
+		if (!xe->info.has_device_atomics_on_smem && !is_devmem)
+			xe_walk.default_pte &= ~XE_USM_PPGTT_PTE_AE;
+	}
 
 	if (is_devmem) {
 		xe_walk.default_pte |= XE_PPGTT_PTE_DM;
@@ -1075,10 +1106,12 @@ static const struct xe_migrate_pt_update_ops userptr_bind_ops = {
 struct invalidation_fence {
 	struct xe_gt_tlb_invalidation_fence base;
 	struct xe_gt *gt;
-	struct xe_vma *vma;
 	struct dma_fence *fence;
 	struct dma_fence_cb cb;
 	struct work_struct work;
+	u64 start;
+	u64 end;
+	u32 asid;
 };
 
 static const char *
@@ -1121,13 +1154,14 @@ static void invalidation_fence_work_func(struct work_struct *w)
 		container_of(w, struct invalidation_fence, work);
 
 	trace_xe_gt_tlb_invalidation_fence_work_func(&ifence->base);
-	xe_gt_tlb_invalidation_vma(ifence->gt, &ifence->base, ifence->vma);
+	xe_gt_tlb_invalidation_range(ifence->gt, &ifence->base, ifence->start,
+				     ifence->end, ifence->asid);
 }
 
 static int invalidation_fence_init(struct xe_gt *gt,
 				   struct invalidation_fence *ifence,
 				   struct dma_fence *fence,
-				   struct xe_vma *vma)
+				   u64 start, u64 end, u32 asid)
 {
 	int ret;
 
@@ -1144,7 +1178,9 @@ static int invalidation_fence_init(struct xe_gt *gt,
 	dma_fence_get(&ifence->base.base);	/* Ref for caller */
 	ifence->fence = fence;
 	ifence->gt = gt;
-	ifence->vma = vma;
+	ifence->start = start;
+	ifence->end = end;
+	ifence->asid = asid;
 
 	INIT_WORK(&ifence->work, invalidation_fence_work_func);
 	ret = dma_fence_add_callback(fence, &ifence->cb, invalidation_fence_cb);
@@ -1295,8 +1331,11 @@ __xe_pt_bind_vma(struct xe_tile *tile, struct xe_vma *vma, struct xe_exec_queue 
 
 		/* TLB invalidation must be done before signaling rebind */
 		if (ifence) {
-			int err = invalidation_fence_init(tile->primary_gt, ifence, fence,
-							  vma);
+			int err = invalidation_fence_init(tile->primary_gt,
+							  ifence, fence,
+							  xe_vma_start(vma),
+							  xe_vma_end(vma),
+							  xe_vma_vm(vma)->usm.asid);
 			if (err) {
 				dma_fence_put(fence);
 				kfree(ifence);
@@ -1641,7 +1680,10 @@ __xe_pt_unbind_vma(struct xe_tile *tile, struct xe_vma *vma, struct xe_exec_queu
 			dma_fence_wait(fence, false);
 
 		/* TLB invalidation must be done before signaling unbind */
-		err = invalidation_fence_init(tile->primary_gt, ifence, fence, vma);
+		err = invalidation_fence_init(tile->primary_gt, ifence, fence,
+					      xe_vma_start(vma),
+					      xe_vma_end(vma),
+					      xe_vma_vm(vma)->usm.asid);
 		if (err) {
 			dma_fence_put(fence);
 			kfree(ifence);

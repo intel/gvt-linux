@@ -1,0 +1,30 @@
+drm drm-fixes 09e10499ee6a5a89fc352f25881276398a49596a
+	Merge tag 'drm-misc-fixes-2024-05-02' of https://gitlab.freedesktop.org/drm/misc/kernel into drm-fixes
+drm-misc drm-misc-fixes 08001033121dd92b8297a5b7333636b466c30f13
+	drm/meson: dw-hdmi: add bandgap setting for g12
+drm-intel drm-intel-fixes dd5a440a31fae6e459c0d6271dddd62825505361
+	Linux 6.9-rc7
+drm-xe drm-xe-fixes dd5a440a31fae6e459c0d6271dddd62825505361
+	Linux 6.9-rc7
+drm drm-next f03eee5fc922158654405318a02db9982c0ddf07
+	Merge tag 'drm-xe-next-fixes-2024-05-02' of https://gitlab.freedesktop.org/drm/xe/kernel into drm-next
+drm-misc drm-misc-next-fixes be3f3042391d061cfca2bd22630e0d101acea5fc
+	drm: zynqmp_dpsub: Always register bridge
+drm-intel drm-intel-next-fixes 84b5ece64477df4394d362d494a2496bf0878985
+	drm/i915: Drop -Wstringop-overflow
+drm-xe drm-xe-next-fixes 3bc8848bb7f7478e6806e4522b06b63f40a53e1e
+	drm/xe: Merge 16021540221 and 18034896535 WAs
+drm-misc drm-misc-next a6cd27d92a96e13473006d43ad03edac609ec493
+	drm/panel-edp: Add ID for KD KD116N09-30NH-A016
+drm-intel drm-intel-next accd3e041e8fe510e957513b419bac1cada04e21
+	drm/i915: pass dev_priv explicitly to PORT_ALPM_LFPS_CTL
+drm-intel drm-intel-gt-next 4cfca03f76413db115c3cc18f4370debb1b81b2b
+	drm/i915/gt: Automate CCS Mode setting during engine resets
+drm-xe drm-xe-next 50aec9665e0babd62b9eee4e613d9a1ef8d2b7de
+	drm/xe: Use ordered WQ for G2H handler
+drm-intel topic/core-for-CI 44909e5ed2f8e95a9a8576f44d570c68c76c44d6
+	ASoC: SOF: Core: Add remove_late() to  sof_init_environment failure path
+drm-xe topic/xe-for-CI bf4d297181f6ce757299a6853620435de76b09d4
+	drm/xe/gsc: define GSC FW for LNL
+drm-intel topic/thunderbolt-next b8a730836c6b1788ca2fbd6bcc2ac99e97ef7de9
+	thunderbolt: Constify the struct device_type usage

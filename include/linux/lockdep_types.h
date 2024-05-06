@@ -251,8 +251,8 @@ struct held_lock {
 	unsigned int check:1;       /* see lock_acquire() comment */
 	unsigned int hardirqs_off:1;
 	unsigned int sync:1;
-	unsigned int references:11;					/* 32 bits */
-	unsigned int pin_count;
+	unsigned int pin_count:11;					/* 32 bits */
+	unsigned int references;
 };
 
 #else /* !CONFIG_LOCKDEP */

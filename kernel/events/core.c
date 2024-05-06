@@ -5565,20 +5565,16 @@ unlock:
 }
 
 static int perf_read_group(struct perf_event *event,
-				   u64 read_format, char __user *buf)
+			   u64 read_format, char __user *buf,
+			   u64 *values)
 {
 	struct perf_event *leader = event->group_leader, *child;
 	struct perf_event_context *ctx = leader->ctx;
 	int ret;
-	u64 *values;
 
 	lockdep_assert_held(&ctx->mutex);
 
-	values = kzalloc(event->read_size, GFP_KERNEL);
-	if (!values)
-		return -ENOMEM;
-
-	values[0] = 1 + leader->nr_siblings;
+	*values = 1 + leader->nr_siblings;
 
 	mutex_lock(&leader->child_mutex);
 
@@ -5592,25 +5588,17 @@ static int perf_read_group(struct perf_event *event,
 			goto unlock;
 	}
 
-	mutex_unlock(&leader->child_mutex);
-
 	ret = event->read_size;
-	if (copy_to_user(buf, values, event->read_size))
-		ret = -EFAULT;
-	goto out;
-
 unlock:
 	mutex_unlock(&leader->child_mutex);
-out:
-	kfree(values);
 	return ret;
 }
 
 static int perf_read_one(struct perf_event *event,
-				 u64 read_format, char __user *buf)
+			 u64 read_format, char __user *buf,
+			 u64 *values)
 {
 	u64 enabled, running;
-	u64 values[5];
 	int n = 0;
 
 	values[n++] = __perf_event_read_value(event, &enabled, &running);
@@ -5622,9 +5610,6 @@ static int perf_read_one(struct perf_event *event,
 		values[n++] = primary_event_id(event);
 	if (read_format & PERF_FORMAT_LOST)
 		values[n++] = atomic64_read(&event->lost_samples);
-
-	if (copy_to_user(buf, values, n * sizeof(u64)))
-		return -EFAULT;
 
 	return n * sizeof(u64);
 }
@@ -5646,7 +5631,8 @@ static bool is_event_hup(struct perf_event *event)
  * Read the performance event - simple non blocking version for now
  */
 static ssize_t
-__perf_read(struct perf_event *event, char __user *buf, size_t count)
+__perf_read(struct perf_event *event, char __user *buf,
+	    size_t count, u64 *values)
 {
 	u64 read_format = event->attr.read_format;
 	int ret;
@@ -5664,9 +5650,9 @@ __perf_read(struct perf_event *event, char __user *buf, size_t count)
 
 	WARN_ON_ONCE(event->ctx->parent_ctx);
 	if (read_format & PERF_FORMAT_GROUP)
-		ret = perf_read_group(event, read_format, buf);
+		ret = perf_read_group(event, read_format, buf, values);
 	else
-		ret = perf_read_one(event, read_format, buf);
+		ret = perf_read_one(event, read_format, buf, values);
 
 	return ret;
 }
@@ -5676,15 +5662,30 @@ perf_read(struct file *file, char __user *buf, size_t count, loff_t *ppos)
 {
 	struct perf_event *event = file->private_data;
 	struct perf_event_context *ctx;
+	u64 stack_values[8];
+	u64 *values;
 	int ret;
 
 	ret = security_perf_event_read(event);
 	if (ret)
 		return ret;
 
+	if (event->read_size <= sizeof(stack_values))
+		values = memset(stack_values, 0, event->read_size);
+	else
+		values = kzalloc(event->read_size, GFP_KERNEL);
+	if (!values)
+		return -ENOMEM;
+
 	ctx = perf_event_ctx_lock(event);
-	ret = __perf_read(event, buf, count);
+	ret = __perf_read(event, buf, count, values);
 	perf_event_ctx_unlock(event, ctx);
+
+	if (ret > 0 && copy_to_user(buf, values, ret))
+		ret = -EFAULT;
+
+	if (values != stack_values)
+		kfree(values);
 
 	return ret;
 }

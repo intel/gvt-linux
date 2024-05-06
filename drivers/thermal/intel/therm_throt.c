@@ -345,10 +345,10 @@ static void __maybe_unused throttle_active_work(struct work_struct *work)
 	avg /= ARRAY_SIZE(state->temp_samples);
 
 	if (state->average > avg) {
-		pr_warn("CPU%d: %s temperature is above threshold, cpu clock is throttled (total events = %lu)\n",
-			this_cpu,
-			state->level == CORE_LEVEL ? "Core" : "Package",
-			state->count);
+		pr_notice("CPU%d: %s temperature is above threshold, cpu clock is throttled (total events = %lu)\n",
+			  this_cpu,
+			  state->level == CORE_LEVEL ? "Core" : "Package",
+			  state->count);
 		state->rate_control_active = true;
 	}
 
